@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LayoutDashboard, ListTodo, Settings, TrendingUp, Sparkles } from "lucide-react";
 
 export const navigationItems = [
-  { href: "/", label: "Visão geral", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
   { href: "/metas", label: "Metas e hábitos", icon: ListTodo },
   { href: "/perfil", label: "Meu perfil", icon: TrendingUp },
   { href: "/configuracoes", label: "Configurações", icon: Settings },

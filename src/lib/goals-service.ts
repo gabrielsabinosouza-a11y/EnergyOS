@@ -1,5 +1,6 @@
 import pool, { mapGoalRow, mapHabitRow, type DbGoalRow, type DbHabitRow, type HabitWithCompletion } from "./db";
 import type { Goal, Habit, GoalCategory, UserSettings } from "@/types";
+import { parseProfileId } from "./db/validation";
 
 const GOAL_CATEGORIES: readonly GoalCategory[] = ["sono", "estudo", "treino", "saude", "foco"];
 const GOAL_FREQUENCIES = ["daily", "weekly", "monthly"] as const;
@@ -7,9 +8,7 @@ const HABIT_FREQUENCIES = ["daily", "weekly"] as const;
 const THEMES = ["system", "light", "dark"] as const;
 
 function requireProfileId(profileId: string) {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId)) {
-    throw new Error("Identificador de perfil inválido.");
-  }
+  return parseProfileId(profileId);
 }
 
 function validateTitle(title: string) {
@@ -27,11 +26,11 @@ function validateTargetValue(value: number) {
 }
 
 export async function ensureProfile(profileId: string, displayName?: string) {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   await pool.query(
     `insert into profiles (id, display_name) values ($1, $2)
      on conflict (id) do update set display_name = coalesce(nullif(excluded.display_name, ''), profiles.display_name)`,
-    [profileId, displayName?.trim() ?? ""],
+    [dbProfileId, displayName?.trim() ?? ""],
   );
 }
 
@@ -41,11 +40,11 @@ export interface GoalWithHabits {
 }
 
 export async function listGoalsWithHabits(profileId: string): Promise<GoalWithHabits[]> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   const goalsResult = await pool.query<DbGoalRow>(
     `select id, profile_id, title, category, target_value, current_value, frequency
      from goals where profile_id = $1 order by created_at desc, id desc`,
-    [profileId],
+    [dbProfileId],
   );
   const habitsResult = await pool.query<DbHabitRow>(
     `select h.id, h.goal_id, h.title, h.frequency, h.active,
@@ -57,7 +56,7 @@ export async function listGoalsWithHabits(profileId: string): Promise<GoalWithHa
      join goals g on g.id = h.goal_id
      where g.profile_id = $1
      order by h.active desc, h.id`,
-    [profileId],
+    [dbProfileId],
   );
 
   const habits = habitsResult.rows.map(mapHabitRow);
@@ -75,7 +74,7 @@ export interface CreateGoalInput {
 }
 
 export async function createGoal(profileId: string, input: CreateGoalInput): Promise<Goal> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   await ensureProfile(profileId);
   if (!GOAL_CATEGORIES.includes(input.category)) throw new Error("Categoria inválida.");
   if (!GOAL_FREQUENCIES.includes(input.frequency)) throw new Error("Frequência inválida.");
@@ -86,7 +85,7 @@ export async function createGoal(profileId: string, input: CreateGoalInput): Pro
     `insert into goals (profile_id, title, category, target_value, frequency)
      values ($1, $2, $3, $4, $5)
      returning id, profile_id, title, category, target_value, current_value, frequency`,
-    [profileId, title, input.category, targetValue, input.frequency],
+    [dbProfileId, title, input.category, targetValue, input.frequency],
   );
   return mapGoalRow(result.rows[0]);
 }
@@ -100,11 +99,11 @@ export interface UpdateGoalPatch {
 }
 
 export async function updateGoal(profileId: string, goalId: number, patch: UpdateGoalPatch): Promise<Goal> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   if (!Number.isInteger(goalId) || goalId <= 0) throw new Error("Meta inválida.");
 
   const updates: string[] = [];
-  const values: (string | number)[] = [profileId, goalId];
+  const values: (string | number)[] = [dbProfileId, goalId];
 
   if (patch.title !== undefined) {
     values.push(validateTitle(patch.title));
@@ -143,8 +142,8 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
 }
 
 export async function deleteGoal(profileId: string, goalId: number): Promise<void> {
-  requireProfileId(profileId);
-  const result = await pool.query(`delete from goals where profile_id = $1 and id = $2`, [profileId, goalId]);
+  const dbProfileId = requireProfileId(profileId);
+  const result = await pool.query(`delete from goals where profile_id = $1 and id = $2`, [dbProfileId, goalId]);
   if (result.rowCount === 0) throw new Error("Meta não encontrada.");
 }
 
@@ -159,12 +158,12 @@ export interface CreateHabitInput {
 }
 
 export async function createHabit(profileId: string, input: CreateHabitInput): Promise<HabitWithCompletion> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   if (!Number.isInteger(input.goalId) || input.goalId <= 0) throw new Error("Meta inválida.");
   if (!HABIT_FREQUENCIES.includes(input.frequency)) throw new Error("Frequência inválida.");
   const title = validateTitle(input.title);
 
-  const owner = await pool.query(`select 1 from goals where id = $1 and profile_id = $2`, [input.goalId, profileId]);
+  const owner = await pool.query(`select 1 from goals where id = $1 and profile_id = $2`, [input.goalId, dbProfileId]);
   if (!owner.rows[0]) throw new Error("Meta não encontrada.");
 
   const result = await pool.query<DbHabitRow>(
@@ -176,9 +175,10 @@ export async function createHabit(profileId: string, input: CreateHabitInput): P
 }
 
 async function requireOwnedHabit(profileId: string, habitId: number) {
+  const dbProfileId = requireProfileId(profileId);
   const owner = await pool.query(
     `select h.id from habits h join goals g on g.id = h.goal_id where h.id = $1 and g.profile_id = $2`,
-    [habitId, profileId],
+    [habitId, dbProfileId],
   );
   if (!owner.rows[0]) throw new Error("Hábito não encontrado.");
 }
@@ -198,7 +198,7 @@ export async function deleteHabit(profileId: string, habitId: number): Promise<v
 }
 
 export async function toggleHabitCompletion(profileId: string, habitId: number, date: string): Promise<boolean> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   if (!Number.isInteger(habitId) || habitId <= 0) throw new Error("Hábito inválido.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Data inválida (use YYYY-MM-DD).");
   await requireOwnedHabit(profileId, habitId);
@@ -215,7 +215,7 @@ export async function toggleHabitCompletion(profileId: string, habitId: number, 
   await pool.query(
     `insert into habit_completions (habit_id, profile_id, completed_date) values ($1, $2, $3)
      on conflict (habit_id, completed_date) do nothing`,
-    [habitId, profileId, date],
+    [habitId, dbProfileId, date],
   );
   return true;
 }
@@ -228,7 +228,7 @@ export interface SaveUserSettingsInput {
 }
 
 export async function saveUserSettings(profileId: string, input: SaveUserSettingsInput): Promise<UserSettings> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   await ensureProfile(profileId);
   if (!THEMES.includes(input.preferredTheme)) throw new Error("Tema inválido.");
   const timePattern = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
@@ -245,7 +245,7 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
        focus_time = excluded.focus_time
      returning notifications_enabled, preferred_theme, sleep_time, focus_time`,
     [
-      profileId,
+      dbProfileId,
       input.notificationsEnabled,
       input.preferredTheme,
       input.sleepTime ?? null,
@@ -269,11 +269,11 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
 }
 
 export async function getUserSettings(profileId: string): Promise<UserSettings | null> {
-  requireProfileId(profileId);
+  const dbProfileId = requireProfileId(profileId);
   const result = await pool.query(
     `select notifications_enabled, preferred_theme, sleep_time, focus_time
      from user_settings where profile_id = $1`,
-    [profileId],
+    [dbProfileId],
   );
   const row = result.rows[0] as
     | {

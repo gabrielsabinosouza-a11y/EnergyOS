@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
 
   if (PUBLIC_AUTH_ROUTES.includes(pathname) && session) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

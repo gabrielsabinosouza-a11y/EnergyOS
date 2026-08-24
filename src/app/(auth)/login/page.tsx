@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Sparkles, ArrowUpRight, Loader2 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -61,11 +62,7 @@ export default function LoginPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative w-full max-w-sm"
-    >
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-sm">
       <div className="panel p-8">
         <div className="mb-8 flex items-center gap-3">
           <div className="brand-mark"><Sparkles size={17} /></div>
@@ -82,63 +79,36 @@ export default function LoginPage() {
             E-mail de recuperação enviado. Verifique sua caixa de entrada.
           </div>
         )}
-
         {error && (
-          <div className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
-            {error}
-          </div>
+          <div className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{error}</div>
         )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">
-              E-mail
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              placeholder="voce@email.com"
-            />
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">E-mail</label>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="auth-input" placeholder="voce@email.com" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">
-              Senha
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="auth-input"
-              placeholder="••••••••"
-            />
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Senha</label>
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" placeholder="••••••••" />
           </div>
-
           <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
             {loading ? <Loader2 size={15} className="animate-spin" /> : <>Entrar <ArrowUpRight size={15} /></>}
           </button>
         </form>
 
         <button type="button" onClick={handleGoogleLogin} disabled={loading} className="google-button mt-3 w-full">
-          <span className="google-mark">G</span> Continuar com Google
+          <Image src="/icons_8bits/Google.png" alt="Google" width={20} height={20} className="pixelated" />
+          Continuar com Google
         </button>
 
-        <button
-          onClick={handleReset}
-          disabled={loading}
-          className="mt-4 text-xs text-white/35 hover:text-[#71d4ff] transition-colors"
-        >
+        <button onClick={handleReset} disabled={loading} className="mt-4 text-xs text-white/35 hover:text-[#71d4ff] transition-colors">
           Esqueci minha senha
         </button>
 
         <p className="mt-6 border-t border-white/8 pt-5 text-center text-sm text-white/40">
           Não tem conta?{" "}
-          <Link href="/cadastro" className="text-[#71d4ff] font-semibold hover:underline">
-            Cadastre-se
-          </Link>
+          <Link href="/cadastro" className="text-[#71d4ff] font-semibold hover:underline">Cadastre-se</Link>
         </p>
       </div>
     </motion.div>

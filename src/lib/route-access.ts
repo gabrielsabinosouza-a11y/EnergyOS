@@ -1,4 +1,4 @@
-export const protectedRoutes = ["/", "/perfil", "/configuracoes", "/metas"] as const;
+export const protectedRoutes = ["/dashboard", "/perfil", "/configuracoes", "/metas"] as const;
 
 export function isProtectedRoute(pathname: string) {
   return protectedRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));

@@ -1,5 +1,6 @@
 export type TaskCategory = "FOCO" | "CORPO" | "MENTE" | "ORDEM" | "ENERGIA";
 export type GoalCategory = "sono" | "estudo" | "treino" | "saude" | "foco";
+export type MetricKind = "sleep" | "study" | "training" | "energy" | "tasks";
 
 export interface User {
   id: string;
@@ -52,6 +53,24 @@ export interface UserSettings {
   preferredTheme: "system" | "light" | "dark";
   sleepTime?: string;
   focusTime?: string;
+}
+
+export interface Metric {
+  kind: MetricKind;
+  label: string;
+  value: number;
+  unit: string;
+  trend?: number;
+  period: "day" | "week" | "month";
+}
+
+export interface Insight {
+  id: string;
+  profileId: string;
+  title: string;
+  description: string;
+  metricKind?: MetricKind;
+  createdAt: string;
 }
 
 export function getTaskProgress(tasks: Array<Pick<Task, "completedAt"> & { done?: boolean }>) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { deleteUser, updateProfile } from "firebase/auth";
 import { useAuth } from "@/lib/auth-context";
@@ -9,6 +9,7 @@ import { Sparkles, Loader2, LogOut, Trash2, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
+import { api } from "@/lib/api-client";
 
 const defaultSettings: Omit<UserSettings, "profileId"> = {
   notificationsEnabled: true,
@@ -26,11 +27,25 @@ export default function ConfiguracoesPage() {
   const [nameSaved, setNameSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void api.getSettings().then((savedSettings) => {
+      if (active) setSettings((current) => ({ ...current, ...savedSettings }));
+    }).catch(() => {
+      if (active) setSettingsError("Não foi possível carregar suas preferências.");
+    });
+    return () => { active = false; };
+  }, [user?.uid]);
 
   if (loading) return <LoadingScreen />;
   if (!user) { router.push("/login"); return null; }
 
-  if (!name && user.displayName) setName(user.displayName);
+  // Initialize name from user on first render after auth resolves
+  const currentDisplayName = user.displayName ?? "";
+  if (!name && currentDisplayName) setName(currentDisplayName);
 
   async function saveName() {
     if (!name.trim()) return;
@@ -60,7 +75,14 @@ export default function ConfiguracoesPage() {
   }
 
   function set<K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) {
-    setSettings((s) => ({ ...s, [key]: value }));
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    void api.saveSettings({
+      notificationsEnabled: next.notificationsEnabled,
+      preferredTheme: next.preferredTheme,
+      sleepTime: next.sleepTime,
+      focusTime: next.focusTime,
+    }).catch(() => setSettingsError("Não foi possível salvar a preferência."));
   }
 
   return (
@@ -68,14 +90,14 @@ export default function ConfiguracoesPage() {
       <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
       <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8">
         <div className="mb-8 flex items-center gap-3">
-          <Link href="/" className="brand-mark"><Sparkles size={17} /></Link>
+          <Link href="/dashboard" className="brand-mark"><Sparkles size={17} /></Link>
           <span className="font-display text-xl font-semibold tracking-[-0.04em]">energy<span className="text-[#71d4ff]">OS</span></span>
         </div>
 
         <h1 className="font-display text-3xl tracking-[-0.04em] mb-8">Configurações</h1>
+        {settingsError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{settingsError}</p>}
 
         <div className="space-y-4">
-          {/* Nome */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PERFIL</span>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Nome</label>
@@ -88,7 +110,6 @@ export default function ConfiguracoesPage() {
             {nameSaved && <p className="mt-2 text-xs text-[#71d4ff]">Nome atualizado!</p>}
           </motion.div>
 
-          {/* Notificações + Tema */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PREFERÊNCIAS</span>
             <div className="space-y-5">
@@ -116,7 +137,6 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
 
-          {/* Horários */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.1 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">HORÁRIOS PADRÃO</span>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -125,7 +145,6 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
 
-          {/* Conta */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">CONTA</span>
             <div className="space-y-3">

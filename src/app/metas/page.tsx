@@ -24,18 +24,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Goal, Habit, GoalCategory } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
-import {
-  fetchGoalsAction,
-  registerProfileAction,
-  createGoalAction,
-  updateGoalAction,
-  deleteGoalAction,
-  updateGoalProgressAction,
-  createHabitAction,
-  setHabitActiveAction,
-  deleteHabitAction,
-  toggleHabitCompletionAction,
-} from "./actions";
+import { api } from "@/lib/api-client";
 
 const CATEGORY_META: Record<GoalCategory, { label: string; color: string; icon: React.ElementType }> = {
   sono:   { label: "Sono",   color: "#71d4ff", icon: Moon },
@@ -61,10 +50,6 @@ const emptyDraft = (): GoalDraft => ({
   title: "", category: "foco", targetValue: 1, frequency: "daily",
 });
 
-function todayIso() {
-  return new Date().toLocaleDateString("en-CA");
-}
-
 export default function MetasPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -80,33 +65,15 @@ export default function MetasPage() {
   const [expandedGoal, setExpandedGoal] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  function applyLoaded(data: Awaited<ReturnType<typeof fetchGoalsAction>>) {
-    setGoals(data.map((entry) => entry.goal));
-    setHabits(data.flatMap((entry) => entry.habits));
+  function applyLoaded(bundles: Awaited<ReturnType<typeof api.getGoals>>) {
+    setGoals(bundles.map((bundle) => bundle.goal));
+    setHabits(bundles.flatMap((bundle) => bundle.habits));
   }
 
-  useEffect(() => {
-    if (loading || !user) return;
-    let cancelled = false;
-    const uid = user.uid;
-    const name = user.displayName ?? undefined;
-    registerProfileAction(uid, name)
-      .then(() => fetchGoalsAction(uid))
-      .then((data) => { if (!cancelled) { applyLoaded(data); setError(""); setPageLoading(false); } })
-      .catch((err: unknown) => { if (!cancelled) { setError(err instanceof Error ? err.message : "Falha ao carregar metas."); setPageLoading(false); } });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user?.uid]);
-
-  if (loading || pageLoading) return <LoadingScreen />;
-  if (!user) { router.push("/login"); return null; }
-  const profileId = user.uid;
-
-  async function loadData() {
+  async function reload() {
     if (!user) return;
     try {
-      await registerProfileAction(user.uid, user.displayName ?? undefined);
-      applyLoaded(await fetchGoalsAction(user.uid));
+      applyLoaded(await api.getGoals());
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar metas.");
@@ -115,13 +82,34 @@ export default function MetasPage() {
     }
   }
 
-  async function run(action: () => Promise<void>) {
+  useEffect(() => {
+    if (loading || !user) return;
+    let cancelled = false;
+    api.getGoals()
+      .then((bundles) => {
+        if (cancelled) return;
+        applyLoaded(bundles);
+        setError("");
+        setPageLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Falha ao carregar metas.");
+        setPageLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [loading, user]);
+
+  if (loading || pageLoading) return <LoadingScreen />;
+  if (!user) { router.push("/login"); return null; }
+
+  async function run(action: () => Promise<unknown>) {
     setError("");
     try {
       await action();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
-      await loadData();
+      await reload();
     }
   }
 
@@ -142,11 +130,11 @@ export default function MetasPage() {
     setSaving(true);
     await run(async () => {
       if (editingGoal) {
-        await updateGoalAction(profileId, editingGoal.id, draft);
+        await api.updateGoal(editingGoal.id, draft);
       } else {
-        await createGoalAction(profileId, draft);
+        await api.createGoal(draft);
       }
-      await loadData();
+      await reload();
     });
     setSaving(false);
     setShowForm(false);
@@ -155,7 +143,7 @@ export default function MetasPage() {
 
   async function deleteGoal(id: number) {
     await run(async () => {
-      await deleteGoalAction(profileId, id);
+      await api.deleteGoal(id);
       setGoals((gs) => gs.filter((g) => g.id !== id));
       setHabits((hs) => hs.filter((h) => h.goalId !== id));
       if (expandedGoal === id) setExpandedGoal(null);
@@ -166,14 +154,14 @@ export default function MetasPage() {
     const next = Math.max(0, Math.min(goal.targetValue, Number((goal.currentValue + delta).toFixed(2))));
     if (next === goal.currentValue) return;
     setGoals((gs) => gs.map((g) => (g.id === goal.id ? { ...g, currentValue: next } : g)));
-    await run(() => updateGoalProgressAction(profileId, goal.id, next).then(() => {}));
+    await run(() => api.updateGoal(goal.id, { currentValue: next }));
   }
 
   async function addHabit(goalId: number) {
     if (!habitInput.trim()) return;
     await run(async () => {
-      const created = await createHabitAction(profileId, { goalId, title: habitInput.trim(), frequency: habitDraft.frequency });
-      setHabits((hs) => [...hs, created]);
+      const { habit } = await api.createHabit(goalId, { title: habitInput.trim(), frequency: habitDraft.frequency });
+      setHabits((hs) => [...hs, habit]);
     });
     setHabitInput("");
   }
@@ -181,17 +169,17 @@ export default function MetasPage() {
   async function toggleHabitCompletion(habit: HabitWithCompletion) {
     const willComplete = !habit.completedToday;
     setHabits((hs) => hs.map((h) => (h.id === habit.id ? { ...h, completedToday: willComplete } : h)));
-    await run(() => toggleHabitCompletionAction(profileId, habit.id, todayIso()).then(() => {}));
+    await run(() => api.setHabitCompletion(habit.id, willComplete));
   }
 
   async function toggleHabitActive(habit: HabitWithCompletion) {
     setHabits((hs) => hs.map((h) => (h.id === habit.id ? { ...h, active: !h.active } : h)));
-    await run(() => setHabitActiveAction(profileId, habit.id, !habit.active));
+    await run(() => api.updateHabit(habit.id, { active: !habit.active }));
   }
 
   async function deleteHabit(id: number) {
     setHabits((hs) => hs.filter((h) => h.id !== id));
-    await run(() => deleteHabitAction(profileId, id));
+    await run(() => api.deleteHabit(id));
   }
 
   function setDraftField<K extends keyof GoalDraft>(k: K, v: GoalDraft[K]) {
