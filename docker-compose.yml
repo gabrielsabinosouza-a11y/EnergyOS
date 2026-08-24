@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: energyos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: energyos
+      POSTGRES_USER: energyos
+      POSTGRES_PASSWORD: energyos_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - energyos_pgdata:/var/lib/postgresql/data
+
+volumes:
+  energyos_pgdata:
