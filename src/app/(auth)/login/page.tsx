@@ -78,7 +78,7 @@ export default function LoginPage() {
         </div>
 
         <h1 className="font-display text-2xl tracking-[-0.03em] mb-1">Bem-vindo de volta</h1>
-        <p className="text-sm text-white/40 mb-8">Entre para continuar seu ritmo.</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Entre para continuar seu ritmo.</p>
 
         {resetSent && (
           <div className="mb-5 rounded-lg border border-[#71d4ff]/20 bg-[#71d4ff]/8 px-4 py-3 text-sm text-[#71d4ff]">
@@ -91,11 +91,11 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">E-mail</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">E-mail</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="auth-input" placeholder="voce@email.com" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Senha</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Senha</label>
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" placeholder="••••••••" />
           </div>
           <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
@@ -108,11 +108,11 @@ export default function LoginPage() {
           Continuar com Google
         </button>
 
-        <button onClick={handleReset} disabled={loading} className="mt-4 text-xs text-white/35 hover:text-[#71d4ff] transition-colors">
+        <button onClick={handleReset} disabled={loading} className="mt-4 text-xs text-[var(--text-faint)] hover:text-[#71d4ff] transition-colors">
           Esqueci minha senha
         </button>
 
-        <p className="mt-6 border-t border-white/8 pt-5 text-center text-sm text-white/40">
+        <p className="mt-6 border-t border-[var(--border-subtle)] pt-5 text-center text-sm text-[var(--text-muted)]">
           Não tem conta?{" "}
           <Link href="/cadastro" className="text-[#71d4ff] font-semibold hover:underline">Cadastre-se</Link>
         </p>

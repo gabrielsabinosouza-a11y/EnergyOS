@@ -75,7 +75,7 @@ export default function CadastroPage() {
         </div>
 
         <h1 className="font-display text-2xl tracking-[-0.03em] mb-1">Criar conta</h1>
-        <p className="text-sm text-white/40 mb-8">Comece a construir seu ritmo hoje.</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Comece a construir seu ritmo hoje.</p>
 
         {error && (
           <div className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{error}</div>
@@ -83,19 +83,19 @@ export default function CadastroPage() {
 
         <form onSubmit={handleCadastro} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Nome</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Nome</label>
             <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="auth-input" placeholder="Seu nome" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">E-mail</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">E-mail</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="auth-input" placeholder="voce@email.com" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Senha</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Senha</label>
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" placeholder="Mínimo 6 caracteres" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Confirmar senha</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Confirmar senha</label>
             <input type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} className="auth-input" placeholder="Repita a senha" />
           </div>
           <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
@@ -108,7 +108,7 @@ export default function CadastroPage() {
           Criar conta com Google
         </button>
 
-        <p className="mt-6 border-t border-white/8 pt-5 text-center text-sm text-white/40">
+        <p className="mt-6 border-t border-[var(--border-subtle)] pt-5 text-center text-sm text-[var(--text-muted)]">
           Já tem conta?{" "}
           <Link href="/login" className="text-[#71d4ff] font-semibold hover:underline">Entrar</Link>
         </p>

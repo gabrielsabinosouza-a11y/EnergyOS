@@ -15,7 +15,7 @@ export function LoadingState({ label = "Carregando" }: { label?: string }) {
 }
 
 export function TaskProgress({ completed, total, percentage }: { completed: number; total: number; percentage: number }) {
-  return <div className="mb-6 flex items-center gap-4"><ProgressBar value={percentage} /><span className="text-sm font-medium text-white/70">{completed}/{total}</span><span className="text-xs text-white/35">{percentage >= 50 ? "streak garantido" : "ainda dá tempo"}</span></div>;
+  return <div className="mb-6 flex items-center gap-4"><ProgressBar value={percentage} /><span className="text-sm font-medium text-[var(--text-secondary)]">{completed}/{total}</span><span className="text-xs text-[var(--text-muted)]">{percentage >= 50 ? "streak garantido" : "ainda dá tempo"}</span></div>;
 }
 
 export function CompletionBadge({ complete }: { complete: boolean }) {

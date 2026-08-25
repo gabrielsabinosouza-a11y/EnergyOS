@@ -177,8 +177,8 @@ export default function RelatorioPage() {
               onClick={() => setTimeRange("week")}
               className={`px-4 py-2 rounded-lg text-sm transition-all ${
                 timeRange === "week" 
-                  ? "bg-[#71d4ff] text-[#07111f]" 
-                  : "bg-white/5 text-white/60 hover:bg-white/10"
+                  ? "bg-[#71d4ff] text-[var(--bg-primary)]" 
+                  : "bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
               }`}
             >
               7 dias
@@ -187,8 +187,8 @@ export default function RelatorioPage() {
               onClick={() => setTimeRange("month")}
               className={`px-4 py-2 rounded-lg text-sm transition-all ${
                 timeRange === "month" 
-                  ? "bg-[#71d4ff] text-[#07111f]" 
-                  : "bg-white/5 text-white/60 hover:bg-white/10"
+                  ? "bg-[#71d4ff] text-[var(--bg-primary)]" 
+                  : "bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
               }`}
             >
               30 dias
@@ -215,10 +215,10 @@ export default function RelatorioPage() {
                   <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400">
                     <Flame size={20} />
                   </div>
-                  <span className="text-sm text-white/60">Streak Atual</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Streak Atual</span>
                 </div>
                 <div className="font-display text-4xl text-orange-400">{reportData.streakInfo.currentStreak}</div>
-                <div className="text-xs text-white/40 mt-1">dias consecutivos</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">dias consecutivos</div>
               </motion.div>
 
               <motion.div 
@@ -231,10 +231,10 @@ export default function RelatorioPage() {
                   <div className="p-2 rounded-lg bg-[#71d4ff]/20 text-[#71d4ff]">
                     <Flame size={20} />
                   </div>
-                  <span className="text-sm text-white/60">Melhor Streak</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Melhor Streak</span>
                 </div>
                 <div className="font-display text-4xl text-[#71d4ff]">{reportData.streakInfo.bestStreak}</div>
-                <div className="text-xs text-white/40 mt-1">recorde pessoal</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">recorde pessoal</div>
               </motion.div>
 
               <motion.div 
@@ -247,10 +247,10 @@ export default function RelatorioPage() {
                   <div className="p-2 rounded-lg bg-[#6bffb8]/20 text-[#6bffb8]">
                     <Calendar size={20} />
                   </div>
-                  <span className="text-sm text-white/60">Total de Dias</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Total de Dias</span>
                 </div>
                 <div className="font-display text-4xl text-[#6bffb8]">{reportData.streakInfo.totalDays}</div>
-                <div className="text-xs text-white/40 mt-1">dias ativos</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">dias ativos</div>
               </motion.div>
             </section>
 
@@ -263,14 +263,14 @@ export default function RelatorioPage() {
                   </div>
                   <div>
                     <h2 className="font-display text-xl">Análise de Sono</h2>
-                    <p className="text-xs text-white/40">Horas de sono por dia</p>
+                    <p className="text-xs text-[var(--text-muted)]">Horas de sono por dia</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-display text-[#71d4ff]">
                     {reportData.weeklyComparison.thisWeek.sleep.toFixed(1)}h
                   </div>
-                  <div className="text-xs text-white/40">
+                  <div className="text-xs text-[var(--text-muted)]">
                     média esta semana
                   </div>
                 </div>
@@ -290,11 +290,11 @@ export default function RelatorioPage() {
                     />
                     <Tooltip 
                       contentStyle={{ 
-                        backgroundColor: '#07111f', 
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: 'var(--bg-primary)', 
+                        border: '1px solid var(--border-subtle)',
                         borderRadius: '8px'
                       }}
-                      itemStyle={{ color: '#e7f4ff' }}
+                      itemStyle={{ color: 'var(--text)' }}
                     />
                     <Line 
                       type="monotone" 
@@ -318,14 +318,14 @@ export default function RelatorioPage() {
                   </div>
                   <div>
                     <h2 className="font-display text-xl">Tempo de Estudo</h2>
-                    <p className="text-xs text-white/40">Minutos por dia</p>
+                    <p className="text-xs text-[var(--text-muted)]">Minutos por dia</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-display text-[#b69cff]">
                     {Math.round(reportData.weeklyComparison.thisWeek.study)}min
                   </div>
-                  <div className="text-xs text-white/40">
+                  <div className="text-xs text-[var(--text-muted)]">
                     média esta semana
                   </div>
                 </div>
@@ -345,11 +345,11 @@ export default function RelatorioPage() {
                     />
                     <Tooltip 
                       contentStyle={{ 
-                        backgroundColor: '#07111f', 
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: 'var(--bg-primary)', 
+                        border: '1px solid var(--border-subtle)',
                         borderRadius: '8px'
                       }}
-                      itemStyle={{ color: '#e7f4ff' }}
+                      itemStyle={{ color: 'var(--text)' }}
                     />
                     <Bar 
                       dataKey="minutes" 
@@ -370,14 +370,14 @@ export default function RelatorioPage() {
                   </div>
                   <div>
                     <h2 className="font-display text-xl">Conclusão de Tarefas</h2>
-                    <p className="text-xs text-white/40">Taxa de conclusão diária</p>
+                    <p className="text-xs text-[var(--text-muted)]">Taxa de conclusão diária</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-display text-[#ffb86b]">
                     {reportData.weeklyComparison.thisWeek.tasks}%
                   </div>
-                  <div className="text-xs text-white/40">
+                  <div className="text-xs text-[var(--text-muted)]">
                     taxa esta semana
                   </div>
                 </div>
@@ -397,11 +397,11 @@ export default function RelatorioPage() {
                     />
                     <Tooltip 
                       contentStyle={{ 
-                        backgroundColor: '#07111f', 
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: 'var(--bg-primary)', 
+                        border: '1px solid var(--border-subtle)',
                         borderRadius: '8px'
                       }}
-                      itemStyle={{ color: '#e7f4ff' }}
+                      itemStyle={{ color: 'var(--text)' }}
                     />
                     <Bar 
                       dataKey="completed" 
@@ -421,7 +421,7 @@ export default function RelatorioPage() {
                 </div>
                 <div>
                   <h2 className="font-display text-xl">Progresso das Metas</h2>
-                  <p className="text-xs text-white/40">Por categoria</p>
+                  <p className="text-xs text-[var(--text-muted)]">Por categoria</p>
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -431,7 +431,7 @@ export default function RelatorioPage() {
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-white/5 rounded-lg p-4"
+                    className="bg-[var(--bg-surface-hover)] rounded-lg p-4"
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm font-medium capitalize">{goal.category}</span>
@@ -439,7 +439,7 @@ export default function RelatorioPage() {
                         {goal.percentage}%
                       </span>
                     </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-2 bg-[var(--bg-surface-active)] rounded-full overflow-hidden">
                       <div 
                         className="h-full rounded-full transition-all duration-500"
                         style={{ 
@@ -448,7 +448,7 @@ export default function RelatorioPage() {
                         }}
                       />
                     </div>
-                    <div className="flex justify-between mt-2 text-xs text-white/40">
+                    <div className="flex justify-between mt-2 text-xs text-[var(--text-muted)]">
                       <span>{goal.current} alcançado</span>
                       <span>meta: {goal.target}</span>
                     </div>
@@ -465,7 +465,7 @@ export default function RelatorioPage() {
                 </div>
                 <div>
                   <h2 className="font-display text-xl">Comparativo Semanal</h2>
-                  <p className="text-xs text-white/40">Esta semana vs semana anterior</p>
+                  <p className="text-xs text-[var(--text-muted)]">Esta semana vs semana anterior</p>
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
@@ -522,7 +522,7 @@ function ComparisonCard({
   const isPositive = change >= 0;
 
   return (
-    <div className="bg-white/5 rounded-lg p-4">
+    <div className="bg-[var(--bg-surface-hover)] rounded-lg p-4">
       <div className="flex items-center gap-2 mb-3">
         <div style={{ color }}>{icon}</div>
         <span className="text-sm text-white/60">{label}</span>
@@ -532,13 +532,13 @@ function ComparisonCard({
           <div className="text-2xl font-display" style={{ color }}>
             {current.toFixed(1)}{unit}
           </div>
-          <div className="text-xs text-white/40">esta semana</div>
+          <div className="text-xs text-[var(--text-muted)]">esta semana</div>
         </div>
         <div className={`text-right ${isPositive ? 'text-[#6bffb8]' : 'text-red-400'}`}>
           <div className="text-sm font-medium">
             {isPositive ? '+' : ''}{percentChange}%
           </div>
-          <div className="text-xs text-white/40">vs. anterior</div>
+          <div className="text-xs text-[var(--text-muted)]">vs. anterior</div>
         </div>
       </div>
     </div>

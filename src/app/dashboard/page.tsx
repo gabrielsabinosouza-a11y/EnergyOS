@@ -27,7 +27,7 @@ function todayLabel() {
 
 function greeting(name: string) {
   const h = new Date().getHours();
-  const part = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  const part = h >= 5 && h < 12 ? "Bom dia" : h >= 12 && h < 18 ? "Boa tarde" : "Boa noite";
   return `${part}, ${name.split(" ")[0]}`;
 }
 
@@ -185,7 +185,7 @@ export default function DashboardPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-[#07111f] flex items-center justify-center">
+      <div className="min-h-screen theme-bg flex items-center justify-center">
         <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
       </div>
     );
@@ -308,8 +308,8 @@ export default function DashboardPage() {
                 <div className="progress-track">
                   <div className="progress-value" style={{ width: `${percentage}%` }} />
                 </div>
-                <span className="text-sm text-white/70">{completed}/{total}</span>
-                <span className="text-xs text-white/35">{streakQualified ? "streak garantido ✦" : "ainda dá tempo"}</span>
+                <span className="text-sm text-[var(--text-secondary)]">{completed}/{total}</span>
+                <span className="text-xs text-[var(--text-muted)]">{streakQualified ? "streak garantido ✦" : "ainda dá tempo"}</span>
               </div>
             )}
 
@@ -352,8 +352,8 @@ export default function DashboardPage() {
                       <button onClick={() => toggleTask(task)} className={`task-check shrink-0 ${task.completedAt ? "border-[#71d4ff] bg-[#71d4ff]" : ""}`}>
                         {task.completedAt && <Check size={11} />}
                       </button>
-                      <span className={`flex-1 text-left text-sm ${task.completedAt ? "line-through text-white/38" : ""}`}>{task.title}</span>
-                      <span className="hidden text-[10px] tracking-[.14em] text-white/25 sm:block">{task.category}</span>
+                      <span className={`flex-1 text-left text-sm ${task.completedAt ? "line-through text-[var(--text-muted)]" : ""}`}>{task.title}</span>
+                      <span className="hidden text-[10px] tracking-[.14em] text-[var(--text-faint)] sm:block">{task.category}</span>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => startEdit(task)} className="icon-button small !w-7 !h-7"><Pencil size={11} /></button>
                         <button onClick={() => deleteTask(task.id)} className="icon-button small !w-7 !h-7 text-red-400/60 hover:text-red-400"><Trash2 size={11} /></button>
@@ -370,12 +370,12 @@ export default function DashboardPage() {
             <div className="insight-panel p-6 sm:p-8">
               <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
               <h2 className="mt-8 font-display text-2xl leading-tight">{snapshot.insights[0].title}</h2>
-              <p className="mt-4 text-sm leading-6 text-white/48">{snapshot.insights[0].description}</p>
+              <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{snapshot.insights[0].description}</p>
             </div>
           ) : (
             <div className="insight-panel p-6 sm:p-8 flex flex-col justify-center">
               <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-              <p className="mt-8 text-sm text-white/40">Os insights aparecem conforme você registra check-ins e conclui tarefas.</p>
+              <p className="mt-8 text-sm text-[var(--text-muted)]">Os insights aparecem conforme você registra check-ins e conclui tarefas.</p>
             </div>
           )}
         </section>

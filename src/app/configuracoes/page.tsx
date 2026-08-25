@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, LayoutGroup } from "framer-motion";
 import { deleteUser, updateProfile } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
@@ -113,7 +113,7 @@ export default function ConfiguracoesPage() {
         <div className="space-y-4">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PERFIL</span>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Nome</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Nome</label>
             <div className="flex gap-2">
               <input value={name} onChange={(e) => setName(e.target.value)} className="auth-input flex-1" />
               <button onClick={saveName} disabled={savingName} className="icon-button">
@@ -161,7 +161,7 @@ export default function ConfiguracoesPage() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">CONTA</span>
             <div className="space-y-3">
-              <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-white/60 hover:bg-white/5 hover:text-white/90 transition-colors">
+              <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)] transition-colors">
                 <LogOut size={16} /> Sair da conta
               </button>
               {!confirmDelete ? (
@@ -175,7 +175,7 @@ export default function ConfiguracoesPage() {
                     <button onClick={handleDelete} disabled={deleting} className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-sm text-red-400 hover:bg-red-500/30 transition-colors">
                       {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Confirmar exclusão
                     </button>
-                    <button onClick={() => setConfirmDelete(false)} className="rounded-lg px-4 py-2 text-sm text-white/40 hover:text-white/70 transition-colors">
+                    <button onClick={() => setConfirmDelete(false)} className="rounded-lg px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
                       Cancelar
                     </button>
                   </div>
@@ -193,18 +193,26 @@ function ToggleRow({ label, description, checked, onChange }: { label: string; d
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="flex-1">
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-white/40">{description}</div>
+        <div className="text-sm font-medium text-[var(--text)]">{label}</div>
+        <div className="text-xs text-[var(--text-muted)]">{description}</div>
       </div>
-      <button
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 h-6 w-11 rounded-full transition-colors cursor-pointer ${checked ? "bg-[#71d4ff]" : "bg-white/10"} hover:opacity-90 active:scale-95 transition-transform`}
-        aria-label={checked ? "Desativar" : "Ativar"}
-      >
-        <span 
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
-        />
-      </button>
+      <LayoutGroup>
+        <button
+          role="switch"
+          aria-checked={checked}
+          aria-label={label}
+          onClick={() => onChange(!checked)}
+          className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          style={{ backgroundColor: checked ? "var(--accent)" : "var(--bg-surface-active)" }}
+        >
+          <motion.span
+            layout
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className="block h-5 w-5 rounded-full bg-white shadow-sm"
+            style={{ marginLeft: checked ? 20 : 0 }}
+          />
+        </button>
+      </LayoutGroup>
     </div>
   );
 }
@@ -212,7 +220,7 @@ function ToggleRow({ label, description, checked, onChange }: { label: string; d
 function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">{label}</label>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{label}</label>
       <input type="time" value={value} onChange={(e) => onChange(e.target.value)} className="auth-input" />
     </div>
   );
@@ -220,7 +228,7 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-[#07111f] flex items-center justify-center">
+    <div className="min-h-screen theme-bg flex items-center justify-center">
       <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
     </div>
   );

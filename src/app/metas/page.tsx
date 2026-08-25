@@ -19,6 +19,10 @@ import {
   Power,
   Minus,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import Link from "next/link";
 import type { Goal, Habit, GoalCategory } from "@/types";
@@ -191,7 +195,7 @@ export default function MetasPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#07111f] text-[#e7f4ff]">
+    <main className="min-h-screen theme-bg">
       <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
       <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8">
         <div className="mb-8 flex items-center gap-3">
@@ -231,12 +235,12 @@ export default function MetasPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Título</label>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Título</label>
                   <input value={draft.title} onChange={(e) => setDraftField("title", e.target.value)} className="auth-input" placeholder="Ex: Dormir 8 horas por dia" />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Categoria</label>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Categoria</label>
                   <div className="flex flex-wrap gap-2">
                     {(Object.keys(CATEGORY_META) as GoalCategory[]).map((cat) => {
                       const { label, color, icon: Icon } = CATEGORY_META[cat];
@@ -256,7 +260,7 @@ export default function MetasPage() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Quantidade</label>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Quantidade</label>
                     <input
                       type="number" min={1} value={draft.targetValue}
                       onChange={(e) => setDraftField("targetValue", Number(e.target.value))}
@@ -264,7 +268,7 @@ export default function MetasPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Frequência</label>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</label>
                     <select
                       value={draft.frequency}
                       onChange={(e) => setDraftField("frequency", e.target.value as Goal["frequency"])}
@@ -288,8 +292,8 @@ export default function MetasPage() {
         {/* Lista de metas */}
         {goals.length === 0 && !showForm && (
           <div className="panel p-12 text-center">
-            <Target size={32} className="mx-auto mb-4 text-white/20" />
-            <p className="text-white/40 text-sm">Nenhuma meta criada ainda.</p>
+            <Target size={32} className="mx-auto mb-4 text-[var(--text-faint)]" />
+            <p className="text-[var(--text-muted)] text-sm">Nenhuma meta criada ainda.</p>
             <button onClick={openCreate} className="text-button mt-4">Criar primeira meta <Plus size={13} /></button>
           </div>
         )}
@@ -322,7 +326,7 @@ export default function MetasPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-white/35">{CATEGORY_META[goal.category].label} · {FREQ_LABELS[goal.frequency]}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{CATEGORY_META[goal.category].label} · {FREQ_LABELS[goal.frequency]}</span>
                         </div>
                         <div className="mt-3 flex items-center gap-3">
                           <div className="progress-track flex-1">
@@ -332,19 +336,30 @@ export default function MetasPage() {
                         </div>
                         <div className="mt-3">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-white/30">Atualizar progresso</span>
-                            <span className="text-xs font-mono text-white/50">{goal.currentValue}/{goal.targetValue}</span>
+                            <span className="text-xs text-[var(--text-faint)]">Atualizar progresso</span>
+                            <span className="text-xs font-mono text-[var(--text-secondary)]">{goal.currentValue}/{goal.targetValue}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => adjustProgress(goal, -1)}
-                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center text-white/60 hover:text-white"
-                              aria-label="Diminuir progresso"
+                          <div className="flex items-center justify-center gap-1">
+                            <motion.button
+                              whileTap={{ scale: 0.85 }}
+                              whileHover={{ scale: 1.1 }}
+                              onClick={() => adjustProgress(goal, -5)}
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-faint)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
+                              aria-label="Diminuir 5"
                             >
-                              <Minus size={14} />
-                            </button>
-                            <div 
-                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 hover:border-white/20 transition-all"
+                              <ChevronsLeft size={14} />
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.85 }}
+                              whileHover={{ scale: 1.1 }}
+                              onClick={() => adjustProgress(goal, -1)}
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] hover:bg-[var(--bg-surface-active)]"
+                              aria-label="Diminuir 1"
+                            >
+                              <ChevronLeft size={14} />
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.92 }}
                               onClick={() => {
                                 const newValue = prompt(`Definir progresso (0-${goal.targetValue}):`, goal.currentValue.toString());
                                 if (newValue !== null) {
@@ -354,32 +369,29 @@ export default function MetasPage() {
                                   }
                                 }
                               }}
+                              className="flex h-10 min-w-[56px] items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 font-mono text-sm font-medium text-[var(--text)] transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-bg)] hover:shadow-[0_0_12px_rgba(113,212,255,0.15)] cursor-pointer"
+                              aria-label={`Progresso atual: ${goal.currentValue}. Clique para editar.`}
                             >
-                              <span className="text-sm font-medium text-white/80">{goal.currentValue}</span>
-                            </div>
-                            <button
+                              {goal.currentValue}
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.85 }}
+                              whileHover={{ scale: 1.1 }}
                               onClick={() => adjustProgress(goal, 1)}
-                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center text-white/60 hover:text-white"
-                              aria-label="Aumentar progresso"
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] hover:bg-[var(--bg-surface-active)]"
+                              aria-label="Aumentar 1"
                             >
-                              <Plus size={14} />
-                            </button>
-                          </div>
-                          <div className="flex justify-between mt-1 px-1">
-                            <button
-                              onClick={() => adjustProgress(goal, -5)}
-                              className="text-[10px] text-white/25 hover:text-white/50 transition-colors px-2 py-1 rounded hover:bg-white/5"
-                              aria-label="Diminuir 5"
-                            >
-                              -5
-                            </button>
-                            <button
+                              <ChevronRight size={14} />
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.85 }}
+                              whileHover={{ scale: 1.1 }}
                               onClick={() => adjustProgress(goal, 5)}
-                              className="text-[10px] text-white/25 hover:text-white/50 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-faint)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
                               aria-label="Aumentar 5"
                             >
-                              +5
-                            </button>
+                              <ChevronsRight size={14} />
+                            </motion.button>
                           </div>
                         </div>
                       </div>
@@ -387,7 +399,7 @@ export default function MetasPage() {
 
                     <button
                       onClick={() => setExpandedGoal(expanded ? null : goal.id)}
-                      className="mt-3 text-xs text-white/30 hover:text-[#71d4ff] transition-colors"
+                      className="mt-3 text-xs text-[var(--text-faint)] hover:text-[#71d4ff] transition-colors"
                     >
                       {expanded ? "Ocultar hábitos" : `Hábitos (${goalHabits.length})`}
                     </button>
@@ -399,12 +411,12 @@ export default function MetasPage() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-white/8"
+                        className="overflow-hidden border-t border-[var(--border-subtle)]"
                       >
                         <div className="p-5 pt-4">
                           <span className="eyebrow muted mb-3 block">HÁBITOS RELACIONADOS</span>
                           {goalHabits.length === 0 && (
-                            <p className="text-xs text-white/30 mb-3">Nenhum hábito ainda.</p>
+                            <p className="text-xs text-[var(--text-faint)] mb-3">Nenhum hábito ainda.</p>
                           )}
                           <div className="space-y-1 mb-3">
                             {goalHabits.map((h) => (
@@ -418,17 +430,17 @@ export default function MetasPage() {
                                   {h.completedToday && <Check size={10} />}
                                 </button>
                                 <span className="flex-1 min-w-0">
-                                  <span className={`block text-xs ${h.completedToday ? "text-[#6bffb8]" : h.active ? "text-white/70" : "text-white/30 line-through"}`}>{h.title}</span>
-                                  <span className="block text-[10px] text-white/25">{HABIT_FREQ_LABELS[h.frequency]}{h.completedToday ? " · feito hoje" : ""}</span>
+                                  <span className={`block text-xs ${h.completedToday ? "text-[#6bffb8]" : h.active ? "text-[var(--text-secondary)]" : "text-[var(--text-faint)] line-through"}`}>{h.title}</span>
+                                  <span className="block text-[10px] text-[var(--text-faint)]">{HABIT_FREQ_LABELS[h.frequency]}{h.completedToday ? " · feito hoje" : ""}</span>
                                 </span>
                                 <button
                                   onClick={() => toggleHabitActive(h)}
-                                  className={`icon-button small ${h.active ? "text-[#71d4ff]/80" : "text-white/30"}`}
+                                  className={`icon-button small ${h.active ? "text-[#71d4ff]/80" : "text-[var(--text-faint)]"}`}
                                   aria-label={h.active ? "Desativar hábito" : "Ativar hábito"}
                                 >
                                   <Power size={11} />
                                 </button>
-                                <button onClick={() => deleteHabit(h.id)} className="text-white/20 hover:text-red-400 transition-colors"><X size={12} /></button>
+                                <button onClick={() => deleteHabit(h.id)} className="text-[var(--text-faint)] hover:text-red-400 transition-colors"><X size={12} /></button>
                               </div>
                             ))}
                           </div>
@@ -467,7 +479,7 @@ export default function MetasPage() {
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-[#07111f] flex items-center justify-center">
+    <div className="min-h-screen theme-bg flex items-center justify-center">
       <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
     </div>
   );

@@ -137,7 +137,7 @@ export default function PerfilPage() {
                     <button onClick={startEdit} className="icon-button small !w-7 !h-7"><Pencil size={12} /></button>
                   </div>
                 )}
-                <p className="text-sm text-white/40 mt-0.5">{user.email}</p>
+                <p className="text-sm text-[var(--text-muted)] mt-0.5">{user.email}</p>
                 {saved && <p className="text-xs text-[#71d4ff] mt-1">Nome atualizado!</p>}
                 {photoError && <p className="text-xs text-red-400 mt-1">{photoError}</p>}
               </div>
@@ -177,14 +177,14 @@ export default function PerfilPage() {
                     <div className="metric-icon" style={{ color }}><Icon size={15} /></div>
                     <div>
                       <div className="metric-caption">{label}</div>
-                      <div className="font-display text-base text-white/70">
+                      <div className="font-display text-base text-[var(--text-secondary)]">
                         {dashboard?.metrics.find((metric) => metric.kind === (label === "Sono" ? "sleep" : label === "Estudo" ? "study" : "training"))?.value ?? "Sem dados"}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <p className="mt-4 text-xs text-white/30">
+              <p className="mt-4 text-xs text-[var(--text-faint)]">
                 Médias calculadas conforme você registrar check-ins diários.
               </p>
             </div>
