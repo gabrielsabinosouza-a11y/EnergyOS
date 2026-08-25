@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { deleteUser, updateProfile } from "firebase/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
 import { Sparkles, Loader2, LogOut, Trash2, Check } from "lucide-react";
 import Link from "next/link";
@@ -20,6 +21,7 @@ const defaultSettings: Omit<UserSettings, "profileId"> = {
 
 export default function ConfiguracoesPage() {
   const { user, loading, logout } = useAuth();
+  const { setTheme: setUITheme } = useTheme();
   const router = useRouter();
   const [settings, setSettings] = useState(defaultSettings);
   const [name, setName] = useState("");
@@ -33,12 +35,18 @@ export default function ConfiguracoesPage() {
     if (!user) return;
     let active = true;
     void api.getSettings().then((savedSettings) => {
-      if (active) setSettings((current) => ({ ...current, ...savedSettings }));
+      if (active) {
+        setSettings((current) => ({ ...current, ...savedSettings }));
+        // Sync theme with UI
+        if (savedSettings.preferredTheme) {
+          setUITheme(savedSettings.preferredTheme);
+        }
+      }
     }).catch(() => {
       if (active) setSettingsError("Não foi possível carregar suas preferências.");
     });
     return () => { active = false; };
-  }, [user?.uid]);
+  }, [user?.uid, setUITheme]);
 
   if (loading) return <LoadingScreen />;
   if (!user) { router.push("/login"); return null; }
@@ -77,6 +85,12 @@ export default function ConfiguracoesPage() {
   function set<K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) {
     const next = { ...settings, [key]: value };
     setSettings(next);
+    
+    // Sync theme with UI when theme preference changes
+    if (key === "preferredTheme") {
+      setUITheme(value as "system" | "light" | "dark");
+    }
+    
     void api.saveSettings({
       notificationsEnabled: next.notificationsEnabled,
       preferredTheme: next.preferredTheme,
@@ -179,15 +193,18 @@ export default function ConfiguracoesPage() {
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <div>
+      <div className="flex-1">
         <div className="text-sm font-medium">{label}</div>
         <div className="text-xs text-white/40">{description}</div>
       </div>
       <button
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 rounded-full transition-colors ${checked ? "bg-[#71d4ff]" : "bg-white/10"}`}
+        className={`relative shrink-0 h-6 w-11 rounded-full transition-colors cursor-pointer ${checked ? "bg-[#71d4ff]" : "bg-white/10"} hover:opacity-90 active:scale-95 transition-transform`}
+        aria-label={checked ? "Desativar" : "Ativar"}
       >
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+        <span 
+          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
+        />
       </button>
     </div>
   );
