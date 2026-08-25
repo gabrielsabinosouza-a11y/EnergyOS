@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "@/lib/auth-context";
+import { useAuthRedirect } from "@/lib/auth-context";
 import {
   Sparkles,
   Plus,
@@ -21,7 +21,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { Goal, Habit, GoalCategory } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
 import { api } from "@/lib/api-client";
@@ -51,8 +50,7 @@ const emptyDraft = (): GoalDraft => ({
 });
 
 export default function MetasPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
@@ -100,8 +98,7 @@ export default function MetasPage() {
     return () => { cancelled = true; };
   }, [loading, user]);
 
-  if (loading || pageLoading) return <LoadingScreen />;
-  if (!user) { router.push("/login"); return null; }
+  if (loading || !user || pageLoading) return <LoadingScreen />;
 
   async function run(action: () => Promise<unknown>) {
     setError("");

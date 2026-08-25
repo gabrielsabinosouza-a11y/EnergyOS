@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpRight, Check, Flame, Loader2, Moon, Pencil, Plus, Sparkles, Target, Timer, Trash2, TrendingUp, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { useAuth } from "@/lib/auth-context";
+import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
 import type { Task, TaskCategory, Metric } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
@@ -32,7 +32,7 @@ function greeting(name: string) {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingPage, setLoadingPage] = useState(true);
@@ -72,9 +72,8 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    if (!user) return;
+    if (loading || !user) return;
     let cancelled = false;
-    const uid = user.uid;
     user.getIdToken()
       .then((token) => fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } }))
       .then((res) => { if (!res.ok) throw new Error(); return res.json() as Promise<DashboardSnapshotResponse>; })
@@ -82,7 +81,7 @@ export default function DashboardPage() {
       .catch(() => { if (cancelled) return; setError("Não foi possível carregar os dados."); setLoadingPage(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid]);
+  }, [loading, user?.uid]);
 
   async function authFetch(url: string, init: RequestInit = {}) {
     const token = await user?.getIdToken();
@@ -183,6 +182,14 @@ export default function DashboardPage() {
   const streakQualified = percentage >= 50;
   const streak = snapshot?.streak.currentStreak ?? 0;
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "você";
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-[#07111f] flex items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
+      </div>
+    );
+  }
 
   if (loadingPage) {
     return (

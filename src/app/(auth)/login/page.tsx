@@ -4,12 +4,14 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { useAuthRedirect } from "@/lib/auth-context";
 import { Sparkles, ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const { user, loading: authLoading } = useAuthRedirect({ ifAuthed: "/dashboard" });
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,6 +61,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (authLoading || user) {
+    return <Loader2 size={28} className="animate-spin text-[#71d4ff]" />;
   }
 
   return (

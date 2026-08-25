@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { useAuth } from "@/lib/auth-context";
+import { useAuthRedirect } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { 
   ArrowUpRight, 
@@ -47,7 +47,7 @@ interface ReportData {
 const COLORS = ['#71d4ff', '#b69cff', '#ffb86b', '#6bffb8', '#ff9f6b'];
 
 export default function RelatorioPage() {
-  const { user, loading } = useAuth();
+  const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [error, setError] = useState("");
@@ -152,7 +152,7 @@ export default function RelatorioPage() {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   }
 
-  if (loading || loadingPage) {
+  if (loading || !user || loadingPage) {
     return (
       <AppShell>
         <div className="flex min-h-screen items-center justify-center">
@@ -161,8 +161,6 @@ export default function RelatorioPage() {
       </AppShell>
     );
   }
-
-  if (!user) return null;
 
   return (
     <AppShell>

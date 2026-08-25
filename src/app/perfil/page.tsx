@@ -4,17 +4,15 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { updateProfile } from "firebase/auth";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
-import { useAuth } from "@/lib/auth-context";
+import { useAuthRedirect } from "@/lib/auth-context";
 import { auth } from "@/lib/firebase";
 import { AppShell } from "@/components/app-shell";
 import { Check, Flame, Loader2, Moon, Pencil, Target, Timer, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
 
 export default function PerfilPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,15 +30,13 @@ export default function PerfilPage() {
     return () => { active = false; };
   }, [user?.uid]);
 
-  if (loading) return (
+  if (loading || !user) return (
     <AppShell>
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
       </div>
     </AppShell>
   );
-
-  if (!user) { router.push("/login"); return null; }
 
   const displayName = user.displayName ?? "Usuário";
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();

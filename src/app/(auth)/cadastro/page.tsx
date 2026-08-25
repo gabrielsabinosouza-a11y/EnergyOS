@@ -4,12 +4,14 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { useAuthRedirect } from "@/lib/auth-context";
 import { Sparkles, ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export default function CadastroPage() {
+  const { user, loading: authLoading } = useAuthRedirect({ ifAuthed: "/dashboard" });
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -56,6 +58,10 @@ export default function CadastroPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (authLoading || user) {
+    return <Loader2 size={28} className="animate-spin text-[#71d4ff]" />;
   }
 
   return (

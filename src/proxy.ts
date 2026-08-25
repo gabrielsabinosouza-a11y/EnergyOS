@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isProtectedRoute, getAuthCookieName } from "@/lib/route-access";
-
-const PUBLIC_AUTH_ROUTES = ["/login", "/cadastro"];
+import { isProtectedRoute, isGuestOnlyRoute, getAuthCookieName } from "@/lib/route-access";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,11 +7,11 @@ export function proxy(request: NextRequest) {
 
   if (isProtectedRoute(pathname) && !session) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
-  if (PUBLIC_AUTH_ROUTES.includes(pathname) && session) {
+  if (isGuestOnlyRoute(pathname) && session) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

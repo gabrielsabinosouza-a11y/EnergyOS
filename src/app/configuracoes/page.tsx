@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { deleteUser, updateProfile } from "firebase/auth";
-import { useAuth } from "@/lib/auth-context";
+import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
 import { Sparkles, Loader2, LogOut, Trash2, Check } from "lucide-react";
@@ -20,7 +20,7 @@ const defaultSettings: Omit<UserSettings, "profileId"> = {
 };
 
 export default function ConfiguracoesPage() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout } = useAuthRedirect({ ifGuest: "/" });
   const { setTheme: setUITheme } = useTheme();
   const router = useRouter();
   const [settings, setSettings] = useState(defaultSettings);
@@ -48,8 +48,7 @@ export default function ConfiguracoesPage() {
     return () => { active = false; };
   }, [user?.uid, setUITheme]);
 
-  if (loading) return <LoadingScreen />;
-  if (!user) { router.push("/login"); return null; }
+  if (loading || !user) return <LoadingScreen />;
 
   // Initialize name from user on first render after auth resolves
   const currentDisplayName = user.displayName ?? "";
@@ -67,7 +66,7 @@ export default function ConfiguracoesPage() {
 
   async function handleLogout() {
     await logout();
-    router.push("/login");
+    router.push("/");
   }
 
   async function handleDelete() {
@@ -100,7 +99,7 @@ export default function ConfiguracoesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#07111f] text-[#e7f4ff]">
+    <main className="min-h-screen theme-bg">
       <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
       <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8">
         <div className="mb-8 flex items-center gap-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "./firebase";
 import { getAuthCookieName } from "./route-access";
@@ -60,6 +61,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+/** Client-side fallback while the session cookie catches up with Firebase. */
+export function useAuthRedirect(options?: { ifGuest?: string; ifAuthed?: string }) {
+  const authValue = useAuth();
+  const router = useRouter();
+  const ifGuest = options?.ifGuest;
+  const ifAuthed = options?.ifAuthed;
+  const { user, loading } = authValue;
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user && ifGuest) {
+      router.replace(ifGuest);
+      return;
+    }
+    if (user && ifAuthed) {
+      router.replace(ifAuthed);
+    }
+  }, [user, loading, router, ifGuest, ifAuthed]);
+
+  return authValue;
 }
 
 export { auth } from "./firebase";
