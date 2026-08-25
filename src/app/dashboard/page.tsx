@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpRight, Check, Flame, Loader2, Moon, Pencil, Plus, Sparkles, Target, Timer, Trash2, TrendingUp, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth-context";
+import Link from "next/link";
 import type { Task, TaskCategory, Metric } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
@@ -96,11 +97,14 @@ export default function DashboardPage() {
     setCheckinSaving(true);
     setCheckinSaved(false);
     try {
+      console.log('[dashboard] Attempting to save checkin with sleepHours:', sleepHours);
       await api.saveCheckin({ sleepHours });
+      console.log('[dashboard] Checkin saved successfully');
       setCheckinSaved(true);
       await fetchDashboard();
-    } catch {
-      setError("Não foi possível salvar o check-in.");
+    } catch (error) {
+      console.error('[dashboard] Error saving checkin:', error);
+      setError(error instanceof Error ? error.message : "Não foi possível salvar o check-in.");
     } finally {
       setCheckinSaving(false);
     }
@@ -224,7 +228,7 @@ export default function DashboardPage() {
                 <span className="eyebrow muted">ÚLTIMOS 7 DIAS</span>
                 <h2 className="mt-2 font-display text-2xl">Médias da semana</h2>
               </div>
-              <button className="text-button">Ver relatório <ArrowUpRight size={15} /></button>
+              <Link href="/relatorio" className="text-button">Ver relatório <ArrowUpRight size={15} /></Link>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               {snapshot.metrics.map((m) => {

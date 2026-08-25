@@ -21,6 +21,10 @@ export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const body = assertObject(await readJsonBody(request));
+    
+    console.log('[checkins POST] Attempting to save checkin for profile:', profileId);
+    console.log('[checkins POST] Request body:', body);
+    
     const checkin = await upsertCheckin(
       profileId,
       {
@@ -32,6 +36,8 @@ export async function POST(request: NextRequest) {
       },
       todayIso(),
     );
+    
+    console.log('[checkins POST] Checkin saved successfully:', checkin);
     return jsonOk(checkin, 201);
   });
 }

@@ -28,8 +28,14 @@ export async function handleRoute(handler: () => Promise<NextResponse>): Promise
   try {
     return await handler();
   } catch (error) {
-    if (error instanceof ValidationError) return jsonError(400, error.message);
-    if (error instanceof AppError) return jsonError(error.status, error.message);
+    if (error instanceof ValidationError) {
+      console.error("[api] Validation error:", error.message);
+      return jsonError(400, error.message);
+    }
+    if (error instanceof AppError) {
+      console.error("[api] App error:", error.message, "Status:", error.status);
+      return jsonError(error.status, error.message);
+    }
     console.error("[api] erro inesperado:", error);
     return jsonError(500, "Erro interno do servidor.");
   }

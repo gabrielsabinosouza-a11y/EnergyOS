@@ -157,6 +157,13 @@ export default function MetasPage() {
     await run(() => api.updateGoal(goal.id, { currentValue: next }));
   }
 
+  async function setProgress(goal: Goal, value: number) {
+    const next = Math.max(0, Math.min(goal.targetValue, Number(value.toFixed(2))));
+    if (next === goal.currentValue) return;
+    setGoals((gs) => gs.map((g) => (g.id === goal.id ? { ...g, currentValue: next } : g)));
+    await run(() => api.updateGoal(goal.id, { currentValue: next }));
+  }
+
   async function addHabit(goalId: number) {
     if (!habitInput.trim()) return;
     await run(async () => {
@@ -252,7 +259,7 @@ export default function MetasPage() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Valor alvo</label>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Quantidade</label>
                     <input
                       type="number" min={1} value={draft.targetValue}
                       onChange={(e) => setDraftField("targetValue", Number(e.target.value))}
@@ -319,7 +326,6 @@ export default function MetasPage() {
                         </div>
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-white/35">{CATEGORY_META[goal.category].label} · {FREQ_LABELS[goal.frequency]}</span>
-                          <span className="text-xs font-mono text-white/50">{goal.currentValue}/{goal.targetValue}</span>
                         </div>
                         <div className="mt-3 flex items-center gap-3">
                           <div className="progress-track flex-1">
@@ -327,10 +333,57 @@ export default function MetasPage() {
                           </div>
                           <span className="text-xs font-mono" style={{ color }}>{pct}%</span>
                         </div>
-                        <div className="mt-3 flex items-center gap-2">
-                          <button onClick={() => adjustProgress(goal, -1)} className="icon-button small" aria-label="Diminuir progresso"><Minus size={12} /></button>
-                          <button onClick={() => adjustProgress(goal, 1)} className="icon-button small" aria-label="Aumentar progresso"><Plus size={12} /></button>
-                          <span className="text-xs text-white/30">atualizar progresso</span>
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-white/30">Atualizar progresso</span>
+                            <span className="text-xs font-mono text-white/50">{goal.currentValue}/{goal.targetValue}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => adjustProgress(goal, -1)}
+                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center text-white/60 hover:text-white"
+                              aria-label="Diminuir progresso"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <div 
+                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 hover:border-white/20 transition-all"
+                              onClick={() => {
+                                const newValue = prompt(`Definir progresso (0-${goal.targetValue}):`, goal.currentValue.toString());
+                                if (newValue !== null) {
+                                  const num = parseFloat(newValue);
+                                  if (!isNaN(num) && num >= 0 && num <= goal.targetValue) {
+                                    setProgress(goal, num);
+                                  }
+                                }
+                              }}
+                            >
+                              <span className="text-sm font-medium text-white/80">{goal.currentValue}</span>
+                            </div>
+                            <button
+                              onClick={() => adjustProgress(goal, 1)}
+                              className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center text-white/60 hover:text-white"
+                              aria-label="Aumentar progresso"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <div className="flex justify-between mt-1 px-1">
+                            <button
+                              onClick={() => adjustProgress(goal, -5)}
+                              className="text-[10px] text-white/25 hover:text-white/50 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                              aria-label="Diminuir 5"
+                            >
+                              -5
+                            </button>
+                            <button
+                              onClick={() => adjustProgress(goal, 5)}
+                              className="text-[10px] text-white/25 hover:text-white/50 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                              aria-label="Aumentar 5"
+                            >
+                              +5
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>

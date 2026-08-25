@@ -81,12 +81,19 @@ export interface AuthenticatedRequest {
 export async function requireAuth(request: NextRequest): Promise<AuthenticatedRequest> {
   const devProfileId = devBypassProfileId(request);
   if (devProfileId) {
+    console.log('[auth] Using dev bypass profile:', devProfileId);
     return { profileId: devProfileId, email: null, displayName: null };
   }
 
   const token = extractToken(request);
-  if (!token) throw new UnauthorizedError();
+  if (!token) {
+    console.log('[auth] No token found in request');
+    throw new UnauthorizedError();
+  }
 
+  console.log('[auth] Token found, attempting verification');
   const identity = await verifyWithGoogle(token);
+  console.log('[auth] Token verified successfully for UID:', identity.uid);
+  
   return { profileId: parseProfileId(identity.uid), email: identity.email, displayName: identity.displayName };
 }

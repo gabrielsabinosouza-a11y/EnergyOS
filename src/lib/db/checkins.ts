@@ -49,18 +49,27 @@ export async function upsertCheckin(profileId: string, input: UpsertCheckinInput
   const trainingMinutes = input.trainingMinutes === undefined ? null : parseNumber(input.trainingMinutes, "Minutos de treino", { min: 0, max: 1440, integer: true });
   const energyScore = input.energyScore === undefined ? null : parseNumber(input.energyScore, "Nível de energia", { min: 1, max: 5, integer: true });
 
-  const result = await pool.query<CheckinRow>(
-    `insert into daily_checkins (profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (profile_id, checkin_date) do update set
-       sleep_hours = coalesce(excluded.sleep_hours, daily_checkins.sleep_hours),
-       study_minutes = coalesce(excluded.study_minutes, daily_checkins.study_minutes),
-       training_minutes = coalesce(excluded.training_minutes, daily_checkins.training_minutes),
-       energy_score = coalesce(excluded.energy_score, daily_checkins.energy_score)
-     returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score`,
-    [profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore],
-  );
-  return mapCheckin(result.rows[0]);
+  console.log('[checkins db] Attempting to upsert checkin:', { profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore });
+
+  try {
+    const result = await pool.query<CheckinRow>(
+      `insert into daily_checkins (profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (profile_id, checkin_date) do update set
+         sleep_hours = coalesce(excluded.sleep_hours, daily_checkins.sleep_hours),
+         study_minutes = coalesce(excluded.study_minutes, daily_checkins.study_minutes),
+         training_minutes = coalesce(excluded.training_minutes, daily_checkins.training_minutes),
+         energy_score = coalesce(excluded.energy_score, daily_checkins.energy_score)
+       returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score`,
+      [profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore],
+    );
+    
+    console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
+    return mapCheckin(result.rows[0]);
+  } catch (error) {
+    console.error('[checkins db] Error upserting checkin:', error);
+    throw error;
+  }
 }
 
 export async function listCheckins(profileId: string, from: string, to: string): Promise<DailyCheckin[]> {

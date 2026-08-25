@@ -21,6 +21,10 @@ export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const body = assertObject(await readJsonBody(request));
+    
+    console.log('[tasks POST] Attempting to create task for profile:', profileId);
+    console.log('[tasks POST] Request body:', body);
+    
     const task = await createTask(
       profileId,
       {
@@ -30,6 +34,8 @@ export async function POST(request: NextRequest) {
       },
       todayIso(),
     );
+    
+    console.log('[tasks POST] Task created successfully:', task);
     return jsonOk({ task }, 201);
   });
 }

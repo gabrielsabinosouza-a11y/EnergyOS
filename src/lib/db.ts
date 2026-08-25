@@ -11,6 +11,8 @@ if (!connectionString) {
   throw new Error("DATABASE_URL não configurada. Copie .env.example para .env.local.");
 }
 
+console.log('[db] Database connection string configured:', connectionString ? 'Yes' : 'No');
+
 declare global {
   var energyosPgPool: Pool | undefined;
 }
@@ -21,6 +23,16 @@ const pool =
     connectionString,
     ssl: /neon\.tech/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
   });
+
+pool.on('error', (err) => {
+  console.error('[db] Unexpected error on idle client', err);
+});
+
+pool.on('connect', () => {
+  console.log('[db] New client connected');
+});
+
+console.log('[db] Database pool created');
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.energyosPgPool = pool;
