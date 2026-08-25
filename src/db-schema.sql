@@ -79,3 +79,60 @@ create table if not exists insights (
 );
 
 create index if not exists insights_profile_week_idx on insights(profile_id, week_start desc);
+
+create table if not exists kanban_tasks (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  title text not null,
+  description text,
+  status text not null default 'todo' check (status in ('todo','doing','done')),
+  position integer not null default 0,
+  category text default 'FOCO',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists kanban_tasks_profile_idx on kanban_tasks(profile_id, status, position);
+
+create table if not exists weekly_plans (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  plan_date date not null,
+  title text not null,
+  category text default 'FOCO',
+  task_id bigint references tasks(id) on delete set null,
+  completed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists weekly_plans_profile_date_idx on weekly_plans(profile_id, plan_date);
+
+create table if not exists focus_sessions (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  duration_minutes integer not null,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  task_id bigint references tasks(id) on delete set null,
+  xp_earned integer not null default 0
+);
+
+create index if not exists focus_sessions_profile_idx on focus_sessions(profile_id, started_at desc);
+
+create table if not exists xp_ledger (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  source text not null check (source in ('task','kanban','focus','streak_bonus')),
+  source_id bigint,
+  xp_amount integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, created_at desc);
+
+create table if not exists user_xp (
+  profile_id text primary key references profiles(id) on delete cascade,
+  total_xp integer not null default 0,
+  level integer not null default 1,
+  updated_at timestamptz not null default now()
+);

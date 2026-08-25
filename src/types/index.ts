@@ -73,6 +73,56 @@ export interface Insight {
   createdAt: string;
 }
 
+export type KanbanStatus = "todo" | "doing" | "done";
+export type KanbanCategory = "FOCO" | "CORPO" | "MENTE" | "ORDEM" | "ENERGIA";
+
+export interface KanbanTask {
+  id: number;
+  profileId: string;
+  title: string;
+  description?: string;
+  status: KanbanStatus;
+  position: number;
+  category: KanbanCategory;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WeeklyPlan {
+  id: number;
+  profileId: string;
+  planDate: string;
+  title: string;
+  category: TaskCategory;
+  taskId?: number;
+  completedAt?: string;
+}
+
+export interface FocusSession {
+  id: number;
+  profileId: string;
+  durationMinutes: number;
+  startedAt: string;
+  endedAt?: string;
+  taskId?: number;
+  xpEarned: number;
+}
+
+export interface UserXP {
+  profileId: string;
+  totalXP: number;
+  level: number;
+}
+
+export interface XPLedgerEntry {
+  id: number;
+  profileId: string;
+  source: "task" | "kanban" | "focus" | "streak_bonus";
+  sourceId?: number;
+  xpAmount: number;
+  createdAt: string;
+}
+
 export function getTaskProgress(tasks: Array<Pick<Task, "completedAt"> & { done?: boolean }>) {
   if (tasks.length === 0) return { completed: 0, total: 0, percentage: 0, streakQualified: false };
 

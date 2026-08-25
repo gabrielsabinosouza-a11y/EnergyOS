@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { setTaskCompleted } from "@/lib/db/tasks";
+import { awardTaskXP } from "@/lib/db/xp";
 import { ValidationError, parseBoolean } from "@/lib/db/validation";
 
 interface RouteContext {
@@ -25,6 +26,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // corpo ausente é aceito: POST simples marca como concluída
     }
     const task = await setTaskCompleted(profileId, taskId, completed);
+    if (completed && task.completedAt) {
+      await awardTaskXP(profileId, taskId, 5);
+    }
     return jsonOk({ task });
   });
 }

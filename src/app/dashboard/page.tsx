@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUpRight, Check, Flame, Loader2, Moon, Pencil, Plus, Sparkles, Target, Timer, Trash2, TrendingUp, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowUpRight, Check, Flame, Loader2, Moon, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, TaskCategory, Metric } from "@/types";
+import type { Task, TaskCategory, Metric, Goal, KanbanTask, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
-
-const CATEGORIES: TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
+import { weekStartIso } from "@/lib/db/dates";
+import { GoalsCard } from "@/components/dashboard/goals-card";
+import { TodoList } from "@/components/dashboard/todo-list";
+import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
+import { KanbanBoard } from "@/components/dashboard/kanban-board";
+import { FocusTimer } from "@/components/dashboard/focus-timer";
+import { XPBadge } from "@/components/dashboard/xp-badge";
 
 const METRIC_ICONS: Record<string, React.ElementType> = { sleep: Moon, study: Timer, training: Target };
 const METRIC_COLORS: Record<string, string> = { sleep: "#71d4ff", study: "#b69cff", training: "#ffb86b" };
@@ -35,23 +40,15 @@ export default function DashboardPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
+  const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
+  const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayBlocks: { blocks: number; xpEarned: number }; xp: UserXP } | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [error, setError] = useState("");
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinSaved, setCheckinSaved] = useState(false);
-
-  // new task form
-  const [showForm, setShowForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<TaskCategory>("FOCO");
-  const [saving, setSaving] = useState(false);
-
-  // edit task
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editCategory, setEditCategory] = useState<TaskCategory>("FOCO");
-  const editRef = useRef<HTMLInputElement>(null);
 
   async function fetchDashboard() {
     try {
@@ -74,35 +71,42 @@ export default function DashboardPage() {
   useEffect(() => {
     if (loading || !user) return;
     let cancelled = false;
-    user.getIdToken()
-      .then((token) => fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } }))
-      .then((res) => { if (!res.ok) throw new Error(); return res.json() as Promise<DashboardSnapshotResponse>; })
-      .then((data) => { if (cancelled) return; setSnapshot(data); setTasks(data.tasks); setError(""); setLoadingPage(false); })
-      .catch(() => { if (cancelled) return; setError("Não foi possível carregar os dados."); setLoadingPage(false); });
+
+    // Fetch all data in parallel
+    user.getIdToken().then((token) => {
+      if (cancelled) return;
+      Promise.all([
+        fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => r.ok ? r.json() : Promise.reject())
+          .then((data) => { if (!cancelled) { setSnapshot(data); setTasks(data.tasks); } }),
+        api.getGoals()
+          .then((bundles) => { if (!cancelled) setGoals(bundles.map((b) => b.goal)); }),
+        api.getKanban()
+          .then((k) => { if (!cancelled) setKanbanTasks(k); }),
+        api.getWeeklyPlans(weekStartIso(new Date().toISOString().slice(0, 10)))
+          .then((p) => { if (!cancelled) setWeeklyPlans(p); }),
+        api.getFocusData()
+          .then((f) => { if (!cancelled) setFocusData(f); }),
+      ]).catch(() => {
+        if (!cancelled) setError("Não foi possível carregar alguns dados.");
+      }).finally(() => {
+        if (!cancelled) setLoadingPage(false);
+      });
+    });
+
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user?.uid]);
-
-  async function authFetch(url: string, init: RequestInit = {}) {
-    const token = await user?.getIdToken();
-    return fetch(url, {
-      ...init,
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
-    });
-  }
 
   async function saveCheckin() {
     const sleepHours = sleepAnswer === "Menos de 6 horas" ? 5 : sleepAnswer === "6 a 7 horas" ? 6.5 : sleepAnswer === "7 a 8 horas" ? 7.5 : 8.5;
     setCheckinSaving(true);
     setCheckinSaved(false);
     try {
-      console.log('[dashboard] Attempting to save checkin with sleepHours:', sleepHours);
       await api.saveCheckin({ sleepHours });
-      console.log('[dashboard] Checkin saved successfully');
       setCheckinSaved(true);
       await fetchDashboard();
     } catch (error) {
-      console.error('[dashboard] Error saving checkin:', error);
       setError(error instanceof Error ? error.message : "Não foi possível salvar o check-in.");
     } finally {
       setCheckinSaving(false);
@@ -114,10 +118,8 @@ export default function DashboardPage() {
     const previousTasks = tasks;
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, completedAt: completed ? new Date().toISOString() : undefined } : t));
     try {
-      const response = await authFetch(`/api/tasks/${task.id}/complete`, { method: "POST", body: JSON.stringify({ completed }) });
-      if (!response.ok) throw new Error("Não foi possível atualizar a tarefa.");
-      const data = await response.json() as { task: Task };
-      setTasks((prev) => prev.map((item) => item.id === task.id ? data.task : item));
+      const response = await api.setTaskCompleted(task.id, completed);
+      setTasks((prev) => prev.map((item) => item.id === task.id ? response.task : item));
     } catch (error) {
       setTasks(previousTasks);
       setError(error instanceof Error ? error.message : "Não foi possível atualizar a tarefa.");
@@ -128,52 +130,109 @@ export default function DashboardPage() {
     const previousTasks = tasks;
     setTasks((prev) => prev.filter((t) => t.id !== id));
     try {
-      const response = await authFetch(`/api/tasks/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Não foi possível excluir a tarefa.");
+      await api.deleteTask(id);
     } catch (error) {
       setTasks(previousTasks);
       setError(error instanceof Error ? error.message : "Não foi possível excluir a tarefa.");
     }
   }
 
-  async function createTask() {
-    if (!newTitle.trim()) return;
-    setSaving(true);
+  async function createTask(title: string, category: TaskCategory) {
     try {
-      const res = await authFetch("/api/tasks", { method: "POST", body: JSON.stringify({ title: newTitle.trim(), category: newCategory }) });
-      if (!res.ok) throw new Error("Não foi possível criar a tarefa.");
-      const data = (await res.json()) as { task: Task };
-      setTasks((prev) => [...prev, data.task]);
-      setNewTitle("");
-      setShowForm(false);
+      const result = await api.createTask({ title, category });
+      setTasks((prev) => [...prev, result.task]);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Não foi possível criar a tarefa.");
-    } finally {
-      setSaving(false);
     }
   }
 
-  function startEdit(task: Task) {
-    setEditingId(task.id);
-    setEditTitle(task.title);
-    setEditCategory(task.category);
-    setTimeout(() => editRef.current?.focus(), 50);
-  }
-
-  async function saveEdit(id: number) {
-    if (!editTitle.trim()) { setEditingId(null); return; }
-    const previousTasks = tasks;
-    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, title: editTitle.trim(), category: editCategory } : t));
-    setEditingId(null);
+  async function updateTask(id: number, title: string, category: TaskCategory) {
     try {
-      const response = await authFetch(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ title: editTitle.trim(), category: editCategory }) });
-      if (!response.ok) throw new Error("Não foi possível editar a tarefa.");
-      const data = await response.json() as { task: Task };
-      setTasks((prev) => prev.map((item) => item.id === id ? data.task : item));
+      const result = await api.updateTask(id, { title, category });
+      setTasks((prev) => prev.map((item) => item.id === id ? result.task : item));
     } catch (error) {
-      setTasks(previousTasks);
       setError(error instanceof Error ? error.message : "Não foi possível editar a tarefa.");
     }
+  }
+
+  async function promoteTask(taskId: number) {
+    try {
+      const result = await api.promoteTaskToKanban(taskId);
+      setKanbanTasks((prev) => [...prev, result.task]);
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completedAt: new Date().toISOString() } : t));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível promover a tarefa.");
+    }
+  }
+
+  async function moveKanbanTask(id: number, newStatus: "todo" | "doing" | "done") {
+    const prev = kanbanTasks;
+    setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus } : k));
+    try {
+      const result = await api.updateKanbanTask(id, { status: newStatus });
+      setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
+    } catch {
+      setKanbanTasks(prev);
+    }
+  }
+
+  async function createKanbanTask(title: string, category: KanbanCategory) {
+    try {
+      const result = await api.createKanbanTask({ title, category });
+      setKanbanTasks((prev) => [...prev, result.task]);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível criar o card.");
+    }
+  }
+
+  async function deleteKanbanTask(id: number) {
+    const prev = kanbanTasks;
+    setKanbanTasks((ks) => ks.filter((k) => k.id !== id));
+    try {
+      await api.deleteKanbanTask(id);
+    } catch {
+      setKanbanTasks(prev);
+    }
+  }
+
+  async function completePlan(id: number) {
+    try {
+      const result = await api.completeWeeklyPlan(id);
+      setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível concluir o plano.");
+    }
+  }
+
+  async function deletePlan(id: number) {
+    const prev = weeklyPlans;
+    setWeeklyPlans((ps) => ps.filter((p) => p.id !== id));
+    try {
+      await api.deleteWeeklyPlan(id);
+    } catch {
+      setWeeklyPlans(prev);
+    }
+  }
+
+  async function createPlan(planDate: string, title: string, category: TaskCategory) {
+    try {
+      const result = await api.createWeeklyPlan({ planDate, title, category });
+      setWeeklyPlans((prev) => [...prev, result.plan]);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível criar o plano.");
+    }
+  }
+
+  async function startFocus(taskId?: number) {
+    const result = await api.startFocus(taskId);
+    return result;
+  }
+
+  async function endFocus(sessionId: number) {
+    const result = await api.endFocus(sessionId);
+    // Refresh focus data
+    api.getFocusData().then((f) => setFocusData(f));
+    return result;
   }
 
   const completed = tasks.filter((t) => Boolean(t.completedAt)).length;
@@ -204,32 +263,37 @@ export default function DashboardPage() {
   return (
     <AppShell>
       <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
-        <header className="mb-10 flex items-start justify-between">
+        {/* Header */}
+        <header className="mb-8 flex items-start justify-between">
           <div>
             <p className="mb-2 text-xs uppercase tracking-[.2em] text-[#71d4ff]">{todayLabel()}</p>
             <h1 className="font-display text-3xl tracking-[-.04em] sm:text-4xl">
               {greeting(displayName)}<span className="text-[#ffb86b]">.</span>
             </h1>
           </div>
-          {streak > 0 && (
-            <div className="streak"><Flame size={18} fill="currentColor" /> <span>{streak}</span><small>dias</small></div>
-          )}
+          <div className="flex items-center gap-3">
+            {focusData?.xp && <XPBadge xp={focusData.xp.totalXP} level={focusData.xp.level} />}
+            {streak > 0 && (
+              <div className="streak"><Flame size={18} fill="currentColor" /> <span>{streak}</span><small>dias</small></div>
+            )}
+          </div>
         </header>
 
         {error && (
           <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{error}</div>
         )}
 
-        <section className="question-panel mb-10 p-6 sm:p-8">
+        {/* Check-in */}
+        <section className="question-panel mb-8 p-6 sm:p-8">
           <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIÁRIO</span>
           <h2 className="mt-5 font-display text-2xl">Como você dormiu na noite passada?</h2>
           <div className="mt-5 grid gap-2 sm:grid-cols-4">{["Menos de 6 horas", "6 a 7 horas", "7 a 8 horas", "Mais de 8 horas"].map((answer) => <button key={answer} onClick={() => setSleepAnswer(answer)} className={`answer-option ${sleepAnswer === answer ? "selected" : ""}`}><span className="answer-dot">{sleepAnswer === answer && <span />}</span>{answer}</button>)}</div>
           <button onClick={saveCheckin} disabled={checkinSaving} className="primary-button mt-6">{checkinSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {checkinSaved ? "Check-in salvo" : "Salvar check-in"}</button>
         </section>
 
-        {/* Métricas */}
+        {/* Metrics */}
         {snapshot?.metrics && snapshot.metrics.length > 0 && (
-          <section className="mb-10">
+          <section className="mb-8">
             <div className="mb-4 flex items-end justify-between">
               <div>
                 <span className="eyebrow muted">ÚLTIMOS 7 DIAS</span>
@@ -257,127 +321,49 @@ export default function DashboardPage() {
           </section>
         )}
 
-        {/* Tarefas */}
-        <section className="mt-2 grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
-          <div className="panel p-6 sm:p-8">
-            <div className="mb-6 flex justify-between items-center">
-              <div>
-                <span className="eyebrow muted">HOJE</span>
-                <h2 className="mt-2 font-display text-2xl">Tarefas essenciais</h2>
+        {/* Goals + Todo */}
+        <section className="mb-8 grid gap-5 lg:grid-cols-2">
+          <GoalsCard goals={goals} />
+          <TodoList
+            tasks={tasks}
+            onToggle={toggleTask}
+            onDelete={deleteTask}
+            onCreate={createTask}
+            onUpdate={updateTask}
+            onPromote={promoteTask}
+            streakQualified={streakQualified}
+          />
+        </section>
+
+        {/* Weekly Plan */}
+        <section className="mb-8">
+          <WeeklyPlan plans={weeklyPlans} onComplete={completePlan} onDelete={deletePlan} onCreate={createPlan} />
+        </section>
+
+        {/* Kanban + Focus */}
+        <section className="mb-8 grid gap-5 xl:grid-cols-[1fr_.340px]">
+          <KanbanBoard tasks={kanbanTasks} onMove={moveKanbanTask} onCreate={createKanbanTask} onDelete={deleteKanbanTask} />
+          <div className="space-y-5">
+            <FocusTimer
+              todayBlocks={focusData?.todayBlocks ?? { blocks: 0, xpEarned: 0 }}
+              history={focusData?.history ?? []}
+              onStart={startFocus}
+              onEnd={endFocus}
+            />
+            {/* Insight */}
+            {snapshot?.insights?.[0] ? (
+              <div className="insight-panel p-6">
+                <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
+                <h2 className="mt-5 font-display text-lg leading-tight">{snapshot.insights[0].title}</h2>
+                <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{snapshot.insights[0].description}</p>
               </div>
-              <button onClick={() => setShowForm((v) => !v)} className="icon-button small" aria-label="Adicionar tarefa">
-                {showForm ? <X size={16} /> : <Plus size={18} />}
-              </button>
-            </div>
-
-            {/* Formulário nova tarefa */}
-            <AnimatePresence>
-              {showForm && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-4">
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      autoFocus
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && createTask()}
-                      className="auth-input flex-1"
-                      placeholder="Título da tarefa..."
-                    />
-                    <button onClick={createTask} disabled={saving || !newTitle.trim()} className="icon-button small">
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CATEGORIES.map((cat) => (
-                      <button
-                        key={cat}
-                        onClick={() => setNewCategory(cat)}
-                        className={`answer-option !w-auto !px-3 !py-1 !text-[10px] ${newCategory === cat ? "selected" : ""}`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Barra de progresso */}
-            {total > 0 && (
-              <div className="mb-6 flex items-center gap-4">
-                <div className="progress-track">
-                  <div className="progress-value" style={{ width: `${percentage}%` }} />
-                </div>
-                <span className="text-sm text-[var(--text-secondary)]">{completed}/{total}</span>
-                <span className="text-xs text-[var(--text-muted)]">{streakQualified ? "streak garantido ✦" : "ainda dá tempo"}</span>
+            ) : (
+              <div className="insight-panel p-6 flex flex-col justify-center">
+                <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
+                <p className="mt-5 text-sm text-[var(--text-muted)]">Os insights aparecem conforme você registra check-ins e conclui tarefas.</p>
               </div>
             )}
-
-            {/* Lista de tarefas */}
-            {tasks.length === 0 && !showForm && (
-              <div className="empty-state py-10">
-                <strong>Nenhuma tarefa hoje</strong>
-                <span>Clique em + para adicionar sua primeira tarefa</span>
-              </div>
-            )}
-
-            <AnimatePresence>
-              {tasks.map((task) => (
-                <motion.div
-                  key={task.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 16, height: 0 }}
-                  className="task-row group"
-                >
-                  {editingId === task.id ? (
-                    <div className="flex flex-1 items-center gap-2">
-                      <input
-                        ref={editRef}
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") saveEdit(task.id); if (e.key === "Escape") setEditingId(null); }}
-                        className="auth-input !py-1 !text-sm flex-1"
-                      />
-                      <div className="flex gap-1 flex-wrap">
-                        {CATEGORIES.map((cat) => (
-                          <button key={cat} onClick={() => setEditCategory(cat)} className={`answer-option !w-auto !px-2 !py-0.5 !text-[9px] ${editCategory === cat ? "selected" : ""}`}>{cat}</button>
-                        ))}
-                      </div>
-                      <button onClick={() => saveEdit(task.id)} className="icon-button small"><Check size={12} /></button>
-                      <button onClick={() => setEditingId(null)} className="icon-button small"><X size={12} /></button>
-                    </div>
-                  ) : (
-                    <>
-                      <button onClick={() => toggleTask(task)} className={`task-check shrink-0 ${task.completedAt ? "border-[#71d4ff] bg-[#71d4ff]" : ""}`}>
-                        {task.completedAt && <Check size={11} />}
-                      </button>
-                      <span className={`flex-1 text-left text-sm ${task.completedAt ? "line-through text-[var(--text-muted)]" : ""}`}>{task.title}</span>
-                      <span className="hidden text-[10px] tracking-[.14em] text-[var(--text-faint)] sm:block">{task.category}</span>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => startEdit(task)} className="icon-button small !w-7 !h-7"><Pencil size={11} /></button>
-                        <button onClick={() => deleteTask(task.id)} className="icon-button small !w-7 !h-7 text-red-400/60 hover:text-red-400"><Trash2 size={11} /></button>
-                      </div>
-                    </>
-                  )}
-                </motion.div>
-              ))}
-            </AnimatePresence>
           </div>
-
-          {/* Insight */}
-          {snapshot?.insights?.[0] ? (
-            <div className="insight-panel p-6 sm:p-8">
-              <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-              <h2 className="mt-8 font-display text-2xl leading-tight">{snapshot.insights[0].title}</h2>
-              <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">{snapshot.insights[0].description}</p>
-            </div>
-          ) : (
-            <div className="insight-panel p-6 sm:p-8 flex flex-col justify-center">
-              <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-              <p className="mt-8 text-sm text-[var(--text-muted)]">Os insights aparecem conforme você registra check-ins e conclui tarefas.</p>
-            </div>
-          )}
         </section>
       </main>
     </AppShell>
