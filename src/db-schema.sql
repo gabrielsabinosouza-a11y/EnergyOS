@@ -144,6 +144,36 @@ create table if not exists room_participants (
 create index if not exists room_participants_room_idx on room_participants(room_id);
 create index if not exists room_participants_profile_idx on room_participants(profile_id);
 
+-- League System
+create type league_tier as enum ('BRONZE', 'PRATA', 'OURO', 'DIAMANTE', 'LENDAS');
+
+create table if not exists league_groups (
+  id bigserial primary key,
+  tier league_tier not null,
+  week_start_date date not null,
+  week_end_date date not null,
+  is_legends_group boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (tier, week_start_date)
+);
+
+create index if not exists league_groups_tier_week_idx on league_groups(tier, week_start_date);
+create index if not exists league_groups_is_legends_idx on league_groups(is_legends_group);
+
+create table if not exists league_group_members (
+  id bigserial primary key,
+  league_group_id bigint not null references league_groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  weekly_xp integer not null default 0,
+  rank integer,
+  joined_at timestamptz not null default now(),
+  unique (league_group_id, profile_id)
+);
+
+create index if not exists league_group_members_group_idx on league_group_members(league_group_id);
+create index if not exists league_group_members_profile_idx on league_group_members(profile_id);
+create index if not exists league_group_members_week_idx on league_group_members(league_group_id, weekly_xp desc);
+
 create table if not exists weekly_plans (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,

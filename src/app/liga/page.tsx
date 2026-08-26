@@ -1,151 +1,95 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import { Loader2, Trophy, Flame, ArrowUp, ArrowDown, Minus } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
-import { Header } from "@/components/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
+import {
+  Trophy, ChevronLeft, Clock, ArrowUp, ArrowDown, Sparkles, Users, Flame,
+  Loader2, TrendingUp, Crown, Star, Medal,
+} from "lucide-react";
+import Link from "next/link";
+import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
-import type { LeagueSnapshot, LeagueTier, LeagueResult } from "@/types";
+import type { NewLeagueTier, LeagueGroup, LeagueGroupMember } from "@/types";
 
-const TIER_META: Record<LeagueTier, { label: string; color: string; glow: string; icon: string; description: string }> = {
-  faisca: { label: "Faísca", color: "#c47a4a", glow: "rgba(196,122,74,.45)", icon: "⚡", description: "onde tudo começa" },
-  chama: { label: "Chama", color: "#ffb86b", glow: "rgba(255,184,107,.45)", icon: "🔥", description: "o fogo está acesso" },
-  aura: { label: "Aura", color: "#ffd76b", glow: "rgba(255,215,107,.5)", icon: "✨", description: "uma energia especial" },
-  nucleo: { label: "Núcleo", color: "#71d4ff", glow: "rgba(113,212,255,.55)", icon: "💎", description: "o ápice da consistência" },
+const TIER_CONFIG: Record<NewLeagueTier, { 
+  label: string; color: string; glow: string; icon: React.ElementType; 
+  description: string; shortLabel: string;
+}> = {
+  BRONZE: { label: "Bronze", color: "#cd7f32", glow: "rgba(205,127,50,0.4)", icon: Medal, description: "O inicio da jornada", shortLabel: "BR" },
+  PRATA: { label: "Prata", color: "#c0c0c0", glow: "rgba(192,192,192,0.4)", icon: Medal, description: "Consistencia crescendo", shortLabel: "PR" },
+  OURO: { label: "Ouro", color: "#ffd700", glow: "rgba(255,215,0,0.4)", icon: Trophy, description: "Dominio do foco", shortLabel: "OU" },
+  DIAMANTE: { label: "Diamante", color: "#00bfff", glow: "rgba(0,191,255,0.4)", icon: Crown, description: "Elite do foco", shortLabel: "DI" },
+  LENDAS: { label: "Lendas", color: "#ff69b4", glow: "rgba(255,105,180,0.4)", icon: Star, description: "Os melhores entre os melhores", shortLabel: "LE" },
 };
 
-const TIER_ORDER: LeagueTier[] = ["faisca", "chama", "aura", "nucleo"];
+const TIER_ORDER: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
+const PROMOTION_COUNT = 3;
+const DEMOTION_COUNT = 5;
 
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
-const rowFade = { hidden: { opacity: 0, x: -8 }, visible: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" as const } } };
-
-function UserAvatar({ photoUrl, displayName, size = 36 }: { photoUrl?: string; displayName: string; size?: number }) {
-  const initial = (displayName?.[0] ?? "?").toUpperCase();
-  if (photoUrl) {
-    return (
-      <img
-        src={photoUrl}
-        alt={displayName}
-        width={size}
-        height={size}
-        className="rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <div
-      className="flex items-center justify-center rounded-full font-display font-bold text-white"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.4,
-        background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)",
-      }}
-    >
-      {initial}
-    </div>
-  );
+function useWeekCountdown(weekEnd: string): { days: number; hours: number; minutes: number; seconds: number } {
+  const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number }>(calculateTimeLeft(weekEnd));
+  useEffect(() => {
+    const timer = setInterval(() => setTimeLeft(calculateTimeLeft(weekEnd)), 1000);
+    return () => clearInterval(timer);
+  }, [weekEnd]);
+  return timeLeft;
 }
 
-function formatCountdown(targetIso: string): string {
-  const now = Date.now();
-  const target = new Date(targetIso).getTime();
-  const diff = Math.max(0, target - now);
-  const days = Math.floor(diff / 86_400_000);
-  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((diff % 3_600_000) / 60_000);
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}min`;
-  return `${minutes}min`;
+function calculateTimeLeft(weekEnd: string) {
+  const endDate = new Date(weekEnd + "T23:59:59");
+  const now = new Date();
+  const diff = endDate.getTime() - now.getTime();
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+  return {
+    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+    minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((diff % (1000 * 60)) / 1000),
+  };
 }
 
-function ResultBanner({ result }: { result?: LeagueResult }) {
-  if (result === "promoted") {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium"
-        style={{ background: "rgba(74,222,128,.12)", color: "var(--green)", border: "1px solid rgba(74,222,128,.2)" }}
-      >
-        <ArrowUp size={14} />
-        Subiu de nível!
-      </motion.div>
-    );
-  }
-  if (result === "demoted") {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium"
-        style={{ background: "rgba(248,113,113,.12)", color: "var(--red)", border: "1px solid rgba(248,113,113,.2)" }}
-      >
-        <ArrowDown size={14} />
-        Desceu de nível
-      </motion.div>
-    );
-  }
-  if (result === "stayed") {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium"
-        style={{ background: "rgba(255,255,255,.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,.08)" }}
-      >
-        <Minus size={14} />
-        Manteve a posição
-      </motion.div>
-    );
-  }
-  return null;
+function formatCountdown(t: { days: number; hours: number; minutes: number; seconds: number }): string {
+  if (t.days === 0 && t.hours === 0) return `${t.minutes}m`;
+  if (t.days === 0) return `${t.hours}h ${t.minutes}m`;
+  return `${t.days}d ${t.hours}h`;
 }
 
 export default function LigaPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
-  const reduced = useReducedMotion();
-  const [snapshot, setSnapshot] = useState<LeagueSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<{
+    currentTier: NewLeagueTier;
+    currentGroup: LeagueGroup;
+    members: LeagueGroupMember[];
+    userRank: number;
+    weekStart: string;
+    weekEnd: string;
+    isLegendsGroup: boolean;
+    promotionZoneEnd: number;
+    demotionZoneStart: number;
+    liveCohort?: { members: any[] };
+  } | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [countdown, setCountdown] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  const tierMeta = snapshot ? TIER_META[snapshot.tier] : null;
-
-  const userEntry = snapshot?.entries.find((e) => e.isCurrentUser);
+  const timeLeft = snapshot ? useWeekCountdown(snapshot.weekEnd) : { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
   useEffect(() => {
-    if (loading || !user) return;
-    let cancelled = false;
+    if (!loading && user) fetchLeagueData();
+  }, [loading, user]);
 
-    api
-      .getLeague()
-      .then((data) => {
-        if (!cancelled) setSnapshot(data.snapshot);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoadingData(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, user?.uid]);
-
-  useEffect(() => {
-    if (!snapshot?.resetsAt) return;
-
-    function tick() {
-      setCountdown(formatCountdown(snapshot!.resetsAt));
+  const fetchLeagueData = useCallback(async () => {
+    setLoadingData(true);
+    setError(null);
+    try {
+      const data = await api.get("/api/league-new");
+      setSnapshot(data);
+    } catch (err) {
+      setError("Erro ao carregar dados da liga");
+    } finally {
+      setLoadingData(false);
     }
-    tick();
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
-  }, [snapshot?.resetsAt]);
+  }, []);
 
   if (loading || !user) {
     return (
@@ -155,261 +99,330 @@ export default function LigaPage() {
     );
   }
 
-  return (
-    <AppShell>
-      <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
-        <Header eyebrow="Competição" title="Liga" />
-
-        {loadingData || !snapshot || !tierMeta ? (
+  if (loadingData || !snapshot) {
+    return (
+      <AppShell>
+        <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12 lg:py-10">
+          <header className="mb-8 flex items-center gap-3">
+            <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+              <ChevronLeft size={18} /> Voltar
+            </Link>
+            <div className="ml-auto" />
+            <Trophy size={18} className="text-[var(--accent)]" />
+            <span className="font-display text-xl font-semibold tracking-[-0.04em]">Liga</span>
+          </header>
           <div className="flex items-center justify-center py-32">
             <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
           </div>
-        ) : snapshot.entries.length === 0 ? (
-          <div className="glass-card flex flex-col items-center justify-center p-16 text-center">
-            <Trophy size={48} className="mb-4 text-[var(--text-faint)]" />
-            <p className="font-display text-lg text-[var(--text-secondary)]">Nenhum participante na liga ainda</p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">Comece a focar para entrar na competição!</p>
-          </div>
-        ) : (
-          <>
-            {/* Tier Hero Card */}
-            <motion.div
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="glass-card relative mb-6 overflow-hidden p-6 sm:p-8"
-            >
-              {/* Ambient glow */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full blur-3xl"
-                style={{ background: tierMeta.glow, opacity: 0.35 }}
-              />
+        </main>
+      </AppShell>
+    );
+  }
 
-              <div className="relative z-10">
-                <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-center gap-5">
-                    <motion.div
-                      initial={reduced ? {} : { scale: 0.5, rotate: -20 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.15 }}
-                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl"
-                      style={{
-                        background: `${tierMeta.color}15`,
-                        boxShadow: `0 0 40px ${tierMeta.glow}`,
-                        border: `1px solid ${tierMeta.color}40`,
-                      }}
-                    >
-                      {tierMeta.icon}
-                    </motion.div>
-                    <div>
-                      <h2
-                        className="font-display text-2xl font-bold tracking-tight"
-                        style={{ color: tierMeta.color }}
-                      >
-                        {tierMeta.label}
-                      </h2>
-                      <p className="mt-0.5 text-sm text-[var(--text-muted)]">{tierMeta.description}</p>
-                      <ResultBanner result={snapshot.lastWeekResult} />
-                    </div>
-                  </div>
+  const tierConfig = TIER_CONFIG[snapshot.currentTier];
+  const userMember = snapshot.members.find((m) => m.profileId === user?.uid);
+  const isInPromotionZone = snapshot.userRank > 0 && snapshot.userRank <= snapshot.promotionZoneEnd;
+  const isInDemotionZone = snapshot.userRank > 0 && snapshot.userRank >= snapshot.demotionZoneStart && snapshot.currentTier !== "BRONZE";
+  const isLegends = snapshot.currentTier === "LENDAS";
+  const isDiamante = snapshot.currentTier === "DIAMANTE";
+  const currentTierIndex = TIER_ORDER.indexOf(snapshot.currentTier);
+  const nextTier = currentTierIndex < TIER_ORDER.length - 1 ? TIER_ORDER[currentTierIndex + 1] : null;
 
-                  <div className="flex flex-col items-start gap-2 sm:items-end">
-                    {userEntry && (
-                      <div className="text-sm text-[var(--text-muted)]">
-                        Seu XP:{" "}
-                        <span className="font-mono font-bold" style={{ color: tierMeta.color }}>
-                          {userEntry.xp.toLocaleString("pt-BR")}
-                        </span>
-                      </div>
-                    )}
-                    {countdown && (
-                      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--green)]" />
-                        Reinicia em {countdown}
-                      </div>
+  return (
+    <AppShell>
+      <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12 lg:py-10">
+        <header className="mb-8 flex items-center gap-3">
+          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+            <ChevronLeft size={18} /> Voltar
+          </Link>
+          <div className="ml-auto" />
+          <Trophy size={18} className="text-[var(--accent)]" />
+          <span className="font-display text-xl font-semibold tracking-[-0.04em]">Liga</span>
+        </header>
+
+        {/* Current Tier Hero */}
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <div className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-gradient-to-br p-6 shadow-xl"
+               style={{ background: `linear-gradient(135deg, ${tierConfig.color}15, ${tierConfig.color}08)` }}>
+            <span aria-hidden className="absolute inset-0 opacity-30"
+                  style={{ background: `radial-gradient(circle at center, ${tierConfig.glow} 0%, transparent 70%)` }} />
+            
+            <div className="relative z-10">
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-center gap-5">
+                  <motion.div initial={{ scale: 0.5, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}
+                              transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.15 }}
+                              className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl"
+                              style={{ background: `${tierConfig.color}20`, boxShadow: `0 0 40px ${tierConfig.glow}`, border: `1px solid ${tierConfig.color}40` }}>
+                    <tierConfig.icon style={{ color: tierConfig.color }} />
+                  </motion.div>
+                  <div>
+                    <h2 className="font-display text-3xl font-bold tracking-tight" style={{ color: tierConfig.color }}>
+                      {tierConfig.label}{isLegends && <span className="ml-2 text-2xl">✨</span>}
+                    </h2>
+                    <p className="mt-0.5 text-sm text-[var(--text-muted)]">{tierConfig.description}</p>
+                    {isDiamante && (
+                      <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+                                  className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-400">
+                        <Crown size={12} />
+                        <span>Top 5 avança para <strong>Lendas</strong></span>
+                      </motion.div>
                     )}
                   </div>
                 </div>
 
-                {/* Tier Progression Bar */}
-                <div className="mt-6 flex items-center gap-1">
-                  {TIER_ORDER.map((t, i) => {
-                    const m = TIER_META[t];
-                    const isCurrent = t === snapshot.tier;
-                    const isPast = TIER_ORDER.indexOf(snapshot.tier) > i;
-                    return (
-                      <div key={t} className="flex flex-1 flex-col items-center gap-1.5">
-                        <div
-                          className="relative flex h-8 w-full items-center justify-center rounded-lg text-sm font-bold transition-all"
-                          style={{
-                            background: isCurrent ? `${m.color}25` : isPast ? `${m.color}10` : "rgba(255,255,255,.03)",
-                            border: `1px solid ${isCurrent ? m.color + "60" : "rgba(255,255,255,.06)"}`,
-                            boxShadow: isCurrent ? `0 0 20px ${m.glow}` : "none",
-                            color: isCurrent ? m.color : isPast ? `${m.color}90` : "var(--text-faint)",
-                          }}
-                        >
-                          <span>{m.icon}</span>
-                        </div>
-                        <span
-                          className="text-[10px] font-medium"
-                          style={{ color: isCurrent ? m.color : isPast ? `${m.color}80` : "var(--text-faint)" }}
-                        >
-                          {m.label}
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  {userMember && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-[var(--text-faint)] mb-0.5">SEU XP</p>
+                      <div className="flex items-center justify-end gap-1">
+                        <Flame size={14} className="text-[var(--orange)]" />
+                        <span className="font-mono text-xl font-bold" style={{ color: tierConfig.color }}>
+                          {userMember.weeklyXP.toLocaleString("pt-BR")}
                         </span>
-                        {i < TIER_ORDER.length - 1 && (
-                          <div className="absolute" />
+                      </div>
+                    </div>
+                  )}
+                  {formatCountdown(timeLeft) && (
+                    <div className="flex items-center gap-1.5 text-right">
+                      <p className="text-[10px] text-[var(--text-faint)]">RESET EM</p>
+                      <motion.div animate={{ opacity: [0.7, 1, 0.7] }} transition={{ duration: 1.5, repeat: Infinity }}
+                                  className="font-mono text-lg font-bold" style={{ color: tierConfig.color }}>
+                        {formatCountdown(timeLeft)}
+                      </motion.div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-center gap-1">
+                {TIER_ORDER.map((t, i) => {
+                  const config = TIER_CONFIG[t];
+                  const isCurrent = t === snapshot.currentTier;
+                  const isPast = currentTierIndex > i;
+                  return (
+                    <div key={t} className="flex flex-col items-center gap-1.5">
+                      <div className="relative flex h-8 w-12 sm:w-16 items-center justify-center rounded-xl text-lg font-bold transition-all"
+                           style={{ background: isCurrent ? `${config.color}25` : isPast ? `${config.color}10` : "rgba(255,255,255,.03)",
+                                   border: `1px solid ${isCurrent ? config.color + "60" : "rgba(255,255,255,.06)"}`,
+                                   boxShadow: isCurrent ? `0 0 20px ${config.glow}` : "none",
+                                   color: isCurrent ? config.color : isPast ? `${config.color}90` : "var(--text-faint)" }}>
+                        <config.icon size={isCurrent ? 20 : 16} />
+                        {isCurrent && (
+                          <motion.div className="absolute -inset-1 rounded-xl border-2" style={{ borderColor: config.color }}
+                                      animate={{ scale: [1, 1.05, 1], opacity: [1, 0.7, 1] }} transition={{ duration: 2, repeat: Infinity }} />
                         )}
                       </div>
-                    );
-                  })}
+                      <span className="text-[10px] font-medium" style={{ color: isCurrent ? config.color : isPast ? `${config.color}80` : "var(--text-faint)" }}>
+                        {config.shortLabel}
+                      </span>
+                      {i < TIER_ORDER.length - 1 && <ArrowUp size={12} className="text-[var(--text-faint)] mx-1 hidden sm:block" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* Live Cohort */}
+        {snapshot.liveCohort?.members?.length ? (
+          <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles size={16} className="text-amber-400" />
+              <span className="eyebrow amber">FOCANDO AGORA</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {snapshot.liveCohort.members.map((member, index) => (
+                <motion.div key={member.profileId} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: index * 0.05 }}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-surface-hover)] border border-amber-400/20">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-white">{member.displayName?.charAt(0) || "?"}</span>
+                  </div>
+                  <span className="text-[10px] text-[var(--text)]">{member.displayName}</span>
+                  <motion.div animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1, repeat: Infinity, delay: index * 0.2 }}
+                              className="w-2 h-2 rounded-full bg-green-400" />
+                </motion.div>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] text-[var(--text-faint)]">Usuários focando no mesmo período que você (janela de 1 hora)</p>
+          </motion.section>
+        ) : null}
+
+        {/* Leaderboard */}
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-8">
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingUp size={16} />
+            <span className="eyebrow">RANKING DA SEMANA</span>
+          </div>
+          
+          <div className="panel p-0">
+            <div className="grid grid-cols-[40px_1fr_80px_60px] gap-3 px-4 py-3 border-b border-[var(--border-subtle)] text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+              <span className="text-center">Pos</span>
+              <span>Usuário</span>
+              <span className="text-right">XP</span>
+              <span className="text-center"></span>
+            </div>
+
+            <div className="divide-y divide-[var(--border-subtle)]">
+              {snapshot.members.map((member, index) => {
+                const isCurrentUser = member.profileId === user?.uid;
+                const isInTop3 = member.rank <= 3;
+                const isInPromoZone = member.rank <= snapshot.promotionZoneEnd;
+                const isInDemoZone = member.rank >= snapshot.demotionZoneStart;
+
+                return (
+                  <motion.div key={member.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.02 }}
+                              className={`grid grid-cols-[40px_1fr_80px_60px] gap-3 px-4 py-3 items-center ${
+                                isCurrentUser ? "bg-[var(--bg-surface-hover)]" :
+                                isInPromoZone && !isInDemoZone ? "bg-green-500/5" :
+                                isInDemoZone ? "bg-red-500/5" : ""
+                              }`}>
+                    <div className="flex items-center justify-center">
+                      {isInTop3 ? (
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                             style={{ background: member.rank === 1 ? "#ffd700" : member.rank === 2 ? "#c0c0c0" : "#cd7f32" }}>
+                          {member.rank}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-mono text-[var(--text-faint)]">{member.rank}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
+                           style={{ background: isCurrentUser ? `linear-gradient(135deg, ${tierConfig.color}20, ${tierConfig.color}40)` : "var(--bg-tertiary)" }}>
+                        {member.profile?.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={member.profile.photoUrl} alt={member.profile.displayName} className="w-full h-full rounded-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-bold text-white">{member.profile?.displayName?.charAt(0) || member.displayName?.charAt(0) || "?"}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-[var(--text)] truncate">
+                          {member.profile?.displayName || member.displayName || "Anônimo"}
+                        </p>
+                        {isCurrentUser && <p className="text-[8px] text-amber-400">você</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-1">
+                      <Flame size={12} className="text-[var(--orange)]" />
+                      <span className="text-[10px] font-mono text-[var(--text)]">{member.weeklyXP.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      {isInPromoZone && !isInDemoZone && (
+                        <motion.div animate={{ y: [-2, 0, -2] }} transition={{ duration: 1.5, repeat: Infinity }}>
+                          <ArrowUp size={14} className="text-green-400" />
+                        </motion.div>
+                      )}
+                      {isInDemoZone && (
+                        <motion.div animate={{ y: [2, 0, 2] }} transition={{ duration: 1.5, repeat: Infinity }}>
+                          <ArrowDown size={14} className="text-red-400" />
+                        </motion.div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4 px-2">
+            <div className="flex items-center gap-2">
+              <div className="h-0.5 flex-1 bg-green-400/30" />
+              <span className="text-[10px] text-green-400 font-medium whitespace-nowrap">Zona de Promoção (Top {snapshot.promotionZoneEnd})</span>
+            </div>
+            {snapshot.currentTier !== "BRONZE" && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[10px] text-red-400 font-medium whitespace-nowrap">Zona de Rebaixamento (Top {snapshot.demotionZoneStart}+)</span>
+                <div className="h-0.5 flex-1 bg-red-400/30" />
+              </div>
+            )}
+          </div>
+        </motion.section>
+
+        {/* Tier Info */}
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="grid gap-5 md:grid-cols-2">
+          <div className="panel p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Users size={16} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">SOBRE SEU TIER</span>
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              {isLegends ? "Lendas é o tier mais alto. Parabéns por chegar tão longe! Os top 3 ainda ganham moedas, mas não há promoção acima deste nível."
+               : isDiamante ? "Fique no Top 5 do seu grupo para avançar para a Liga Lendas na próxima semana!"
+               : nextTier ? `Fique no Top ${snapshot.promotionZoneEnd} para ser promovido para ${TIER_CONFIG[nextTier].label}.`
+               : "Mantenha o bom trabalho!"}
+            </p>
+            {nextTier && (
+              <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                <p className="text-[10px] text-[var(--text-faint)] mb-2">Próximo tier</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                       style={{ background: `linear-gradient(135deg, ${TIER_CONFIG[nextTier].color}20, ${TIER_CONFIG[nextTier].color}40)` }}>
+                    <TIER_CONFIG[nextTier].icon size={14} style={{ color: TIER_CONFIG[nextTier].color }} />
+                  </div>
+                  <span className="text-sm font-medium text-[var(--text)]">{TIER_CONFIG[nextTier].label}</span>
                 </div>
               </div>
-            </motion.div>
+            )}
+            {isDiamante && (
+              <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                <p className="text-[10px] text-amber-400 mb-2 flex items-center gap-1">
+                  <Crown size={12} /> Qualificação para Lendas
+                </p>
+                <p className="text-[11px] text-[var(--text-muted)]">Termine a semana no Top 5 para entrar na Liga Lendas!</p>
+              </div>
+            )}
+          </div>
 
-            {/* Leaderboard Table */}
-            <motion.div
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className="glass-card mb-6 overflow-hidden"
-            >
-              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-4">
-                <h3 className="font-display text-lg text-[var(--text-secondary)]">
-                  Classificação
-                </h3>
-                <span className="text-xs text-[var(--text-muted)]">
-                  {snapshot.entries.length} participante{snapshot.entries.length !== 1 ? "s" : ""}
+          <div className="panel p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <TrendingUp size={16} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">SUA POSIÇÃO</span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--text-faint)]">Ranking atual</span>
+                <span className="font-mono text-xl font-bold" style={{ color: tierConfig.color }}>
+                  #{snapshot.userRank}
                 </span>
               </div>
-
-              <div className="overflow-x-auto">
-                <motion.table
-                  variants={stagger}
-                  initial="hidden"
-                  animate="visible"
-                  className="w-full text-left text-sm"
-                >
-                  <thead>
-                    <tr className="border-b border-[var(--border-subtle)] text-[11px] uppercase tracking-wider text-[var(--text-faint)]">
-                      <th className="w-12 px-4 py-3 text-center font-medium">#</th>
-                      <th className="px-4 py-3 font-medium">Participante</th>
-                      <th className="w-20 px-4 py-3 text-right font-medium">XP</th>
-                      <th className="w-20 px-4 py-3 text-center font-medium">Sequência</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.entries.map((entry) => {
-                      const isPromo = snapshot.promotionUntilRank !== null && entry.rank <= snapshot.promotionUntilRank;
-                      const isDemo = snapshot.demotionFromRank !== null && entry.rank >= snapshot.demotionFromRank;
-                      const isCurrentUser = entry.isCurrentUser;
-                      const borderColor = isPromo ? "var(--green)" : isDemo ? "var(--red)" : "transparent";
-                      const bgStyle = isCurrentUser
-                        ? `${tierMeta.color}12`
-                        : undefined;
-
-                      return (
-                        <motion.tr
-                          key={entry.profileId}
-                          variants={rowFade}
-                          className="border-b border-[var(--border-subtle)] transition-colors last:border-b-0"
-                          style={{
-                            background: bgStyle,
-                            borderLeft: `3px solid ${borderColor}`,
-                          }}
-                        >
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className="font-mono text-xs font-bold"
-                              style={{
-                                color: isPromo ? "var(--green)" : isDemo ? "var(--red)" : "var(--text-muted)",
-                              }}
-                            >
-                              {entry.rank}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <UserAvatar photoUrl={entry.photoUrl} displayName={entry.displayName} size={36} />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="truncate font-medium"
-                                    style={{ color: isCurrentUser ? tierMeta.color : "var(--text)" }}
-                                  >
-                                    {entry.displayName}
-                                  </span>
-                                  {entry.isFriend && (
-                                    <span
-                                      className="shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-medium"
-                                      style={{ background: "var(--accent-bg)", color: "var(--accent)" }}
-                                    >
-                                      amigo
-                                    </span>
-                                  )}
-                                </div>
-                                {entry.username && (
-                                  <span className="text-xs text-[var(--text-faint)]">@{entry.username}</span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm font-semibold" style={{ color: tierMeta.color }}>
-                            {entry.xp.toLocaleString("pt-BR")}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)]">
-                              <Flame size={12} className="text-[var(--orange)]" />
-                              {entry.currentStreak}
-                            </span>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </motion.table>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--text-faint)]">Total de membros</span>
+                <span className="font-mono text-sm">{snapshot.members.length}</span>
               </div>
-            </motion.div>
-
-            {/* How it works */}
-            <motion.div
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
-              className="glass-card p-6 sm:p-8"
-            >
-              <div className="mb-4 flex items-center gap-2">
-                <Trophy size={16} className="text-[var(--orange)]" />
-                <h3 className="font-display text-base text-[var(--text-secondary)]">Como funciona a Liga</h3>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--text-faint)]">Tier</span>
+                <span className="text-sm font-medium" style={{ color: tierConfig.color }}>{tierConfig.label}</span>
               </div>
+              {isInPromotionZone && (
+                <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                            className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+                  <p className="text-[10px] text-green-400 font-medium flex items-center gap-1">
+                    <ArrowUp size={12} /> Você está na zona de promoção!
+                  </p>
+                </motion.div>
+              )}
+              {isInDemotionZone && (
+                <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <p className="text-[10px] text-red-400 font-medium flex items-center gap-1">
+                    <ArrowDown size={12} /> Cuidado: zona de rebaixamento
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          </div>
+        </motion.section>
 
-              <div className="space-y-3 text-sm leading-relaxed text-[var(--text-muted)]">
-                <p>
-                  Seu XP é calculado com base nos minutos de foco da semana, com bônus de streak.
-                </p>
-                <p>
-                  No fim de semana, os top N sobem de tier e os últimos N descem.
-                </p>
-              </div>
-
-              <div className="mt-5 flex items-center gap-2 text-xs">
-                {TIER_ORDER.map((t, i) => (
-                  <span key={t} className="flex items-center gap-1.5">
-                    <span
-                      className="flex h-6 w-6 items-center justify-center rounded-md text-sm"
-                      style={{ background: `${TIER_META[t].color}15`, border: `1px solid ${TIER_META[t].color}30` }}
-                    >
-                      {TIER_META[t].icon}
-                    </span>
-                    <span style={{ color: TIER_META[t].color }}>{TIER_META[t].label}</span>
-                    {i < TIER_ORDER.length - 1 && (
-                      <span className="mx-1 text-[var(--text-faint)]">→</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            </motion.div>
-          </>
+        {error && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
+            {error}
+          </motion.div>
         )}
       </main>
     </AppShell>

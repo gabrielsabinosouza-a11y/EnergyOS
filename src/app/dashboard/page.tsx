@@ -259,10 +259,13 @@ export default function DashboardPage() {
 
   async function moveKanbanTask(id: number, newStatus: KanbanStatus, newPosition: number) {
     const prev = kanbanTasks;
+    // Optimistic update: update the moved task
     setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus, position: newPosition } : k));
     try {
-      const result = await api.updateKanbanTask(id, { status: newStatus, position: newPosition });
-      setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
+      const result = await api.moveKanbanTask(id, newStatus, newPosition);
+      // Re-fetch all tasks to get the updated positions from the server
+      const updatedTasks = await api.getKanban();
+      setKanbanTasks(updatedTasks.tasks);
     } catch {
       setKanbanTasks(prev);
     }

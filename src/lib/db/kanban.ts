@@ -178,6 +178,88 @@ export async function deleteKanbanTask(profileId: string, taskId: number): Promi
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Tarefa não encontrada.");
 }
 
+export interface MoveKanbanTaskInput {
+  taskId: number;
+  newStatus: KanbanStatus;
+  newPosition: number;
+}
+
+export async function moveKanbanTask(
+  profileId: string,
+  input: MoveKanbanTaskInput
+): Promise<KanbanTask> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(input.taskId) || input.taskId <= 0) {
+    throw new ValidationError("Tarefa inválida.");
+  }
+  const { taskId, newStatus, newPosition } = input;
+  const validatedStatus = parseEnum(newStatus, KANBAN_STATUSES, "Status");
+  const validatedPosition = Math.max(0, Math.floor(input.newPosition));
+
+  // Start transaction
+  const client = await pool.connect();
+  try {
+    // 1. Get the current task to find its old status and position
+    const taskResult = await client.query<KanbanRow>(
+      `select status, position from kanban_tasks where profile_id = $1 and id = $2`,
+      [profileId, taskId]
+    );
+    if (!taskResult.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+    
+    const oldStatus = taskResult.rows[0].status;
+    const oldPosition = taskResult.rows[0].position;
+    
+    // If moving within the same column, we need to reorder positions
+    if (oldStatus === validatedStatus) {
+      // Update positions in the same column
+      if (validatedPosition > oldPosition) {
+        // Moving down: decrement positions between old and new
+        await client.query(
+          `update kanban_tasks set position = position - 1 
+           where profile_id = $1 and status = $2 and position > $3 and position <= $4`,
+          [profileId, oldStatus, oldPosition, validatedPosition]
+        );
+      } else if (validatedPosition < oldPosition) {
+        // Moving up: increment positions between new and old
+        await client.query(
+          `update kanban_tasks set position = position + 1 
+           where profile_id = $1 and status = $2 and position >= $3 and position < $4`,
+          [profileId, oldStatus, validatedPosition, oldPosition]
+        );
+      }
+    } else {
+      // Moving between different columns
+      // 1. Remove from old column - shift positions down
+      await client.query(
+        `update kanban_tasks set position = position - 1 
+         where profile_id = $1 and status = $2 and position > $3`,
+        [profileId, oldStatus, oldPosition]
+      );
+      
+      // 2. Add to new column - shift positions up
+      await client.query(
+        `update kanban_tasks set position = position + 1 
+         where profile_id = $1 and status = $2 and position >= $3`,
+        [profileId, validatedStatus, validatedPosition]
+      );
+    }
+    
+    // 3. Update the moved task itself
+    const result = await client.query<KanbanRow>(
+      `update kanban_tasks set status = $1, position = $2, updated_at = now()
+       where profile_id = $3 and id = $4
+       returning id, profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id, created_at, updated_at`,
+      [validatedStatus, validatedPosition, profileId, taskId]
+    );
+    
+    if (!result.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+    
+    return mapKanban(result.rows[0]);
+  } finally {
+    client.release();
+  }
+}
+
 export async function promoteTaskToKanban(profileId: string, taskId: number): Promise<KanbanTask> {
   parseProfileId(profileId);
   if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");

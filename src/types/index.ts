@@ -23,6 +23,61 @@ export type FriendshipStatus = "pending" | "accepted";
 export type LeagueTier = "faisca" | "chama" | "aura" | "nucleo";
 export type LeagueResult = "promoted" | "demoted" | "stayed";
 
+// New League System with Bronze/Prata/Ouro/Diamante/Lendas
+export type NewLeagueTier = "BRONZE" | "PRATA" | "OURO" | "DIAMANTE" | "LENDAS";
+
+export interface LeagueGroup {
+  id: number;
+  tier: NewLeagueTier;
+  weekStartDate: string;
+  weekEndDate: string;
+  isLegendsGroup: boolean;
+  createdAt: string;
+}
+
+export interface LeagueGroupMember {
+  id: number;
+  leagueGroupId: number;
+  profileId: string;
+  profile?: {
+    id: string;
+    displayName: string;
+    photoUrl?: string;
+    username?: string;
+  };
+  weeklyXP: number;
+  rank: number;
+  joinedAt: string;
+}
+
+export interface NewLeagueSnapshot {
+  currentTier: NewLeagueTier;
+  currentGroup: LeagueGroup;
+  members: LeagueGroupMember[];
+  weekStart: string;
+  weekEnd: string;
+  resetIn: string; // "2d 3h 15m"
+  isLegendsGroup: boolean;
+  // For display
+  promotionZoneEnd: number; // Top N ranks for promotion
+  demotionZoneStart: number; // Bottom N ranks for demotion
+  legendsQualificationInfo?: {
+    isDiamante: boolean;
+    top5FromEachDiamanteGroup: boolean;
+  };
+  liveCohort?: {
+    title: string;
+    members: LeagueGroupMember[];
+  };
+}
+
+export interface CohortMember {
+  profileId: string;
+  displayName: string;
+  photoUrl?: string;
+  sessionStartTime: string;
+}
+
 export interface PublicProfile {
   id: string;
   displayName: string;

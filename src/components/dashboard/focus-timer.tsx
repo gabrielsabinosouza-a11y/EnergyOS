@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Square, Timer, Zap, Lock, X } from "lucide-react";
+import { Play, Pause, Square, Timer, Zap, Lock, X, Bell } from "lucide-react";
 import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
@@ -14,8 +14,6 @@ import {
   type EnergyStage,
 } from "@/lib/energy-assets";
 import { addGardenEntry } from "@/lib/garden-store";
-
-// ─── Constants ───────────────────────────────────────────────────────────────
 
 const RING_SIZE = 260;
 const MAX_DURATION = 120;
@@ -42,6 +40,19 @@ function resolveStage(progress: number, isActive: boolean, isExtinguished: boole
   if (progress < 25) return "spark";
   if (progress < 70) return "forming";
   return "full";
+}
+
+function requestNotificationPermission() {
+  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+    void Notification.requestPermission();
+  }
+}
+
+function sendNotification(title: string, body: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/icons_8bits/logo.png" });
+  }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -88,7 +99,6 @@ function EnergyPickerModal({
             <X size={15} />
           </button>
         </div>
-
         <div className="grid grid-cols-4 gap-3">
           {ENERGY_TYPES.map((type) => {
             const cfg = ENERGY_CONFIGS[type];
@@ -100,20 +110,14 @@ function EnergyPickerModal({
                 disabled={cfg.locked}
                 className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition"
                 style={{
-                  background: isSelected ? `${cfg.glow}` : "transparent",
+                  background: isSelected ? cfg.glow : "transparent",
                   border: isSelected ? `1px solid ${cfg.accent}44` : "1px solid transparent",
                   opacity: cfg.locked ? 0.4 : 1,
                   cursor: cfg.locked ? "not-allowed" : "pointer",
                 }}
               >
                 <div className="relative w-12 h-12">
-                  <Image
-                    src={cfg.assets.full}
-                    alt={cfg.label}
-                    fill
-                    style={{ objectFit: "contain" }}
-                    unoptimized
-                  />
+                  <Image src={cfg.assets.full} alt={cfg.label} fill style={{ objectFit: "contain" }} unoptimized />
                   {cfg.locked && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Lock size={14} className="text-[var(--text-faint)]" />
@@ -130,52 +134,69 @@ function EnergyPickerModal({
   );
 }
 
-// ─── Countdown ring (active state) ───────────────────────────────────────────
+// ─── Countdown ring ───────────────────────────────────────────────────────────
 
-function CountdownRing({
-  progress,
-  size,
-  isPaused,
-  accentColor,
-}: {
-  progress: number;
-  size: number;
-  isPaused: boolean;
-  accentColor: string;
+function CountdownRing({ progress, size, isPaused, accentColor }: {
+  progress: number; size: number; isPaused: boolean; accentColor: string;
 }) {
   const cx = size / 2;
   const cy = size / 2;
   const radius = (size - 16) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeWidth = 8;
   const arcLength = (progress / 100) * circumference;
   const color = isPaused ? "#ffb86b" : accentColor;
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      style={{ maxWidth: "100%", height: "auto", display: "block" }}
-    >
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: "100%", height: "auto", display: "block" }}>
       <defs>
         <filter id="countdown-glow">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
-      <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={strokeWidth} opacity={0.35} />
+      <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={8} opacity={0.35} />
       <circle
-        cx={cx} cy={cy} r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
+        cx={cx} cy={cy} r={radius} fill="none"
+        stroke={color} strokeWidth={8} strokeLinecap="round"
         strokeDasharray={`${arcLength} ${circumference - arcLength}`}
         transform={`rotate(-90 ${cx} ${cy})`}
-        style={{ filter: "url(#countdown-glow)", transition: "stroke-dasharray 0.3s linear, stroke 0.3s" }}
+        style={{ filter: "url(#countdown-glow)", transition: "stroke-dasharray 1s linear, stroke 0.3s" }}
       />
     </svg>
+  );
+}
+
+// ─── Completion banner ────────────────────────────────────────────────────────
+
+function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, onClaim }: {
+  coins: number; rewardCount: number; energyLabel: string; accentColor: string; onClaim: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -12, scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 340, damping: 24 }}
+      className="mt-4 rounded-2xl border p-4 flex flex-col items-center gap-3 text-center"
+      style={{ borderColor: `${accentColor}33`, background: `${accentColor}0f` }}
+    >
+      <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Sessão concluída!</span>
+      <div className="flex items-center gap-2">
+        <Zap size={16} className="text-[#ffb86b]" />
+        <span className="font-mono font-bold text-[#ffb86b] text-lg">+{coins} moedas</span>
+        {rewardCount > 1 && (
+          <span className="text-xs text-[var(--text-muted)]">· {rewardCount}× {energyLabel}</span>
+        )}
+      </div>
+      <motion.button
+        whileTap={{ scale: 0.94 }}
+        onClick={onClaim}
+        className="rounded-full px-6 py-2 text-sm font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+        style={{ background: accentColor }}
+      >
+        Resgatar moedas
+      </motion.button>
+    </motion.div>
   );
 }
 
@@ -184,140 +205,198 @@ function CountdownRing({
 export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerProps) {
   const [duration, setDuration] = useState(25);
   const [state, setState] = useState<TimerState>("idle");
-  const [session, setSession] = useState<{ id: number; startedAt: number } | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [pauseAccum, setPauseAccum] = useState(0);   // total ms paused so far
-  const [pauseStart, setPauseStart] = useState(0);   // timestamp when current pause began
+  const [remaining, setRemaining] = useState(25 * 60);
   const [lastCoins, setLastCoins] = useState(0);
   const [showComplete, setShowComplete] = useState(false);
   const [rewardCount, setRewardCount] = useState(1);
   const [isExtinguished, setIsExtinguished] = useState(false);
   const [selectedEnergy, setSelectedEnergy] = useState<EnergyType>("flame");
   const [showPicker, setShowPicker] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+
+  // Stable refs — never cause interval restarts
+  const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
+  const remainingRef = useRef(25 * 60);
+  const stateRef = useRef<TimerState>("idle");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedEnergyRef = useRef<EnergyType>("flame");
+  const durationRef = useRef(25);
+
+  // Keep refs in sync with state
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { selectedEnergyRef.current = selectedEnergy; }, [selectedEnergy]);
+  useEffect(() => {
+    durationRef.current = duration;
+    if (state === "idle") {
+      remainingRef.current = duration * 60;
+      setRemaining(duration * 60);
+    }
+  }, [duration, state]);
+
+  // Check notification permission on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
 
   const totalDurationSec = duration * 60;
-  const remaining = Math.max(0, totalDurationSec - elapsed);
-  const countdownProgress = Math.min((elapsed / totalDurationSec) * 100, 100);
-  const previewCoins = calculateCoins(duration);
+  const countdownProgress = Math.min(((totalDurationSec - remaining) / totalDurationSec) * 100, 100);
   const isActive = state !== "idle";
   const isPaused = state === "paused";
-
   const stage = resolveStage(countdownProgress, isActive, isExtinguished);
   const cfg = ENERGY_CONFIGS[selectedEnergy];
-  const imageSrc = cfg.assets[stage];
   const imageSize = Math.round(RING_SIZE * 0.58);
 
-  // ── Tick ──────────────────────────────────────────────────────────────────
-  const tick = useCallback(() => {
-    setSession((sess) => {
-      if (!sess) return sess;
-      const now = Date.now();
-      const effectiveElapsed = Math.floor((now - sess.startedAt - pauseAccum) / 1000);
-      setElapsed(Math.max(0, effectiveElapsed));
-      return sess;
-    });
-  }, [pauseAccum]);
+  function startInterval() {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      if (stateRef.current !== "running") return;
+      remainingRef.current -= 1;
+      setRemaining(remainingRef.current);
 
-  useEffect(() => {
-    if (state !== "running") {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
+      if (remainingRef.current <= 0) {
+        clearInterval(intervalRef.current!);
+        void completeSession();
+      }
+    }, 1000);
+  }
+
+  function stopInterval() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    timerRef.current = setInterval(tick, 250);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [state, tick]);
+  }
 
-  // Auto-complete when time runs out
-  useEffect(() => {
-    if (state === "running" && elapsed >= totalDurationSec && session) {
-      void handleStop(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elapsed, totalDurationSec, state]);
+  async function completeSession() {
+    const sess = sessionRef.current;
+    if (!sess) return;
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+    const focusedSeconds = durationRef.current * 60;
+    const focusedMinutes = durationRef.current;
+
+    try {
+      const result = await onEnd(sess.id, focusedSeconds);
+      setLastCoins(result.xpAwarded);
+
+      const reward = getEnergyReward(focusedMinutes);
+      setRewardCount(reward);
+      setShowComplete(true);
+
+      if (reward > 0) {
+        for (let i = 0; i < reward; i++) {
+          addGardenEntry({
+            energyType: selectedEnergyRef.current,
+            durationMinutes: focusedMinutes,
+            reward,
+            plantedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      // Browser notification
+      sendNotification(
+        "⚡ Sessão concluída!",
+        `Você ganhou ${result.xpAwarded} moedas. Resgate agora no energyOS.`
+      );
+    } catch { /* handled by parent */ }
+
+    sessionRef.current = null;
+    setState("idle");
+    stateRef.current = "idle";
+  }
+
   async function handleStart() {
+    requestNotificationPermission();
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
     try {
       const result = await onStart(duration);
       const startedAt = new Date(result.session.startedAt).getTime();
-      setSession({ id: result.session.id, startedAt });
-      setState("running");
-      setElapsed(0);
-      setPauseAccum(0);
-      setPauseStart(0);
+      sessionRef.current = { id: result.session.id, startedAt };
+
+      const totalSec = duration * 60;
+      remainingRef.current = totalSec;
+      setRemaining(totalSec);
       setLastCoins(0);
       setShowComplete(false);
       setIsExtinguished(false);
+
+      setState("running");
+      stateRef.current = "running";
+      startInterval();
     } catch { /* handled by parent */ }
   }
 
   function handlePause() {
     if (state !== "running") return;
-    if (timerRef.current) clearInterval(timerRef.current);
-    setPauseStart(Date.now());
     setState("paused");
+    stateRef.current = "paused";
+    // interval keeps running but tick is gated by stateRef check
   }
 
   function handleResume() {
     if (state !== "paused") return;
-    setPauseAccum((prev) => prev + (Date.now() - pauseStart));
-    setPauseStart(0);
     setState("running");
+    stateRef.current = "running";
   }
 
   async function handleStop(giveUp = false) {
-    if (!session) return;
-    if (timerRef.current) clearInterval(timerRef.current);
-
+    stopInterval();
     if (giveUp) setIsExtinguished(true);
 
-    const now = Date.now();
-    const totalPaused = pauseAccum + (state === "paused" ? now - pauseStart : 0);
-    const focusedSeconds = Math.max(0, Math.floor((now - session.startedAt - totalPaused) / 1000));
-    const focusedMinutes = Math.floor(focusedSeconds / 60);
+    const sess = sessionRef.current;
+    if (!sess) { setState("idle"); return; }
+
+    const focusedSeconds = Math.max(0, durationRef.current * 60 - remainingRef.current);
 
     try {
-      const result = await onEnd(session.id, focusedSeconds);
-      setLastCoins(result.xpAwarded);
-
+      const result = await onEnd(sess.id, focusedSeconds);
       if (!giveUp) {
-        const reward = getEnergyReward(focusedMinutes);
-        setRewardCount(reward);
+        setLastCoins(result.xpAwarded);
+        setRewardCount(getEnergyReward(Math.floor(focusedSeconds / 60)));
         setShowComplete(true);
-
-        // Persist to garden
-        if (reward > 0) {
-          for (let i = 0; i < reward; i++) {
-            addGardenEntry({
-              energyType: selectedEnergy,
-              durationMinutes: focusedMinutes,
-              reward,
-              plantedAt: new Date().toISOString(),
-            });
-          }
-        }
       }
     } catch { /* handled by parent */ }
 
+    sessionRef.current = null;
     setState("idle");
-    setSession(null);
-    setElapsed(0);
-    setPauseAccum(0);
-    setPauseStart(0);
+    stateRef.current = "idle";
+    remainingRef.current = durationRef.current * 60;
+    setRemaining(durationRef.current * 60);
   }
+
+  // Cleanup on unmount
+  useEffect(() => () => stopInterval(), []);
 
   return (
     <div className="panel p-6">
-      <div className="flex items-center gap-2 mb-5">
-        <Timer size={16} className="text-[var(--accent)]" />
-        <span className="eyebrow muted">FOCO</span>
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Timer size={16} className="text-[var(--accent)]" />
+          <span className="eyebrow muted">FOCO</span>
+        </div>
+        {/* Notification permission prompt */}
+        {notifPermission === "default" && (
+          <button
+            onClick={() => {
+              requestNotificationPermission();
+              setTimeout(() => {
+                if ("Notification" in window) setNotifPermission(Notification.permission);
+              }, 500);
+            }}
+            className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)] transition"
+          >
+            <Bell size={10} /> Ativar notificações
+          </button>
+        )}
       </div>
 
-      {/* ── Ring + energy image ─────────────────────────────────────────── */}
       <div className="flex flex-col items-center">
+        {/* Ring */}
         <div className="relative mx-auto" style={{ width: RING_SIZE, maxWidth: "100%", aspectRatio: "1 / 1" }}>
-          {/* Progress ring */}
           {state === "idle" ? (
             <CircularDurationPicker
               value={duration}
@@ -338,34 +417,23 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             />
           )}
 
-          {/* Energy image — centered inside ring */}
+          {/* Energy image */}
           <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2 }}>
-            {/* Glow disc */}
             <div style={{
               position: "absolute",
-              width: imageSize * 0.9,
-              height: imageSize * 0.9,
+              width: imageSize * 0.9, height: imageSize * 0.9,
               borderRadius: "50%",
               background: `radial-gradient(circle, ${cfg.glow} 0%, transparent 72%)`,
               filter: "blur(2px)",
             }} />
 
-            {/* Clickable in idle to open picker */}
             <button
               onClick={() => { if (state === "idle") setShowPicker(true); }}
-              style={{
-                position: "relative",
-                zIndex: 1,
-                cursor: state === "idle" ? "pointer" : "default",
-                background: "none",
-                border: "none",
-                padding: 0,
-              }}
+              style={{ position: "relative", zIndex: 1, cursor: state === "idle" ? "pointer" : "default", background: "none", border: "none", padding: 0 }}
               aria-label="Escolher energia"
             >
               <AnimatePresence mode="wait">
                 {showComplete && rewardCount > 1 ? (
-                  // Multi-energy celebration cluster
                   <motion.div
                     key="cluster"
                     initial={{ opacity: 0 }}
@@ -376,9 +444,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                     {Array.from({ length: rewardCount }).map((_, i) => {
                       const angle = (i / rewardCount) * 2 * Math.PI - Math.PI / 2;
                       const r = imageSize * 0.28;
-                      const x = Math.cos(angle) * r;
-                      const y = Math.sin(angle) * r;
-                      const size = Math.round(imageSize * 0.42);
+                      const sz = Math.round(imageSize * 0.42);
                       return (
                         <motion.div
                           key={i}
@@ -386,21 +452,12 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: i * 0.12, type: "spring", stiffness: 320, damping: 18 }}
                           style={{
-                            position: "absolute",
-                            left: "50%",
-                            top: "50%",
-                            transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                            position: "absolute", left: "50%", top: "50%",
+                            transform: `translate(calc(-50% + ${Math.cos(angle) * r}px), calc(-50% + ${Math.sin(angle) * r}px))`,
                             filter: `drop-shadow(0 0 8px ${cfg.accent})`,
                           }}
                         >
-                          <Image
-                            src={cfg.assets.full}
-                            alt={selectedEnergy}
-                            width={size}
-                            height={size}
-                            style={{ objectFit: "contain" }}
-                            unoptimized
-                          />
+                          <Image src={cfg.assets.full} alt={selectedEnergy} width={sz} height={sz} style={{ objectFit: "contain" }} unoptimized />
                         </motion.div>
                       );
                     })}
@@ -409,57 +466,39 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                   <motion.div
                     key={`${selectedEnergy}-${stage}`}
                     initial={{ opacity: 0, scale: 0.88, filter: "blur(6px)" }}
-                    animate={
-                      showComplete && stage === "full"
-                        ? { opacity: 1, scale: [1, 1.12, 1], filter: "blur(0px)" }
-                        : { opacity: 1, scale: 1, filter: "blur(0px)" }
-                    }
+                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                     exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
                   >
                     <Image
-                      src={imageSrc}
+                      src={cfg.assets[stage]}
                       alt={`${selectedEnergy} ${stage}`}
-                      width={imageSize}
-                      height={imageSize}
+                      width={imageSize} height={imageSize}
                       style={{ objectFit: "contain", display: "block" }}
-                      unoptimized
-                      priority
+                      unoptimized priority
                     />
                   </motion.div>
                 )}
               </AnimatePresence>
             </button>
 
-            {/* "tap to choose" hint in idle */}
             {state === "idle" && (
-              <span
-                style={{
-                  position: "absolute",
-                  bottom: imageSize * 0.05,
-                  fontSize: 9,
-                  color: "var(--text-faint)",
-                  letterSpacing: "0.08em",
-                  pointerEvents: "none",
-                  textTransform: "uppercase",
-                }}
-              >
+              <span style={{
+                position: "absolute", bottom: imageSize * 0.05,
+                fontSize: 9, color: "var(--text-faint)",
+                letterSpacing: "0.08em", pointerEvents: "none", textTransform: "uppercase",
+              }}>
                 toque para trocar
               </span>
             )}
           </div>
         </div>
 
-        {/* ── Countdown ──────────────────────────────────────────────────── */}
+        {/* Countdown display */}
         <div className="mt-4 flex flex-col items-center gap-1">
           <span
             className="font-mono font-bold tabular-nums leading-none"
-            style={{
-              fontSize: 44,
-              color: isPaused ? "#ffb86b" : "var(--text)",
-              letterSpacing: "-0.04em",
-              transition: "color 0.3s",
-            }}
+            style={{ fontSize: 44, color: isPaused ? "#ffb86b" : "var(--text)", letterSpacing: "-0.04em", transition: "color 0.3s" }}
           >
             {isActive ? formatTime(remaining) : `${String(duration).padStart(2, "0")}:00`}
           </span>
@@ -468,35 +507,30 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           </span>
         </div>
 
-        {/* Coins preview / earned */}
-        <div className="mt-3 h-7 flex items-center justify-center">
-          {!isActive && !showComplete && (
-            <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
-              <Zap size={11} className="text-[#ffb86b]" />
-              <span>{previewCoins} moedas se completar</span>
-            </div>
-          )}
-          <AnimatePresence>
-            {showComplete && lastCoins > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.8 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="flex items-center gap-1.5 rounded-full bg-[rgba(255,184,107,.12)] px-3 py-1.5"
-              >
-                <Zap size={13} className="text-[#ffb86b]" />
-                <span className="text-xs font-mono font-bold text-[#ffb86b]">+{lastCoins} moedas!</span>
-                {rewardCount > 1 && (
-                  <span className="text-xs font-mono text-[var(--text-muted)]">· {rewardCount}× {cfg.label}</span>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Coins preview */}
+        {!isActive && !showComplete && (
+          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
+            <Zap size={11} className="text-[#ffb86b]" />
+            <span>{calculateCoins(duration)} moedas se completar</span>
+          </div>
+        )}
 
-        {/* ── Action buttons ──────────────────────────────────────────────── */}
+        {/* Completion banner with claim button */}
+        <AnimatePresence>
+          {showComplete && (
+            <CompletionBanner
+              coins={lastCoins}
+              rewardCount={rewardCount}
+              energyLabel={cfg.label}
+              accentColor={cfg.accent}
+              onClaim={() => setShowComplete(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Action buttons */}
         <div className="mt-4 flex justify-center gap-2">
-          {state === "idle" && (
+          {state === "idle" && !showComplete && (
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={handleStart}
@@ -536,7 +570,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
         </div>
       </div>
 
-      {/* ── Today stats ─────────────────────────────────────────────────── */}
+      {/* Today stats */}
       <div className="grid grid-cols-2 gap-2 mt-6">
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
           <div className="text-lg font-mono font-bold" style={{ color: cfg.accent }}>{todayStats.minutesFocused}min</div>
@@ -548,7 +582,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
         </div>
       </div>
 
-      {/* ── Recent sessions ─────────────────────────────────────────────── */}
+      {/* Recent sessions */}
       {history.length > 0 && (
         <div className="mt-4">
           <span className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider">Sessões recentes</span>
@@ -563,7 +597,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
         </div>
       )}
 
-      {/* ── Energy picker modal ──────────────────────────────────────────── */}
+      {/* Energy picker modal */}
       <AnimatePresence>
         {showPicker && (
           <EnergyPickerModal

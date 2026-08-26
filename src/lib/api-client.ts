@@ -124,6 +124,8 @@ export const api = {
   updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
     request<{ task: KanbanTask }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteKanbanTask: (id: number) => request<{ ok: true }>(`/api/kanban/${id}`, { method: "DELETE" }),
+  moveKanbanTask: (taskId: number, newStatus: "todo" | "doing" | "done", newPosition: number) =>
+    request<{ task: KanbanTask }>("/api/kanban/move", { method: "POST", body: JSON.stringify({ taskId, newStatus, newPosition }) }),
   promoteTaskToKanban: (taskId: number) =>
     request<{ task: KanbanTask }>("/api/kanban/promote", { method: "POST", body: JSON.stringify({ taskId }) }),
   // Labels
