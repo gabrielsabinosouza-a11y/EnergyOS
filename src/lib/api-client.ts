@@ -214,6 +214,7 @@ export const api = {
 
   // League
   getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
+  getLeagueNew: () => request<import("@/lib/db/league-new").LeagueNewSnapshot>("/api/league-new"),
 
   // Achievements
   getAchievements: () => request<{ achievements: AchievementProgress[] }>("/api/achievements"),

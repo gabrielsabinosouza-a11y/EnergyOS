@@ -45,6 +45,7 @@ function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: strin
     id: Number(row.id),
     leagueGroupId: Number(row.league_group_id),
     profileId: row.profile_id,
+    displayName: row.display_name,
     profile: row.display_name ? {
       id: row.profile_id,
       displayName: row.display_name,
@@ -251,13 +252,17 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   if (userXP >= 5000) tier = "DIAMANTE";
   else if (userXP >= 3000) tier = "OURO";
   else if (userXP >= 1500) tier = "PRATA";
-  
+
+  const weekEnd = new Date(start);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
   let group = await getLeagueGroupByTierAndWeek(tier, start);
   if (!group) {
     const result = await pool.query<LeagueGroupRow>(
       `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
-       values ($1, $2, $3, $4) returning id, tier, week_start_date, week_end_date, is_legends_group, created_at`,
-      [tier, start, new Date(start).toISOString().slice(0, 10), tier === "LENDAS"]
+       values ($1, $2, $3, false) returning id, tier, week_start_date, week_end_date, is_legends_group, created_at`,
+      [tier, start, weekEndStr]
     );
     group = mapLeagueGroup(result.rows[0]);
   }
@@ -342,6 +347,10 @@ export async function calculateGroupRanks(groupId: number): Promise<void> {
     await pool.query(`update league_group_members set rank = $1 where id = $2`, [i + 1, result.rows[i].id]);
   }
 }
+
+export type LeagueNewSnapshot = Awaited<ReturnType<typeof getUserLeagueSnapshot>> & {
+  liveCohort: { members: CohortMember[] };
+};
 
 export async function getUserLeagueSnapshot(profileId: string): Promise<{
   currentTier: NewLeagueTier;

@@ -39,6 +39,7 @@ export interface LeagueGroupMember {
   id: number;
   leagueGroupId: number;
   profileId: string;
+  displayName?: string;
   profile?: {
     id: string;
     displayName: string;
