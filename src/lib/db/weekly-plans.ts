@@ -14,6 +14,9 @@ interface WeeklyPlanRow {
   task_id: string | number | null;
   completed_at: Date | string | null;
   created_at: Date | string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
 }
 
 function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
@@ -25,6 +28,9 @@ function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
     category: row.category,
     taskId: row.task_id ? Number(row.task_id) : undefined,
     completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : undefined,
+    startTime: row.start_time ?? undefined,
+    endTime: row.end_time ?? undefined,
+    allDay: row.all_day ?? true,
   };
 }
 

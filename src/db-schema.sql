@@ -471,3 +471,49 @@ insert into avatar_decorations (id, name, description, image_url, price, rarity,
   ('frame_cosmic',   'Nebulosa',          'Névoa cósmica com estrelas cintilantes',        '/decorations/frame_cosmic.svg',   1500, 'epic',      7),
   ('frame_diamond',  'Diamante Puro',     'Um frame de diamante com reflexos perfeitos',   '/decorations/frame_diamond.svg',  1800, 'legendary', 8)
 on conflict (id) do nothing;
+
+-- ── Calendar: time fields + external sync ──────────────────────────────────
+ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS start_time time;
+ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS end_time time;
+ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS all_day boolean NOT NULL DEFAULT true;
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_time time;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS end_time time;
+
+CREATE TABLE IF NOT EXISTS calendar_connections (
+  id bigserial PRIMARY KEY,
+  profile_id text NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  provider text NOT NULL CHECK (provider IN ('google', 'microsoft', 'apple')),
+  access_token text NOT NULL,
+  refresh_token text,
+  token_expires_at timestamptz NOT NULL,
+  calendar_id text,
+  sync_token text,
+  is_active boolean NOT NULL DEFAULT true,
+  connected_at timestamptz NOT NULL DEFAULT now(),
+  last_synced_at timestamptz,
+  UNIQUE (profile_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS calendar_connections_profile_idx ON calendar_connections(profile_id);
+
+CREATE TABLE IF NOT EXISTS external_events (
+  id bigserial PRIMARY KEY,
+  profile_id text NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  connection_id bigint NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
+  external_id text NOT NULL,
+  title text NOT NULL,
+  description text,
+  start_time timestamptz NOT NULL,
+  end_time timestamptz NOT NULL,
+  all_day boolean NOT NULL DEFAULT false,
+  location text,
+  recurrence text,
+  last_modified timestamptz,
+  is_readonly boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (profile_id, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS external_events_profile_time_idx ON external_events(profile_id, start_time, end_time);
+CREATE INDEX IF NOT EXISTS external_events_connection_idx ON external_events(connection_id);

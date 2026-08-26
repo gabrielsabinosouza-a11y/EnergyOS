@@ -378,20 +378,24 @@ export default function LigaPage() {
                 ? `Fique no Top ${snapshot.promotionZoneEnd} para ser promovido para ${TIER_CONFIG[nextTier].label}.`
                 : "Mantenha o bom trabalho!"}
             </p>
-            {nextTier && (
-              <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
-                <p className="mb-2 text-[10px] text-[var(--text-faint)]">Próximo tier</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-lg"
-                    style={{ background: `${TIER_CONFIG[nextTier].color}20` }}>
-                    <TIER_CONFIG[nextTier].icon size={14} style={{ color: TIER_CONFIG[nextTier].color }} />
+            {nextTier && (() => {
+              const next = TIER_CONFIG[nextTier];
+              const NextIcon = next.icon;
+              return (
+                <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
+                  <p className="mb-2 text-[10px] text-[var(--text-faint)]">Próximo tier</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg"
+                      style={{ background: `${next.color}20` }}>
+                      <NextIcon size={14} style={{ color: next.color }} />
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: next.color }}>
+                      {next.label}
+                    </span>
                   </div>
-                  <span className="text-sm font-medium" style={{ color: TIER_CONFIG[nextTier].color }}>
-                    {TIER_CONFIG[nextTier].label}
-                  </span>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           <div className="panel p-5">

@@ -226,6 +226,8 @@ export interface Task {
   category: TaskCategory;
   dueDate: string;
   completedAt?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface DailyCheckin {
@@ -318,6 +320,9 @@ export interface WeeklyPlan {
   category: TaskCategory;
   taskId?: number;
   completedAt?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
 }
 
 export interface FocusSession {
@@ -442,4 +447,48 @@ export interface StoreItem {
   rarity: DecorationRarity;
   owned: boolean;
   equipped: boolean;
+}
+
+// ── Calendar: external sync types ─────────────────────────────────────────
+
+export interface CalendarConnection {
+  id: number;
+  profileId: string;
+  provider: "google" | "microsoft" | "apple";
+  isActive: boolean;
+  calendarId?: string;
+  connectedAt: string;
+  lastSyncedAt?: string;
+}
+
+export interface ExternalEvent {
+  id: number;
+  profileId: string;
+  connectionId: number;
+  externalId: string;
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  location?: string;
+  recurrence?: string;
+  lastModified?: string;
+  isReadonly: boolean;
+  createdAt: string;
+}
+
+export type CalendarEventSource = "weekly_plan" | "task" | "external";
+
+export interface CalendarEvent {
+  id: number;
+  source: CalendarEventSource;
+  sourceId: number;
+  title: string;
+  category?: TaskCategory;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  color: string;
+  isReadonly: boolean;
 }
