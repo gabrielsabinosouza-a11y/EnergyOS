@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Flame, Timer, Trophy, Lock } from "lucide-react";
+import { X, Timer, Trophy, Lock } from "lucide-react";
+import Image from "next/image";
 import { api } from "@/lib/api-client";
 import type { PublicProfile } from "@/types";
 
@@ -84,7 +85,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
             <div className="grid grid-cols-3 gap-2 mb-6">
               <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                 <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                  <Flame size={13} fill="currentColor" />
+                  <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-mono font-bold text-sm">{profile.currentStreak}</span>
                 </div>
                 <p className="text-[9px] text-[var(--text-faint)] mt-0.5">streak</p>
@@ -98,7 +99,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
               </div>
               <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                 <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                  <Flame size={13} />
+                  <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-mono font-bold text-sm">{profile.longestStreak}</span>
                 </div>
                 <p className="text-[9px] text-[var(--text-faint)] mt-0.5">recorde</p>

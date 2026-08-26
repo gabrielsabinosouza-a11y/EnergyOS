@@ -9,13 +9,13 @@ import {
   Moon, 
   Timer, 
   Target, 
-  Flame, 
   TrendingUp, 
   Calendar,
   BarChart3,
   Loader2,
   AlertCircle
 } from "lucide-react";
+import Image from "next/image";
 import { api } from "@/lib/api-client";
 import {
   LineChart,
@@ -213,7 +213,7 @@ export default function RelatorioPage() {
               >
                 <div className="flex items-center gap-3 mb-4">
                   <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400">
-                    <Flame size={20} />
+                    <Image src="/energies/flame/flame_start.png" alt="streak" width={20} height={20} style={{ objectFit: "contain" }} unoptimized />
                   </div>
                   <span className="text-sm text-[var(--text-secondary)]">Streak Atual</span>
                 </div>
@@ -229,7 +229,7 @@ export default function RelatorioPage() {
               >
                 <div className="flex items-center gap-3 mb-4">
                   <div className="p-2 rounded-lg bg-[#71d4ff]/20 text-[#71d4ff]">
-                    <Flame size={20} />
+                    <Image src="/energies/flame/flame_start.png" alt="streak" width={20} height={20} style={{ objectFit: "contain" }} unoptimized />
                   </div>
                   <span className="text-sm text-[var(--text-secondary)]">Melhor Streak</span>
                 </div>

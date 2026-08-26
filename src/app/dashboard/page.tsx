@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, Check, Flame, Loader2, Moon, MoonStar, RefreshCw, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
+import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
@@ -656,7 +657,7 @@ function StreakBadge({ streak, shouldPop }: { streak: number; shouldPop: boolean
           />
         </svg>
         <div className="flame-value">
-          <Flame size={12} fill="currentColor" />
+          <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
         </div>
       </div>
       <div className="flex flex-col">

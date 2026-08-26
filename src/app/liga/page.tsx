@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
   Trophy, ChevronLeft, Clock, ArrowUp, ArrowDown,
-  Sparkles, Users, Flame, Loader2, TrendingUp, Crown, Star, Medal,
+  Sparkles, Users, Loader2, TrendingUp, Crown, Star, Medal,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
@@ -181,7 +182,7 @@ export default function LigaPage() {
                     <div className="text-right">
                       <p className="text-[10px] text-[var(--text-faint)] mb-0.5">SEU XP</p>
                       <div className="flex items-center justify-end gap-1">
-                        <Flame size={14} className="text-[var(--orange)]" />
+                        <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                         <span className="font-mono text-xl font-bold" style={{ color: tierCfg.color }}>
                           {userMember.weeklyXP.toLocaleString("pt-BR")}
                         </span>
@@ -324,7 +325,7 @@ export default function LigaPage() {
 
                     {/* XP */}
                     <div className="flex items-center justify-end gap-1">
-                      <Flame size={11} className="text-[var(--orange)]" />
+                      <Image src="/energies/flame/flame_start.png" alt="streak" width={11} height={11} style={{ objectFit: "contain" }} unoptimized />
                       <span className="font-mono text-[10px] text-[var(--text)]">{member.weeklyXP.toLocaleString("pt-BR")}</span>
                     </div>
 

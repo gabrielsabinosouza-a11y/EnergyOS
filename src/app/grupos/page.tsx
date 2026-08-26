@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import Image from "next/image";
 import {
   ArrowLeft,
   Crown,
-  Flame,
   Loader2,
   MessageCircle,
   Plus,
@@ -768,7 +768,7 @@ function GroupDetailPanel({
                     )}
                   </div>
                   <div className="flex items-center gap-1 text-[11px] text-[var(--orange)]">
-                    <Flame size={12} fill="currentColor" />
+                    <Image src="/energies/flame/flame_start.png" alt="streak" width={12} height={12} style={{ objectFit: "contain" }} unoptimized />
                     {m.currentStreak}
                   </div>
                 </motion.div>

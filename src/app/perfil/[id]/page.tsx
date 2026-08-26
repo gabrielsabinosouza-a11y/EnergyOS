@@ -9,8 +9,8 @@ import { Header } from "@/components/navigation";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { PublicProfile, AchievementProgress } from "@/types";
+import Image from "next/image";
 import {
-  Flame,
   Zap,
   Sun,
   Moon,
@@ -41,8 +41,12 @@ const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow: strin
   league: { primary: "#ffd76b", bg: "rgba(255,215,107,0.12)", glow: "rgba(255,215,107,0.4)" },
 };
 
+const FlameImg = ({ size = 14, ...props }: { size?: number } & Record<string, unknown>) => (
+  <Image src="/energies/flame/flame_start.png" alt="streak" width={size} height={size} style={{ objectFit: "contain" }} unoptimized {...props} />
+);
+
 const ACHIEVEMENT_ICONS: Record<string, React.ElementType> = {
-  streak_master: Flame,
+  streak_master: FlameImg,
   deep_focus: Zap,
   early_riser: Sun,
   sleep_champion: Moon,
@@ -350,7 +354,7 @@ export default function FriendProfilePage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Streak atual</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Flame size={14} fill="currentColor" />
+                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{streak} dias</span>
                 </div>
               </motion.div>
@@ -363,7 +367,7 @@ export default function FriendProfilePage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Maior sequência</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Flame size={14} />
+                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{longestStreak} dias</span>
                 </div>
               </motion.div>

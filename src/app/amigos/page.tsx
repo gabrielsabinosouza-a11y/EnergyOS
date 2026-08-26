@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
+import Image from "next/image";
 import {
-  Flame,
   Loader2,
   MessageCircle,
   Search,
@@ -445,7 +445,7 @@ export default function AmigosPage() {
                     )}
                     <div className="mt-1 flex items-center gap-3 text-[10px] text-[var(--text-faint)]">
                       <span className="flex items-center gap-1 text-[var(--orange)]">
-                        <Flame size={11} fill="currentColor" />
+                        <Image src="/energies/flame/flame_start.png" alt="streak" width={11} height={11} style={{ objectFit: "contain" }} unoptimized />
                         {f.currentStreak}
                       </span>
                       {f.lastActiveAt && <span>{relativeTime(f.lastActiveAt)} atras</span>}
