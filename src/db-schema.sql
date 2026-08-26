@@ -50,9 +50,10 @@ create table if not exists habits (
 create table if not exists user_settings (
   profile_id text primary key references profiles(id) on delete cascade,
   notifications_enabled boolean not null default true,
-  preferred_theme text not null default 'system' check (preferred_theme in ('system','light','dark')),
+  preferred_theme text not null default 'dark' check (preferred_theme in ('system','light','dark')),
   sleep_time time,
-  focus_time time
+  focus_time time,
+  coins integer not null default 0
 );
 
 create index if not exists goals_profile_idx on goals(profile_id);
@@ -137,7 +138,7 @@ create index if not exists focus_sessions_profile_idx on focus_sessions(profile_
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  source text not null check (source in ('task','kanban','focus','streak_bonus')),
+  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest')),
   source_id bigint,
   xp_amount integer not null,
   created_at timestamptz not null default now()
@@ -291,4 +292,117 @@ insert into achievements (id, title, description, category) values
   ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
   ('rarest_aura',      'Rarest Aura',    'Termine no topo da liga Núcleo',                'league')
+on conflict (id) do nothing;
+
+-- ========================================
+-- Daily Quests System
+-- ========================================
+
+create type quest_type as enum ('SESSIONS_COUNT', 'TOTAL_MINUTES', 'ROOM_SESSION');
+
+create table if not exists daily_quests (
+  id bigserial primary key,
+  title text not null,
+  description text not null,
+  type quest_type not null,
+  target_value integer not null,
+  coin_reward integer not null default 10,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists user_quest_progress (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  quest_id bigint not null references daily_quests(id) on delete cascade,
+  quest_date date not null,
+  current_value integer not null default 0,
+  is_completed boolean not null default false,
+  is_claimed boolean not null default false,
+  completed_at timestamptz,
+  claimed_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (profile_id, quest_id, quest_date)
+);
+
+create index if not exists user_quest_progress_profile_date_idx on user_quest_progress(profile_id, quest_date);
+create index if not exists user_quest_progress_quest_date_idx on user_quest_progress(quest_id, quest_date);
+
+-- Insert default daily quests
+insert into daily_quests (title, description, type, target_value, coin_reward) values
+  ('Complete 2 sessões hoje', 'Conclua 2 sessões de foco hoje', 'SESSIONS_COUNT', 2, 10),
+  ('Foque 90 minutos hoje', 'Acumule 90 minutos de foco hoje', 'TOTAL_MINUTES', 90, 15),
+  ('Foque em uma sala com amigos', 'Participe de uma sessão em uma Sala de Foco', 'ROOM_SESSION', 1, 20)
+on conflict (title) do nothing;
+
+-- ── Store: Banner, Decorations, Shields ────────────────────────────────────
+alter table profiles add column if not exists has_custom_banner boolean not null default false;
+alter table profiles add column if not exists banner_image_url text;
+alter table profiles add column if not exists equipped_decoration_id text;
+alter table profiles add column if not exists streak_shield_count integer not null default 0;
+
+create table if not exists avatar_decorations (
+  id text primary key,
+  name text not null,
+  description text not null,
+  image_url text not null,
+  price integer not null,
+  rarity text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists user_decorations (
+  profile_id text not null references profiles(id) on delete cascade,
+  decoration_id text not null references avatar_decorations(id) on delete cascade,
+  purchased_at timestamptz not null default now(),
+  primary key (profile_id, decoration_id)
+);
+
+create table if not exists streak_shield_usage (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  used_on_date date not null,
+  streak_value_at_use integer not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists streak_shield_usage_profile_date_idx
+  on streak_shield_usage (profile_id, used_on_date);
+
+create type streak_day_status as enum ('success', 'protected', 'lost');
+
+create table if not exists streak_day_log (
+  profile_id text not null references profiles(id) on delete cascade,
+  log_date date not null,
+  status streak_day_status not null,
+  created_at timestamptz not null default now(),
+  primary key (profile_id, log_date)
+);
+
+-- ── Monthly Recaps ──────────────────────────────────────────────────────────
+create table if not exists monthly_recaps (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  recap_month date not null,
+  total_focus_minutes integer not null default 0,
+  longest_streak integer not null default 0,
+  league_tier text,
+  league_promoted boolean default false,
+  productivity_tag text,
+  generated_at timestamptz not null default now(),
+  unique (profile_id, recap_month)
+);
+
+-- ── Seed avatar decorations ─────────────────────────────────────────────────
+insert into avatar_decorations (id, name, description, image_url, price, rarity, sort_order) values
+  ('frame_fire',     'Anel de Fogo',     'Um anel flamejante que envolve seu avatar',      '/decorations/frame_fire.svg',     500,  'common',    1),
+  ('frame_crystal',  'Cristal Brilhante', 'Fragmentos de cristal com brilho etéreo',       '/decorations/frame_crystal.svg',  800,  'rare',      2),
+  ('frame_aura',     'Aura Dourada',      'Uma aura dourada que pulsa com energia',        '/decorations/frame_aura.svg',     1200, 'epic',      3),
+  ('frame_nucleo',   'Núcleo Cósmico',    'Um portal cósmico de poder absoluto',           '/decorations/frame_nucleo.svg',   2000, 'legendary', 4),
+  ('frame_nature',   'Natureza Viva',     'Folhas e vines que crescem ao redor',           '/decorations/frame_nature.svg',   600,  'common',    5),
+  ('frame_electric', 'Raio Elétrico',     'Faíscas elétricas que circundam o avatar',      '/decorations/frame_electric.svg', 700,  'common',    6),
+  ('frame_cosmic',   'Nebulosa',          'Névoa cósmica com estrelas cintilantes',        '/decorations/frame_cosmic.svg',   1500, 'epic',      7),
+  ('frame_diamond',  'Diamante Puro',     'Um frame de diamante com reflexos perfeitos',   '/decorations/frame_diamond.svg',  1800, 'legendary', 8)
 on conflict (id) do nothing;

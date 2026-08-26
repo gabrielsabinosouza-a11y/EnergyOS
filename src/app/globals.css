@@ -124,13 +124,13 @@
   --glow-green:  0 0 40px -8px rgba(74,222,128,.3);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg-primary); color: var(--text); font-family: 'Inter', 'Segoe UI', sans-serif; transition: background-color .2s, color .2s; overflow-x: hidden; }
+body { margin: 0; background: var(--bg-primary); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transition: background-color .2s, color .2s; overflow-x: hidden; }
 .theme-bg { background: var(--bg-primary); color: var(--text); }
 .theme-text-secondary { color: var(--text-secondary); }
 .theme-text-muted { color: var(--text-muted); }
 .theme-text-faint { color: var(--text-faint); }
 button { cursor: pointer; font: inherit; }
-.font-display { font-family: 'Syne', 'Trebuchet MS', sans-serif; font-weight: 800; }
+.font-display { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
 .grid-noise { background-image: linear-gradient(rgba(113,212,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(113,212,255,.035) 1px, transparent 1px); background-size: 40px 40px; mask-image: linear-gradient(to bottom, black, transparent 85%); }
 .brand-mark { display:grid; place-items:center; width:31px; height:31px; border-radius:9px; color:#07111f; background:#71d4ff; box-shadow:0 0 25px rgba(113,212,255,.4); }
 .avatar { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#b69cff; color:#211c43; font-weight:800; font-size:12px; }

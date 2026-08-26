@@ -547,8 +547,8 @@ export default function DashboardPage() {
           <WeeklyPlan plans={weeklyPlans} onComplete={completePlan} onDelete={deletePlan} onCreate={createPlan} />
         </section>
 
-        {/* Kanban + Focus */}
-        <section className="mb-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        {/* Kanban */}
+        <section className="mb-8">
           <KanbanBoard
             tasks={kanbanTasks}
             labels={kanbanLabels}
@@ -559,22 +559,28 @@ export default function DashboardPage() {
             onCreateLabel={createKanbanLabel}
             onDeleteLabel={deleteKanbanLabel}
           />
-          <div className="space-y-5">
+        </section>
+
+        {/* Focus Timer + Insight */}
+        <section className="mb-8 grid gap-5 lg:grid-cols-2">
+          <div className="lg:col-span-1">
             <FocusTimer
               todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
               history={focusData?.history ?? []}
               onStart={startFocus}
               onEnd={endFocus}
             />
+          </div>
+          <div className="lg:col-span-1">
             {/* Insight */}
             {snapshot?.insights?.[0] ? (
-              <div className="insight-panel p-6">
+              <div className="insight-panel p-6 h-full">
                 <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
                 <h2 className="mt-5 font-display text-base leading-tight text-[var(--text-secondary)]">{snapshot.insights[0].title}</h2>
                 <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{snapshot.insights[0].description}</p>
               </div>
             ) : (
-              <div className="insight-panel p-6 flex flex-col justify-center">
+              <div className="insight-panel p-6 flex flex-col justify-center h-full">
                 <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
                 <p className="mt-5 text-xs text-[var(--text-muted)]">Os insights aparecem conforme voce registra check-ins e conclui tarefas.</p>
               </div>

@@ -11,12 +11,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
 import { api } from "@/lib/api-client";
+import { AppShell } from "@/components/app-shell";
+import { Header } from "@/components/navigation";
 
 type SettingsForm = Omit<UserSettings, "profileId">;
 
 const defaultSettings: SettingsForm = {
   notificationsEnabled: true,
-  preferredTheme: "system",
+  preferredTheme: "dark",
   sleepTime: "23:00",
   focusTime: "08:00",
 };
@@ -124,15 +126,10 @@ export default function ConfiguracoesPage() {
   }
 
   return (
-    <main className="min-h-screen theme-bg">
-      <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
-      <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8">
-        <div className="mb-8 flex items-center gap-3">
-          <Link href="/dashboard" className="brand-mark"><Sparkles size={17} /></Link>
-          <span className="font-display text-xl font-semibold tracking-[-0.04em]">energy<span className="text-[#71d4ff]">OS</span></span>
-        </div>
-
-        <h1 className="font-display text-3xl tracking-[-0.04em] mb-8">Configurações</h1>
+    <AppShell>
+      <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-2xl">
+          <Header eyebrow="CONFIGURAÇÕES" title="Configurações" />
 
         {loadError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{loadError}</p>}
 
@@ -236,8 +233,8 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
         </div>
-      </div>
-    </main>
+      </main>
+    </AppShell>
   );
 }
 
@@ -280,8 +277,10 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen theme-bg flex items-center justify-center">
-      <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
-    </div>
+    <AppShell>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
+      </div>
+    </AppShell>
   );
 }

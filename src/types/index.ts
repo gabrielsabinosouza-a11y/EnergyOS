@@ -12,6 +12,11 @@ export interface User {
   lastActiveAt?: string;
   currentStreak?: number;
   longestStreak?: number;
+  coinBalance?: number;
+  hasCustomBanner?: boolean;
+  bannerImageUrl?: string;
+  equippedDecorationId?: string;
+  streakShieldCount?: number;
 }
 
 export type FriendshipStatus = "pending" | "accepted";
@@ -201,6 +206,7 @@ export interface UserSettings {
   preferredTheme: "system" | "light" | "dark";
   sleepTime?: string;
   focusTime?: string;
+  coins: number;
 }
 
 export interface Metric {
@@ -290,4 +296,94 @@ export function getTaskProgress(tasks: Array<Pick<Task, "completedAt"> & { done?
   const completed = tasks.filter((task) => Boolean(task.completedAt) || task.done === true).length;
   const percentage = Math.round((completed / tasks.length) * 100);
   return { completed, total: tasks.length, percentage, streakQualified: percentage >= 50 };
+}
+
+// ========================================
+// Daily Quests System
+// ========================================
+
+export type QuestType = "SESSIONS_COUNT" | "TOTAL_MINUTES" | "ROOM_SESSION";
+
+export interface DailyQuest {
+  id: number;
+  title: string;
+  description: string;
+  type: QuestType;
+  targetValue: number;
+  coinReward: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface UserQuestProgress {
+  id: number;
+  profileId: string;
+  questId: number;
+  questDate: string;
+  currentValue: number;
+  isCompleted: boolean;
+  isClaimed: boolean;
+  completedAt?: string;
+  claimedAt?: string;
+  createdAt: string;
+  quest?: DailyQuest;
+}
+
+export interface QuestProgressWithQuest extends UserQuestProgress {
+  quest: DailyQuest;
+}
+
+export type DecorationRarity = "common" | "rare" | "epic" | "legendary";
+
+export interface AvatarDecoration {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  price: number;
+  rarity: DecorationRarity;
+  sortOrder: number;
+}
+
+export interface UserDecoration {
+  decorationId: string;
+  purchasedAt: string;
+}
+
+export interface StreakShieldUsage {
+  id: number;
+  profileId: string;
+  usedOnDate: string;
+  streakValueAtUse: number;
+}
+
+export type StreakDayStatus = "success" | "protected" | "lost";
+
+export interface StreakDayLog {
+  profileId: string;
+  logDate: string;
+  status: StreakDayStatus;
+}
+
+export interface MonthlyRecap {
+  id: number;
+  profileId: string;
+  recapMonth: string;
+  totalFocusMinutes: number;
+  longestStreak: number;
+  leagueTier?: string;
+  leaguePromoted?: boolean;
+  productivityTag?: string;
+  generatedAt: string;
+}
+
+export interface StoreItem {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  price: number;
+  rarity: DecorationRarity;
+  owned: boolean;
+  equipped: boolean;
 }

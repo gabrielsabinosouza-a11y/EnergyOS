@@ -3,6 +3,7 @@ import type { FocusSession } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso } from "./dates";
+import { initializeUserDailyQuests, incrementQuestProgress } from "./daily-quests";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
@@ -49,7 +50,12 @@ export async function startFocusSession(profileId: string, targetDurationMinutes
   return mapFocus(result.rows[0]);
 }
 
-export async function endFocusSession(profileId: string, sessionId: number, focusedSeconds: number): Promise<{ session: FocusSession; xpAwarded: number }> {
+export async function endFocusSession(
+  profileId: string,
+  sessionId: number,
+  focusedSeconds: number,
+  isRoomSession: boolean = false,
+): Promise<{ session: FocusSession; xpAwarded: number; questsUpdated: number }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
@@ -85,7 +91,33 @@ export async function endFocusSession(profileId: string, sessionId: number, focu
     );
   }
 
-  return { session: mapFocus(updated.rows[0]), xpAwarded };
+  // Update daily quests
+  const today = todayIso();
+  await initializeUserDailyQuests(profileId, today);
+  
+  let questsUpdated = 0;
+  
+  // Increment SESSIONS_COUNT quest (questId: 1)
+  try {
+    await incrementQuestProgress(profileId, 1, today, 1);
+    questsUpdated++;
+  } catch { /* Quest may not exist */ }
+  
+  // Increment TOTAL_MINUTES quest (questId: 2)
+  try {
+    await incrementQuestProgress(profileId, 2, today, durationMinutes);
+    questsUpdated++;
+  } catch { /* Quest may not exist */ }
+  
+  // Increment ROOM_SESSION quest (questId: 3) if applicable
+  if (isRoomSession) {
+    try {
+      await incrementQuestProgress(profileId, 3, today, 1);
+      questsUpdated++;
+    } catch { /* Quest may not exist */ }
+  }
+
+  return { session: mapFocus(updated.rows[0]), xpAwarded, questsUpdated };
 }
 
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {

@@ -14,10 +14,10 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 const THEME_KEY = "energyos-theme";
 
 function readSavedTheme(): Theme {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "dark";
   const v = localStorage.getItem(THEME_KEY);
   if (v === "light" || v === "dark" || v === "system") return v;
-  return "system";
+  return "dark";
 }
 
 function applyThemeToDOM(theme: Theme) {
@@ -29,7 +29,7 @@ function applyThemeToDOM(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
+  const [theme, setThemeState] = useState<Theme>("dark");
 
   // Read from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {

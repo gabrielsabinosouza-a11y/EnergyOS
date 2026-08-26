@@ -148,8 +148,12 @@ export const api = {
   getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP }>("/api/focus"),
   startFocus: (targetDurationMinutes: number, taskId?: number) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId }) }),
-  endFocus: (sessionId: number, focusedSeconds: number) =>
-    request<{ session: FocusSession; xpAwarded: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds }) }),
+  endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false) =>
+    request<{ session: FocusSession; xpAwarded: number; questsUpdated: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession }) }),
+
+  // Daily Quests
+  getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
+  claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
   // Social
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),
