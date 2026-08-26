@@ -1,4 +1,4 @@
-import type { AchievementProgress, DailyCheckin, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -155,6 +155,20 @@ export const api = {
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
   claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
+  // Focus Rooms
+  createFocusRoom: (durationMinutes: number, energyType?: string) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>("/api/focus-rooms", { method: "POST", body: JSON.stringify({ durationMinutes, energyType }) }),
+  getFocusRooms: () => request<{ rooms: import("@/lib/db/focus-rooms").FocusRoom[] }>("/api/focus-rooms"),
+  getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${code}`),
+  joinFocusRoom: (code: string, energyType?: string) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
+  startFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/start`, { method: "POST" }),
+  endFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
+  leaveFocusRoom: (roomId: number) =>
+    request<{ message: string }>(`/api/focus-rooms/${roomId}/leave`, { method: "DELETE" }),
+
   // Social
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),
   searchUsers: (q: string) => request<{ results: UserSearchResult[] }>(`/api/social/search?q=${encodeURIComponent(q)}`),
@@ -205,5 +219,21 @@ export const api = {
     request<{ ok: true }>("/api/achievements", { method: "POST", body: JSON.stringify({ achievementId }) }),
   toggleFeaturedAchievement: (achievementId: string) =>
     request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
+
+  // Store
+  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number }>("/api/store"),
+  purchaseDecoration: (decorationId: string) =>
+    request<{ balance: number }>("/api/store/decorations", { method: "POST", body: JSON.stringify({ decorationId }) }),
+  equipDecoration: (decorationId: string | null) =>
+    request<{ ok: true }>("/api/store/decorations", { method: "PATCH", body: JSON.stringify({ decorationId }) }),
+  unlockBanner: () =>
+    request<{ balance: number }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "unlock" }) }),
+  updateBannerImage: (imageUrl: string) =>
+    request<{ ok: true }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "update", imageUrl }) }),
+  purchaseShield: () =>
+    request<{ balance: number; shieldCount: number }>("/api/store/shields", { method: "POST" }),
+  getRecaps: () => request<{ recaps: import("@/types").MonthlyRecap[] }>("/api/recap"),
+  generateRecap: (month: string) =>
+    request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month }) }),
 
 };

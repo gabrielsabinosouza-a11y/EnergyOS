@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="auraGrad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffd76b"/>
+      <stop offset="50%" stop-color="#ffb86b"/>
+      <stop offset="100%" stop-color="#ffd76b"/>
+    </linearGradient>
+    <filter id="auraGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="60" cy="60" r="55" stroke="url(#auraGrad)" stroke-width="4" fill="none" filter="url(#auraGlow)" opacity="0.9"/>
+  <circle cx="60" cy="60" r="50" stroke="#ffd76b" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="12 4"/>
+  <circle cx="60" cy="60" r="45" stroke="#ffb86b" stroke-width="0.8" fill="none" opacity="0.15"/>
+</svg>

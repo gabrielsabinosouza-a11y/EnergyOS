@@ -2,6 +2,7 @@ import pool from "../db";
 import type { Task, TaskCategory } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseEnum, parseProfileId, parseTitle } from "./validation";
+import { consumeShield, getShieldCount, logStreakDay } from "./store";
 
 const TASK_CATEGORIES: readonly TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
 
@@ -177,13 +178,38 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   }
 
   let streak = 0;
+  let shieldsUsed = 0;
+  const maxShields = await getShieldCount(profileId);
+
   for (const day of days) {
     const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
     if (!qualifies) {
       if (day.date === today && streak === 0) continue;
+      // Try to protect this day with a shield (only for past days, not today)
+      if (day.date !== today && shieldsUsed < maxShields) {
+        shieldsUsed += 1;
+        streak += 1;
+        continue;
+      }
       break;
     }
     streak += 1;
+  }
+
+  // Log streak days
+  for (const day of days) {
+    if (day.date > today) continue;
+    const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
+    if (qualifies) {
+      await logStreakDay(profileId, day.date, "success");
+    }
+  }
+
+  // Consume shields for protected days
+  if (shieldsUsed > 0) {
+    for (let i = 0; i < shieldsUsed; i++) {
+      await consumeShield(profileId, streak);
+    }
   }
 
   const chronological = [...days].reverse();

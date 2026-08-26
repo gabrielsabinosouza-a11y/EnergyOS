@@ -109,6 +109,41 @@ create table if not exists kanban_labels (
 
 create index if not exists kanban_labels_profile_idx on kanban_labels(profile_id);
 
+-- Focus Rooms (co-focus with friends)
+create type room_status as enum ('waiting', 'active', 'completed');
+create type participant_session_status as enum ('waiting', 'focusing', 'completed', 'left');
+
+create table if not exists focus_rooms (
+  id bigserial primary key,
+  code varchar(6) not null unique,
+  host_profile_id text not null references profiles(id) on delete cascade,
+  status room_status not null default 'waiting',
+  duration_minutes integer not null default 25,
+  energy_type text,
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  ended_at timestamptz
+);
+
+create index if not exists focus_rooms_code_idx on focus_rooms(code);
+create index if not exists focus_rooms_host_idx on focus_rooms(host_profile_id);
+create index if not exists focus_rooms_status_idx on focus_rooms(status);
+
+create table if not exists room_participants (
+  id bigserial primary key,
+  room_id bigint not null references focus_rooms(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  joined_at timestamptz not null default now(),
+  session_status participant_session_status not null default 'waiting',
+  selected_energy_type text,
+  completed_at timestamptz,
+  gave_up_at timestamptz,
+  unique (room_id, profile_id)
+);
+
+create index if not exists room_participants_room_idx on room_participants(room_id);
+create index if not exists room_participants_profile_idx on room_participants(profile_id);
+
 create table if not exists weekly_plans (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,

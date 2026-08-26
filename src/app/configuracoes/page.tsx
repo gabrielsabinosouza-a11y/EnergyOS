@@ -6,7 +6,7 @@ import { deleteUser, updateProfile } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
-import { Sparkles, Loader2, LogOut, Trash2, Check } from "lucide-react";
+import { Sparkles, Loader2, LogOut, Trash2, Check, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
@@ -21,6 +21,7 @@ const defaultSettings: SettingsForm = {
   preferredTheme: "dark",
   sleepTime: "23:00",
   focusTime: "08:00",
+  coins: 0,
 };
 
 export default function ConfiguracoesPage() {
@@ -53,6 +54,7 @@ export default function ConfiguracoesPage() {
         preferredTheme: s.preferredTheme,
         sleepTime: s.sleepTime ?? defaultSettings.sleepTime,
         focusTime: s.focusTime ?? defaultSettings.focusTime,
+        coins: s.coins ?? 0,
       };
       savedRef.current = loaded;
       setForm(loaded);
@@ -129,6 +131,11 @@ export default function ConfiguracoesPage() {
     <AppShell>
       <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-2xl">
+          <div className="mb-10">
+            <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+              <ChevronLeft size={18} /> Voltar
+            </Link>
+          </div>
           <Header eyebrow="CONFIGURAÇÕES" title="Configurações" />
 
         {loadError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{loadError}</p>}
@@ -232,6 +239,7 @@ export default function ConfiguracoesPage() {
               )}
             </div>
           </motion.div>
+        </div>
         </div>
       </main>
     </AppShell>

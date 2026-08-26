@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="crystalGrad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#71d4ff"/>
+      <stop offset="50%" stop-color="#b69cff"/>
+      <stop offset="100%" stop-color="#71d4ff"/>
+    </linearGradient>
+    <filter id="crystalGlow">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="60" cy="60" r="54" stroke="url(#crystalGrad)" stroke-width="3" fill="none" filter="url(#crystalGlow)" opacity="0.85"/>
+  <circle cx="60" cy="60" r="50" stroke="#b69cff" stroke-width="1" fill="none" opacity="0.3"/>
+  <circle cx="60" cy="60" r="46" stroke="#71d4ff" stroke-width="0.5" fill="none" opacity="0.2" stroke-dasharray="3 6"/>
+</svg>

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
+import Image from "next/image";
 import {
-  Sparkles,
   Plus,
   Pencil,
   Trash2,
@@ -201,8 +201,14 @@ export default function MetasPage() {
       <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
       <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8">
         <div className="mb-8 flex items-center gap-3">
-          <Link href="/" className="brand-mark"><Sparkles size={17} /></Link>
-          <span className="font-display text-xl font-semibold tracking-[-0.04em]">energy<span className="text-[#71d4ff]">OS</span></span>
+          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+            <ChevronLeft size={18} /> Voltar
+          </Link>
+          <div className="ml-auto" />
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/icons_8bits/logo.png" alt="energyOS" width={24} height={24} className="pixelated" />
+            <span className="font-display text-xl font-semibold tracking-[-0.04em]">energy<span className="text-[#71d4ff]">OS</span></span>
+          </Link>
         </div>
 
         <div className="mb-8 flex items-end justify-between">

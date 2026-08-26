@@ -8,6 +8,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -81,7 +82,7 @@ function SortableCard({
 }: {
   task: KanbanTask;
   onDelete: (id: number) => void;
-  onEdit: () => void;
+  onEdit: (task: KanbanTask) => void;
   labels: KanbanLabel[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -248,6 +249,10 @@ function Column({
   onEdit,
 }: ColumnProps) {
   const [showForm, setShowForm] = useState(false);
+  const { setNodeRef } = useDroppable({
+    id: `column-${status}`,
+    data: { status },
+  });
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCategory, setNewCategory] = useState<KanbanCategory>("FOCO");
@@ -322,6 +327,7 @@ function Column({
 
   return (
     <div
+      ref={setNodeRef}
       className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-3"
       data-status={status}
     >
@@ -552,7 +558,7 @@ function Column({
                   key={task.id}
                   task={task}
                   onDelete={onDelete}
-                  onEdit={() => handleEdit(task)}
+                  onEdit={() => onEdit(task)}
                   labels={labels}
                 />
               ))}
@@ -925,19 +931,17 @@ export function KanbanBoard({
         const { active, over } = e;
         if (!over) return;
         const activeId = Number(active.id);
-        const overData = over.data.current;
+        const activeData = active.data.current as { status?: KanbanStatus; task?: KanbanTask };
+        const overData = over.data.current as { status?: KanbanStatus; task?: KanbanTask };
         
-        if (overData?.status) {
-          const newStatus = overData.status as KanbanStatus;
-          const tasksInNewColumn = tasks.filter((t) => t.status === newStatus);
-          const newPosition = tasksInNewColumn.length;
-          handleMove(activeId, newStatus, newPosition);
-        } else if (overData?.task) {
-          const oldStatus = active.data.current?.status as KanbanStatus;
-          const newStatus = overData.task.status;
-          const overId = Number(over.id);
-          
-          if (oldStatus === newStatus) {
+        if (!activeData?.status) return;
+        
+        const oldStatus = activeData.status;
+        const newStatus = overData?.status || overData?.task?.status || oldStatus;
+        
+        if (oldStatus === newStatus) {
+          if (overData?.task) {
+            const overId = Number(over.id);
             const columnTasks = tasks.filter((t) => t.status === oldStatus).sort((a, b) => a.position - b.position);
             const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
             const newIndex = columnTasks.findIndex((t) => t.id === overId);
@@ -945,12 +949,19 @@ export function KanbanBoard({
               const newPosition = newIndex;
               handleMove(activeId, oldStatus, newPosition);
             }
-          } else {
-            const tasksInNewColumn = tasks.filter((t) => t.status === newStatus);
-            const overIndex = tasksInNewColumn.findIndex((t) => t.id === overId);
-            const newPosition = overIndex >= 0 ? overIndex : tasksInNewColumn.length;
-            handleMove(activeId, newStatus, newPosition);
           }
+        } else {
+          let newPosition = 0;
+          if (overData?.task) {
+            const overId = Number(over.id);
+            const tasksInNewColumn = tasks.filter((t) => t.status === newStatus).sort((a, b) => a.position - b.position);
+            const overIndex = tasksInNewColumn.findIndex((t) => t.id === overId);
+            newPosition = overIndex >= 0 ? overIndex : tasksInNewColumn.length;
+          } else if (overData?.status) {
+            const tasksInNewColumn = tasks.filter((t) => t.status === newStatus);
+            newPosition = tasksInNewColumn.length;
+          }
+          handleMove(activeId, newStatus, newPosition);
         }
       }}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

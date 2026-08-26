@@ -29,7 +29,10 @@ import {
   Trophy,
   Timer,
   Target,
+  Sparkles,
 } from "lucide-react";
+import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
+import type { MonthlyRecap as MonthlyRecapType } from "@/types";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -349,6 +352,9 @@ export default function PerfilPage() {
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [recaps, setRecaps] = useState<MonthlyRecapType[]>([]);
+  const [generatingRecap, setGeneratingRecap] = useState(false);
+  const [recapError, setRecapError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
 
@@ -358,10 +364,12 @@ export default function PerfilPage() {
     Promise.all([
       api.getDashboard().catch(() => null),
       api.getAchievements().catch(() => null),
-    ]).then(([dash, ach]) => {
+      api.getRecaps().catch(() => null),
+    ]).then(([dash, ach, recapResult]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
+      if (recapResult?.recaps) setRecaps(recapResult.recaps);
     });
     return () => { active = false; };
   }, [user?.uid]);
@@ -470,6 +478,28 @@ export default function PerfilPage() {
 
   function openPicker(_slot: number) {
     setShowPicker(true);
+  }
+
+  async function handleGenerateRecap() {
+    const now = new Date();
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const month = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, "0")}-01`;
+    setGeneratingRecap(true);
+    setRecapError("");
+    try {
+      const result = await api.generateRecap(month);
+      if (result?.recap) {
+        setRecaps((prev) => {
+          const exists = prev.some((r) => r.recapMonth === result.recap.recapMonth);
+          if (exists) return prev.map((r) => r.recapMonth === result.recap.recapMonth ? result.recap : r);
+          return [result.recap, ...prev];
+        });
+      }
+    } catch {
+      setRecapError("Não foi possível gerar o recap.");
+    } finally {
+      setGeneratingRecap(false);
+    }
   }
 
   function handlePickerSelect(id: string) {
@@ -640,6 +670,55 @@ export default function PerfilPage() {
                 />
               ))}
             </div>
+          </motion.section>
+
+          {/* ─── Monthly Recaps ─────────────────────────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            className="glass-card mb-6 p-6 sm:p-8"
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-[var(--purple)]" />
+                <span className="text-xs uppercase tracking-[0.15em] text-[var(--purple)]">Recap mensal</span>
+              </div>
+              <button
+                onClick={handleGenerateRecap}
+                disabled={generatingRecap}
+                className="primary-button !text-xs !py-1.5 !px-3"
+              >
+                {generatingRecap ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                {generatingRecap ? "Gerando..." : "Gerar recap"}
+              </button>
+            </div>
+            {recapError && (
+              <p className="mb-4 text-xs text-[var(--red)]">{recapError}</p>
+            )}
+            {recaps.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                Nenhum recap disponível. Gere o recap do mês anterior!
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {recaps.map((recap) => (
+                  <MonthlyRecap
+                    key={recap.id}
+                    recap={{
+                      recapMonth: recap.recapMonth,
+                      totalFocusMinutes: recap.totalFocusMinutes,
+                      longestStreak: recap.longestStreak,
+                      leagueTier: recap.leagueTier,
+                      leaguePromoted: recap.leaguePromoted,
+                      productivityTag: recap.productivityTag,
+                    }}
+                    userName={displayName}
+                    userPhotoUrl={user.photoURL ?? undefined}
+                  />
+                ))}
+              </div>
+            )}
           </motion.section>
 
           {/* ─── Full Achievements Grid ─────────────────────────── */}

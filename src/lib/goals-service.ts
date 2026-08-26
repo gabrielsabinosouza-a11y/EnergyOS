@@ -265,13 +265,14 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
     preferredTheme: row.preferred_theme,
     sleepTime: row.sleep_time ? row.sleep_time.slice(0, 5) : undefined,
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
+    coins: 0,
   };
 }
 
 export async function getUserSettings(profileId: string): Promise<UserSettings | null> {
   const dbProfileId = requireProfileId(profileId);
   const result = await pool.query(
-    `select notifications_enabled, preferred_theme, sleep_time, focus_time
+    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins
      from user_settings where profile_id = $1`,
     [dbProfileId],
   );
@@ -281,6 +282,7 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
         preferred_theme: UserSettings["preferredTheme"];
         sleep_time: string | null;
         focus_time: string | null;
+        coins: number;
       }
     | undefined;
   if (!row) return null;
@@ -290,5 +292,6 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
     preferredTheme: row.preferred_theme,
     sleepTime: row.sleep_time ? row.sleep_time.slice(0, 5) : undefined,
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
+    coins: row.coins ?? 0,
   };
 }

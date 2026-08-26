@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="nucleoGrad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#71d4ff"/>
+      <stop offset="33%" stop-color="#b69cff"/>
+      <stop offset="66%" stop-color="#ffd76b"/>
+      <stop offset="100%" stop-color="#71d4ff"/>
+    </linearGradient>
+    <filter id="nucleoGlow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="60" cy="60" r="56" stroke="url(#nucleoGrad)" stroke-width="5" fill="none" filter="url(#nucleoGlow)" opacity="0.95"/>
+  <circle cx="60" cy="60" r="50" stroke="#b69cff" stroke-width="1.5" fill="none" opacity="0.3" stroke-dasharray="6 3"/>
+  <circle cx="60" cy="60" r="44" stroke="#ffd76b" stroke-width="0.8" fill="none" opacity="0.2" stroke-dasharray="2 4"/>
+</svg>

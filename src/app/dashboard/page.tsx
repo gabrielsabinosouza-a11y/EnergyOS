@@ -6,7 +6,7 @@ import { ArrowUpRight, Check, Flame, Loader2, Moon, MoonStar, RefreshCw, Sparkle
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, TaskCategory, Metric, Goal, KanbanTask, KanbanLabel, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory, KanbanStatus } from "@/types";
+import type { Task, TaskCategory, Metric, Goal, KanbanTask, KanbanLabel, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory, KanbanStatus, QuestProgressWithQuest } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { weekStartIso } from "@/lib/db/dates";
@@ -16,6 +16,7 @@ import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
+import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { AnimatedNumber, ProgressBar } from "@/components/ui";
 
 import type { Variants } from "framer-motion";
@@ -101,6 +102,8 @@ export default function DashboardPage() {
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
+  const [dailyQuests, setDailyQuests] = useState<QuestProgressWithQuest[]>([]);
+  const [coins, setCoins] = useState(0);
   const [loadingPage, setLoadingPage] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
@@ -168,6 +171,14 @@ export default function DashboardPage() {
         api.getFocusData()
           .then((f) => { if (!cancelled) setFocusData(f); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, focus: "Erro ao carregar dados de foco." })); }),
+        api.getDailyQuests()
+          .then((data) => { 
+            if (!cancelled) { 
+              setDailyQuests(data.quests);
+              setCoins(snapshot?.user.coins ?? 0);
+            } 
+          })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar missões diárias." })); }),
       ]).finally(() => {
         if (!cancelled) setLoadingPage(false);
       });
@@ -456,6 +467,15 @@ export default function DashboardPage() {
             </motion.button>
           </div>
         </motion.section>
+
+        {/* Daily Quests */}
+        <section className="mb-8">
+          <DailyQuestsWidget 
+            initialQuests={dailyQuests} 
+            coins={coins} 
+            onCoinsChange={setCoins}
+          />
+        </section>
 
         {/* Metrics */}
         <section className="mb-8">
