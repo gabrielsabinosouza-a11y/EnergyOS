@@ -367,7 +367,7 @@ create type quest_type as enum ('SESSIONS_COUNT', 'TOTAL_MINUTES', 'ROOM_SESSION
 
 create table if not exists daily_quests (
   id bigserial primary key,
-  title text not null,
+  title text not null unique,
   description text not null,
   type quest_type not null,
   target_value integer not null,

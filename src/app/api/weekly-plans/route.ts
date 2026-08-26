@@ -21,6 +21,9 @@ export async function POST(request: NextRequest) {
       title: body.title as string,
       category: body.category as any,
       taskId: body.taskId as number | undefined,
+      startTime: body.startTime as string | undefined,
+      endTime: body.endTime as string | undefined,
+      allDay: body.allDay as boolean | undefined,
     });
     return jsonOk({ plan }, 201);
   });

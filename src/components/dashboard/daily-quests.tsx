@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronRight, Clock, Sparkles, Coins, Chest, Loader2 } from "lucide-react";
+import { Check, ChevronRight, Clock, Sparkles, CircleDollarSign, Package, Loader2 } from "lucide-react";
 import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
 import { todayIso } from "@/lib/db/dates";
@@ -202,12 +202,12 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
                           animate={{ scale: [1, 1.05, 1] }}
                           transition={{ duration: 1.5, repeat: Infinity }}
                         >
-                          <Chest size={20} className="text-amber-400" />
+                          <Package size={20} className="text-amber-400" />
                           <span className="text-[10px] font-bold text-amber-400">+{quest.quest.coinReward}</span>
                         </motion.div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[var(--text-faint)]">
-                          <Chest size={20} />
+                          <Package size={20} />
                           <span className="text-[10px]">+{quest.quest.coinReward}</span>
                         </div>
                       )}
@@ -251,7 +251,7 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
                 animate={{ rotate: [0, 10, -10, 0] }}
                 transition={{ duration: 0.3, repeat: 2 }}
               >
-                <Coins size={24} className="text-amber-400" />
+                <CircleDollarSign size={24} className="text-amber-400" />
               </motion.div>
               <motion.span
                 initial={{ opacity: 0, x: -10 }}

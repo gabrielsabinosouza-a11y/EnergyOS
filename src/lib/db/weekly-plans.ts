@@ -39,7 +39,7 @@ export async function listWeeklyPlans(profileId: string, weekStart?: string): Pr
   const start = weekStart ?? "";
   if (start) {
     const result = await pool.query<WeeklyPlanRow>(
-      `select id, profile_id, plan_date, title, category, task_id, completed_at, created_at
+      `select id, profile_id, plan_date, title, category, task_id, completed_at, created_at, start_time, end_time, all_day
        from weekly_plans where profile_id = $1 and plan_date >= $2::date and plan_date < ($2::date + interval '7 days')
        order by plan_date, id`,
       [profileId, start],
@@ -47,7 +47,7 @@ export async function listWeeklyPlans(profileId: string, weekStart?: string): Pr
     return result.rows.map(mapPlan);
   }
   const result = await pool.query<WeeklyPlanRow>(
-    `select id, profile_id, plan_date, title, category, task_id, completed_at, created_at
+    `select id, profile_id, plan_date, title, category, task_id, completed_at, created_at, start_time, end_time, all_day
      from weekly_plans where profile_id = $1
      order by plan_date desc, id
      limit 50`,
@@ -61,6 +61,9 @@ export interface CreateWeeklyPlanInput {
   title: string;
   category?: TaskCategory;
   taskId?: number;
+  startTime?: string;
+  endTime?: string;
+  allDay?: boolean;
 }
 
 export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPlanInput): Promise<WeeklyPlan> {
@@ -68,12 +71,13 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
   const title = parseTitle(input.title);
   const planDate = parseDate(input.planDate, "Data do plano");
   const category = parseEnum(input.category ?? "FOCO", TASK_CATEGORIES, "Categoria");
+  const allDay = input.allDay ?? true;
 
   const result = await pool.query<WeeklyPlanRow>(
-    `insert into weekly_plans (profile_id, plan_date, title, category, task_id)
-     values ($1, $2::date, $3, $4, $5)
-     returning id, profile_id, plan_date, title, category, task_id, completed_at, created_at`,
-    [profileId, planDate, title, category, input.taskId ?? null],
+    `insert into weekly_plans (profile_id, plan_date, title, category, task_id, start_time, end_time, all_day)
+     values ($1, $2::date, $3, $4, $5, $6, $7, $8)
+     returning id, profile_id, plan_date, title, category, task_id, completed_at, created_at, start_time, end_time, all_day`,
+    [profileId, planDate, title, category, input.taskId ?? null, input.startTime ?? null, input.endTime ?? null, allDay],
   );
   return mapPlan(result.rows[0]);
 }
@@ -84,7 +88,7 @@ export async function completeWeeklyPlan(profileId: string, planId: number): Pro
   const result = await pool.query<WeeklyPlanRow>(
     `update weekly_plans set completed_at = now()
      where profile_id = $1 and id = $2 and completed_at is null
-     returning id, profile_id, plan_date, title, category, task_id, completed_at, created_at`,
+     returning id, profile_id, plan_date, title, category, task_id, completed_at, created_at, start_time, end_time, all_day`,
     [profileId, planId],
   );
   if (!result.rows[0]) throw new NotFoundError("Plano não encontrado ou já concluído.");
