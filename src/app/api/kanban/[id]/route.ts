@@ -16,6 +16,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       status: body.status as "todo" | "doing" | "done" | undefined,
       category: body.category as any,
       position: body.position as number | undefined,
+      labels: body.labels as string[] | undefined,
+      dueDate: body.dueDate as string | null | undefined,
+      priority: body.priority as "low" | "medium" | "high" | undefined,
+      assigneeId: body.assigneeId as string | null | undefined,
     });
     if (body.status === "done") {
       await awardKanbanXP(profileId, taskId);

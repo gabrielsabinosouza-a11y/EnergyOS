@@ -223,6 +223,14 @@ export interface Insight {
 
 export type KanbanStatus = "todo" | "doing" | "done";
 export type KanbanCategory = "FOCO" | "CORPO" | "MENTE" | "ORDEM" | "ENERGIA";
+export type KanbanPriority = "low" | "medium" | "high";
+
+export interface KanbanLabel {
+  id: number;
+  name: string;
+  color: string;
+  profileId: string;
+}
 
 export interface KanbanTask {
   id: number;
@@ -232,6 +240,10 @@ export interface KanbanTask {
   status: KanbanStatus;
   position: number;
   category: KanbanCategory;
+  labels: string[];
+  dueDate?: string;
+  priority: KanbanPriority;
+  assigneeId?: string;
   createdAt: string;
   updatedAt: string;
 }

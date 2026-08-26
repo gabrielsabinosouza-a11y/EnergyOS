@@ -1,4 +1,4 @@
-import type { AchievementProgress, DailyCheckin, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanTask, LeagueSnapshot, Metric, PublicProfile, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, DailyCheckin, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -118,14 +118,20 @@ export const api = {
   regenerateInsights: () => request<{ insights: Insight[] }>("/api/insights", { method: "POST" }),
 
   // Kanban
-  getKanban: () => request<KanbanTask[]>("/api/kanban"),
-  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"] }) =>
+  getKanban: () => request<{ tasks: KanbanTask[]; labels: KanbanLabel[] }>("/api/kanban"),
+  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string }) =>
     request<{ task: KanbanTask }>("/api/kanban", { method: "POST", body: JSON.stringify(input) }),
-  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; position?: number }) =>
+  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
     request<{ task: KanbanTask }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteKanbanTask: (id: number) => request<{ ok: true }>(`/api/kanban/${id}`, { method: "DELETE" }),
   promoteTaskToKanban: (taskId: number) =>
     request<{ task: KanbanTask }>("/api/kanban/promote", { method: "POST", body: JSON.stringify({ taskId }) }),
+  // Labels
+  getKanbanLabels: () => request<{ labels: KanbanLabel[] }>("/api/kanban/labels"),
+  createKanbanLabel: (input: { name: string; color: string }) =>
+    request<{ label: KanbanLabel }>("/api/kanban/labels", { method: "POST", body: JSON.stringify(input) }),
+  deleteKanbanLabel: (id: number) =>
+    request<{ ok: true }>(`/api/kanban/labels/${id}`, { method: "DELETE" }),
 
   // Weekly Plans
   getWeeklyPlans: (weekStart?: string) => {

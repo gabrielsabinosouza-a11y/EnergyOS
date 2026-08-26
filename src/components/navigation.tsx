@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import { LayoutDashboard, ListTodo, Settings, TrendingUp, Users, Trophy, UsersRound } from "lucide-react";
+import { LayoutDashboard, ListTodo, Settings, TrendingUp, Users, Trophy, UsersRound, Leaf } from "lucide-react";
 
 export const navigationItems = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard },
@@ -12,6 +12,7 @@ export const navigationItems = [
   { href: "/amigos",    label: "Amigos",           icon: Users,        badge: "social" as const },
   { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null },
   { href: "/grupos",    label: "Grupos",           icon: UsersRound,   badge: "social" as const },
+  { href: "/jardim",    label: "Meu jardim",       icon: Leaf },
   { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];

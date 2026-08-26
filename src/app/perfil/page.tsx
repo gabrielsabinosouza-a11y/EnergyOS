@@ -349,7 +349,6 @@ export default function PerfilPage() {
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerSlot, setPickerSlot] = useState<number>(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
 
@@ -469,8 +468,7 @@ export default function PerfilPage() {
     } catch { /* silent */ }
   }
 
-  function openPicker(slot: number) {
-    setPickerSlot(slot);
+  function openPicker(_slot: number) {
     setShowPicker(true);
   }
 

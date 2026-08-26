@@ -88,11 +88,25 @@ create table if not exists kanban_tasks (
   status text not null default 'todo' check (status in ('todo','doing','done')),
   position integer not null default 0,
   category text default 'FOCO',
+  labels text[] default '{}',
+  due_date date,
+  priority text default 'medium' check (priority in ('low','medium','high')),
+  assignee_id text references profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists kanban_tasks_profile_idx on kanban_tasks(profile_id, status, position);
+
+create table if not exists kanban_labels (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  name text not null,
+  color text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists kanban_labels_profile_idx on kanban_labels(profile_id);
 
 create table if not exists weekly_plans (
   id bigserial primary key,

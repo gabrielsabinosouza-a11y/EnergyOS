@@ -6,7 +6,7 @@ import { ArrowUpRight, Check, Flame, Loader2, Moon, MoonStar, RefreshCw, Sparkle
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, TaskCategory, Metric, Goal, KanbanTask, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory } from "@/types";
+import type { Task, TaskCategory, Metric, Goal, KanbanTask, KanbanLabel, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory, KanbanStatus } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { weekStartIso } from "@/lib/db/dates";
@@ -98,6 +98,7 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
+  const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
@@ -159,7 +160,7 @@ export default function DashboardPage() {
           .then((bundles) => { if (!cancelled) setGoals(bundles.map((b) => b.goal)); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, goals: "Erro ao carregar metas." })); }),
         api.getKanban()
-          .then((k) => { if (!cancelled) setKanbanTasks(k); })
+          .then((data) => { if (!cancelled) { setKanbanTasks(data.tasks); setKanbanLabels(data.labels); } })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, kanban: "Erro ao carregar kanban." })); }),
         api.getWeeklyPlans(weekStartIso(new Date().toISOString().slice(0, 10)))
           .then((p) => { if (!cancelled) setWeeklyPlans(p); })
@@ -245,23 +246,35 @@ export default function DashboardPage() {
     }
   }
 
-  async function moveKanbanTask(id: number, newStatus: "todo" | "doing" | "done") {
+  async function moveKanbanTask(id: number, newStatus: KanbanStatus, newPosition: number) {
     const prev = kanbanTasks;
-    setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus } : k));
+    setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus, position: newPosition } : k));
     try {
-      const result = await api.updateKanbanTask(id, { status: newStatus });
+      const result = await api.updateKanbanTask(id, { status: newStatus, position: newPosition });
       setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
     } catch {
       setKanbanTasks(prev);
     }
   }
 
-  async function createKanbanTask(title: string, category: KanbanCategory) {
+  async function createKanbanTask(task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) {
     try {
-      const result = await api.createKanbanTask({ title, category });
+      const result = await api.createKanbanTask(task);
       setKanbanTasks((prev) => [...prev, result.task]);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel criar o card.");
+    }
+  }
+
+  async function updateKanbanTask(id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) {
+    const prev = kanbanTasks;
+    setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, ...updates } : k));
+    try {
+      const result = await api.updateKanbanTask(id, updates);
+      setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
+    } catch (error) {
+      setKanbanTasks(prev);
+      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o card.");
     }
   }
 
@@ -272,6 +285,27 @@ export default function DashboardPage() {
       await api.deleteKanbanTask(id);
     } catch {
       setKanbanTasks(prev);
+    }
+  }
+
+  async function createKanbanLabel(name: string, color: string) {
+    try {
+      const result = await api.createKanbanLabel({ name, color });
+      setKanbanLabels((prev) => [...prev, result.label]);
+      return result.label;
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Nao foi possivel criar a etiqueta.");
+      throw error;
+    }
+  }
+
+  async function deleteKanbanLabel(id: number) {
+    const prev = kanbanLabels;
+    setKanbanLabels((ls) => ls.filter((l) => l.id !== id));
+    try {
+      await api.deleteKanbanLabel(id);
+    } catch {
+      setKanbanLabels(prev);
     }
   }
 
@@ -515,7 +549,16 @@ export default function DashboardPage() {
 
         {/* Kanban + Focus */}
         <section className="mb-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <KanbanBoard tasks={kanbanTasks} onMove={moveKanbanTask} onCreate={createKanbanTask} onDelete={deleteKanbanTask} />
+          <KanbanBoard
+            tasks={kanbanTasks}
+            labels={kanbanLabels}
+            onMove={moveKanbanTask}
+            onCreate={createKanbanTask}
+            onUpdate={updateKanbanTask}
+            onDelete={deleteKanbanTask}
+            onCreateLabel={createKanbanLabel}
+            onDeleteLabel={deleteKanbanLabel}
+          />
           <div className="space-y-5">
             <FocusTimer
               todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
