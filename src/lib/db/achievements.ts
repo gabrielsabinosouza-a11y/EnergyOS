@@ -113,8 +113,10 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
     unlocked_tier: number;
     seen_at: Date | string | null;
     unlocked_at: Date | string | null;
+    is_featured: boolean;
+    featured_order: number | null;
   }>(
-    `select achievement_id, current_value, unlocked_tier, seen_at, unlocked_at
+    `select achievement_id, current_value, unlocked_tier, seen_at, unlocked_at, is_featured, featured_order
      from user_achievement_progress where profile_id = $1`,
     [profileId],
   );
@@ -166,6 +168,8 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
         : newlyUnlocked && unlockedTier > 0
           ? new Date().toISOString()
           : undefined,
+      isFeatured: prev?.is_featured ?? false,
+      featuredOrder: prev?.featured_order ?? undefined,
     });
   }
 
@@ -196,4 +200,63 @@ export async function unlockRarestAura(profileId: string): Promise<void> {
        seen_at = case when user_achievement_progress.unlocked_tier = 0 then null else user_achievement_progress.seen_at end`,
     [profileId],
   );
+}
+
+export async function toggleFeaturedAchievement(
+  profileId: string,
+  achievementId: string,
+): Promise<{ isFeatured: boolean; featuredOrder?: number }> {
+  parseProfileId(profileId);
+  if (!ACHIEVEMENT_THRESHOLDS[achievementId]) throw new ValidationError("Conquista inválida.");
+
+  const current = await pool.query<{
+    is_featured: boolean;
+    featured_order: number | null;
+    unlocked_tier: number;
+  }>(
+    `select is_featured, featured_order, unlocked_tier
+     from user_achievement_progress
+     where profile_id = $1 and achievement_id = $2`,
+    [profileId, achievementId],
+  );
+
+  const row = current.rows[0];
+  if (!row || row.unlocked_tier === 0) {
+    throw new ValidationError("Só é possível destaque conquistas desbloqueadas.");
+  }
+
+  if (row.is_featured) {
+    await pool.query(
+      `update user_achievement_progress
+       set is_featured = false, featured_order = null
+       where profile_id = $1 and achievement_id = $2`,
+      [profileId, achievementId],
+    );
+    await pool.query(
+      `update user_achievement_progress
+       set featured_order = featured_order - 1
+       where profile_id = $1 and is_featured = true and featured_order > $3`,
+      [profileId, achievementId, row.featured_order ?? 0],
+    );
+    return { isFeatured: false };
+  }
+
+  const countResult = await pool.query<{ count: string | number }>(
+    `select count(*)::int as count from user_achievement_progress
+     where profile_id = $1 and is_featured = true`,
+    [profileId],
+  );
+  const featuredCount = Number(countResult.rows[0]?.count ?? 0);
+  if (featuredCount >= 4) {
+    throw new ValidationError("Você já tem 4 conquistas em destaque. Remova uma primeiro.");
+  }
+
+  const nextOrder = featuredCount + 1;
+  await pool.query(
+    `update user_achievement_progress
+     set is_featured = true, featured_order = $3
+     where profile_id = $1 and achievement_id = $2`,
+    [profileId, achievementId, nextOrder],
+  );
+  return { isFeatured: true, featuredOrder: nextOrder };
 }

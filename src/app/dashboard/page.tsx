@@ -514,7 +514,7 @@ export default function DashboardPage() {
         </section>
 
         {/* Kanban + Focus */}
-        <section className="mb-8 grid gap-5 xl:grid-cols-[1fr_.340px]">
+        <section className="mb-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <KanbanBoard tasks={kanbanTasks} onMove={moveKanbanTask} onCreate={createKanbanTask} onDelete={deleteKanbanTask} />
           <div className="space-y-5">
             <FocusTimer

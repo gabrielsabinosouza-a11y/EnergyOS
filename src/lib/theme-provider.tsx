@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useCallback } from "react";
-import { useSyncExternalStore } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 type Theme = "system" | "light" | "dark";
 
@@ -23,41 +22,35 @@ function readSavedTheme(): Theme {
 
 function applyThemeToDOM(theme: Theme) {
   const root = document.documentElement;
-  if (theme === "system") {
-    const sys = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    root.setAttribute("data-theme", sys);
-  } else {
-    root.setAttribute("data-theme", theme);
-  }
-}
-
-function subscribe(callback: () => void) {
-  const handler = (e: StorageEvent) => {
-    if (e.key === THEME_KEY) callback();
-  };
-  window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+  const resolved = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : theme;
+  root.setAttribute("data-theme", resolved);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const themeRef = useRef<Theme>(readSavedTheme());
+  const [theme, setThemeState] = useState<Theme>("system");
 
-  const getSnapshot = useCallback(() => themeRef.current, []);
+  // Read from localStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    const saved = readSavedTheme();
+    setThemeState(saved);
+    applyThemeToDOM(saved);
 
-  const getServerSnapshot = useCallback(() => "system" as Theme, []);
-
-  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+    // Keep in sync with system preference changes when theme === "system"
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSysChange = () => {
+      if (readSavedTheme() === "system") applyThemeToDOM("system");
+    };
+    mq.addEventListener("change", onSysChange);
+    return () => mq.removeEventListener("change", onSysChange);
+  }, []);
 
   const setTheme = useCallback((newTheme: Theme) => {
-    themeRef.current = newTheme;
+    setThemeState(newTheme);
     localStorage.setItem(THEME_KEY, newTheme);
     applyThemeToDOM(newTheme);
   }, []);
-
-  // Apply theme on every render (works for initial mount and changes)
-  if (typeof window !== "undefined") {
-    applyThemeToDOM(theme);
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>

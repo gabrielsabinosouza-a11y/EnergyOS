@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><defs>
+  <radialGradient id="bgwindfo" cx="50%" cy="60%" r="50%">
+    <stop offset="0%" stop-color="#e0f7fa" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#e0f7fa" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="bodywindfo" cx="40%" cy="30%" r="70%">
+    <stop offset="0%" stop-color="#78909c" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#b0bec5" stop-opacity="1"/>
+  </radialGradient>
+  <filter id="glowwindfo" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="4" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="softglowwindfo" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="8" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+  <ellipse cx="60" cy="92" rx="34" ry="9" fill="#e0f7fa" opacity="0.2"/>
+  <ellipse cx="60" cy="90" rx="18" ry="6" fill="#e0f7fa" opacity="0.3"/>
+  <polygon points="60,28 48,60 52,80 60,88 68,80 72,60" fill="url(#bodywindfo)" filter="url(#glowwindfo)"/>
+  <polygon points="44,50 36,66 42,72 50,62" fill="#b0bec5" opacity="0.55"/>
+  <polygon points="76,50 84,66 78,72 70,62" fill="#b0bec5" opacity="0.55"/>
+  <circle cx="60" cy="26" r="5" fill="#e0f7fa" filter="url(#softglowwindfo)" opacity="0.85"/>
+  <circle cx="54" cy="36" r="2.5" fill="#78909c" opacity="0.6"/>
+  <circle cx="66" cy="34" r="2" fill="#78909c" opacity="0.5"/>
+</svg>

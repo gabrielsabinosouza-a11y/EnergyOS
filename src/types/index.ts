@@ -23,11 +23,15 @@ export interface PublicProfile {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  createdAt?: string;
   lastActiveAt?: string;
   currentStreak: number;
   longestStreak: number;
   weeklyFocusMinutes: number;
   achievements: AchievementProgress[];
+  featuredAchievements: AchievementProgress[];
+  isFriend?: boolean;
+  isOwner?: boolean;
 }
 
 export interface FriendSummary {
@@ -150,6 +154,8 @@ export interface AchievementProgress {
   unlockedTier: number;
   justUnlocked: boolean;
   unlockedAt?: string;
+  isFeatured: boolean;
+  featuredOrder?: number;
 }
 
 export interface Task {

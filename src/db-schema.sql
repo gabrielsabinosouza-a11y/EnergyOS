@@ -263,6 +263,8 @@ create table if not exists user_achievement_progress (
   unlocked_tier integer not null default 0,
   seen_at timestamptz,
   unlocked_at timestamptz,
+  is_featured boolean not null default false,
+  featured_order integer,
   primary key (profile_id, achievement_id)
 );
 

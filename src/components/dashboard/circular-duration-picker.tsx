@@ -24,9 +24,9 @@ function clampAndSnap(raw: number, min: number, max: number, snap: number): numb
 export function CircularDurationPicker({
   value,
   onChange,
-  maxDurationMinutes = 60,
+  maxDurationMinutes = 120,
   snapIncrement = 5,
-  minMinutes = 5,
+  minMinutes = 10,
   size = 220,
   disabled = false,
   accentColor = "var(--accent)",
@@ -118,14 +118,14 @@ export function CircularDurationPicker({
   const displayText = `${String(minutes).padStart(2, "0")}:00`;
 
   return (
-    <div className="circular-duration-picker" style={{ position: "relative", width: size, height: size }}>
+    <div className="circular-duration-picker" style={{ position: "relative", width: size, height: size, maxWidth: "100%" }}>
       <svg
         ref={svgRef}
         width={size}
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         className="circular-duration-svg"
-        style={{ touchAction: "none", cursor: disabled ? "default" : "grab" }}
+        style={{ touchAction: "none", cursor: disabled ? "default" : "grab", maxWidth: "100%", height: "auto", display: "block" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -214,35 +214,35 @@ export function CircularDurationPicker({
         )}
       </svg>
 
-      {/* Center content */}
-      <div
-        className="circular-duration-center"
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          pointerEvents: "none",
-        }}
-      >
-        {centerContent ?? (
-          <>
-            <span
-              className="font-mono font-bold text-[var(--text)] drop-shadow-lg"
-              style={{ fontSize: size * 0.14 }}
-            >
-              {displayText}
+      {/* Center content — hidden when caller passes centerContent={<></>} */}
+      {centerContent !== undefined ? (
+        centerContent
+      ) : (
+        <div
+          className="circular-duration-center"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <span
+            className="font-mono font-bold text-[var(--text)] drop-shadow-lg"
+            style={{ fontSize: size * 0.14 }}
+          >
+            {displayText}
+          </span>
+          {label && (
+            <span className="text-[10px] text-[var(--text-faint)] mt-0.5">
+              {label}
             </span>
-            {label && (
-              <span className="text-[10px] text-[var(--text-faint)] mt-0.5">
-                {label}
-              </span>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

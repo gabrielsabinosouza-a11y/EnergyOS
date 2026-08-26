@@ -213,10 +213,11 @@ export async function assertFriends(profileId: string, otherId: string): Promise
 export async function getPublicProfile(viewerId: string, targetId: string): Promise<PublicProfile> {
   parseProfileId(viewerId);
   const otherId = parseProfileId(targetId);
-  if (viewerId !== otherId) await assertFriends(viewerId, otherId);
+  const isOwner = viewerId === otherId;
+  if (!isOwner) await assertFriends(viewerId, otherId);
 
-  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null }>(
-    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at
      from profiles where id = $1`,
     [otherId],
   );
@@ -226,18 +227,28 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const weekStart = sundayWeekStartIso(todayIso());
   const minutesMap = await getWeeklyFocusMinutesForProfiles([otherId], weekStart);
   const achievements = await listAchievementProgress(otherId);
+  const friendIds = isOwner ? [] : [viewerId];
+  const isFriend = isOwner ? undefined : true;
 
   const row = result.rows[0];
+  const featured = achievements
+    .filter((item) => item.isFeatured && item.unlockedTier > 0)
+    .sort((a, b) => (a.featuredOrder ?? 99) - (b.featuredOrder ?? 99));
+
   return {
     id: row.id,
     displayName: row.display_name,
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
     currentStreak: streak.currentStreak,
     longestStreak: Math.max(streak.longestStreak, row.longest_streak ?? 0),
     weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
-    achievements: achievements.filter((item) => item.unlockedTier > 0),
+    achievements,
+    featuredAchievements: featured,
+    isFriend,
+    isOwner,
   };
 }
 

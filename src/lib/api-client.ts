@@ -1,4 +1,4 @@
-import type { DailyCheckin, FocusSession, Goal, Insight, KanbanTask, Metric, Task, TaskCategory, User, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, DailyCheckin, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanTask, LeagueSnapshot, Metric, PublicProfile, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -70,6 +70,8 @@ export const api = {
   getProfile: () => request<{ user: User }>("/api/profile"),
   updateDisplayName: (displayName: string) =>
     request<{ user: User }>("/api/profile", { method: "PATCH", body: JSON.stringify({ displayName }) }),
+  updatePhotoUrl: (photoUrl: string) =>
+    request<{ user: User }>("/api/profile", { method: "PATCH", body: JSON.stringify({ photoUrl }) }),
 
   // Check-ins
   getCheckins: (from?: string, to?: string) => {
@@ -142,4 +144,56 @@ export const api = {
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId }) }),
   endFocus: (sessionId: number, focusedSeconds: number) =>
     request<{ session: FocusSession; xpAwarded: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds }) }),
+
+  // Social
+  getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),
+  searchUsers: (q: string) => request<{ results: UserSearchResult[] }>(`/api/social/search?q=${encodeURIComponent(q)}`),
+  getPublicProfile: (id: string) => request<{ profile: PublicProfile }>(`/api/social/profile/${id}`),
+
+  // Friends
+  getFriends: () => request<{ friends: FriendSummary[] }>("/api/friends"),
+  sendFriendRequest: (addresseeId: string) =>
+    request<{ status: "pending" | "accepted" }>("/api/friends", { method: "POST", body: JSON.stringify({ addresseeId }) }),
+  getFriendRequests: () => request<{ requests: FriendRequest[] }>("/api/friends/requests"),
+  acceptFriendRequest: (id: number) =>
+    request<{ ok: true }>(`/api/friends/${id}`, { method: "PATCH" }),
+  declineFriendRequest: (id: number) =>
+    request<{ ok: true }>(`/api/friends/${id}`, { method: "DELETE" }),
+
+  // DMs
+  getMessages: (friendId: string, afterId?: number) => {
+    const query = afterId ? `?after=${afterId}` : "";
+    return request<{ messages: DirectMessage[] }>(`/api/dm/${friendId}${query}`);
+  },
+  sendMessage: (friendId: string, body: string) =>
+    request<{ message: DirectMessage }>(`/api/dm/${friendId}`, { method: "POST", body: JSON.stringify({ body }) }),
+  markDmRead: (friendId: string) =>
+    request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
+
+  // Groups
+  getGroups: () => request<{ groups: GroupSummary[] }>("/api/groups"),
+  createGroup: (input: { name: string; avatarEmoji?: string; inviteIds?: string[] }) =>
+    request<{ group: GroupDetail }>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
+  getGroup: (id: number) => request<{ group: GroupDetail }>(`/api/groups/${id}`),
+  getGroupMessages: (id: number, afterId?: number) => {
+    const query = afterId ? `?after=${afterId}` : "";
+    return request<{ messages: GroupMessage[] }>(`/api/groups/${id}/messages${query}`);
+  },
+  sendGroupMessage: (id: number, body: string) =>
+    request<{ message: GroupMessage }>(`/api/groups/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+  markGroupRead: (id: number) =>
+    request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
+  getGroupLeaderboard: (id: number) =>
+    request<{ leaderboard: import("@/types").LeagueEntry[] }>(`/api/groups/${id}/leaderboard`),
+
+  // League
+  getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
+
+  // Achievements
+  getAchievements: () => request<{ achievements: AchievementProgress[] }>("/api/achievements"),
+  markAchievementSeen: (achievementId: string) =>
+    request<{ ok: true }>("/api/achievements", { method: "POST", body: JSON.stringify({ achievementId }) }),
+  toggleFeaturedAchievement: (achievementId: string) =>
+    request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
+
 };

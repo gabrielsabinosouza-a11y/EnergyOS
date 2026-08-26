@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap');
 
 :root { 
   --ink: #07111f; 
@@ -125,7 +124,7 @@
   --glow-green:  0 0 40px -8px rgba(74,222,128,.3);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg-primary); color: var(--text); font-family: 'Inter', 'Segoe UI', sans-serif; transition: background-color .2s, color .2s; }
+body { margin: 0; background: var(--bg-primary); color: var(--text); font-family: 'Inter', 'Segoe UI', sans-serif; transition: background-color .2s, color .2s; overflow-x: hidden; }
 .theme-bg { background: var(--bg-primary); color: var(--text); }
 .theme-text-secondary { color: var(--text-secondary); }
 .theme-text-muted { color: var(--text-muted); }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, LayoutGroup } from "framer-motion";
 import { deleteUser, updateProfile } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -12,7 +12,9 @@ import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
 import { api } from "@/lib/api-client";
 
-const defaultSettings: Omit<UserSettings, "profileId"> = {
+type SettingsForm = Omit<UserSettings, "profileId">;
+
+const defaultSettings: SettingsForm = {
   notificationsEnabled: true,
   preferredTheme: "system",
   sleepTime: "23:00",
@@ -23,40 +25,80 @@ export default function ConfiguracoesPage() {
   const { user, loading, logout } = useAuthRedirect({ ifGuest: "/" });
   const { setTheme: setUITheme } = useTheme();
   const router = useRouter();
-  const [settings, setSettings] = useState(defaultSettings);
+
+  // Last-saved snapshot — used to compute dirty state
+  const savedRef = useRef<SettingsForm>(defaultSettings);
+  const [form, setForm] = useState<SettingsForm>(defaultSettings);
   const [name, setName] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [settingsError, setSettingsError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(savedRef.current);
 
   useEffect(() => {
     if (!user) return;
     let active = true;
-    void api.getSettings().then((savedSettings) => {
-      if (active) {
-        setSettings((current) => ({ ...current, ...savedSettings }));
-        // Sync theme with UI
-        if (savedSettings.preferredTheme) {
-          setUITheme(savedSettings.preferredTheme);
-        }
-      }
+    void api.getSettings().then((s) => {
+      if (!active) return;
+      const loaded: SettingsForm = {
+        notificationsEnabled: s.notificationsEnabled,
+        preferredTheme: s.preferredTheme,
+        sleepTime: s.sleepTime ?? defaultSettings.sleepTime,
+        focusTime: s.focusTime ?? defaultSettings.focusTime,
+      };
+      savedRef.current = loaded;
+      setForm(loaded);
+      setUITheme(s.preferredTheme);
     }).catch(() => {
-      if (active) setSettingsError("Não foi possível carregar suas preferências.");
+      if (active) setLoadError("Não foi possível carregar suas preferências.");
     });
     return () => { active = false; };
   }, [user?.uid, setUITheme]);
 
   if (loading || !user) return <LoadingScreen />;
 
-  // Initialize name from user on first render after auth resolves
   const currentDisplayName = user.displayName ?? "";
   if (!name && currentDisplayName) setName(currentDisplayName);
 
+  function setField<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    // Apply theme to UI immediately for live preview — but don't persist yet
+    if (key === "preferredTheme") setUITheme(value as SettingsForm["preferredTheme"]);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError("");
+    setSaveSuccess(false);
+    try {
+      await api.saveSettings({
+        notificationsEnabled: form.notificationsEnabled,
+        preferredTheme: form.preferredTheme,
+        sleepTime: form.sleepTime,
+        focusTime: form.focusTime,
+      });
+      savedRef.current = { ...form };
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido.";
+      setSaveError(`Não foi possível salvar as preferências: ${msg}`);
+      // Revert theme preview to last saved value on failure
+      setUITheme(savedRef.current.preferredTheme);
+      setForm({ ...savedRef.current });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveName() {
-    if (!name.trim()) return;
-    if (!auth?.currentUser) return;
+    if (!name.trim() || !auth?.currentUser) return;
     setSavingName(true);
     await updateProfile(auth.currentUser, { displayName: name.trim() });
     setSavingName(false);
@@ -81,23 +123,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  function set<K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) {
-    const next = { ...settings, [key]: value };
-    setSettings(next);
-    
-    // Sync theme with UI when theme preference changes
-    if (key === "preferredTheme") {
-      setUITheme(value as "system" | "light" | "dark");
-    }
-    
-    void api.saveSettings({
-      notificationsEnabled: next.notificationsEnabled,
-      preferredTheme: next.preferredTheme,
-      sleepTime: next.sleepTime,
-      focusTime: next.focusTime,
-    }).catch(() => setSettingsError("Não foi possível salvar a preferência."));
-  }
-
   return (
     <main className="min-h-screen theme-bg">
       <div className="grid-noise pointer-events-none fixed inset-0 opacity-40" />
@@ -108,9 +133,11 @@ export default function ConfiguracoesPage() {
         </div>
 
         <h1 className="font-display text-3xl tracking-[-0.04em] mb-8">Configurações</h1>
-        {settingsError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{settingsError}</p>}
+
+        {loadError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{loadError}</p>}
 
         <div className="space-y-4">
+          {/* Perfil */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PERFIL</span>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Nome</label>
@@ -123,14 +150,15 @@ export default function ConfiguracoesPage() {
             {nameSaved && <p className="mt-2 text-xs text-[#71d4ff]">Nome atualizado!</p>}
           </motion.div>
 
+          {/* Preferências */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PREFERÊNCIAS</span>
             <div className="space-y-5">
               <ToggleRow
                 label="Notificações"
                 description="Receber lembretes de check-in e metas"
-                checked={settings.notificationsEnabled}
-                onChange={(v) => set("notificationsEnabled", v)}
+                checked={form.notificationsEnabled}
+                onChange={(v) => setField("notificationsEnabled", v)}
               />
               <div>
                 <div className="text-sm font-medium mb-2">Tema da interface</div>
@@ -138,8 +166,8 @@ export default function ConfiguracoesPage() {
                   {(["system", "light", "dark"] as const).map((t) => (
                     <button
                       key={t}
-                      onClick={() => set("preferredTheme", t)}
-                      className={`answer-option px-4 py-2 text-xs ${settings.preferredTheme === t ? "selected" : ""}`}
+                      onClick={() => setField("preferredTheme", t)}
+                      className={`answer-option px-4 py-2 text-xs ${form.preferredTheme === t ? "selected" : ""}`}
                       style={{ width: "auto" }}
                     >
                       {{ system: "Sistema", light: "Claro", dark: "Escuro" }[t]}
@@ -150,14 +178,38 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
 
+          {/* Horários */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.1 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">HORÁRIOS PADRÃO</span>
             <div className="grid gap-4 sm:grid-cols-2">
-              <TimeField label="Horário de sono" value={settings.sleepTime ?? ""} onChange={(v) => set("sleepTime", v)} />
-              <TimeField label="Horário de foco" value={settings.focusTime ?? ""} onChange={(v) => set("focusTime", v)} />
+              <TimeField label="Horário de sono" value={form.sleepTime ?? ""} onChange={(v) => setField("sleepTime", v)} />
+              <TimeField label="Horário de foco" value={form.focusTime ?? ""} onChange={(v) => setField("focusTime", v)} />
             </div>
           </motion.div>
 
+          {/* Save button */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.13 } }}>
+            {saveError && (
+              <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
+                {saveError}
+              </p>
+            )}
+            {saveSuccess && (
+              <p className="mb-3 rounded-lg border border-green-500/20 bg-green-500/8 px-4 py-3 text-sm text-green-400 flex items-center gap-2">
+                <Check size={14} /> Preferências salvas com sucesso
+              </p>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+              className="primary-button w-full justify-center"
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+              {saving ? "Salvando…" : "Salvar alterações"}
+            </button>
+          </motion.div>
+
+          {/* Conta */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">CONTA</span>
             <div className="space-y-3">

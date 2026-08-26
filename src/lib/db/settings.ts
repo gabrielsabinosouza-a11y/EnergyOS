@@ -51,10 +51,6 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
   const sleepTime = input.sleepTime === undefined ? null : parseOptionalTime(input.sleepTime, "Horário de sono");
   const focusTime = input.focusTime === undefined ? null : parseOptionalTime(input.focusTime, "Horário de foco");
 
-  if (input.notificationsEnabled === undefined && !input.preferredTheme && input.sleepTime === undefined && input.focusTime === undefined) {
-    throw new ValidationError("Nenhuma configuração informada.");
-  }
-
   const result = await pool.query<SettingsRow>(
     `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time)
      values ($1, $2, $3, $4, $5)
