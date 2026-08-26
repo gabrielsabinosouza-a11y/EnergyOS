@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { updateProfile } from "firebase/auth";
 import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -91,6 +91,11 @@ export default function PerfilPage() {
     }
   }
 
+  const reduced = useReducedMotion();
+  const streak = dashboard?.streak?.currentStreak ?? 0;
+  const glowAlpha = Math.min(0.15 + streak * 0.01, 0.45).toFixed(2);
+  const avatarGlow = streak > 0 ? `0 0 0 3px rgba(255,184,107,${glowAlpha}), 0 0 28px rgba(255,184,107,${glowAlpha})` : undefined;
+
   return (
     <AppShell>
       <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
@@ -104,7 +109,7 @@ export default function PerfilPage() {
               <div className="relative">
                 <div
                   className="avatar"
-                  style={{ width: 64, height: 64, fontSize: 22 }}
+                  style={{ width: 64, height: 64, fontSize: 22, boxShadow: avatarGlow, transition: "box-shadow 0.4s ease" }}
                 >
                   {user.photoURL ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -145,23 +150,27 @@ export default function PerfilPage() {
 
             {/* Info cards */}
             <div className="grid grid-cols-2 gap-3 mb-8 sm:grid-cols-3">
-              <div className="metric-card">
-                <div className="metric-caption mb-1">Membro desde</div>
-                <div className="font-display text-sm">{createdAt}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-caption mb-1">Streak atual</div>
-                <div className="flex items-center gap-1.5 text-[#ffb86b]">
-                  <Flame size={14} fill="currentColor" />
-                  <span className="font-display text-base">{dashboard?.streak?.currentStreak ?? 0} dias</span>
-                </div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-caption mb-1">Provedor</div>
-                <div className="font-display text-sm capitalize">
-                  {user.providerData[0]?.providerId === "google.com" ? "Google" : "E-mail"}
-                </div>
-              </div>
+              {[
+                { label: "Membro desde", color: "var(--accent)", glow: "rgba(113,212,255,.12)", content: <div className="font-display text-sm">{createdAt}</div> },
+                { label: "Streak atual", color: "var(--orange)", glow: "rgba(255,184,107,.12)", content: (
+                  <div className="flex items-center gap-1.5 text-[#ffb86b]">
+                    <Flame size={14} fill="currentColor" />
+                    <span className="font-display text-base">{streak} dias</span>
+                  </div>
+                )},
+                { label: "Provedor", color: "var(--purple)", glow: "rgba(182,156,255,.12)", content: <div className="font-display text-sm">{user.providerData[0]?.providerId === "google.com" ? "Google" : "E-mail"}</div> },
+              ].map(({ label, color, glow, content }) => (
+                <motion.div
+                  key={label}
+                  whileHover={reduced ? undefined : { y: -2 }}
+                  transition={{ duration: 0.15 }}
+                  className="metric-card cursor-default"
+                  style={{ boxShadow: `0 0 20px -8px ${glow}` }}
+                >
+                  <div className="metric-caption mb-1" style={{ color }}>{label}</div>
+                  {content}
+                </motion.div>
+              ))}
             </div>
 
             {/* Médias */}

@@ -158,6 +158,7 @@ export async function dailyCompletions(profileId: string, fromDate: string, toDa
 
 export interface StreakInfo {
   currentStreak: number;
+  longestStreak: number;
   todayQualified: boolean;
   todayTotal: number;
 }
@@ -169,8 +170,11 @@ export interface StreakInfo {
  */
 export async function computeStreak(profileId: string, today: string): Promise<StreakInfo> {
   parseProfileId(profileId);
-  const days = await dailyCompletions(profileId, addDays(today, -90), today);
-  if (days.length === 0) return { currentStreak: 0, todayQualified: false, todayTotal: 0 };
+  const days = await dailyCompletions(profileId, addDays(today, -365), today);
+  if (days.length === 0) {
+    await persistStreak(profileId, 0, 0);
+    return { currentStreak: 0, longestStreak: 0, todayQualified: false, todayTotal: 0 };
+  }
 
   let streak = 0;
   for (const day of days) {
@@ -182,12 +186,37 @@ export async function computeStreak(profileId: string, today: string): Promise<S
     streak += 1;
   }
 
+  const chronological = [...days].reverse();
+  let run = 0;
+  let longest = 0;
+  for (const day of chronological) {
+    const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
+    if (qualifies) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 0;
+    }
+  }
+
   const todayEntry = days.find((day) => day.date === today);
+  await persistStreak(profileId, streak, longest);
   return {
     currentStreak: streak,
+    longestStreak: longest,
     todayQualified: Boolean(todayEntry && todayEntry.completed / todayEntry.total >= 0.5),
     todayTotal: todayEntry?.total ?? 0,
   };
+}
+
+async function persistStreak(profileId: string, current: number, longest: number): Promise<void> {
+  await pool.query(
+    `update profiles
+     set current_streak = $2,
+         longest_streak = greatest(coalesce(longest_streak, 0), $3)
+     where id = $1`,
+    [profileId, current, longest],
+  );
 }
 
 function addDays(isoDate: string, days: number): string {

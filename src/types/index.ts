@@ -7,7 +7,149 @@ export interface User {
   displayName: string;
   email: string;
   photoUrl?: string;
+  username?: string;
   createdAt: string;
+  lastActiveAt?: string;
+  currentStreak?: number;
+  longestStreak?: number;
+}
+
+export type FriendshipStatus = "pending" | "accepted";
+export type LeagueTier = "faisca" | "chama" | "aura" | "nucleo";
+export type LeagueResult = "promoted" | "demoted" | "stayed";
+
+export interface PublicProfile {
+  id: string;
+  displayName: string;
+  username?: string;
+  photoUrl?: string;
+  lastActiveAt?: string;
+  currentStreak: number;
+  longestStreak: number;
+  weeklyFocusMinutes: number;
+  achievements: AchievementProgress[];
+}
+
+export interface FriendSummary {
+  id: string;
+  displayName: string;
+  username?: string;
+  photoUrl?: string;
+  lastActiveAt?: string;
+  currentStreak: number;
+  friendshipId: number;
+  unreadCount: number;
+}
+
+export interface FriendRequest {
+  id: number;
+  direction: "incoming" | "outgoing";
+  createdAt: string;
+  user: {
+    id: string;
+    displayName: string;
+    username?: string;
+    photoUrl?: string;
+  };
+}
+
+export interface UserSearchResult {
+  id: string;
+  displayName: string;
+  username?: string;
+  photoUrl?: string;
+  relation: "none" | "pending_outgoing" | "pending_incoming" | "friends";
+}
+
+export interface DirectMessage {
+  id: number;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface GroupSummary {
+  id: number;
+  name: string;
+  avatarEmoji: string;
+  avatarUrl?: string;
+  memberCount: number;
+  weeklyFocusMinutes: number;
+  unreadCount: number;
+}
+
+export interface GroupMember {
+  id: string;
+  displayName: string;
+  username?: string;
+  photoUrl?: string;
+  role: "owner" | "member";
+  currentStreak: number;
+}
+
+export interface GroupDetail {
+  id: number;
+  name: string;
+  avatarEmoji: string;
+  avatarUrl?: string;
+  createdBy: string;
+  createdAt: string;
+  members: GroupMember[];
+  weeklyFocusMinutes: number;
+}
+
+export interface GroupMessage {
+  id: number;
+  groupId: number;
+  senderId: string;
+  senderName: string;
+  senderPhotoUrl?: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface LeagueEntry {
+  profileId: string;
+  displayName: string;
+  username?: string;
+  photoUrl?: string;
+  xp: number;
+  rank: number;
+  currentStreak: number;
+  isCurrentUser: boolean;
+  isFriend: boolean;
+}
+
+export interface LeagueSnapshot {
+  tier: LeagueTier;
+  weekStart: string;
+  resetsAt: string;
+  entries: LeagueEntry[];
+  promotionUntilRank: number | null;
+  demotionFromRank: number | null;
+  lastWeekResult?: LeagueResult;
+  lastWeekRank?: number;
+}
+
+export interface AchievementDefinition {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  thresholds: number[];
+}
+
+export interface AchievementProgress {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  thresholds: number[];
+  currentValue: number;
+  unlockedTier: number;
+  justUnlocked: boolean;
+  unlockedAt?: string;
 }
 
 export interface Task {

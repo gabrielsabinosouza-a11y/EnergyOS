@@ -137,3 +137,142 @@ create table if not exists user_xp (
   level integer not null default 1,
   updated_at timestamptz not null default now()
 );
+
+-- ── Social: profile extras ──────────────────────────────────────────────────
+alter table profiles add column if not exists username text;
+alter table profiles add column if not exists photo_url text;
+alter table profiles add column if not exists last_active_at timestamptz;
+alter table profiles add column if not exists current_streak integer not null default 0;
+alter table profiles add column if not exists longest_streak integer not null default 0;
+
+create unique index if not exists profiles_username_lower_idx
+  on profiles (lower(username)) where username is not null;
+
+alter table daily_checkins add column if not exists created_at timestamptz not null default now();
+
+-- ── Friendships ─────────────────────────────────────────────────────────────
+create table if not exists friendships (
+  id bigserial primary key,
+  requester_id text not null references profiles(id) on delete cascade,
+  addressee_id text not null references profiles(id) on delete cascade,
+  status text not null check (status in ('pending', 'accepted')),
+  created_at timestamptz not null default now(),
+  accepted_at timestamptz,
+  check (requester_id <> addressee_id)
+);
+
+create unique index if not exists friendships_pair_idx
+  on friendships (least(requester_id, addressee_id), greatest(requester_id, addressee_id));
+
+create index if not exists friendships_requester_idx on friendships(requester_id, status);
+create index if not exists friendships_addressee_idx on friendships(addressee_id, status);
+
+-- ── Groups ──────────────────────────────────────────────────────────────────
+create table if not exists groups (
+  id bigserial primary key,
+  name text not null,
+  avatar_emoji text not null default '⚡',
+  avatar_url text,
+  created_by text not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists group_members (
+  group_id bigint not null references groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  role text not null default 'member' check (role in ('owner', 'member')),
+  joined_at timestamptz not null default now(),
+  primary key (group_id, profile_id)
+);
+
+create index if not exists group_members_profile_idx on group_members(profile_id);
+
+create table if not exists group_messages (
+  id bigserial primary key,
+  group_id bigint not null references groups(id) on delete cascade,
+  sender_id text not null references profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
+
+create table if not exists group_reads (
+  profile_id text not null references profiles(id) on delete cascade,
+  group_id bigint not null references groups(id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (profile_id, group_id)
+);
+
+-- ── Direct messages ─────────────────────────────────────────────────────────
+create table if not exists direct_messages (
+  id bigserial primary key,
+  sender_id text not null references profiles(id) on delete cascade,
+  recipient_id text not null references profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now(),
+  check (sender_id <> recipient_id)
+);
+
+create index if not exists dm_pair_idx on direct_messages (
+  least(sender_id, recipient_id),
+  greatest(sender_id, recipient_id),
+  created_at desc
+);
+create index if not exists dm_recipient_idx on direct_messages(recipient_id, created_at desc);
+
+create table if not exists dm_reads (
+  profile_id text not null references profiles(id) on delete cascade,
+  other_id text not null references profiles(id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (profile_id, other_id)
+);
+
+-- ── Weekly league ───────────────────────────────────────────────────────────
+create table if not exists league_standings (
+  profile_id text primary key references profiles(id) on delete cascade,
+  current_tier text not null default 'faisca' check (current_tier in ('faisca', 'chama', 'aura', 'nucleo')),
+  last_week_rank integer,
+  last_week_result text check (last_week_result in ('promoted', 'demoted', 'stayed'))
+);
+
+create table if not exists league_entries (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  week_start date not null,
+  tier text not null check (tier in ('faisca', 'chama', 'aura', 'nucleo')),
+  xp integer not null default 0,
+  rank integer,
+  unique (profile_id, week_start)
+);
+
+create index if not exists league_entries_week_tier_idx on league_entries(week_start, tier, xp desc);
+
+-- ── Achievements ────────────────────────────────────────────────────────────
+create table if not exists achievements (
+  id text primary key,
+  title text not null,
+  description text not null,
+  category text not null
+);
+
+create table if not exists user_achievement_progress (
+  profile_id text not null references profiles(id) on delete cascade,
+  achievement_id text not null references achievements(id) on delete cascade,
+  current_value integer not null default 0,
+  unlocked_tier integer not null default 0,
+  seen_at timestamptz,
+  unlocked_at timestamptz,
+  primary key (profile_id, achievement_id)
+);
+
+insert into achievements (id, title, description, category) values
+  ('streak_master',    'Streak Master',  'Mantenha sequências de consistência',           'streak'),
+  ('deep_focus',       'Deep Focus',     'Complete sessões longas de foco',               'focus'),
+  ('early_riser',      'Early Riser',    'Faça check-in antes das 7h',                    'checkin'),
+  ('sleep_champion',   'Sleep Champion', 'Durma 7 horas ou mais',                         'sleep'),
+  ('consistency_king', 'Consistency King','Semanas perfeitas de check-in',                'checkin'),
+  ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
+  ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
+  ('rarest_aura',      'Rarest Aura',    'Termine no topo da liga Núcleo',                'league')
+on conflict (id) do nothing;

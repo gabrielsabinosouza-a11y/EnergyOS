@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { UnauthorizedError } from "./errors";
 import { parseProfileId } from "./db/validation";
+import { touchLastActive } from "./db/profiles";
 
 interface VerifiedIdentity {
   uid: string;
   email: string | null;
   displayName: string | null;
+  photoUrl: string | null;
 }
 
 interface CacheEntry {
@@ -46,11 +48,18 @@ async function verifyWithGoogle(token: string): Promise<VerifiedIdentity> {
   );
 
   if (!response.ok) throw new UnauthorizedError("Sessão inválida ou expirada.");
-  const body = (await response.json()) as { users?: Array<{ localId: string; email?: string; displayName?: string }> };
+  const body = (await response.json()) as {
+    users?: Array<{ localId: string; email?: string; displayName?: string; photoUrl?: string }>;
+  };
   const user = body.users?.[0];
   if (!user?.localId) throw new UnauthorizedError("Sessão inválida ou expirada.");
 
-  const identity: VerifiedIdentity = { uid: user.localId, email: user.email ?? null, displayName: user.displayName ?? null };
+  const identity: VerifiedIdentity = {
+    uid: user.localId,
+    email: user.email ?? null,
+    displayName: user.displayName ?? null,
+    photoUrl: user.photoUrl ?? null,
+  };
   identityCache.set(token, { identity, expiresAt: Date.now() + CACHE_TTL_MS });
   if (identityCache.size > 500) {
     const oldest = identityCache.keys().next().value;
@@ -75,6 +84,7 @@ export interface AuthenticatedRequest {
   profileId: string;
   email: string | null;
   displayName: string | null;
+  photoUrl: string | null;
 }
 
 /** Garante isolamento por usuário: todo endpoint resolve o perfil pelo token, nunca por parâmetro do cliente. */
@@ -82,7 +92,8 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
   const devProfileId = devBypassProfileId(request);
   if (devProfileId) {
     console.log('[auth] Using dev bypass profile:', devProfileId);
-    return { profileId: devProfileId, email: null, displayName: null };
+    touchLastActive(devProfileId);
+    return { profileId: devProfileId, email: null, displayName: null, photoUrl: null };
   }
 
   const token = extractToken(request);
@@ -95,5 +106,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
   const identity = await verifyWithGoogle(token);
   console.log('[auth] Token verified successfully for UID:', identity.uid);
   
-  return { profileId: parseProfileId(identity.uid), email: identity.email, displayName: identity.displayName };
+  const profileId = parseProfileId(identity.uid);
+  touchLastActive(profileId);
+  return { profileId, email: identity.email, displayName: identity.displayName, photoUrl: identity.photoUrl };
 }

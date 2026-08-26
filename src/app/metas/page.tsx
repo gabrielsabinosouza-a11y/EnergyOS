@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
   Sparkles,
@@ -28,6 +28,7 @@ import Link from "next/link";
 import type { Goal, Habit, GoalCategory } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
 import { api } from "@/lib/api-client";
+import { ProgressBar } from "@/components/ui";
 
 const CATEGORY_META: Record<GoalCategory, { label: string; color: string; icon: React.ElementType }> = {
   sono:   { label: "Sono",   color: "#71d4ff", icon: Moon },
@@ -55,6 +56,7 @@ const emptyDraft = (): GoalDraft => ({
 
 export default function MetasPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
+  const reduced = useReducedMotion();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
@@ -208,9 +210,15 @@ export default function MetasPage() {
             <span className="eyebrow muted">METAS</span>
             <h1 className="mt-2 font-display text-3xl tracking-[-0.04em]">Suas metas</h1>
           </div>
-          <button onClick={openCreate} className="primary-button">
+          <motion.button
+            onClick={openCreate}
+            whileHover={reduced ? undefined : { scale: 1.04, boxShadow: "0 0 36px rgba(113,212,255,.4)" }}
+            whileTap={reduced ? undefined : { scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            className="primary-button"
+          >
             <Plus size={15} /> Nova meta
-          </button>
+          </motion.button>
         </div>
 
         {error && (
@@ -291,11 +299,29 @@ export default function MetasPage() {
 
         {/* Lista de metas */}
         {goals.length === 0 && !showForm && (
-          <div className="panel p-12 text-center">
-            <Target size={32} className="mx-auto mb-4 text-[var(--text-faint)]" />
-            <p className="text-[var(--text-muted)] text-sm">Nenhuma meta criada ainda.</p>
-            <button onClick={openCreate} className="text-button mt-4">Criar primeira meta <Plus size={13} /></button>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            className="panel relative overflow-hidden p-14 text-center"
+          >
+            <span aria-hidden className="ambient-glow" style={{ width: 220, height: 220, top: -60, left: "50%", transform: "translateX(-50%)", background: "rgba(182,156,255,.1)" }} />
+            <motion.div
+              animate={reduced ? {} : { y: [0, -6, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="relative z-10 mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--purple-bg)] bg-[var(--purple-bg)]"
+            >
+              <Target size={26} className="text-[var(--purple)]" />
+            </motion.div>
+            <p className="relative z-10 font-display text-base text-[var(--text-secondary)] mb-1">Nenhuma meta ainda</p>
+            <p className="relative z-10 text-xs text-[var(--text-faint)] mb-5">Defina o que você quer alcançar e acompanhe cada passo.</p>
+            <motion.button
+              onClick={openCreate}
+              whileHover={reduced ? undefined : { scale: 1.04, boxShadow: "0 0 36px rgba(113,212,255,.4)" }}
+              whileTap={reduced ? undefined : { scale: 0.96 }}
+              className="relative z-10 primary-button mx-auto"
+            >
+              <Plus size={14} /> Criar primeira meta
+            </motion.button>
+          </motion.div>
         )}
 
         <div className="space-y-3">
@@ -329,9 +355,7 @@ export default function MetasPage() {
                           <span className="text-xs text-[var(--text-muted)]">{CATEGORY_META[goal.category].label} · {FREQ_LABELS[goal.frequency]}</span>
                         </div>
                         <div className="mt-3 flex items-center gap-3">
-                          <div className="progress-track flex-1">
-                            <div className="progress-value" style={{ width: `${pct}%`, boxShadow: `0 0 12px ${color}80`, background: color }} />
-                          </div>
+                          <ProgressBar value={pct} color={color} glowColor={`${color}60`} />
                           <span className="text-xs font-mono" style={{ color }}>{pct}%</span>
                         </div>
                         <div className="mt-3">
@@ -416,7 +440,7 @@ export default function MetasPage() {
                         <div className="p-5 pt-4">
                           <span className="eyebrow muted mb-3 block">HÁBITOS RELACIONADOS</span>
                           {goalHabits.length === 0 && (
-                            <p className="text-xs text-[var(--text-faint)] mb-3">Nenhum hábito ainda.</p>
+                            <p className="text-xs text-[var(--text-faint)] mb-3 italic">Nenhum hábito ainda — adicione um abaixo.</p>
                           )}
                           <div className="space-y-1 mb-3">
                             {goalHabits.map((h) => (

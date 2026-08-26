@@ -99,6 +99,47 @@ export async function getFocusHistory(profileId: string): Promise<FocusSession[]
   return result.rows.map(mapFocus);
 }
 
+export async function getWeeklyFocusMinutesForProfiles(
+  profileIds: string[],
+  weekStart: string,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (profileIds.length === 0) return map;
+  const result = await pool.query<{ profile_id: string; minutes: string | number }>(
+    `select profile_id, coalesce(sum(duration_minutes), 0) as minutes
+     from focus_sessions
+     where profile_id = any($1::text[])
+       and ended_at is not null
+       and started_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+       and started_at < (($2::date + 7))::timestamp at time zone 'America/Sao_Paulo'
+     group by profile_id`,
+    [profileIds, weekStart],
+  );
+  for (const row of result.rows) map.set(row.profile_id, Number(row.minutes));
+  for (const id of profileIds) if (!map.has(id)) map.set(id, 0);
+  return map;
+}
+
+export async function getLifetimeFocusMinutes(profileId: string): Promise<number> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ minutes: string | number }>(
+    `select coalesce(sum(duration_minutes), 0) as minutes
+     from focus_sessions where profile_id = $1 and ended_at is not null`,
+    [profileId],
+  );
+  return Number(result.rows[0]?.minutes ?? 0);
+}
+
+export async function getLongestFocusSession(profileId: string): Promise<number> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ minutes: string | number | null }>(
+    `select max(duration_minutes) as minutes
+     from focus_sessions where profile_id = $1 and ended_at is not null`,
+    [profileId],
+  );
+  return Number(result.rows[0]?.minutes ?? 0);
+}
+
 export async function getTodayFocusStats(profileId: string): Promise<{ minutesFocused: number; coinsEarned: number }> {
   parseProfileId(profileId);
   const today = todayIso();

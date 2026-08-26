@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuthRedirect } from "@/lib/auth-context";
-import { Sparkles, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -68,7 +68,7 @@ export default function CadastroPage() {
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-sm">
       <div className="panel p-8">
         <div className="mb-8 flex items-center gap-3">
-          <div className="brand-mark"><Sparkles size={17} /></div>
+          <Image src="/icons_8bits/logo.png" alt="energyOS" width={28} height={28} className="pixelated" />
           <span className="font-display text-xl font-semibold tracking-[-0.04em]">
             energy<span className="text-[#71d4ff]">OS</span>
           </span>

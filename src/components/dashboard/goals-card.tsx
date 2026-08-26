@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Target, Moon, Timer, Heart, Zap } from "lucide-react";
 import type { Goal, GoalCategory } from "@/types";
 import Link from "next/link";
@@ -14,12 +14,18 @@ const CATEGORY_META: Record<GoalCategory, { label: string; color: string; icon: 
 };
 
 export function GoalsCard({ goals }: { goals: Goal[] }) {
+  const reduced = useReducedMotion();
   const activeGoals = goals.slice(0, 4);
 
   if (activeGoals.length === 0) {
     return (
       <div className="panel p-6 h-full flex flex-col items-center justify-center">
-        <Target size={24} className="text-[var(--text-faint)] mb-3" />
+        <motion.div
+          animate={reduced ? {} : { y: [0, -5, 0] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Target size={24} className="text-[var(--text-faint)] mb-3" />
+        </motion.div>
         <p className="text-sm text-[var(--text-muted)]">Nenhuma meta ativa</p>
         <Link href="/metas" className="mt-2 text-xs text-[var(--accent)] hover:underline">Criar meta</Link>
       </div>
@@ -36,24 +42,30 @@ export function GoalsCard({ goals }: { goals: Goal[] }) {
         {activeGoals.map((goal, i) => {
           const { color, icon: Icon, label } = CATEGORY_META[goal.category];
           const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
+          const circ = 2 * Math.PI * 17;
+          const arcLen = (pct / 100) * circ;
           return (
             <motion.div
               key={goal.id}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
+              whileHover={reduced ? undefined : { y: -2 }}
               className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
             >
               <div className="relative flex-shrink-0">
                 <svg width="40" height="40" viewBox="0 0 40 40">
                   <circle cx="20" cy="20" r="17" fill="none" stroke="var(--border-subtle)" strokeWidth="3" />
-                  <circle
+                  <motion.circle
                     cx="20" cy="20" r="17" fill="none"
                     stroke={color}
                     strokeWidth="3"
                     strokeLinecap="round"
-                    strokeDasharray={`${(pct / 100) * 106.8} 106.8`}
+                    strokeDasharray={`${arcLen} ${circ - arcLen}`}
                     transform="rotate(-90 20 20)"
+                    initial={{ strokeDasharray: `0 ${circ}` }}
+                    animate={{ strokeDasharray: `${arcLen} ${circ - arcLen}` }}
+                    transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: i * 0.08 }}
                     style={{ filter: `drop-shadow(0 0 4px ${color}40)` }}
                   />
                 </svg>

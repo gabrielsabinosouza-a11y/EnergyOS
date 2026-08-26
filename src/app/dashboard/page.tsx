@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowUpRight, Check, Flame, Loader2, Moon, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { ArrowUpRight, Check, Flame, Loader2, Moon, MoonStar, RefreshCw, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
@@ -16,6 +16,19 @@ import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
+import { AnimatedNumber, ProgressBar } from "@/components/ui";
+
+import type { Variants } from "framer-motion";
+
+const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
+const fadeUp: Variants = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } } };
+
+const SLEEP_OPTIONS = [
+  { label: "Menos de 6h", sublabel: "Descanso insuficiente", hours: 5, icon: Moon, color: "#f87171", bgColor: "rgba(248,113,113,.08)" },
+  { label: "6 a 7 horas", sublabel: "Pode melhorar", hours: 6.5, icon: Moon, color: "#fbbf24", bgColor: "rgba(251,191,36,.08)" },
+  { label: "7 a 8 horas", sublabel: "Ideal para foco", hours: 7.5, icon: MoonStar, color: "#71d4ff", bgColor: "rgba(113,212,255,.08)" },
+  { label: "Mais de 8h", sublabel: "Descanso completo", hours: 8.5, icon: MoonStar, color: "#b69cff", bgColor: "rgba(182,156,255,.08)" },
+] as const;
 
 const METRIC_ICONS: Record<string, React.ElementType> = { sleep: Moon, study: Timer, training: Target };
 const METRIC_COLORS: Record<string, string> = { sleep: "#71d4ff", study: "#b69cff", training: "#ffb86b" };
@@ -36,8 +49,51 @@ function greeting(name: string) {
   return `${part}, ${name.split(" ")[0]}`;
 }
 
+function MiniSparkline({ values, color }: { values: number[]; color: string }) {
+  if (!values.length) return null;
+  const max = Math.max(...values, 1);
+  return (
+    <div className="metric-sparkline">
+      {values.map((v, i) => (
+        <motion.div
+          key={i}
+          className="bar"
+          initial={{ height: 0 }}
+          animate={{ height: `${Math.max(8, (v / max) * 100)}%` }}
+          transition={{ duration: 0.5, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+          style={{ background: color, opacity: 0.3 + (i / values.length) * 0.7 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Toast({ message, type, onDismiss }: { message: string; type: "error" | "success"; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className={`toast ${type}`}
+    >
+      <span>{message}</span>
+      {type === "error" && (
+        <button className="toast-action" onClick={onDismiss}>
+          OK
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
 export default function DashboardPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
+  const reduced = useReducedMotion();
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -45,10 +101,31 @@ export default function DashboardPage() {
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
-  const [error, setError] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinSaved, setCheckinSaved] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const [streakPop, setStreakPop] = useState(false);
+  const prevStreakRef = useRef(0);
+
+  useEffect(() => {
+    const currentStreak = snapshot?.streak.currentStreak ?? 0;
+    if (currentStreak > prevStreakRef.current && currentStreak > 0) {
+      setStreakPop(true);
+      const t = setTimeout(() => setStreakPop(false), 500);
+      return () => clearTimeout(t);
+    }
+    prevStreakRef.current = currentStreak;
+  }, [snapshot?.streak.currentStreak]);
+
+  const showError = useCallback((message: string) => {
+    setToast({ message, type: "error" });
+  }, []);
+
+  const showSuccess = useCallback((message: string) => {
+    setToast({ message, type: "success" });
+  }, []);
 
   async function fetchDashboard() {
     try {
@@ -60,9 +137,8 @@ export default function DashboardPage() {
       const data = (await res.json()) as DashboardSnapshotResponse;
       setSnapshot(data);
       setTasks(data.tasks);
-      setError("");
     } catch {
-      setError("Não foi possível carregar os dados.");
+      setSectionErrors((prev) => ({ ...prev, metrics: "Nao foi possivel carregar as medias." }));
     } finally {
       setLoadingPage(false);
     }
@@ -72,24 +148,26 @@ export default function DashboardPage() {
     if (loading || !user) return;
     let cancelled = false;
 
-    // Fetch all data in parallel
     user.getIdToken().then((token) => {
       if (cancelled) return;
-      Promise.all([
+      Promise.allSettled([
         fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => r.ok ? r.json() : Promise.reject())
-          .then((data) => { if (!cancelled) { setSnapshot(data); setTasks(data.tasks); } }),
+          .then((data) => { if (!cancelled) { setSnapshot(data); setTasks(data.tasks); } })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, metrics: "Nao foi possivel carregar as medias." })); }),
         api.getGoals()
-          .then((bundles) => { if (!cancelled) setGoals(bundles.map((b) => b.goal)); }),
+          .then((bundles) => { if (!cancelled) setGoals(bundles.map((b) => b.goal)); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, goals: "Erro ao carregar metas." })); }),
         api.getKanban()
-          .then((k) => { if (!cancelled) setKanbanTasks(k); }),
+          .then((k) => { if (!cancelled) setKanbanTasks(k); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, kanban: "Erro ao carregar kanban." })); }),
         api.getWeeklyPlans(weekStartIso(new Date().toISOString().slice(0, 10)))
-          .then((p) => { if (!cancelled) setWeeklyPlans(p); }),
+          .then((p) => { if (!cancelled) setWeeklyPlans(p); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, plans: "Erro ao carregar planos." })); }),
         api.getFocusData()
-          .then((f) => { if (!cancelled) setFocusData(f); }),
-      ]).catch(() => {
-        if (!cancelled) setError("Não foi possível carregar alguns dados.");
-      }).finally(() => {
+          .then((f) => { if (!cancelled) setFocusData(f); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, focus: "Erro ao carregar dados de foco." })); }),
+      ]).finally(() => {
         if (!cancelled) setLoadingPage(false);
       });
     });
@@ -99,15 +177,17 @@ export default function DashboardPage() {
   }, [loading, user?.uid]);
 
   async function saveCheckin() {
-    const sleepHours = sleepAnswer === "Menos de 6 horas" ? 5 : sleepAnswer === "6 a 7 horas" ? 6.5 : sleepAnswer === "7 a 8 horas" ? 7.5 : 8.5;
+    const opt = SLEEP_OPTIONS.find((o) => o.label === sleepAnswer);
+    const sleepHours = opt?.hours ?? 7.5;
     setCheckinSaving(true);
     setCheckinSaved(false);
     try {
       await api.saveCheckin({ sleepHours });
       setCheckinSaved(true);
+      showSuccess("Check-in salvo!");
       await fetchDashboard();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível salvar o check-in.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel salvar o check-in.");
     } finally {
       setCheckinSaving(false);
     }
@@ -122,7 +202,7 @@ export default function DashboardPage() {
       setTasks((prev) => prev.map((item) => item.id === task.id ? response.task : item));
     } catch (error) {
       setTasks(previousTasks);
-      setError(error instanceof Error ? error.message : "Não foi possível atualizar a tarefa.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar a tarefa.");
     }
   }
 
@@ -133,7 +213,7 @@ export default function DashboardPage() {
       await api.deleteTask(id);
     } catch (error) {
       setTasks(previousTasks);
-      setError(error instanceof Error ? error.message : "Não foi possível excluir a tarefa.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel excluir a tarefa.");
     }
   }
 
@@ -142,7 +222,7 @@ export default function DashboardPage() {
       const result = await api.createTask({ title, category });
       setTasks((prev) => [...prev, result.task]);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível criar a tarefa.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel criar a tarefa.");
     }
   }
 
@@ -151,7 +231,7 @@ export default function DashboardPage() {
       const result = await api.updateTask(id, { title, category });
       setTasks((prev) => prev.map((item) => item.id === id ? result.task : item));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível editar a tarefa.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel editar a tarefa.");
     }
   }
 
@@ -161,7 +241,7 @@ export default function DashboardPage() {
       setKanbanTasks((prev) => [...prev, result.task]);
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completedAt: new Date().toISOString() } : t));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível promover a tarefa.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel promover a tarefa.");
     }
   }
 
@@ -181,7 +261,7 @@ export default function DashboardPage() {
       const result = await api.createKanbanTask({ title, category });
       setKanbanTasks((prev) => [...prev, result.task]);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível criar o card.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel criar o card.");
     }
   }
 
@@ -200,7 +280,7 @@ export default function DashboardPage() {
       const result = await api.completeWeeklyPlan(id);
       setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível concluir o plano.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel concluir o plano.");
     }
   }
 
@@ -219,7 +299,7 @@ export default function DashboardPage() {
       const result = await api.createWeeklyPlan({ planDate, title, category });
       setWeeklyPlans((prev) => [...prev, result.plan]);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Não foi possível criar o plano.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel criar o plano.");
     }
   }
 
@@ -230,7 +310,6 @@ export default function DashboardPage() {
 
   async function endFocus(sessionId: number, focusedSeconds: number) {
     const result = await api.endFocus(sessionId, focusedSeconds);
-    // Refresh focus data
     api.getFocusData().then((f) => setFocusData(f));
     return result;
   }
@@ -240,12 +319,19 @@ export default function DashboardPage() {
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
   const streakQualified = percentage >= 50;
   const streak = snapshot?.streak.currentStreak ?? 0;
-  const displayName = user?.displayName ?? snapshot?.user.displayName ?? "você";
+  const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
+
+  const checkins = snapshot?.checkins ?? [];
+  const sparkData: Record<string, number[]> = {
+    sleep: checkins.slice(-7).map((c) => c.sleepHours ?? 0),
+    study: checkins.slice(-7).map((c) => c.studyMinutes ?? 0),
+    training: checkins.slice(-7).map((c) => c.trainingMinutes ?? 0),
+  };
 
   if (loading || !user) {
     return (
       <div className="min-h-screen theme-bg flex items-center justify-center">
-        <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
+        <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
       </div>
     );
   }
@@ -254,7 +340,7 @@ export default function DashboardPage() {
     return (
       <AppShell>
         <div className="flex min-h-screen items-center justify-center">
-          <Loader2 size={28} className="animate-spin text-[#71d4ff]" />
+          <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
         </div>
       </AppShell>
     );
@@ -265,61 +351,148 @@ export default function DashboardPage() {
       <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
         {/* Header */}
         <header className="mb-8 flex items-start justify-between">
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-[.2em] text-[#71d4ff]">{todayLabel()}</p>
-            <h1 className="font-display text-3xl tracking-[-.04em] sm:text-4xl">
-              {greeting(displayName)}<span className="text-[#ffb86b]">.</span>
+          <motion.div variants={fadeUp} initial="hidden" animate="visible">
+            <p className="mb-2 text-[10px] uppercase tracking-[.2em] text-[var(--accent)]">{todayLabel()}</p>
+            <h1 className="font-display text-2xl tracking-[-.04em] sm:text-3xl text-[var(--text)]">
+              {greeting(displayName)}<span className="text-[var(--orange)]">.</span>
             </h1>
-          </div>
+          </motion.div>
           <div className="flex items-center gap-3">
             {focusData?.xp && <XPBadge xp={focusData.xp.totalXP} level={focusData.xp.level} />}
-            {streak > 0 && (
-              <div className="streak"><Flame size={18} fill="currentColor" /> <span>{streak}</span><small>dias</small></div>
-            )}
           </div>
         </header>
 
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{error}</div>
-        )}
-
-        {/* Check-in */}
-        <section className="question-panel mb-8 p-6 sm:p-8">
-          <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIÁRIO</span>
-          <h2 className="mt-5 font-display text-2xl">Como você dormiu na noite passada?</h2>
-          <div className="mt-5 grid gap-2 sm:grid-cols-4">{["Menos de 6 horas", "6 a 7 horas", "7 a 8 horas", "Mais de 8 horas"].map((answer) => <button key={answer} onClick={() => setSleepAnswer(answer)} className={`answer-option ${sleepAnswer === answer ? "selected" : ""}`}><span className="answer-dot">{sleepAnswer === answer && <span />}</span>{answer}</button>)}</div>
-          <button onClick={saveCheckin} disabled={checkinSaving} className="primary-button mt-6">{checkinSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {checkinSaved ? "Check-in salvo" : "Salvar check-in"}</button>
-        </section>
-
-        {/* Metrics */}
-        {snapshot?.metrics && snapshot.metrics.length > 0 && (
-          <section className="mb-8">
-            <div className="mb-4 flex items-end justify-between">
+        {/* Check-in + Streak */}
+        <motion.section
+          variants={fadeUp} initial="hidden" animate="visible"
+          className="question-panel relative mb-8 overflow-hidden p-6 sm:p-8"
+        >
+          {/* Ambient glow */}
+          <span aria-hidden className="ambient-glow" style={{ width: 300, height: 300, top: -100, right: -60, background: "rgba(113,212,255,.12)" }} />
+          <div className="relative z-10">
+            <div className="flex items-start justify-between mb-5">
               <div>
-                <span className="eyebrow muted">ÚLTIMOS 7 DIAS</span>
-                <h2 className="mt-2 font-display text-2xl">Médias da semana</h2>
+                <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIARIO</span>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">Isso nos ajuda a ajustar suas metas de foco hoje</p>
               </div>
-              <Link href="/relatorio" className="text-button">Ver relatório <ArrowUpRight size={15} /></Link>
+              {streak > 0 && <StreakBadge streak={streak} shouldPop={streakPop} />}
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {snapshot.metrics.map((m) => {
-                const Icon = METRIC_ICONS[m.kind] ?? Sparkles;
-                const color = METRIC_COLORS[m.kind] ?? "#71d4ff";
+
+            <h2 className="font-display text-lg sm:text-xl text-[var(--text-secondary)] mb-4">Como voce dormiu na noite passada?</h2>
+
+            <div className="grid gap-2 sm:grid-cols-4 mb-5">
+              {SLEEP_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const isSelected = sleepAnswer === opt.label;
                 return (
-                  <motion.div key={m.kind} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="metric-card">
-                    <div className="mb-7 flex justify-between">
-                      <div className="metric-icon" style={{ color }}><Icon size={17} /></div>
-                      {m.trend !== undefined && <span className="trend">{m.trend > 0 ? "+" : ""}{m.trend}%</span>}
-                    </div>
-                    <span className="metric-caption">{m.label}</span>
-                    <div className="mt-1 font-display text-2xl">{formatMetric(m)}</div>
-                    <div className="sparkline" style={{ background: color }} />
-                  </motion.div>
+                  <motion.button
+                    key={opt.label}
+                    onClick={() => setSleepAnswer(opt.label)}
+                    whileTap={reduced ? undefined : { scale: 0.97 }}
+                    whileHover={reduced ? undefined : { y: -1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    className={`sleep-pill ${isSelected ? "selected" : ""}`}
+                    style={isSelected ? { borderColor: opt.color, background: opt.bgColor, boxShadow: `0 0 24px ${opt.color}30` } : undefined}
+                  >
+                    <motion.div
+                      className="pill-icon"
+                      style={{ color: opt.color }}
+                      animate={isSelected ? { scale: 1.15 } : { scale: 1 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    >
+                      <Icon size={22} fill={isSelected ? "currentColor" : "none"} />
+                    </motion.div>
+                    <span className="pill-label font-medium">{opt.label}</span>
+                    <span className="text-[9px] text-[var(--text-faint)]">{opt.sublabel}</span>
+                  </motion.button>
                 );
               })}
             </div>
-          </section>
-        )}
+
+            <motion.button
+              onClick={saveCheckin}
+              disabled={checkinSaving}
+              whileTap={reduced ? undefined : { scale: 0.97 }}
+              whileHover={reduced ? undefined : { scale: 1.02 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              className="primary-button"
+            >
+              {checkinSaving ? <Loader2 size={15} className="animate-spin" /> : checkinSaved ? <Check size={15} /> : <Check size={15} />}
+              {checkinSaved ? "Check-in salvo" : "Salvar check-in"}
+            </motion.button>
+          </div>
+        </motion.section>
+
+        {/* Metrics */}
+        <section className="mb-8">
+          <div className="mb-4 flex items-end justify-between">
+            <div>
+              <span className="eyebrow muted">ULTIMOS 7 DIAS</span>
+              <h2 className="mt-2 font-display text-lg text-[var(--text-secondary)]">Medias da semana</h2>
+            </div>
+            <Link href="/relatorio" className="text-button">Ver relatorio <ArrowUpRight size={15} /></Link>
+          </div>
+
+          {sectionErrors.metrics ? (
+            <div className="panel p-6 text-center">
+              <p className="text-sm text-[var(--text-muted)] mb-3">{sectionErrors.metrics}</p>
+              <button
+                onClick={() => { setSectionErrors((p) => { const n = { ...p }; delete n.metrics; return n; }); fetchDashboard(); }}
+                className="text-button text-xs"
+              >
+                <RefreshCw size={13} /> Tentar novamente
+              </button>
+            </div>
+          ) : snapshot?.metrics && snapshot.metrics.length > 0 ? (
+            <motion.div variants={stagger} initial="hidden" animate="visible" className="grid gap-3 md:grid-cols-3">
+              {snapshot.metrics.map((m) => {
+                const Icon = METRIC_ICONS[m.kind] ?? Sparkles;
+                const color = METRIC_COLORS[m.kind] ?? "var(--accent)";
+                const glowMap: Record<string, string> = { sleep: "rgba(113,212,255,.12)", study: "rgba(182,156,255,.12)", training: "rgba(255,184,107,.12)" };
+                const trendUp = m.trend !== undefined && m.trend > 0;
+                const trendDown = m.trend !== undefined && m.trend < 0;
+                return (
+                  <motion.div
+                    key={m.kind}
+                    variants={fadeUp}
+                    whileHover={reduced ? undefined : { y: -2, transition: { duration: 0.15 } }}
+                    className="metric-card relative overflow-hidden"
+                    style={{ boxShadow: `0 0 32px -8px ${color}30` }}
+                  >
+                    <span aria-hidden className="ambient-glow" style={{ width: 160, height: 160, top: -60, right: -40, background: glowMap[m.kind] ?? "transparent" }} />
+                    <div className="relative z-10">
+                      <div className="mb-3 flex justify-between items-start">
+                        <div className="metric-icon" style={{ color }}><Icon size={17} /></div>
+                        {m.trend !== undefined && (
+                          <motion.span
+                            initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
+                            className="font-mono text-[11px]"
+                            style={{ color: trendUp ? "var(--green)" : trendDown ? "var(--red)" : "var(--text-faint)" }}
+                          >
+                            {trendUp ? "+" : ""}{m.trend}%
+                          </motion.span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)] mb-1">{m.label}</div>
+                      <div className="font-display text-xl tracking-[-0.02em] text-[var(--text)]">
+                        <AnimatedNumber
+                          value={m.unit === "h" ? m.value : Math.round(m.value)}
+                          decimals={m.unit === "h" ? 1 : 0}
+                          suffix={m.unit === "h" ? "h" : m.unit === "min" ? "min" : ""}
+                        />
+                      </div>
+                      <MiniSparkline values={sparkData[m.kind] ?? []} color={color} />
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          ) : (
+            <div className="panel p-8 text-center">
+              <p className="text-sm text-[var(--text-muted)]">Nenhum dado ainda — comece seu primeiro foco hoje</p>
+            </div>
+          )}
+        </section>
 
         {/* Goals + Todo */}
         <section className="mb-8 grid gap-5 lg:grid-cols-2">
@@ -354,18 +527,70 @@ export default function DashboardPage() {
             {snapshot?.insights?.[0] ? (
               <div className="insight-panel p-6">
                 <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-                <h2 className="mt-5 font-display text-lg leading-tight">{snapshot.insights[0].title}</h2>
-                <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{snapshot.insights[0].description}</p>
+                <h2 className="mt-5 font-display text-base leading-tight text-[var(--text-secondary)]">{snapshot.insights[0].title}</h2>
+                <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{snapshot.insights[0].description}</p>
               </div>
             ) : (
               <div className="insight-panel p-6 flex flex-col justify-center">
                 <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-                <p className="mt-5 text-sm text-[var(--text-muted)]">Os insights aparecem conforme você registra check-ins e conclui tarefas.</p>
+                <p className="mt-5 text-xs text-[var(--text-muted)]">Os insights aparecem conforme voce registra check-ins e conclui tarefas.</p>
               </div>
             )}
           </div>
         </section>
       </main>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onDismiss={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
     </AppShell>
+  );
+}
+
+function StreakBadge({ streak, shouldPop }: { streak: number; shouldPop: boolean }) {
+  const progress = Math.min(streak / 30, 1);
+  const circumference = 2 * Math.PI * 11;
+  const offset = circumference - progress * circumference;
+
+  return (
+    <div className={`streak-badge ${shouldPop ? "pop" : ""}`}>
+      <div className="flame-ring">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          {/* Background ring */}
+          <circle
+            cx="14" cy="14" r="11"
+            fill="none"
+            stroke="rgba(255,184,107,.12)"
+            strokeWidth="2.5"
+          />
+          {/* Progress ring */}
+          <circle
+            cx="14" cy="14" r="11"
+            fill="none"
+            stroke="var(--orange)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            transform="rotate(-90 14 14)"
+            style={{ transition: "stroke-dashoffset 0.5s ease" }}
+          />
+        </svg>
+        <div className="flame-value">
+          <Flame size={12} fill="currentColor" />
+        </div>
+      </div>
+      <div className="flex flex-col">
+        <span className="font-mono text-xs font-bold text-[var(--orange)]">{streak} dias</span>
+        <span className="text-[9px] text-[var(--text-faint)]">sequencia</span>
+      </div>
+    </div>
   );
 }
