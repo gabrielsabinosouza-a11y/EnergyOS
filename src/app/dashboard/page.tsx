@@ -43,7 +43,7 @@ export default function DashboardPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
-  const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayBlocks: { blocks: number; xpEarned: number }; xp: UserXP } | null>(null);
+  const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [error, setError] = useState("");
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
@@ -223,13 +223,13 @@ export default function DashboardPage() {
     }
   }
 
-  async function startFocus(taskId?: number) {
-    const result = await api.startFocus(taskId);
+  async function startFocus(targetDurationMinutes: number, taskId?: number) {
+    const result = await api.startFocus(targetDurationMinutes, taskId);
     return result;
   }
 
-  async function endFocus(sessionId: number) {
-    const result = await api.endFocus(sessionId);
+  async function endFocus(sessionId: number, focusedSeconds: number) {
+    const result = await api.endFocus(sessionId, focusedSeconds);
     // Refresh focus data
     api.getFocusData().then((f) => setFocusData(f));
     return result;
@@ -345,7 +345,7 @@ export default function DashboardPage() {
           <KanbanBoard tasks={kanbanTasks} onMove={moveKanbanTask} onCreate={createKanbanTask} onDelete={deleteKanbanTask} />
           <div className="space-y-5">
             <FocusTimer
-              todayBlocks={focusData?.todayBlocks ?? { blocks: 0, xpEarned: 0 }}
+              todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
               history={focusData?.history ?? []}
               onStart={startFocus}
               onEnd={endFocus}

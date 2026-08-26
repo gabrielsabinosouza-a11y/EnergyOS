@@ -102,6 +102,7 @@ export interface FocusSession {
   id: number;
   profileId: string;
   durationMinutes: number;
+  targetDurationMinutes: number;
   startedAt: string;
   endedAt?: string;
   taskId?: number;

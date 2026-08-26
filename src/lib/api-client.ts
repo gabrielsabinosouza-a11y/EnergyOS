@@ -137,9 +137,9 @@ export const api = {
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 
   // Focus
-  getFocusData: () => request<{ history: FocusSession[]; todayBlocks: { blocks: number; xpEarned: number }; xp: UserXP }>("/api/focus"),
-  startFocus: (taskId?: number) =>
-    request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", taskId }) }),
-  endFocus: (sessionId: number) =>
-    request<{ session: FocusSession; xpAwarded: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId }) }),
+  getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP }>("/api/focus"),
+  startFocus: (targetDurationMinutes: number, taskId?: number) =>
+    request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId }) }),
+  endFocus: (sessionId: number, focusedSeconds: number) =>
+    request<{ session: FocusSession; xpAwarded: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds }) }),
 };

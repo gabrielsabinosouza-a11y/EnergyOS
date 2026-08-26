@@ -110,7 +110,8 @@ create index if not exists weekly_plans_profile_date_idx on weekly_plans(profile
 create table if not exists focus_sessions (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  duration_minutes integer not null,
+  duration_minutes integer not null default 0,
+  target_duration_minutes integer not null default 25,
   started_at timestamptz not null default now(),
   ended_at timestamptz,
   task_id bigint references tasks(id) on delete set null,
