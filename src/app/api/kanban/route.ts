@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       title: body.title as string,
       description: body.description as string | undefined,
       status: body.status as "todo" | "doing" | "done" | undefined,
-      category: body.category as any,
+      categoryId: body.categoryId as number | undefined,
       labels: body.labels as string[] | undefined,
       dueDate: body.dueDate as string | undefined,
       priority: body.priority as "low" | "medium" | "high" | undefined,

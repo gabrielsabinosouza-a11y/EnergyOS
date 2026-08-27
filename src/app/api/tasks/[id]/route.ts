@@ -2,10 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { deleteTask, setTaskCompleted, updateTask } from "@/lib/db/tasks";
-import { assertObject, parseBoolean, parseDate, parseEnum, parseNumber, parseProfileId, parseTitle } from "@/lib/db/validation";
-import type { TaskCategory } from "@/types";
-
-const TASK_CATEGORIES: readonly TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
+import { assertObject, parseBoolean, parseDate, parseNumber, parseProfileId, parseTitle } from "@/lib/db/validation";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -27,7 +24,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const patch: Parameters<typeof updateTask>[2] = {};
     if (body.title !== undefined) patch.title = parseTitle(body.title);
-    if (body.category !== undefined) patch.category = parseEnum(body.category, TASK_CATEGORIES, "Categoria");
+    if (body.categoryId !== undefined) patch.categoryId = parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 });
     if (body.dueDate !== undefined) patch.dueDate = parseDate(body.dueDate, "Data da tarefa");
     if (body.completed !== undefined) {
       const task = await setTaskCompleted(profileId, taskId, parseBoolean(body.completed, "Concluída"));

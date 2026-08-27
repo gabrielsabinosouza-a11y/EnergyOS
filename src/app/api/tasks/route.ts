@@ -3,10 +3,7 @@ import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { computeProgress, createTask, listTasksByDate } from "@/lib/db/tasks";
 import { todayIso } from "@/lib/db/dates";
-import { assertObject, parseDate, parseEnum, parseTitle } from "@/lib/db/validation";
-import type { TaskCategory } from "@/types";
-
-const TASK_CATEGORIES: readonly TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
+import { assertObject, parseDate, parseNumber, parseTitle } from "@/lib/db/validation";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -29,7 +26,7 @@ export async function POST(request: NextRequest) {
       profileId,
       {
         title: parseTitle(body.title),
-        category: parseEnum(body.category, TASK_CATEGORIES, "Categoria"),
+        categoryId: body.categoryId === undefined ? undefined : parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 }),
         dueDate: body.dueDate === undefined ? undefined : parseDate(body.dueDate, "Data da tarefa"),
       },
       todayIso(),

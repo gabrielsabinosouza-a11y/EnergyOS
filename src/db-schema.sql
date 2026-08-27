@@ -5,6 +5,31 @@ create table if not exists profiles (
   created_at timestamptz not null default now()
 );
 
+-- ── Unified category system (metas + tarefas + Kanban + plano semanal) ──────
+-- user_id null = categoria padrão do sistema, disponível para todos.
+create table if not exists categories (
+  id bigserial primary key,
+  user_id text references profiles(id) on delete cascade,
+  name text not null,
+  color text not null,
+  icon text,
+  is_custom boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Nome único por escopo (sistema ou usuário).
+create unique index if not exists categories_scope_name_idx
+  on categories (coalesce(user_id, ''), lower(name));
+create index if not exists categories_user_idx on categories(user_id);
+
+insert into categories (user_id, name, color, icon, is_custom) values
+  (null, 'Sono',   '#71d4ff', 'moon',     false),
+  (null, 'Estudo', '#b69cff', 'timer',    false),
+  (null, 'Treino', '#ffb86b', 'dumbbell', false),
+  (null, 'Foco',   '#ff9f6b', 'zap',      false),
+  (null, 'Outros', '#94a3b8', null,       false)
+on conflict do nothing;
+
 create table if not exists daily_checkins (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
@@ -20,7 +45,7 @@ create table if not exists tasks (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
   title text not null,
-  category text not null,
+  category_id bigint not null references categories(id),
   due_date date not null,
   completed_at timestamptz
 );
@@ -88,7 +113,7 @@ create table if not exists kanban_tasks (
   description text,
   status text not null default 'todo' check (status in ('todo','doing','done')),
   position integer not null default 0,
-  category text default 'FOCO',
+  category_id bigint not null references categories(id),
   labels text[] default '{}',
   due_date date,
   priority text default 'medium' check (priority in ('low','medium','high')),
@@ -179,7 +204,7 @@ create table if not exists weekly_plans (
   profile_id text not null references profiles(id) on delete cascade,
   plan_date date not null,
   title text not null,
-  category text default 'FOCO',
+  category_id bigint not null references categories(id),
   task_id bigint references tasks(id) on delete set null,
   completed_at timestamptz,
   created_at timestamptz not null default now()
@@ -517,3 +542,89 @@ CREATE TABLE IF NOT EXISTS external_events (
 
 CREATE INDEX IF NOT EXISTS external_events_profile_time_idx ON external_events(profile_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS external_events_connection_idx ON external_events(connection_id);
+
+-- ── Category unification: backfill legacy text columns → categories(id) ────
+-- Legado: goals ('sono','estudo','treino','saude','foco'),
+--         tasks/kanban_tasks/weekly_plans ('FOCO','CORPO','MENTE','ORDEM','ENERGIA').
+-- "Saúde" e as antigas categorias sem equivalente direto caem em "Outros".
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'goals' and column_name = 'category') then
+    update goals g set category_id = c.id
+    from categories c
+    where g.category_id is null and c.user_id is null
+      and c.name = case g.category
+        when 'sono' then 'Sono'
+        when 'estudo' then 'Estudo'
+        when 'treino' then 'Treino'
+        when 'foco' then 'Foco'
+        else 'Outros'
+      end;
+  end if;
+
+  if exists (select 1 from information_schema.columns where table_name = 'tasks' and column_name = 'category') then
+    update tasks t set category_id = c.id
+    from categories c
+    where t.category_id is null and c.user_id is null
+      and c.name = case t.category
+        when 'FOCO' then 'Foco'
+        when 'CORPO' then 'Treino'
+        else 'Outros'
+      end;
+  end if;
+
+  if exists (select 1 from information_schema.columns where table_name = 'kanban_tasks' and column_name = 'category') then
+    update kanban_tasks k set category_id = c.id
+    from categories c
+    where k.category_id is null and c.user_id is null
+      and c.name = case k.category
+        when 'FOCO' then 'Foco'
+        when 'CORPO' then 'Treino'
+        else 'Outros'
+      end;
+  end if;
+
+  if exists (select 1 from information_schema.columns where table_name = 'weekly_plans' and column_name = 'category') then
+    update weekly_plans w set category_id = c.id
+    from categories c
+    where w.category_id is null and c.user_id is null
+      and c.name = case w.category
+        when 'FOCO' then 'Foco'
+        when 'CORPO' then 'Treino'
+        else 'Outros'
+      end;
+  end if;
+end $$;
+
+alter table goals alter column category_id set not null;
+alter table tasks alter column category_id set not null;
+alter table kanban_tasks alter column category_id set not null;
+alter table weekly_plans alter column category_id set not null;
+
+-- FK constraints para bancos existentes (em instalações novas já vêm do create table).
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'goals_category_id_fkey') then
+    alter table goals add constraint goals_category_id_fkey foreign key (category_id) references categories(id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'tasks_category_id_fkey') then
+    alter table tasks add constraint tasks_category_id_fkey foreign key (category_id) references categories(id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'kanban_tasks_category_id_fkey') then
+    alter table kanban_tasks add constraint kanban_tasks_category_id_fkey foreign key (category_id) references categories(id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'weekly_plans_category_id_fkey') then
+    alter table weekly_plans add constraint weekly_plans_category_id_fkey foreign key (category_id) references categories(id);
+  end if;
+end $$;
+
+create index if not exists goals_category_id_idx on goals(category_id);
+create index if not exists tasks_category_id_idx on tasks(category_id);
+create index if not exists kanban_tasks_category_id_idx on kanban_tasks(category_id);
+create index if not exists weekly_plans_category_id_idx on weekly_plans(category_id);
+
+-- Colunas legadas de texto não são mais usadas pela aplicação.
+alter table goals drop constraint if exists goals_category_check;
+alter table goals drop column if exists category;
+alter table tasks drop column if exists category;
+alter table kanban_tasks drop column if exists category;
+alter table weekly_plans drop column if exists category;

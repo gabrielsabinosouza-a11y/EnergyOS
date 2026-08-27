@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const plan = await createWeeklyPlan(profileId, {
       planDate: body.planDate as string,
       title: body.title as string,
-      category: body.category as any,
+      categoryId: body.categoryId as number | undefined,
       taskId: body.taskId as number | undefined,
       startTime: body.startTime as string | undefined,
       endTime: body.endTime as string | undefined,

@@ -418,16 +418,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           )}
 
           {/* Energy image - positioned in center with constrained click area */}
-          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2, pointerEvents: "none" }}>
+          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2 }}>
             <div style={{
               position: "absolute",
               width: imageSize * 0.9, height: imageSize * 0.9,
               borderRadius: "50%",
               background: `radial-gradient(circle, ${cfg.glow} 0%, transparent 72%)`,
               filter: "blur(2px)",
+              pointerEvents: "none",
             }} />
 
-            <div style={{ position: "relative", zIndex: 1, width: imageSize * 0.9, height: imageSize * 0.9, pointerEvents: "none" }}>
+            <div style={{ position: "relative", zIndex: 1, width: imageSize * 0.9, height: imageSize * 0.9 }}>
               <AnimatePresence mode="wait">
                 {showComplete && rewardCount > 1 ? (
                   <motion.div
@@ -435,7 +436,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    style={{ position: "relative", width: imageSize, height: imageSize }}
+                    style={{ position: "relative", width: imageSize, height: imageSize, pointerEvents: "none" }}
                   >
                     {Array.from({ length: rewardCount }).map((_, i) => {
                       const angle = (i / rewardCount) * 2 * Math.PI - Math.PI / 2;
@@ -465,6 +466,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                     animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                     exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
                     transition={{ duration: 0.5, ease: "easeInOut" }}
+                    style={{ pointerEvents: "none" }}
                   >
                     <Image
                       src={cfg.assets[stage]}
@@ -479,12 +481,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
               {state === "idle" && (
                 <button
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     setShowPicker(true);
                   }}
                   style={{
                     position: "absolute",
-                    inset: 0,
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: imageSize * 0.9,
+                    height: imageSize * 0.9,
                     cursor: "pointer",
                     background: "none",
                     border: "none",

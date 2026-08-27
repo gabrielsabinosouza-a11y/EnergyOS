@@ -1,8 +1,9 @@
 import pool, { mapGoalRow, mapHabitRow, type DbGoalRow, type DbHabitRow, type HabitWithCompletion } from "./db";
-import type { Goal, Habit, GoalCategory, UserSettings } from "@/types";
+import { GOAL_SELECT } from "./db/goals";
+import { assertCategoryForProfile, resolveDefaultCategoryId } from "./db/categories";
+import type { Goal, Habit, UserSettings } from "@/types";
 import { parseProfileId } from "./db/validation";
 
-const GOAL_CATEGORIES: readonly GoalCategory[] = ["sono", "estudo", "treino", "saude", "foco"];
 const GOAL_FREQUENCIES = ["daily", "weekly", "monthly"] as const;
 const HABIT_FREQUENCIES = ["daily", "weekly"] as const;
 const THEMES = ["system", "light", "dark"] as const;
@@ -42,8 +43,9 @@ export interface GoalWithHabits {
 export async function listGoalsWithHabits(profileId: string): Promise<GoalWithHabits[]> {
   const dbProfileId = requireProfileId(profileId);
   const goalsResult = await pool.query<DbGoalRow>(
-    `select id, profile_id, title, category, target_value, current_value, frequency
-     from goals where profile_id = $1 order by created_at desc, id desc`,
+    `${GOAL_SELECT}
+     where g.profile_id = $1
+     order by g.created_at desc, g.id desc`,
     [dbProfileId],
   );
   const habitsResult = await pool.query<DbHabitRow>(
@@ -68,7 +70,7 @@ export async function listGoalsWithHabits(profileId: string): Promise<GoalWithHa
 
 export interface CreateGoalInput {
   title: string;
-  category: GoalCategory;
+  categoryId?: number;
   targetValue: number;
   frequency: Goal["frequency"];
 }
@@ -76,23 +78,26 @@ export interface CreateGoalInput {
 export async function createGoal(profileId: string, input: CreateGoalInput): Promise<Goal> {
   const dbProfileId = requireProfileId(profileId);
   await ensureProfile(profileId);
-  if (!GOAL_CATEGORIES.includes(input.category)) throw new Error("Categoria inválida.");
   if (!GOAL_FREQUENCIES.includes(input.frequency)) throw new Error("Frequência inválida.");
   const title = validateTitle(input.title);
   const targetValue = validateTargetValue(input.targetValue);
+  const categoryId = input.categoryId !== undefined
+    ? await assertCategoryForProfile(dbProfileId, input.categoryId)
+    : await resolveDefaultCategoryId();
 
-  const result = await pool.query<DbGoalRow>(
-    `insert into goals (profile_id, title, category, target_value, frequency)
+  const inserted = await pool.query<{ id: string | number }>(
+    `insert into goals (profile_id, title, category_id, target_value, frequency)
      values ($1, $2, $3, $4, $5)
-     returning id, profile_id, title, category, target_value, current_value, frequency`,
-    [dbProfileId, title, input.category, targetValue, input.frequency],
+     returning id`,
+    [dbProfileId, title, categoryId, targetValue, input.frequency],
   );
+  const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [inserted.rows[0].id]);
   return mapGoalRow(result.rows[0]);
 }
 
 export interface UpdateGoalPatch {
   title?: string;
-  category?: GoalCategory;
+  categoryId?: number;
   targetValue?: number;
   currentValue?: number;
   frequency?: Goal["frequency"];
@@ -109,10 +114,10 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
     values.push(validateTitle(patch.title));
     updates.push(`title = $${values.length}`);
   }
-  if (patch.category !== undefined) {
-    if (!GOAL_CATEGORIES.includes(patch.category)) throw new Error("Categoria inválida.");
-    values.push(patch.category);
-    updates.push(`category = $${values.length}`);
+  if (patch.categoryId !== undefined) {
+    const categoryId = await assertCategoryForProfile(dbProfileId, patch.categoryId);
+    values.push(categoryId);
+    updates.push(`category_id = $${values.length}`);
   }
   if (patch.targetValue !== undefined) {
     values.push(validateTargetValue(patch.targetValue));
@@ -131,13 +136,14 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
 
   if (updates.length === 0) throw new Error("Nada para atualizar.");
 
-  const result = await pool.query<DbGoalRow>(
+  const updated = await pool.query<{ id: string | number }>(
     `update goals set ${updates.join(", ")}
      where profile_id = $1 and id = $2
-     returning id, profile_id, title, category, target_value, current_value, frequency`,
+     returning id`,
     values,
   );
-  if (!result.rows[0]) throw new Error("Meta não encontrada.");
+  if (!updated.rows[0]) throw new Error("Meta não encontrada.");
+  const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [updated.rows[0].id]);
   return mapGoalRow(result.rows[0]);
 }
 

@@ -188,6 +188,50 @@ export async function getRoomParticipants(roomId: number): Promise<RoomParticipa
   );
 }
 
+// Update a participant's selected energy type
+export async function updateParticipantEnergyType(roomId: number, profileId: string, energyType: string): Promise<RoomParticipant> {
+  const result = await pool.query<RoomParticipantRow>(
+    `update room_participants 
+     set selected_energy_type = $1 
+     where room_id = $2 and profile_id = $3 
+     returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
+    [energyType, roomId, profileId]
+  );
+
+  if (!result.rows[0]) {
+    throw new Error("Participant not found");
+  }
+
+  return mapRoomParticipant(result.rows[0]);
+}
+
+// Update the room's duration (host only)
+export async function updateRoomDuration(roomId: number, hostProfileId: string, durationMinutes: number): Promise<FocusRoom> {
+  if (durationMinutes <= 0) throw new Error("Duration must be positive");
+
+  // Verify host
+  const room = await pool.query<{ host_profile_id: string }>(
+    `select host_profile_id from focus_rooms where id = $1`,
+    [roomId]
+  );
+
+  if (!room.rows[0]) {
+    throw new Error("Room not found");
+  }
+
+  if (room.rows[0].host_profile_id !== hostProfileId) {
+    throw new Error("Only the host can update the room duration");
+  }
+
+  const result = await pool.query<FocusRoomRow>(
+    `update focus_rooms set duration_minutes = $1 where id = $2 returning *`,
+    [durationMinutes, roomId]
+  );
+
+  const participants = await getRoomParticipants(roomId);
+  return mapFocusRoom(result.rows[0], participants);
+}
+
 // Add a participant to a room
 export async function addParticipantToRoom(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomParticipant> {
   // Check if user is already in the room

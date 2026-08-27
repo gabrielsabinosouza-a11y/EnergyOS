@@ -3,28 +3,30 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Plus, Check, X, Loader2 } from "lucide-react";
-import type { WeeklyPlan, TaskCategory } from "@/types";
+import type { Category, WeeklyPlan } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
+import { sortCategoriesForPicker } from "@/lib/categories";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-const CATEGORIES: TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
-const CAT_COLORS: Record<TaskCategory, string> = {
-  FOCO: "#71d4ff", CORPO: "#6bffb8", MENTE: "#b69cff", ORDEM: "#ffb86b", ENERGIA: "#ff9f6b",
-};
 
 interface WeeklyPlanProps {
   plans: WeeklyPlan[];
+  categories: Category[];
   onComplete: (id: number) => void;
   onDelete: (id: number) => void;
-  onCreate: (planDate: string, title: string, category: TaskCategory) => Promise<void>;
+  onCreate: (planDate: string, title: string, categoryId: number) => Promise<void>;
 }
 
-export function WeeklyPlan({ plans, onComplete, onDelete, onCreate }: WeeklyPlanProps) {
+export function WeeklyPlan({ plans, categories, onComplete, onDelete, onCreate }: WeeklyPlanProps) {
+  const sortedCategories = sortCategoriesForPicker(categories);
+  const firstCategoryId = sortedCategories[0]?.id ?? 0;
   const [showForm, setShowForm] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>(todayIso());
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<TaskCategory>("FOCO");
+  const [newCategoryId, setNewCategoryId] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  const selectedCategoryId = newCategoryId || firstCategoryId;
 
   const today = todayIso();
   const weekStart = weekStartIso(today);
@@ -35,9 +37,9 @@ export function WeeklyPlan({ plans, onComplete, onDelete, onCreate }: WeeklyPlan
   });
 
   async function handleCreate() {
-    if (!newTitle.trim() || !selectedDay) return;
+    if (!newTitle.trim() || !selectedDay || !selectedCategoryId) return;
     setSaving(true);
-    await onCreate(selectedDay, newTitle.trim(), newCategory);
+    await onCreate(selectedDay, newTitle.trim(), selectedCategoryId);
     setNewTitle("");
     setShowForm(false);
     setSaving(false);
@@ -72,8 +74,18 @@ export function WeeklyPlan({ plans, onComplete, onDelete, onCreate }: WeeklyPlan
                 ))}
               </div>
               <div className="flex gap-1 flex-wrap">
-                {CATEGORIES.map((cat) => (
-                  <button key={cat} onClick={() => setNewCategory(cat)} className={`rounded-full px-2 py-0.5 text-[9px] border transition-all ${newCategory === cat ? "border-current" : "border-[var(--border-subtle)] text-[var(--text-faint)]"}`} style={newCategory === cat ? { color: CAT_COLORS[cat], borderColor: CAT_COLORS[cat] } : {}}>{cat}</button>
+                {sortedCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setNewCategoryId(cat.id)}
+                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                      selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
+                    }`}
+                    style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                    {cat.name}
+                  </button>
                 ))}
               </div>
             </div>
@@ -95,9 +107,9 @@ export function WeeklyPlan({ plans, onComplete, onDelete, onCreate }: WeeklyPlan
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className={`group relative rounded-lg p-1.5 text-[9px] leading-tight cursor-pointer ${plan.completedAt ? "line-through opacity-50" : ""}`}
-                  style={{ borderLeft: `2px solid ${CAT_COLORS[plan.category]}` }}
+                  style={{ borderLeft: `2px solid ${plan.category.color}` }}
                   onClick={() => !plan.completedAt && onComplete(plan.id)}
-                  title={plan.title}
+                  title={`${plan.title} · ${plan.category.name}`}
                 >
                   <span className="text-[var(--text)] block truncate">{plan.title}</span>
                   <button

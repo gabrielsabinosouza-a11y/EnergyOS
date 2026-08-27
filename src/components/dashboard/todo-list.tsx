@@ -3,38 +3,43 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Plus, X, Loader2, Pencil, Trash2, Zap, ListTodo } from "lucide-react";
-import type { Task, TaskCategory } from "@/types";
-
-const CATEGORIES: TaskCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
+import type { Category, Task } from "@/types";
+import { sortCategoriesForPicker } from "@/lib/categories";
 
 interface TodoListProps {
   tasks: Task[];
+  categories: Category[];
   onToggle: (task: Task) => void;
   onDelete: (id: number) => void;
-  onCreate: (title: string, category: TaskCategory) => Promise<void>;
-  onUpdate: (id: number, title: string, category: TaskCategory) => Promise<void>;
+  onCreate: (title: string, categoryId: number) => Promise<void>;
+  onUpdate: (id: number, title: string, categoryId: number) => Promise<void>;
   onPromote?: (taskId: number) => void;
   streakQualified: boolean;
 }
 
-export function TodoList({ tasks, onToggle, onDelete, onCreate, onUpdate, onPromote, streakQualified }: TodoListProps) {
+export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUpdate, onPromote, streakQualified }: TodoListProps) {
+  const sortedCategories = sortCategoriesForPicker(categories);
+  const firstCategoryId = sortedCategories[0]?.id ?? 0;
   const [showForm, setShowForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<TaskCategory>("FOCO");
+  const [newCategoryId, setNewCategoryId] = useState(0);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editCategory, setEditCategory] = useState<TaskCategory>("FOCO");
+  const [editCategoryId, setEditCategoryId] = useState(0);
   const [justCompleted, setJustCompleted] = useState<number | null>(null);
 
   const completed = tasks.filter((t) => Boolean(t.completedAt)).length;
   const total = tasks.length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+  const selectedCategoryId = newCategoryId || firstCategoryId;
+  const selectedEditCategoryId = editCategoryId || firstCategoryId;
+
   async function handleCreate() {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !selectedCategoryId) return;
     setSaving(true);
-    await onCreate(newTitle.trim(), newCategory);
+    await onCreate(newTitle.trim(), selectedCategoryId);
     setNewTitle("");
     setShowForm(false);
     setSaving(false);
@@ -89,8 +94,18 @@ export function TodoList({ tasks, onToggle, onDelete, onCreate, onUpdate, onProm
               </button>
             </div>
             <div className="flex flex-wrap gap-1">
-              {CATEGORIES.map((cat) => (
-                <button key={cat} onClick={() => setNewCategory(cat)} className={`answer-option !w-auto !px-2 !py-0.5 !text-[9px] ${newCategory === cat ? "selected" : ""}`}>{cat}</button>
+              {sortedCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setNewCategoryId(cat.id)}
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                    selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
+                  }`}
+                  style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                  {cat.name}
+                </button>
               ))}
             </div>
           </motion.div>
@@ -120,15 +135,24 @@ export function TodoList({ tasks, onToggle, onDelete, onCreate, onUpdate, onProm
                   autoFocus
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { onUpdate(task.id, editTitle, editCategory); setEditingId(null); } if (e.key === "Escape") setEditingId(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { onUpdate(task.id, editTitle, selectedEditCategoryId); setEditingId(null); } if (e.key === "Escape") setEditingId(null); }}
                   className="auth-input !py-1 !text-sm flex-1"
                 />
                 <div className="flex gap-1 flex-wrap">
-                  {CATEGORIES.map((cat) => (
-                    <button key={cat} onClick={() => setEditCategory(cat)} className={`answer-option !w-auto !px-2 !py-0.5 !text-[9px] ${editCategory === cat ? "selected" : ""}`}>{cat}</button>
+                  {sortedCategories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setEditCategoryId(cat.id)}
+                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                        selectedEditCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
+                      }`}
+                      style={selectedEditCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
+                    >
+                      {cat.name}
+                    </button>
                   ))}
                 </div>
-                <button onClick={() => { onUpdate(task.id, editTitle, editCategory); setEditingId(null); }} className="icon-button small"><Check size={12} /></button>
+                <button onClick={() => { onUpdate(task.id, editTitle, selectedEditCategoryId); setEditingId(null); }} className="icon-button small"><Check size={12} /></button>
                 <button onClick={() => setEditingId(null)} className="icon-button small"><X size={12} /></button>
               </div>
             ) : (
@@ -152,9 +176,15 @@ export function TodoList({ tasks, onToggle, onDelete, onCreate, onUpdate, onProm
                     </motion.span>
                   )}
                 </AnimatePresence>
-                <span className="hidden text-[9px] tracking-[.12em] text-[var(--text-faint)] sm:block">{task.category}</span>
+                <span
+                  className="hidden items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium sm:flex"
+                  style={{ color: task.category.color, background: `${task.category.color}1a` }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: task.category.color }} />
+                  {task.category.name}
+                </span>
                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => { setEditingId(task.id); setEditTitle(task.title); setEditCategory(task.category); }} className="icon-button small !w-6 !h-6"><Pencil size={10} /></button>
+                  <button onClick={() => { setEditingId(task.id); setEditTitle(task.title); setEditCategoryId(task.categoryId); }} className="icon-button small !w-6 !h-6"><Pencil size={10} /></button>
                   {onPromote && (
                     <button onClick={() => onPromote(task.id)} className="icon-button small !w-6 !h-6 text-[#ffb86b]/60 hover:text-[#ffb86b]" title="Promover para Kanban">
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>

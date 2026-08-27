@@ -1,4 +1,4 @@
-import type { AchievementProgress, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, TaskCategory, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -85,9 +85,9 @@ export const api = {
 
   // Tarefas
   getTasks: (date?: string) => request<TaskBundle>(`/api/tasks${date ? `?date=${date}` : ""}`),
-  createTask: (input: { title: string; category: TaskCategory; dueDate?: string }) =>
+  createTask: (input: { title: string; categoryId?: number; dueDate?: string }) =>
     request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(input) }),
-  updateTask: (id: number, patch: { title?: string; category?: TaskCategory; dueDate?: string }) =>
+  updateTask: (id: number, patch: { title?: string; categoryId?: number; dueDate?: string }) =>
     request<{ task: Task }>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   setTaskCompleted: (id: number, completed: boolean) =>
     request<{ task: Task }>(`/api/tasks/${id}/complete`, { method: "POST", body: JSON.stringify({ completed }) }),
@@ -95,9 +95,9 @@ export const api = {
 
   // Metas e hábitos
   getGoals: () => request<Array<{ goal: GoalWithProgress; habits: HabitWithCompletion[] }>>("/api/goals"),
-  createGoal: (input: { title: string; category: Goal["category"]; targetValue: number; frequency: GoalFrequency }) =>
+  createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency: GoalFrequency }) =>
     request<{ goal: GoalWithProgress }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
-  updateGoal: (id: number, patch: { title?: string; category?: Goal["category"]; targetValue?: number; currentValue?: number; frequency?: GoalFrequency }) =>
+  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; currentValue?: number; frequency?: GoalFrequency }) =>
     request<{ goal: GoalWithProgress }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
   createHabit: (goalId: number, input: { title: string; frequency: HabitFrequency }) =>
@@ -107,6 +107,15 @@ export const api = {
   setHabitCompletion: (id: number, completed: boolean, date?: string) =>
     request<HabitCompletionResult>(`/api/habits/${id}/completions`, { method: "POST", body: JSON.stringify({ completed, date }) }),
   deleteHabit: (id: number) => request<{ ok: true }>(`/api/habits/${id}`, { method: "DELETE" }),
+
+  // Categorias (compartilhadas entre metas, tarefas, Kanban e plano semanal)
+  getCategories: () => request<{ categories: Category[] }>("/api/categories"),
+  createCategory: (input: { name: string; color: string; icon?: string | null }) =>
+    request<{ category: Category }>("/api/categories", { method: "POST", body: JSON.stringify(input) }),
+  updateCategory: (id: number, patch: { name?: string; color?: string; icon?: string | null }) =>
+    request<{ category: Category }>(`/api/categories/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteCategory: (id: number) =>
+    request<{ ok: true; affected: number }>(`/api/categories/${id}`, { method: "DELETE" }),
 
   // Configurações
   getSettings: () => request<UserSettings>("/api/settings"),
@@ -119,9 +128,9 @@ export const api = {
 
   // Kanban
   getKanban: () => request<{ tasks: KanbanTask[]; labels: KanbanLabel[] }>("/api/kanban"),
-  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string }) =>
+  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; categoryId?: number; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string }) =>
     request<{ task: KanbanTask }>("/api/kanban", { method: "POST", body: JSON.stringify(input) }),
-  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; category?: KanbanTask["category"]; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
+  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; categoryId?: number; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
     request<{ task: KanbanTask }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteKanbanTask: (id: number) => request<{ ok: true }>(`/api/kanban/${id}`, { method: "DELETE" }),
   moveKanbanTask: (taskId: number, newStatus: "todo" | "doing" | "done", newPosition: number) =>
@@ -140,7 +149,7 @@ export const api = {
     const params = weekStart ? `?weekStart=${weekStart}` : "";
     return request<WeeklyPlan[]>(`/api/weekly-plans${params}`);
   },
-  createWeeklyPlan: (input: { planDate: string; title: string; category?: TaskCategory; taskId?: number }) =>
+  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
@@ -170,6 +179,10 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
   leaveFocusRoom: (roomId: number) =>
     request<{ message: string }>(`/api/focus-rooms/${roomId}/leave`, { method: "DELETE" }),
+  selectEnergy: (roomId: number, energyType: string) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/select-energy`, { method: "POST", body: JSON.stringify({ energyType }) }),
+  updateRoomDuration: (roomId: number, durationMinutes: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/update-duration`, { method: "POST", body: JSON.stringify({ durationMinutes }) }),
 
   // Social
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),

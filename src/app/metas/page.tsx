@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Image from "next/image";
@@ -11,11 +11,6 @@ import {
   Check,
   X,
   Loader2,
-  Moon,
-  Timer,
-  Target,
-  Heart,
-  Zap,
   Power,
   Minus,
   AlertCircle,
@@ -25,18 +20,12 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import Link from "next/link";
-import type { Goal, Habit, GoalCategory } from "@/types";
+import type { Category, Goal, Habit } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
 import { api } from "@/lib/api-client";
 import { ProgressBar } from "@/components/ui";
-
-const CATEGORY_META: Record<GoalCategory, { label: string; color: string; icon: React.ElementType }> = {
-  sono:   { label: "Sono",   color: "#71d4ff", icon: Moon },
-  estudo: { label: "Estudo", color: "#b69cff", icon: Timer },
-  treino: { label: "Treino", color: "#ffb86b", icon: Target },
-  saude:  { label: "Saúde",  color: "#6bffb8", icon: Heart },
-  foco:   { label: "Foco",   color: "#ff9f6b", icon: Zap },
-};
+import { CategoryForm } from "@/components/category-form";
+import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 
 const FREQ_LABELS: Record<Goal["frequency"], string> = {
   daily: "Diária", weekly: "Semanal", monthly: "Mensal",
@@ -47,11 +36,11 @@ const HABIT_FREQ_LABELS: Record<Habit["frequency"], string> = {
 };
 
 type HabitFrequency = Habit["frequency"];
-type GoalDraft = Omit<Goal, "id" | "profileId" | "currentValue">;
+type GoalDraft = { title: string; categoryId: number; targetValue: number; frequency: Goal["frequency"] };
 type HabitDraft = { frequency: HabitFrequency };
 
 const emptyDraft = (): GoalDraft => ({
-  title: "", category: "foco", targetValue: 1, frequency: "daily",
+  title: "", categoryId: 0, targetValue: 1, frequency: "daily",
 });
 
 export default function MetasPage() {
@@ -59,6 +48,8 @@ export default function MetasPage() {
   const reduced = useReducedMotion();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -69,6 +60,13 @@ export default function MetasPage() {
   const [expandedGoal, setExpandedGoal] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const sortedCategories = useMemo(() => sortCategoriesForPicker(categories), [categories]);
+  /** Categoria padrão do formulário: "Foco" (padrão do sistema) ou a primeira disponível. */
+  const defaultCategoryId = useMemo(() => {
+    const foco = categories.find((c) => !c.userId && c.name === "Foco");
+    return foco?.id ?? sortedCategories[0]?.id ?? 0;
+  }, [categories, sortedCategories]);
+
   function applyLoaded(bundles: Awaited<ReturnType<typeof api.getGoals>>) {
     setGoals(bundles.map((bundle) => bundle.goal));
     setHabits(bundles.flatMap((bundle) => bundle.habits));
@@ -77,7 +75,9 @@ export default function MetasPage() {
   async function reload() {
     if (!user) return;
     try {
-      applyLoaded(await api.getGoals());
+      const [bundles, categoriesResult] = await Promise.all([api.getGoals(), api.getCategories()]);
+      applyLoaded(bundles);
+      setCategories(categoriesResult.categories);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar metas.");
@@ -89,10 +89,11 @@ export default function MetasPage() {
   useEffect(() => {
     if (loading || !user) return;
     let cancelled = false;
-    api.getGoals()
-      .then((bundles) => {
+    Promise.all([api.getGoals(), api.getCategories()])
+      .then(([bundles, categoriesResult]) => {
         if (cancelled) return;
         applyLoaded(bundles);
+        setCategories(categoriesResult.categories);
         setError("");
         setPageLoading(false);
       })
@@ -118,13 +119,15 @@ export default function MetasPage() {
 
   function openCreate() {
     setEditingGoal(null);
-    setDraft(emptyDraft());
+    setDraft({ ...emptyDraft(), categoryId: defaultCategoryId });
+    setShowCategoryForm(false);
     setShowForm(true);
   }
 
   function openEdit(goal: Goal) {
     setEditingGoal(goal);
-    setDraft({ title: goal.title, category: goal.category, targetValue: goal.targetValue, frequency: goal.frequency });
+    setDraft({ title: goal.title, categoryId: goal.categoryId, targetValue: goal.targetValue, frequency: goal.frequency });
+    setShowCategoryForm(false);
     setShowForm(true);
   }
 
@@ -132,16 +135,24 @@ export default function MetasPage() {
     if (!draft.title.trim()) return;
     setSaving(true);
     await run(async () => {
+      const payload = { ...draft, categoryId: draft.categoryId || defaultCategoryId };
       if (editingGoal) {
-        await api.updateGoal(editingGoal.id, draft);
+        await api.updateGoal(editingGoal.id, payload);
       } else {
-        await api.createGoal(draft);
+        await api.createGoal(payload);
       }
       await reload();
     });
     setSaving(false);
     setShowForm(false);
     setEditingGoal(null);
+  }
+
+  async function handleCategoryCreated(input: { name: string; color: string; icon: string | null }) {
+    const { category } = await api.createCategory(input);
+    setCategories((prev) => [...prev, category]);
+    setDraft((d) => ({ ...d, categoryId: category.id }));
+    setShowCategoryForm(false);
   }
 
   async function deleteGoal(id: number) {
@@ -256,20 +267,38 @@ export default function MetasPage() {
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Categoria</label>
                   <div className="flex flex-wrap gap-2">
-                    {(Object.keys(CATEGORY_META) as GoalCategory[]).map((cat) => {
-                      const { label, color, icon: Icon } = CATEGORY_META[cat];
+                    {sortedCategories.map((cat) => {
+                      const Icon = categoryIcon(cat.icon);
+                      const selected = draft.categoryId === cat.id;
                       return (
                         <button
-                          key={cat}
-                          onClick={() => setDraftField("category", cat)}
-                          style={draft.category === cat ? { borderColor: color, color } : {}}
-                          className={`answer-option w-auto! gap-1.5 px-3 py-1.5 text-xs ${draft.category === cat ? "selected" : ""}`}
+                          key={cat.id}
+                          onClick={() => setDraftField("categoryId", cat.id)}
+                          style={selected ? { borderColor: cat.color, color: cat.color } : {}}
+                          className={`answer-option w-auto! gap-1.5 px-3 py-1.5 text-xs ${selected ? "selected" : ""}`}
                         >
-                          <Icon size={12} /> {label}
+                          <Icon size={12} /> {cat.name}
                         </button>
                       );
                     })}
+                    <button
+                      onClick={() => setShowCategoryForm((v) => !v)}
+                      aria-label="Nova categoria"
+                      title="Nova categoria"
+                      className={`answer-option w-auto! gap-1 px-3 py-1.5 text-xs ${showCategoryForm ? "selected" : ""}`}
+                    >
+                      {showCategoryForm ? <X size={12} /> : <Plus size={12} />} Nova categoria
+                    </button>
                   </div>
+                  {showCategoryForm && (
+                    <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
+                      <CategoryForm
+                        submitLabel="Criar categoria"
+                        onSubmit={handleCategoryCreated}
+                        onCancel={() => setShowCategoryForm(false)}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -333,7 +362,8 @@ export default function MetasPage() {
         <div className="space-y-3">
           <AnimatePresence>
             {goals.map((goal) => {
-              const { color, icon: Icon } = CATEGORY_META[goal.category];
+              const color = goal.category.color;
+              const Icon = categoryIcon(goal.category.icon);
               const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
               const goalHabits = habits.filter((h) => h.goalId === goal.id);
               const expanded = expandedGoal === goal.id;
@@ -358,7 +388,7 @@ export default function MetasPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-[var(--text-muted)]">{CATEGORY_META[goal.category].label} · {FREQ_LABELS[goal.frequency]}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{goal.category.name} · {FREQ_LABELS[goal.frequency]}</span>
                         </div>
                         <div className="mt-3 flex items-center gap-3">
                           <ProgressBar value={pct} color={color} glowColor={`${color}60`} />

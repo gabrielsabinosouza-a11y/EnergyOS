@@ -44,10 +44,16 @@ export interface DbGoalRow {
   id: string | number;
   profile_id: string;
   title: string;
-  category: Goal["category"];
   target_value: string | number;
   current_value: string | number;
   frequency: Goal["frequency"];
+  category_id: string | number;
+  category_user_id: string | null;
+  category_name: string;
+  category_color: string;
+  category_icon: string | null;
+  category_is_custom: boolean;
+  category_created_at: Date | string;
 }
 
 export interface DbHabitRow {
@@ -64,7 +70,18 @@ export function mapGoalRow(row: DbGoalRow): Goal {
     id: Number(row.id),
     profileId: row.profile_id,
     title: row.title,
-    category: row.category,
+    categoryId: Number(row.category_id),
+    category: {
+      id: Number(row.category_id),
+      userId: row.category_user_id,
+      name: row.category_name,
+      color: row.category_color,
+      icon: row.category_icon,
+      isCustom: row.category_is_custom,
+      createdAt: typeof row.category_created_at === "string"
+        ? row.category_created_at
+        : row.category_created_at.toISOString(),
+    },
     targetValue: Number(row.target_value),
     currentValue: Number(row.current_value),
     frequency: row.frequency,

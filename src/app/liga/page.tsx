@@ -31,6 +31,28 @@ const TIER_CONFIG: Record<NewLeagueTier, {
 
 const TIER_ORDER: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
 
+const PROMOTION_TEXT: Record<NewLeagueTier, string> = {
+  BRONZE:   "Fique no Top 10 para ser promovido para Prata.",
+  PRATA:    "Fique no Top 10 para ser promovido para Ouro.",
+  OURO:     "Fique no Top 7 para ser promovido para Diamante.",
+  DIAMANTE: "Fique no Top 5 para ser promovido para Lendas.",
+  LENDAS:   "Lendas é o tier mais alto. Os top 3 ganham moedas ao final da semana.",
+};
+
+const MEDAL_COLORS = ["#ffd700", "#c0c0c0", "#cd7f32"] as const;
+
+function MedalBadge({ rank }: { rank: number }) {
+  if (rank > 3) return <span className="font-mono text-[10px] text-[var(--text-faint)]">{rank}</span>;
+  return (
+    <div
+      className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+      style={{ background: MEDAL_COLORS[rank - 1], color: rank === 1 ? "#000" : "#000" }}
+    >
+      {rank}
+    </div>
+  );
+}
+
 // ── Countdown hook ────────────────────────────────────────────────────────────
 
 function useCountdown(weekEnd: string) {
@@ -128,8 +150,9 @@ export default function LigaPage() {
   const isLendas = snapshot.currentTier === "LENDAS";
   const isDiamante = snapshot.currentTier === "DIAMANTE";
   const userMember = snapshot.members.find((m) => m.profileId === user.uid);
-  const isInPromo = snapshot.userRank > 0 && snapshot.userRank <= snapshot.promotionZoneEnd;
-  const isInDemo = snapshot.userRank > 0 && snapshot.userRank >= snapshot.demotionZoneStart && snapshot.currentTier !== "BRONZE";
+  const displayRank = snapshot.userRank > 0 ? snapshot.userRank : null;
+  const isInPromo = displayRank !== null && displayRank <= snapshot.promotionZoneEnd;
+  const isInDemo = displayRank !== null && displayRank >= snapshot.demotionZoneStart && snapshot.currentTier !== "BRONZE";
 
   return (
     <AppShell>
@@ -285,8 +308,11 @@ export default function LigaPage() {
             <div className="divide-y divide-[var(--border-subtle)]">
               {snapshot.members.map((member, index) => {
                 const isMe = member.profileId === user.uid;
-                const inPromo = member.rank <= snapshot.promotionZoneEnd;
-                const inDemo = member.rank >= snapshot.demotionZoneStart;
+                // rank from DB is 1-indexed (calculateGroupRanks uses i+1)
+                // but guard against legacy 0 values
+                const displayMemberRank = member.rank > 0 ? member.rank : index + 1;
+                const inPromo = displayMemberRank <= snapshot.promotionZoneEnd;
+                const inDemo = displayMemberRank >= snapshot.demotionZoneStart;
                 const photoUrl = member.profile?.photoUrl;
                 const name = member.profile?.displayName ?? member.displayName ?? "Anônimo";
 
@@ -302,16 +328,7 @@ export default function LigaPage() {
                   >
                     {/* Rank */}
                     <div className="flex items-center justify-center">
-                      {member.rank <= 3 ? (
-                        <div
-                          className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-black"
-                          style={{ background: member.rank === 1 ? "#ffd700" : member.rank === 2 ? "#c0c0c0" : "#cd7f32" }}
-                        >
-                          {member.rank}
-                        </div>
-                      ) : (
-                        <span className="font-mono text-[10px] text-[var(--text-faint)]">{member.rank}</span>
-                      )}
+                      <MedalBadge rank={displayMemberRank} />
                     </div>
 
                     {/* Avatar + name */}
@@ -371,13 +388,7 @@ export default function LigaPage() {
               <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">SOBRE SEU TIER</span>
             </div>
             <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-              {isLendas
-                ? "Lendas é o tier mais alto. Os top 3 ganham moedas ao final da semana."
-                : isDiamante
-                ? "Fique no Top 5 para avançar para a Liga Lendas na próxima semana!"
-                : nextTier
-                ? `Fique no Top ${snapshot.promotionZoneEnd} para ser promovido para ${TIER_CONFIG[nextTier].label}.`
-                : "Mantenha o bom trabalho!"}
+              {PROMOTION_TEXT[snapshot.currentTier]}
             </p>
             {nextTier && (() => {
               const next = TIER_CONFIG[nextTier];
@@ -407,7 +418,9 @@ export default function LigaPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-[var(--text-faint)]">Ranking atual</span>
-                <span className="font-mono text-xl font-bold" style={{ color: tierCfg.color }}>#{snapshot.userRank}</span>
+                <span className="font-mono text-xl font-bold" style={{ color: tierCfg.color }}>
+                  {displayRank !== null ? `#${displayRank}` : "—"}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-[var(--text-faint)]">Membros no grupo</span>

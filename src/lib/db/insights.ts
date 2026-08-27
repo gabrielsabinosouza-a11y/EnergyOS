@@ -67,13 +67,14 @@ export async function generateWeeklyInsights(profileId: string, referenceDate?: 
   // Sono
   const sleepDelta = deltaLabel(avgNow.sleepHours ? avgNow.sleepHours * 60 : null, avgPrev.sleepHours ? avgPrev.sleepHours * 60 : null);
   if (avgNow.sleepHours !== null && sleepDelta !== null) {
+    const formatSleep = (v: number | null) => v === null ? "?" : v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     drafts.push({
       kind: "sleep",
       title: sleepDelta >= 0 ? `Seu sono melhorou ${sleepDelta}%` : `Seu sono caiu ${Math.abs(sleepDelta)}%`,
       description:
         sleepDelta >= 0
-          ? `Média de ${avgNow.sleepHours.toFixed(1)}h nesta semana (semana passada: ${avgPrev.sleepHours?.toFixed(1)}h). Continue assim.`
-          : `Média de ${avgNow.sleepHours.toFixed(1)}h contra ${avgPrev.sleepHours?.toFixed(1)}h na semana anterior. Tente antecipar a hora de dormir.`,
+          ? `Média de ${formatSleep(avgNow.sleepHours)}h nesta semana (semana passada: ${formatSleep(avgPrev.sleepHours)}h). Continue assim.`
+          : `Média de ${formatSleep(avgNow.sleepHours)}h contra ${formatSleep(avgPrev.sleepHours)}h na semana anterior. Tente antecipar a hora de dormir.`,
     });
   }
 

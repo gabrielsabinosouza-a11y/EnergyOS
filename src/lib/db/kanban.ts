@@ -1,11 +1,21 @@
 import pool from "../db";
-import type { KanbanTask, KanbanStatus, KanbanCategory, KanbanPriority, KanbanLabel } from "@/types";
+import type { KanbanTask, KanbanStatus, KanbanPriority, KanbanLabel } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseProfileId, parseTitle } from "./validation";
+import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
-const KANBAN_CATEGORIES: readonly KanbanCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
+
+/** Colunas de kanban_task + categoria resolvida (join com categories). */
+const KANBAN_SELECT = `
+  select k.id, k.profile_id, k.title, k.description, k.status, k.position, k.labels,
+         k.due_date, k.priority, k.assignee_id, k.created_at, k.updated_at,
+         c.id as category_id, c.user_id as category_user_id, c.name as category_name,
+         c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
+         c.created_at as category_created_at
+  from kanban_tasks k
+  join categories c on c.id = k.category_id`;
 
 interface KanbanRow {
   id: string | number;
@@ -14,13 +24,19 @@ interface KanbanRow {
   description: string | null;
   status: KanbanStatus;
   position: number;
-  category: KanbanCategory;
   labels: string[] | null;
   due_date: Date | string | null;
   priority: KanbanPriority;
   assignee_id: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  category_id: string | number;
+  category_user_id: string | null;
+  category_name: string;
+  category_color: string;
+  category_icon: string | null;
+  category_is_custom: boolean;
+  category_created_at: Date | string;
 }
 
 function mapKanban(row: KanbanRow): KanbanTask {
@@ -31,7 +47,18 @@ function mapKanban(row: KanbanRow): KanbanTask {
     description: row.description ?? undefined,
     status: row.status,
     position: row.position,
-    category: row.category,
+    categoryId: Number(row.category_id),
+    category: {
+      id: Number(row.category_id),
+      userId: row.category_user_id,
+      name: row.category_name,
+      color: row.category_color,
+      icon: row.category_icon,
+      isCustom: row.category_is_custom,
+      createdAt: typeof row.category_created_at === "string"
+        ? row.category_created_at
+        : row.category_created_at.toISOString(),
+    },
     labels: row.labels ?? [],
     dueDate: row.due_date ? (typeof row.due_date === "string" ? row.due_date : row.due_date.toISOString().slice(0, 10)) : undefined,
     priority: row.priority,
@@ -61,9 +88,9 @@ function mapKanbanLabel(row: KanbanLabelRow): KanbanLabel {
 export async function listKanbanTasks(profileId: string): Promise<KanbanTask[]> {
   parseProfileId(profileId);
   const result = await pool.query<KanbanRow>(
-    `select id, profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id, created_at, updated_at
-     from kanban_tasks where profile_id = $1
-     order by status, position, id`,
+    `${KANBAN_SELECT}
+     where k.profile_id = $1
+     order by k.status, k.position, k.id`,
     [profileId],
   );
   return result.rows.map(mapKanban);
@@ -73,7 +100,7 @@ export interface CreateKanbanInput {
   title: string;
   description?: string;
   status?: KanbanStatus;
-  category?: KanbanCategory;
+  categoryId?: number;
   labels?: string[];
   dueDate?: string;
   priority?: KanbanPriority;
@@ -84,8 +111,10 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
   parseProfileId(profileId);
   const title = parseTitle(input.title);
   const status = parseEnum(input.status ?? "todo", KANBAN_STATUSES, "Status");
-  const category = parseEnum(input.category ?? "FOCO", KANBAN_CATEGORIES, "Categoria");
   const priority = parseEnum(input.priority ?? "medium", KANBAN_PRIORITIES, "Prioridade");
+  const categoryId = input.categoryId !== undefined
+    ? await assertCategoryForProfile(profileId, input.categoryId)
+    : await resolveDefaultCategoryId();
 
   const maxPos = await pool.query<{ max_pos: string | number | null }>(
     `select coalesce(max(position), -1) as max_pos from kanban_tasks where profile_id = $1 and status = $2`,
@@ -93,12 +122,13 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
   );
   const nextPos = Number(maxPos.rows[0]?.max_pos ?? -1) + 1;
 
-  const result = await pool.query<KanbanRow>(
-    `insert into kanban_tasks (profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id)
+  const inserted = await pool.query<{ id: string | number }>(
+    `insert into kanban_tasks (profile_id, title, description, status, position, category_id, labels, due_date, priority, assignee_id)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     returning id, profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id, created_at, updated_at`,
-    [profileId, title, input.description ?? null, status, nextPos, category, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null],
+     returning id`,
+    [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null],
   );
+  const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [inserted.rows[0].id]);
   return mapKanban(result.rows[0]);
 }
 
@@ -106,7 +136,7 @@ export interface UpdateKanbanPatch {
   title?: string;
   description?: string | null;
   status?: KanbanStatus;
-  category?: KanbanCategory;
+  categoryId?: number;
   position?: number;
   labels?: string[];
   dueDate?: string | null;
@@ -133,9 +163,10 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
     values.push(parseEnum(patch.status, KANBAN_STATUSES, "Status"));
     updates.push(`status = $${values.length}`);
   }
-  if (patch.category !== undefined) {
-    values.push(parseEnum(patch.category, KANBAN_CATEGORIES, "Categoria"));
-    updates.push(`category = $${values.length}`);
+  if (patch.categoryId !== undefined) {
+    const categoryId = await assertCategoryForProfile(profileId, patch.categoryId);
+    values.push(categoryId);
+    updates.push(`category_id = $${values.length}`);
   }
   if (patch.position !== undefined) {
     values.push(patch.position);
@@ -161,13 +192,14 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
   if (updates.length === 0) throw new ValidationError("Nenhum campo para atualizar.");
   updates.push(`updated_at = now()`);
 
-  const result = await pool.query<KanbanRow>(
+  const updated = await pool.query<{ id: string | number }>(
     `update kanban_tasks set ${updates.join(", ")}
      where profile_id = $1 and id = $2
-     returning id, profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id, created_at, updated_at`,
+     returning id`,
     values,
   );
-  if (!result.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+  if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+  const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
   return mapKanban(result.rows[0]);
 }
 
@@ -245,15 +277,16 @@ export async function moveKanbanTask(
     }
     
     // 3. Update the moved task itself
-    const result = await client.query<KanbanRow>(
+    const updated = await client.query<{ id: string | number }>(
       `update kanban_tasks set status = $1, position = $2, updated_at = now()
        where profile_id = $3 and id = $4
-       returning id, profile_id, title, description, status, position, category, labels, due_date, priority, assignee_id, created_at, updated_at`,
+       returning id`,
       [validatedStatus, validatedPosition, profileId, taskId]
     );
     
-    if (!result.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+    if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
     
+    const result = await client.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
     return mapKanban(result.rows[0]);
   } finally {
     client.release();
@@ -264,8 +297,8 @@ export async function promoteTaskToKanban(profileId: string, taskId: number): Pr
   parseProfileId(profileId);
   if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");
 
-  const taskResult = await pool.query<{ id: string | number; title: string; category: string }>(
-    `select id, title, category from tasks where profile_id = $1 and id = $2`,
+  const taskResult = await pool.query<{ id: string | number; title: string; category_id: string | number }>(
+    `select id, title, category_id from tasks where profile_id = $1 and id = $2`,
     [profileId, taskId],
   );
   if (!taskResult.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
@@ -280,7 +313,7 @@ export async function promoteTaskToKanban(profileId: string, taskId: number): Pr
 
   const kanbanTask = await createKanbanTask(profileId, {
     title: task.title,
-    category: task.category as KanbanCategory,
+    categoryId: Number(task.category_id),
     status: "todo",
   });
 

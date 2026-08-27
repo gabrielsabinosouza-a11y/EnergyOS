@@ -1,5 +1,16 @@
 export type TaskCategory = "FOCO" | "CORPO" | "MENTE" | "ORDEM" | "ENERGIA";
 export type GoalCategory = "sono" | "estudo" | "treino" | "saude" | "foco";
+
+/** Categoria (padrão do sistema ou criada pelo usuário) usada por metas, tarefas, Kanban e plano semanal. */
+export interface Category {
+  id: number;
+  userId: string | null;
+  name: string;
+  color: string;
+  icon: string | null;
+  isCustom: boolean;
+  createdAt: string;
+}
 export type MetricKind = "sleep" | "study" | "training" | "energy" | "tasks";
 
 export interface User {
@@ -223,7 +234,8 @@ export interface Task {
   id: number;
   profileId: string;
   title: string;
-  category: TaskCategory;
+  categoryId: number;
+  category: Category;
   dueDate: string;
   completedAt?: string;
   startTime?: string;
@@ -244,7 +256,8 @@ export interface Goal {
   id: number;
   profileId: string;
   title: string;
-  category: GoalCategory;
+  categoryId: number;
+  category: Category;
   targetValue: number;
   currentValue: number;
   frequency: "daily" | "weekly" | "monthly";
@@ -303,7 +316,8 @@ export interface KanbanTask {
   description?: string;
   status: KanbanStatus;
   position: number;
-  category: KanbanCategory;
+  categoryId: number;
+  category: Category;
   labels: string[];
   dueDate?: string;
   priority: KanbanPriority;
@@ -317,7 +331,8 @@ export interface WeeklyPlan {
   profileId: string;
   planDate: string;
   title: string;
-  category: TaskCategory;
+  categoryId: number;
+  category: Category;
   taskId?: number;
   completedAt?: string;
   startTime?: string;

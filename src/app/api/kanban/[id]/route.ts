@@ -14,7 +14,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       title: body.title as string | undefined,
       description: body.description as string | null | undefined,
       status: body.status as "todo" | "doing" | "done" | undefined,
-      category: body.category as any,
+      categoryId: body.categoryId as number | undefined,
       position: body.position as number | undefined,
       labels: body.labels as string[] | undefined,
       dueDate: body.dueDate as string | null | undefined,

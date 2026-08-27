@@ -1,17 +1,10 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { Target, Moon, Timer, Heart, Zap } from "lucide-react";
-import type { Goal, GoalCategory } from "@/types";
+import { Target } from "lucide-react";
+import type { Goal } from "@/types";
 import Link from "next/link";
-
-const CATEGORY_META: Record<GoalCategory, { label: string; color: string; icon: React.ElementType }> = {
-  sono:   { label: "Sono",   color: "#71d4ff", icon: Moon },
-  estudo: { label: "Estudo", color: "#b69cff", icon: Timer },
-  treino: { label: "Treino", color: "#ffb86b", icon: Target },
-  saude:  { label: "Saúde",  color: "#6bffb8", icon: Heart },
-  foco:   { label: "Foco",   color: "#ff9f6b", icon: Zap },
-};
+import { categoryIcon } from "@/lib/categories";
 
 export function GoalsCard({ goals }: { goals: Goal[] }) {
   const reduced = useReducedMotion();
@@ -40,7 +33,8 @@ export function GoalsCard({ goals }: { goals: Goal[] }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         {activeGoals.map((goal, i) => {
-          const { color, icon: Icon, label } = CATEGORY_META[goal.category];
+          const { color, icon, name: label } = goal.category;
+          const Icon = categoryIcon(icon);
           const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
           const circ = 2 * Math.PI * 17;
           const arcLen = (pct / 100) * circ;

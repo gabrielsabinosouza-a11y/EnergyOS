@@ -4,9 +4,6 @@ import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { createGoal, listGoals, GOAL_FREQUENCY_VALUES, type GoalWithProgress } from "@/lib/db/goals";
 import { listHabits, type HabitWithCompletion } from "@/lib/db/habits";
 import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
-import type { GoalCategory } from "@/types";
-
-const GOAL_CATEGORIES: readonly GoalCategory[] = ["sono", "estudo", "treino", "saude", "foco"];
 
 export interface GoalBundle {
   goal: GoalWithProgress;
@@ -31,7 +28,7 @@ export async function POST(request: NextRequest) {
     const body = assertObject(await readJsonBody(request));
     const goal = await createGoal(profileId, {
       title: parseTitle(body.title),
-      category: parseEnum(body.category, GOAL_CATEGORIES, "Categoria"),
+      categoryId: body.categoryId === undefined ? undefined : parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 }),
       targetValue: parseNumber(body.targetValue, "Valor alvo"),
       frequency: parseEnum(body.frequency, GOAL_FREQUENCY_VALUES, "Frequência"),
     });

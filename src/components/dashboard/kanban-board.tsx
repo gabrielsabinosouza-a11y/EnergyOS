@@ -28,7 +28,8 @@ import {
   Edit2,
   Clock,
 } from "lucide-react";
-import type { KanbanTask, KanbanStatus, KanbanCategory, KanbanLabel, KanbanPriority } from "@/types";
+import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
+import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 
 const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
   { status: "todo", label: "A Fazer", color: "#71d4ff" },
@@ -36,20 +37,10 @@ const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
   { status: "done", label: "Feito", color: "#6bffb8" },
 ];
 
-const CATEGORIES: KanbanCategory[] = ["FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
-
 const PRIORITY_COLORS: Record<KanbanPriority, string> = {
   low: "#6bffb8",
   medium: "#ffb86b",
   high: "#ff6b6b",
-};
-
-const CATEGORY_COLORS: Record<KanbanCategory, string> = {
-  FOCO: "#71d4ff",
-  CORPO: "#6bffb8",
-  MENTE: "#b69cff",
-  ORDEM: "#ffb86b",
-  ENERGIA: "#ff9f6b",
 };
 
 const LABEL_COLORS = [
@@ -66,6 +57,7 @@ const LABEL_COLORS = [
 interface KanbanBoardProps {
   tasks: KanbanTask[];
   labels: KanbanLabel[];
+  categories: Category[];
   onMove: (id: number, newStatus: KanbanStatus, newPosition: number) => void;
   onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) => Promise<void>;
   onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
@@ -184,13 +176,14 @@ function SortableCard({
             </span>
           )}
           <span
-            className="inline-block rounded-full px-1.5 py-0.5 text-[8px] font-medium"
+            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-medium"
             style={{
-              color: CATEGORY_COLORS[task.category],
-              background: "var(--bg-tertiary)",
+              color: task.category.color,
+              background: `${task.category.color}1a`,
             }}
           >
-            {task.category}
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: task.category.color }} />
+            {task.category.name}
           </span>
         </div>
       </div>
@@ -227,6 +220,7 @@ interface ColumnProps {
   color: string;
   tasks: KanbanTask[];
   labels: KanbanLabel[];
+  categories: Category[];
   onMove: (id: number, newStatus: KanbanStatus, newPosition: number) => void;
   onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) => Promise<void>;
   onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
@@ -241,6 +235,7 @@ function Column({
   color,
   tasks,
   labels,
+  categories,
   onMove,
   onCreate,
   onUpdate,
@@ -248,6 +243,8 @@ function Column({
   onCreateLabel,
   onEdit,
 }: ColumnProps) {
+  const sortedCategories = sortCategoriesForPicker(categories);
+  const firstCategoryId = sortedCategories[0]?.id ?? 0;
   const [showForm, setShowForm] = useState(false);
   const { setNodeRef } = useDroppable({
     id: `column-${status}`,
@@ -255,7 +252,7 @@ function Column({
   });
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newCategory, setNewCategory] = useState<KanbanCategory>("FOCO");
+  const [newCategoryId, setNewCategoryId] = useState(0);
   const [newLabels, setNewLabels] = useState<string[]>([]);
   const [newDueDate, setNewDueDate] = useState("");
   const [newPriority, setNewPriority] = useState<KanbanPriority>("medium");
@@ -265,18 +262,20 @@ function Column({
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
 
+  const selectedCategoryId = newCategoryId || firstCategoryId;
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleCreate = useCallback(
     async () => {
-      if (!newTitle.trim()) return;
+      if (!newTitle.trim() || !selectedCategoryId) return;
       setSaving(true);
       try {
         await onCreate({
           title: newTitle.trim(),
           description: newDescription.trim() || undefined,
           status,
-          category: newCategory,
+          categoryId: selectedCategoryId,
           labels: newLabels,
           dueDate: newDueDate || undefined,
           priority: newPriority,
@@ -293,7 +292,7 @@ function Column({
         setSaving(false);
       }
     },
-    [newTitle, newDescription, newCategory, newLabels, newDueDate, newPriority, status, tasks.length, onCreate]
+    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, tasks.length, onCreate]
   );
 
   const handleCreateLabel = useCallback(
@@ -392,15 +391,17 @@ function Column({
                 <div>
                   <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
                   <div className="flex gap-1 flex-wrap">
-                    {CATEGORIES.map((cat) => (
+                    {sortedCategories.map((cat) => (
                       <button
-                        key={cat}
-                        onClick={() => setNewCategory(cat)}
-                        className={`answer-option !w-auto !px-2 !py-0.5 !text-[9px] ${
-                          newCategory === cat ? "selected" : ""
+                        key={cat.id}
+                        onClick={() => setNewCategoryId(cat.id)}
+                        className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                          selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
                         }`}
+                        style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
                       >
-                        {cat}
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                        {cat.name}
                       </button>
                     ))}
                   </div>
@@ -573,17 +574,19 @@ function Column({
 interface TaskDetailModalProps {
   task: KanbanTask;
   labels: KanbanLabel[];
+  categories: Category[];
   onClose: () => void;
   onSave: (task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
   onDelete: (id: number) => void;
   onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
 }
 
-function TaskDetailModal({ task, labels, onClose, onSave, onDelete, onCreateLabel }: TaskDetailModalProps) {
+function TaskDetailModal({ task, labels, categories, onClose, onSave, onDelete, onCreateLabel }: TaskDetailModalProps) {
+  const sortedCategories = sortCategoriesForPicker(categories);
   const [editedTask, setEditedTask] = useState({
     title: task.title,
     description: task.description || "",
-    category: task.category,
+    categoryId: task.categoryId,
     labels: [...task.labels],
     dueDate: task.dueDate || "",
     priority: task.priority,
@@ -623,10 +626,10 @@ function TaskDetailModal({ task, labels, onClose, onSave, onDelete, onCreateLabe
     async () => {
       setSaving(true);
       try {
-        await onSave({
+await onSave({
           title: editedTask.title,
           description: editedTask.description || undefined,
-          category: editedTask.category,
+          categoryId: editedTask.categoryId,
           labels: editedTask.labels,
           dueDate: editedTask.dueDate || undefined,
           priority: editedTask.priority,
@@ -660,8 +663,8 @@ function TaskDetailModal({ task, labels, onClose, onSave, onDelete, onCreateLabe
             <div
               className="w-3 h-3 rounded-full"
               style={{
-                background: CATEGORY_COLORS[task.category],
-                boxShadow: `0 0 6px ${CATEGORY_COLORS[task.category]}40`,
+                background: task.category.color,
+                boxShadow: `0 0 6px ${task.category.color}40`,
               }}
             />
             <span className="text-sm font-medium text-[var(--text)]">Editar Tarefa</span>
@@ -700,17 +703,19 @@ function TaskDetailModal({ task, labels, onClose, onSave, onDelete, onCreateLabe
             <div>
               <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
               <div className="flex gap-1 flex-wrap">
-                {CATEGORIES.map((cat) => (
+                {sortedCategories.map((cat) => (
                   <button
-                    key={cat}
+                    key={cat.id}
                     onClick={() =>
-                      setEditedTask((prev) => ({ ...prev, category: cat }))
+                      setEditedTask((prev) => ({ ...prev, categoryId: cat.id }))
                     }
-                    className={`answer-option !w-auto !px-2 !py-0.5 !text-[9px] ${
-                      editedTask.category === cat ? "selected" : ""
+                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                      editedTask.categoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
                     }`}
+                    style={editedTask.categoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
                   >
-                    {cat}
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                    {cat.name}
                   </button>
                 ))}
               </div>
@@ -875,6 +880,7 @@ function TaskDetailModal({ task, labels, onClose, onSave, onDelete, onCreateLabe
 export function KanbanBoard({
   tasks,
   labels,
+  categories,
   onMove,
   onCreate,
   onUpdate,
@@ -973,6 +979,7 @@ export function KanbanBoard({
               color={col.color}
               tasks={col.tasks}
               labels={labels}
+              categories={categories}
               onMove={handleMove}
               onCreate={handleCreate}
               onUpdate={handleUpdate}
@@ -989,6 +996,7 @@ export function KanbanBoard({
           <TaskDetailModal
             task={editingTask}
             labels={labels}
+            categories={categories}
             onClose={() => setEditingTask(null)}
             onSave={(updates) => handleUpdate(editingTask.id, updates)}
             onDelete={onDelete}

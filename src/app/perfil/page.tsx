@@ -30,6 +30,7 @@ import {
   Timer,
   Target,
   Sparkles,
+  Camera,
 } from "lucide-react";
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
@@ -82,6 +83,8 @@ const fadeUp = {
 /*  Sub-components                                                    */
 /* ------------------------------------------------------------------ */
 
+const FEATURED_SIZE = 88;
+
 function AchievementBadge({
   achievement,
   size = 80,
@@ -100,50 +103,46 @@ function AchievementBadge({
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const Icon = ACHIEVEMENT_ICONS[achievement.id] ?? DEFAULT_ICON;
   const isEarned = achievement.unlockedTier > 0;
+  // inner circle is 84% of the slot so the glow has room to breathe inside the cell
+  const inner = Math.round(size * 0.84);
 
   return (
+    // outer wrapper clips nothing — glow is contained by keeping inner circle smaller
     <motion.button
       type="button"
       onClick={onClick}
-      whileHover={reduced ? undefined : { scale: 1.08 }}
+      whileHover={reduced ? undefined : { scale: 1.06 }}
       whileTap={reduced ? undefined : { scale: 0.95 }}
-      className="group relative shrink-0 cursor-pointer"
-      style={{ width: size, height: size }}
+      className="group relative shrink-0 cursor-pointer flex flex-col items-center justify-start"
+      style={{ width: size }}
     >
+      {/* glow container — fixed square so shadow never bleeds outside size×size */}
       <div
-        className="flex h-full w-full flex-col items-center justify-center rounded-full transition-shadow"
+        className="flex items-center justify-center rounded-full"
         style={{
+          width: inner,
+          height: inner,
           background: isEarned
             ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
             : "rgba(255,255,255,0.04)",
-          boxShadow: isEarned ? `0 0 20px ${colors.glow}` : "none",
+          boxShadow: isEarned ? `0 0 12px 2px ${colors.glow}` : "none",
           border: isEarned ? "none" : "1px dashed rgba(255,255,255,0.12)",
         }}
       >
         {isEarned ? (
-          <Icon
-            size={size * 0.35}
-            style={{ color: "#000" }}
-            strokeWidth={2}
-          />
+          <Icon size={inner * 0.38} style={{ color: "#000" }} strokeWidth={2} />
         ) : (
-          <Lock
-            size={size * 0.25}
-            className="text-[var(--text-faint)]"
-            strokeWidth={1.5}
-          />
+          <Lock size={inner * 0.28} className="text-[var(--text-faint)]" strokeWidth={1.5} />
         )}
       </div>
 
       {isEarned && achievement.thresholds.length > 1 && (
-        <div className="mt-1 flex justify-center gap-1">
+        <div className="mt-1.5 flex justify-center gap-1">
           {achievement.thresholds.map((_, i) => (
             <span
               key={i}
               className="block h-1 w-1 rounded-full"
-              style={{
-                background: i < achievement.unlockedTier ? colors.primary : "rgba(255,255,255,0.15)",
-              }}
+              style={{ background: i < achievement.unlockedTier ? colors.primary : "rgba(255,255,255,0.15)" }}
             />
           ))}
         </div>
@@ -304,20 +303,26 @@ function FeaturedSlot({
   reduced?: boolean;
   showAdd?: boolean;
 }) {
+  // All slots — filled or empty — share the same outer cell size for grid uniformity
+  const cellSize = FEATURED_SIZE;
+
   if (!achievement) {
     return (
       <motion.button
         type="button"
         onClick={onClick}
-        whileHover={reduced ? undefined : { scale: 1.08 }}
+        whileHover={reduced ? undefined : { scale: 1.06 }}
         whileTap={reduced ? undefined : { scale: 0.95 }}
         className="group flex shrink-0 cursor-pointer flex-col items-center gap-2"
-        style={{ width: 120 }}
+        style={{ width: cellSize }}
       >
-        <div className="flex h-[120px] w-[120px] items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-colors group-hover:border-[var(--accent)]/30">
+        <div
+          className="flex items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-colors group-hover:border-[var(--accent)]/30"
+          style={{ width: cellSize, height: cellSize }}
+        >
           <div className="flex flex-col items-center gap-1 text-[var(--text-faint)] transition group-hover:text-[var(--accent)]">
-            <Plus size={22} />
-            <span className="text-[9px]">Destacar conquista</span>
+            <Plus size={18} />
+            <span className="text-[9px] text-center leading-tight px-1">Destacar conquista</span>
           </div>
         </div>
       </motion.button>
@@ -325,10 +330,10 @@ function FeaturedSlot({
   }
 
   return (
-    <div className="relative flex shrink-0 flex-col items-center gap-2" style={{ width: 120 }}>
+    <div className="flex shrink-0 flex-col items-center gap-2" style={{ width: cellSize }}>
       <AchievementBadge
         achievement={achievement}
-        size={120}
+        size={cellSize}
         onClick={onClick}
         showRemove={showAdd}
         onRemove={onRemove}
@@ -444,7 +449,7 @@ export default function PerfilPage() {
       formData.append("file", file);
       formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
       const res = await fetch(
-        `https://api.cloudinary.com/v1_/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+        `https://api.cloudinary.com/v1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
         { method: "POST", body: formData },
       );
       if (!res.ok) throw new Error("Upload failed");
@@ -548,7 +553,7 @@ export default function PerfilPage() {
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={photoSaving}
-                  className="avatar relative overflow-hidden"
+                  className="group avatar relative overflow-hidden"
                   style={{
                     width: 80,
                     height: 80,
@@ -563,8 +568,14 @@ export default function PerfilPage() {
                   ) : (
                     initials
                   )}
+                  {/* camera overlay on hover */}
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                    {photoSaving
+                      ? <Loader2 size={20} className="animate-spin text-white" />
+                      : <Camera size={20} className="text-white" />}
+                  </span>
                 </button>
-                <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
+                <span className="pointer-events-none absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
                   {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
                 </span>
               </div>
@@ -650,7 +661,7 @@ export default function PerfilPage() {
               <span className="text-xs uppercase tracking-[0.15em] text-[var(--orange)]">Destaques</span>
             </div>
 
-            <div className="flex gap-4 overflow-x-auto pb-2">
+            <div className="grid grid-cols-4 gap-3">
               {[0, 1, 2, 3].map((slot) => (
                 <FeaturedSlot
                   key={slot}
@@ -765,13 +776,14 @@ export default function PerfilPage() {
                       onClick={() => setSelectedAchievement(ach)}
                       className="flex flex-col items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-center transition-colors hover:border-white/[0.12]"
                     >
+                      {/* inner circle is 68px inside the padded card — glow stays inside */}
                       <div
-                        className="flex h-[80px] w-[80px] items-center justify-center rounded-full"
+                        className="flex h-[68px] w-[68px] items-center justify-center rounded-full"
                         style={{
                           background: ach.unlockedTier > 0
                             ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
                             : "rgba(255,255,255,0.03)",
-                          boxShadow: ach.unlockedTier > 0 ? `0 0 18px ${colors.glow}` : "none",
+                          boxShadow: ach.unlockedTier > 0 ? `0 0 12px 2px ${colors.glow}` : "none",
                           filter: ach.unlockedTier === 0 ? "grayscale(1) opacity(0.4)" : undefined,
                         }}
                       >

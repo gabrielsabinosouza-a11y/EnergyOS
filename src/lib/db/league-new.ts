@@ -2,7 +2,14 @@ import pool from "../db";
 import type { NewLeagueTier, LeagueGroup, LeagueGroupMember, CohortMember } from "@/types";
 
 // Configuration
-const PROMOTION_COUNT = 3;       // top N promoted each week
+const PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
+  BRONZE:   10,
+  PRATA:    10,
+  OURO:     7,
+  DIAMANTE: 5,   // top 5 qualify for Lendas
+  LENDAS:   0,   // no promotion above Lendas
+};
+const REGULAR_TIER_COIN_REWARDS: [number, number, number] = [125, 100, 75];
 const DEMOTION_COUNT = 3;        // bottom N demoted each week
 const LEGENDS_TOP_N = 5;         // top N from each Diamante group qualify for Lendas
 const LEGENDS_MAX_SIZE = 20;     // target Lendas group size
@@ -133,6 +140,8 @@ export async function runWeeklyLeagueReset(): Promise<void> {
       const nextTier: NewLeagueTier | null = tierIdx < TIERS.indexOf("DIAMANTE") ? TIERS[tierIdx + 1] as NewLeagueTier : null;
       const prevTier: NewLeagueTier | null = tierIdx > 0 ? TIERS[tierIdx - 1] as NewLeagueTier : null;
 
+      const promoCutoff = PROMOTION_CUTOFFS[group.tier];
+
       for (let i = 0; i < n; i++) {
         const member = members.rows[i];
         const rank = i + 1;
@@ -144,6 +153,14 @@ export async function runWeeklyLeagueReset(): Promise<void> {
             diamanteQualifiers.push(member.profile_id);
           } else if (prevTier && rank > n - DEMOTION_COUNT) {
             targetTier = prevTier;
+          }
+          // Award coins to top 3
+          if (rank <= 3) {
+            const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
+            await client.query(
+              `update profiles set coin_balance = coalesce(coin_balance, 0) + $1 where id = $2`,
+              [coins, member.profile_id]
+            );
           }
         } else if (group.tier === "LENDAS") {
           // Award coins to top 3; no promotion above Lendas
@@ -159,7 +176,15 @@ export async function runWeeklyLeagueReset(): Promise<void> {
             targetTier = prevTier;
           }
         } else {
-          if (nextTier && rank <= PROMOTION_COUNT) targetTier = nextTier;
+          // Bronze / Prata / Ouro — tier-specific promotion cutoff
+          if (rank <= 3) {
+            const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
+            await client.query(
+              `update profiles set coin_balance = coalesce(coin_balance, 0) + $1 where id = $2`,
+              [coins, member.profile_id]
+            );
+          }
+          if (nextTier && rank <= promoCutoff) targetTier = nextTier;
           else if (prevTier && rank > n - DEMOTION_COUNT) targetTier = prevTier;
         }
 
@@ -380,7 +405,7 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
     weekStart: start,
     weekEnd: end,
     isLegendsGroup: group.isLegendsGroup,
-    promotionZoneEnd: PROMOTION_COUNT,
+    promotionZoneEnd: PROMOTION_CUTOFFS[group.tier],
     demotionZoneStart: Math.max(1, members.length - DEMOTION_COUNT + 1),
   };
 }

@@ -3,9 +3,6 @@ import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { deleteGoal, updateGoal, GOAL_FREQUENCY_VALUES } from "@/lib/db/goals";
 import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
-import type { GoalCategory } from "@/types";
-
-const GOAL_CATEGORIES: readonly GoalCategory[] = ["sono", "estudo", "treino", "saude", "foco"];
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,7 +21,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const patch: Parameters<typeof updateGoal>[2] = {};
     if (body.title !== undefined) patch.title = parseTitle(body.title);
-    if (body.category !== undefined) patch.category = parseEnum(body.category, GOAL_CATEGORIES, "Categoria");
+    if (body.categoryId !== undefined) patch.categoryId = parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 });
     if (body.frequency !== undefined) patch.frequency = parseEnum(body.frequency, GOAL_FREQUENCY_VALUES, "Frequência");
     if (body.targetValue !== undefined) patch.targetValue = parseNumber(body.targetValue, "Valor alvo");
     if (body.currentValue !== undefined) patch.currentValue = parseNumber(body.currentValue, "Progresso atual");

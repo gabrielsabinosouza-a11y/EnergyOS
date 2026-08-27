@@ -112,10 +112,10 @@ export async function averagesForRange(profileId: string, from: string, to: stri
   );
   const row = result.rows[0];
   return {
-    sleepHours: row.avg_sleep === null ? null : Number(row.avg_sleep),
+    sleepHours: row.avg_sleep === null ? null : Math.round(Number(row.avg_sleep) * 10) / 10,
     studyMinutes: row.avg_study === null ? null : Math.round(Number(row.avg_study)),
     trainingMinutes: row.avg_training === null ? null : Math.round(Number(row.avg_training)),
-    energyScore: row.avg_energy === null ? null : Number(row.avg_energy),
+    energyScore: row.avg_energy === null ? null : Math.round(Number(row.avg_energy) * 10) / 10,
     daysWithCheckin: Number(row.days),
   };
 }
