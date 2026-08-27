@@ -174,6 +174,39 @@ function DecorationRing({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Frame Preview (real decoration asset)                              */
+/* ------------------------------------------------------------------ */
+
+function FramePreview({
+  imageUrl,
+  rarity,
+  size = 80,
+  className = "",
+}: {
+  imageUrl: string;
+  rarity: DecorationRarity;
+  size?: number;
+  className?: string;
+}) {
+  const [errored, setErrored] = useState(false);
+  if (!imageUrl || errored) {
+    return <DecorationRing rarity={rarity} size={size} />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={imageUrl}
+      width={size}
+      height={size}
+      alt=""
+      draggable={false}
+      onError={() => setErrored(true)}
+      className={`select-none ${className}`}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  StoreItem Card                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -206,10 +239,14 @@ function StoreItemCard({
       className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-center transition-colors hover:border-white/[0.12]"
     >
       <div
-        className="flex items-center justify-center rounded-full"
+        className="relative flex items-center justify-center rounded-full"
         style={{ width: 80, height: 80, background: c.bg }}
       >
-        <DecorationRing rarity={item.rarity} />
+        <div
+          className="absolute rounded-full bg-white/10 ring-1 ring-white/10"
+          style={{ width: 62, height: 62 }}
+        />
+        <FramePreview imageUrl={item.imageUrl} rarity={item.rarity} size={80} className="relative" />
       </div>
 
       <span className="text-xs text-[var(--text-secondary)]">{item.name}</span>
@@ -348,103 +385,12 @@ function DecorationModal({
 
         <div className="mb-5 flex flex-col items-center text-center">
           <div className="relative mb-4 flex items-center justify-center">
-            <svg
-              width={ringSize}
-              height={ringSize}
-              viewBox={`0 0 ${ringSize} ${ringSize}`}
-            >
-              {item.rarity === "common" && (
-                <circle
-                  cx={ringSize / 2}
-                  cy={ringSize / 2}
-                  r={ringSize / 2 - 4}
-                  fill="none"
-                  stroke={c.border}
-                  strokeWidth={2}
-                  opacity={0.7}
-                />
-              )}
-              {item.rarity === "rare" && (
-                <>
-                  <circle
-                    cx={ringSize / 2}
-                    cy={ringSize / 2}
-                    r={ringSize / 2 - 4}
-                    fill="none"
-                    stroke={c.border}
-                    strokeWidth={2}
-                    opacity={0.6}
-                  />
-                  <circle
-                    cx={ringSize / 2}
-                    cy={ringSize / 2}
-                    r={ringSize / 2 - 9}
-                    fill="none"
-                    stroke={c.border}
-                    strokeWidth={1}
-                    opacity={0.35}
-                  />
-                </>
-              )}
-              {item.rarity === "epic" && (
-                <circle
-                  cx={ringSize / 2}
-                  cy={ringSize / 2}
-                  r={ringSize / 2 - 4}
-                  fill="none"
-                  stroke={c.border}
-                  strokeWidth={4}
-                  opacity={0.8}
-                  filter="url(#epic-glow-modal)"
-                />
-              )}
-              {item.rarity === "legendary" && (
-                <>
-                  <circle
-                    cx={ringSize / 2}
-                    cy={ringSize / 2}
-                    r={ringSize / 2 - 4}
-                    fill="none"
-                    stroke={c.border}
-                    strokeWidth={3}
-                    opacity={0.9}
-                  />
-                  {[
-                    0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330,
-                  ].map((deg) => {
-                    const rad = (deg * Math.PI) / 180;
-                    const r = ringSize / 2 - 2;
-                    const px = ringSize / 2 + r * Math.cos(rad);
-                    const py = ringSize / 2 + r * Math.sin(rad);
-                    return (
-                      <circle
-                        key={deg}
-                        cx={px}
-                        cy={py}
-                        r={1.8}
-                        fill={c.border}
-                        opacity={0.85}
-                      />
-                    );
-                  })}
-                </>
-              )}
-              <defs>
-                <filter
-                  id="epic-glow-modal"
-                  x="-50%"
-                  y="-50%"
-                  width="200%"
-                  height="200%"
-                >
-                  <feGaussianBlur stdDeviation="4" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-            </svg>
+            <FramePreview
+              imageUrl={item.imageUrl}
+              rarity={item.rarity}
+              size={ringSize}
+              className="relative"
+            />
             <div className="absolute inset-0 flex items-center justify-center">
               {user.photoURL ? (
                 // eslint-disable-next-line @next/next/no-img-element

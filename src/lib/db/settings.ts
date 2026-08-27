@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import pool from "../db";
 import type { UserSettings } from "@/types";
 import { ensureProfile } from "./profiles";
@@ -70,18 +71,16 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
   return toSettings(profileId, result.rows[0]);
 }
 
-// Helper to add coins (used by quest claiming)
-export async function addCoins(profileId: string, amount: number): Promise<UserSettings> {
+// Helper to add coins (used by quest claiming).
+// Upserts the settings row so users without a saved settings row can still earn coins.
+export async function addCoins(profileId: string, amount: number, db: Pool | PoolClient = pool): Promise<UserSettings> {
   parseProfileId(profileId);
-  const result = await pool.query<SettingsRow>(
-    `update user_settings 
-     set coins = coins + $1
-     where profile_id = $2
+  const result = await db.query<SettingsRow>(
+    `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time, coins)
+     values ($1, true, 'dark', null, null, $2)
+     on conflict (profile_id) do update set coins = user_settings.coins + excluded.coins
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins`,
-    [amount, profileId],
+    [profileId, amount],
   );
-  if (!result.rows[0]) {
-    throw new Error("User settings not found");
-  }
   return toSettings(profileId, result.rows[0]);
 }

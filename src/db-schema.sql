@@ -387,7 +387,7 @@ insert into achievements (id, title, description, category) values
   ('consistency_king', 'Consistency King','Semanas perfeitas de check-in',                'checkin'),
   ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
-  ('rarest_aura',      'Rarest Aura',    'Termine no topo da liga Núcleo',                'league')
+  ('rarest_aura',      'Rarest Aura',    'Termine no topo da Liga Lendários',                'league')
 on conflict (id) do nothing;
 
 -- ========================================

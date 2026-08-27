@@ -1,17 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="nucleoGrad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#71d4ff"/>
-      <stop offset="33%" stop-color="#b69cff"/>
-      <stop offset="66%" stop-color="#ffd76b"/>
-      <stop offset="100%" stop-color="#71d4ff"/>
+<linearGradient id="cosmic" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#312e81"/><stop offset="26%" stop-color="#5b21b6"/>
+      <stop offset="46%" stop-color="#7c3aed"/><stop offset="62%" stop-color="#ffd76b"/>
+      <stop offset="82%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#312e81"/>
     </linearGradient>
-    <filter id="nucleoGlow">
-      <feGaussianBlur stdDeviation="5" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <filter id="neb" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="12"/></filter>
   </defs>
-  <circle cx="60" cy="60" r="56" stroke="url(#nucleoGrad)" stroke-width="5" fill="none" filter="url(#nucleoGlow)" opacity="0.95"/>
-  <circle cx="60" cy="60" r="50" stroke="#b69cff" stroke-width="1.5" fill="none" opacity="0.3" stroke-dasharray="6 3"/>
-  <circle cx="60" cy="60" r="44" stroke="#ffd76b" stroke-width="0.8" fill="none" opacity="0.2" stroke-dasharray="2 4"/>
+  <circle cx="256" cy="256" r="232" fill="#000" opacity="0" />
+<path d="M 256 8 A 248 248 0 1 0 256 504 A 248 248 0 1 0 256 8" fill="none" stroke="url(#cosmic)" stroke-width="34" opacity="0.9"/><circle cx="256" cy="256" r="230" fill="none" stroke="#ffd76b" stroke-width="2" opacity="0.5" stroke-dasharray="60 14 26 8 8 4"/><circle cx="256" cy="256" r="224" fill="none" stroke="#0f0c29" stroke-width="1.5" opacity="0.5"/><ellipse cx="463.85" cy="376" rx="30" ry="16" fill="#8e5cff" opacity="0.35" filter="url(#neb)" transform="rotate(60 463.85 376)"/>
+<ellipse cx="136" cy="463.85" rx="30" ry="16" fill="#8e5cff" opacity="0.35" filter="url(#neb)" transform="rotate(-30 136 463.85)"/>
+<ellipse cx="48.15" cy="136" rx="30" ry="16" fill="#8e5cff" opacity="0.35" filter="url(#neb)" transform="rotate(-120 48.15 136)"/>
+<ellipse cx="376" cy="48.15" rx="30" ry="16" fill="#8e5cff" opacity="0.35" filter="url(#neb)" transform="rotate(-210 376 48.15)"/><ellipse cx="256" cy="256" rx="248" ry="300" fill="none" stroke="#ffd76b" stroke-width="1.5" stroke-dasharray="10 8 3 8" opacity="0.55" transform="rotate(-18 256 256)"/>  <circle cx="481.45" cy="271.76" r="2" fill="#fff" opacity="0.5"/>
+  <circle cx="462.72" cy="356.83" r="1.3" fill="#fff" opacity="0.6799999999999999"/>
+  <circle cx="421.46" cy="421.46" r="1.3" fill="#fff" opacity="0.86"/>
+  <circle cx="333.3" cy="468.37" r="1.3" fill="#fff" opacity="0.5"/>
+  <circle cx="247.97" cy="485.86" r="2" fill="#fff" opacity="0.6799999999999999"/>
+  <circle cx="160.82" cy="469.77" r="1.3" fill="#fff" opacity="0.86"/>
+  <circle cx="70.87" cy="385.63" r="1.3" fill="#fff" opacity="0.5"/>
+  <circle cx="31.89" cy="307.74" r="1.3" fill="#fff" opacity="0.6799999999999999"/>
+  <circle cx="28.95" cy="199.39" r="2" fill="#fff" opacity="0.86"/>
+  <circle cx="75.51" cy="119.99" r="1.3" fill="#fff" opacity="0.5"/>
+  <circle cx="181.12" cy="38.53" r="1.3" fill="#fff" opacity="0.6799999999999999"/>
+  <circle cx="268.25" cy="22.32" r="1.3" fill="#fff" opacity="0.86"/>
+  <circle cx="362.1" cy="56.45" r="2" fill="#fff" opacity="0.5"/>
+  <circle cx="446.68" cy="127.39" r="1.3" fill="#fff" opacity="0.6799999999999999"/>
+  <circle cx="487.72" cy="223.43" r="1.3" fill="#fff" opacity="0.86"/>
+<circle cx="471.91" cy="424.69" r="1.6" fill="#cbb6ff" opacity="0.8"/>
+<circle cx="79.79" cy="473.6" r="1.6" fill="#cbb6ff" opacity="0.8"/>
+<circle cx="58.9" cy="65.66" r="1.6" fill="#cbb6ff" opacity="0.8"/>
+<circle cx="416.6" cy="26.64" r="1.6" fill="#cbb6ff" opacity="0.8"/>
+<circle cx="534.93" cy="231.6" r="1.6" fill="#cbb6ff" opacity="0.8"/>
+<path d="M 256 -2 L 410.4827205785699 467.3412274265599 L 256 514 L 397.4827205785699 467.3412274265599 Z" transform="translate(147.9827205785699,211.3412274265599)" fill="#ffd76b" opacity="0.95"/>
+<path d="M 256 10 L 119.9001966576426 54.48859710490808 L 256 502 L 109.9001966576426 54.48859710490808 Z" transform="translate(-141.0998033423574,-201.51140289509192)" fill="#e2b6ff" opacity="0.9"/>
 </svg>

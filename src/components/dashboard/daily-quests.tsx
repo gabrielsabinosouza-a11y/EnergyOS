@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronRight, Clock, Sparkles, CircleDollarSign, Package, Loader2 } from "lucide-react";
+import { Check, ChevronRight, Clock, Sparkles, CircleDollarSign, Package, Loader2, AlertTriangle } from "lucide-react";
 import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
 import { todayIso } from "@/lib/db/dates";
@@ -29,7 +29,15 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
   const [quests, setQuests] = useState<QuestProgressWithQuest[]>(initialQuests);
   const [claimingId, setClaimingId] = useState<number | null>(null);
   const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; x: number; y: number } | null>(null);
+  const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
   const [lastClaimTime, setLastClaimTime] = useState<string>("");
+
+  useEffect(() => {
+    if (claimError) {
+      const t = setTimeout(() => setClaimError(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [claimError]);
 
   useEffect(() => {
     if (initialQuests.length > 0) {
@@ -81,6 +89,7 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
       }, 1000);
     } catch (error) {
       console.error("Failed to claim quest reward:", error);
+      setClaimError({ message: error instanceof Error ? error.message : "Não foi possível resgatar a recompensa.", questId: progressId });
     } finally {
       setClaimingId(null);
     }
@@ -261,6 +270,21 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
                 +{showClaimAnimation.coins} moedas
               </motion.span>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {claimError && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="toast error"
+          >
+            <AlertTriangle size={16} />
+            <span>{claimError.message}</span>
+            <button className="toast-action" onClick={() => setClaimError(null)}>OK</button>
           </motion.div>
         )}
       </AnimatePresence>

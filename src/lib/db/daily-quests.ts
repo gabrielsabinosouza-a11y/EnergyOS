@@ -2,6 +2,7 @@ import pool from "../db";
 import type { DailyQuest, UserQuestProgress, QuestProgressWithQuest, QuestType } from "@/types";
 import { parseProfileId } from "./validation";
 import { addCoins } from "./settings";
+import { ConflictError, NotFoundError } from "../errors";
 
 // ========================================
 // Quest Definitions
@@ -304,28 +305,35 @@ export async function incrementQuestProgress(
   questDate: string,
   amount: number = 1,
 ): Promise<UserQuestProgress> {
-  // First get the quest to check if we should auto-complete
-  const quest = await getDailyQuest(questId);
-  if (!quest) {
-    throw new Error("Quest not found");
+  parseProfileId(profileId);
+  if (!Number.isInteger(amount) || amount < 0) {
+    throw new Error("Invalid increment amount");
   }
-  
-  const input: UpdateQuestProgressInput = {
-    questId,
-    questDate,
-    incrementBy: amount,
-  };
-  
-  // Check if this increment will complete the quest
-  const progress = await getUserQuestProgress(profileId, questDate);
-  const currentProgress = progress.find((p) => p.questId === questId);
-  const newValue = (currentProgress?.currentValue || 0) + amount;
-  
-  if (newValue >= quest.targetValue) {
-    input.setCompleted = true;
+
+  // Single atomic UPDATE: increment and evaluate completion against the target
+  // in one statement, so concurrent increments can never leave a quest at
+  // current_value >= target_value with is_completed = false.
+  const result = await pool.query<UserQuestProgressRow>(
+    `update user_quest_progress uqp
+     set current_value = uqp.current_value + $4,
+         is_completed = uqp.is_completed or (uqp.current_value + $4) >= q.target_value,
+         completed_at = case
+           when (uqp.current_value + $4) >= q.target_value and uqp.completed_at is null then now()
+           else uqp.completed_at
+         end
+     from daily_quests q
+     where q.id = uqp.quest_id
+       and uqp.profile_id = $1 and uqp.quest_id = $2 and uqp.quest_date = $3
+     returning uqp.id, uqp.profile_id, uqp.quest_id, uqp.quest_date, uqp.current_value,
+               uqp.is_completed, uqp.is_claimed, uqp.completed_at, uqp.claimed_at, uqp.created_at`,
+    [profileId, questId, questDate, amount],
+  );
+
+  if (!result.rows[0]) {
+    throw new Error("Quest progress not found");
   }
-  
-  return updateQuestProgress(profileId, input);
+
+  return mapUserQuestProgress(result.rows[0]);
 }
 
 // ========================================
@@ -337,74 +345,93 @@ export async function claimQuestReward(
   questProgressId: number,
 ): Promise<{ coinsAwarded: number; quest: DailyQuest }> {
   parseProfileId(profileId);
-  
-  // Get the quest progress with quest details
-  const result = await pool.query<{
-    uqp_profile_id: string;
-    uqp_quest_id: string | number;
-    uqp_quest_date: string;
-    uqp_current_value: number;
-    uqp_is_completed: boolean;
-    uqp_is_claimed: boolean;
-    q_title: string;
-    q_description: string;
-    q_type: QuestType;
-    q_target_value: number;
-    q_coin_reward: number;
-  }>(
-    `select 
-      uqp.profile_id as uqp_profile_id, uqp.quest_id as uqp_quest_id, uqp.quest_date as uqp_quest_date,
-      uqp.current_value as uqp_current_value, uqp.is_completed as uqp_is_completed, uqp.is_claimed as uqp_is_claimed,
-      q.title as q_title, q.description as q_description, q.type as q_type,
-      q.target_value as q_target_value, q.coin_reward as q_coin_reward
-     from user_quest_progress uqp
-     join daily_quests q on uqp.quest_id = q.id
-     where uqp.id = $1 and uqp.profile_id = $2`,
-    [questProgressId, profileId],
-  );
-  
-  if (!result.rows[0]) {
-    throw new Error("Quest progress not found or does not belong to user");
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    // Get the quest progress with quest details (lock the row for the transaction)
+    const result = await client.query<{
+      uqp_profile_id: string;
+      uqp_quest_id: string | number;
+      uqp_quest_date: string;
+      uqp_current_value: number;
+      uqp_is_completed: boolean;
+      uqp_is_claimed: boolean;
+      q_title: string;
+      q_description: string;
+      q_type: QuestType;
+      q_target_value: number;
+      q_coin_reward: number;
+    }>(
+      `select 
+        uqp.profile_id as uqp_profile_id, uqp.quest_id as uqp_quest_id, uqp.quest_date as uqp_quest_date,
+        uqp.current_value as uqp_current_value, uqp.is_completed as uqp_is_completed, uqp.is_claimed as uqp_is_claimed,
+        q.title as q_title, q.description as q_description, q.type as q_type,
+        q.target_value as q_target_value, q.coin_reward as q_coin_reward
+       from user_quest_progress uqp
+       join daily_quests q on uqp.quest_id = q.id
+       where uqp.id = $1 and uqp.profile_id = $2
+       for update of uqp`,
+      [questProgressId, profileId],
+    );
+
+    if (!result.rows[0]) {
+      throw new NotFoundError("Missão não encontrada.");
+    }
+
+    const row = result.rows[0];
+
+    if (row.uqp_is_claimed) {
+      throw new ConflictError("Recompensa já resgatada.");
+    }
+
+    // Self-heal: treat as complete if the value threshold was met even if the
+    // is_completed flag was never set (e.g. stale data or a previous race).
+    const isComplete = row.uqp_is_completed || row.uqp_current_value >= row.q_target_value;
+
+    if (!isComplete) {
+      throw new ConflictError("Missão ainda não concluída.");
+    }
+
+    // Mark as claimed + ensure completed in the same step
+    await client.query(
+      `update user_quest_progress 
+       set is_claimed = true, claimed_at = now(),
+           is_completed = true,
+           completed_at = case when completed_at is null then now() else completed_at end
+       where id = $1`,
+      [questProgressId],
+    );
+
+    // Award coins to user using the helper function (upserts settings row)
+    await addCoins(profileId, row.q_coin_reward, client);
+
+    // Add to XP ledger for tracking
+    await client.query(
+      `insert into xp_ledger (profile_id, source, source_id, xp_amount)
+       values ($1, 'daily_quest', $2, $3)`,
+      [profileId, questProgressId, row.q_coin_reward],
+    );
+
+    await client.query("commit");
+
+    const quest: DailyQuest = {
+      id: Number(row.uqp_quest_id),
+      title: row.q_title,
+      description: row.q_description,
+      type: row.q_type,
+      targetValue: row.q_target_value,
+      coinReward: row.q_coin_reward,
+      isActive: true,
+      createdAt: "",
+    };
+
+    return { coinsAwarded: row.q_coin_reward, quest };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
-  
-  const row = result.rows[0];
-  
-  if (!row.uqp_is_completed) {
-    throw new Error("Quest is not completed yet");
-  }
-  
-  if (row.uqp_is_claimed) {
-    throw new Error("Quest reward already claimed");
-  }
-  
-  // Mark as claimed
-  await pool.query(
-    `update user_quest_progress 
-     set is_claimed = true, claimed_at = now()
-     where id = $1`,
-    [questProgressId],
-  );
-  
-  // Award coins to user using the helper function
-  await addCoins(profileId, row.q_coin_reward);
-  
-  // Add to XP ledger for tracking
-  await pool.query(
-    `insert into xp_ledger (profile_id, source, source_id, xp_amount)
-     values ($1, 'daily_quest', $2, $3)`,
-    [profileId, questProgressId, row.q_coin_reward],
-  );
-  
-  const quest: DailyQuest = {
-    id: Number(row.uqp_quest_id),
-    title: row.q_title,
-    description: row.q_description,
-    type: row.q_type,
-    targetValue: row.q_target_value,
-    coinReward: row.q_coin_reward,
-    isActive: true,
-    createdAt: "",
-  };
-  
-  return { coinsAwarded: row.q_coin_reward, quest };
 }

@@ -119,9 +119,9 @@ function ParticipantCircle({
   const [showPicker, setShowPicker] = useState(false);
   
   // Get energy config for the participant's selected energy
-  const energyConfig = participant.selectedEnergyType 
-    ? ENERGY_CONFIGS[participant.selectedEnergyType as EnergyType]
-    : ENERGY_CONFIGS.flame;
+  const energyConfig =
+    (participant.selectedEnergyType && ENERGY_CONFIGS[participant.selectedEnergyType as EnergyType]) ||
+    ENERGY_CONFIGS.flame;
 
   const displayName = participant.profile.displayName || "Anônimo";
   const initials = displayName.charAt(0).toUpperCase();
