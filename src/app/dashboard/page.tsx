@@ -176,10 +176,12 @@ export default function DashboardPage() {
           .then((data) => { 
             if (!cancelled) { 
               setDailyQuests(data.quests);
-              setCoins(snapshot?.user.coins ?? 0);
             } 
           })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar missões diárias." })); }),
+        api.getSettings()
+          .then((s) => { if (!cancelled) setCoins(s.coins ?? 0); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
       ]).finally(() => {
         if (!cancelled) setLoadingPage(false);
       });

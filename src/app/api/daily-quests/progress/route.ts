@@ -27,18 +27,19 @@ export async function POST(request: NextRequest) {
     // Update relevant quests based on session data
     const updated: Array<{ questId: number; type: QuestType; newValue: number }> = [];
     
+    const questType = body.questType as QuestType | undefined;
+    
     for (const p of progress) {
-      const questType = body.questType as QuestType | undefined;
-      
       // If this is a specific quest type update from the client
       if (questType) {
         // This path is for targeted updates
-        if (p.questId === body.questId) {
+        if (p.questId === Number(body.questId)) {
+          const amount = Number(body.amount) || 1;
           const result = await incrementQuestProgress(
             profileId,
             p.questId,
             today,
-            body.amount ?? 1
+            amount
           );
           updated.push({
             questId: p.questId,
@@ -49,9 +50,9 @@ export async function POST(request: NextRequest) {
       } else {
         // Auto-update based on session completion
         // This requires the client to send session data
-        if (body.sessionData) {
-          const session = body.sessionData;
-          
+        const session = body.sessionData as { durationMinutes?: number; isRoomSession?: boolean } | undefined;
+        
+        if (session) {
           // Update SESSIONS_COUNT quest
           if (p.questId === 1) { // Complete 2 sessions today
             await incrementQuestProgress(profileId, p.questId, today, 1);

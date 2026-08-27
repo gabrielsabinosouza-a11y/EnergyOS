@@ -10,6 +10,14 @@ export function jsonError(status: number, message: string): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
+export function badRequest(message = "Requisição inválida."): NextResponse {
+  return jsonError(400, message);
+}
+
+export function notFound(message = "Não encontrado."): NextResponse {
+  return jsonError(404, message);
+}
+
 export async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = await request.json();

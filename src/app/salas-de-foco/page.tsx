@@ -11,7 +11,7 @@ import {
   Clock,
   Users,
   Play,
-  Stop,
+  Square,
   Copy,
   CheckCircle,
   XCircle,
@@ -614,7 +614,7 @@ export default function FocusRoomsPage() {
                 <Loader2 size={16} className="animate-spin" />
               ) : (
                 <>
-                  <Stop size={16} /> Finalizar Sessão para Todos
+                  <Square size={16} className="fill-current" /> Finalizar Sessão para Todos
                 </>
               )}
             </motion.button>

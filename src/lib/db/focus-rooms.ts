@@ -1,5 +1,4 @@
 import pool from "../db";
-import type { Profile } from "@/types";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "completed";

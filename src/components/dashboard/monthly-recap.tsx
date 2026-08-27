@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, Download, Share2, Trophy } from "lucide-react";
-import { TIER_META } from "@/lib/db/league";
+import { TIER_META } from "@/lib/league-meta";
 import type { LeagueTier } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
