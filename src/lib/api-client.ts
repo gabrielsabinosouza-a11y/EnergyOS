@@ -153,6 +153,10 @@ export const api = {
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
+  setWeeklyPlanCompleted: (id: number, completed: boolean) =>
+    request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string }) =>
+    request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 
   // Focus

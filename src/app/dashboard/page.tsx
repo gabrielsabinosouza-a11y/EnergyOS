@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Shield, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest } from "@/types";
+import type { Task, Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest, StreakDayStatus } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { weekStartIso } from "@/lib/db/dates";
@@ -331,12 +331,21 @@ export default function DashboardPage() {
     }
   }
 
-  async function completePlan(id: number) {
+  async function togglePlanCompleted(id: number, completed: boolean) {
     try {
-      const result = await api.completeWeeklyPlan(id);
+      const result = await api.setWeeklyPlanCompleted(id, completed);
       setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel concluir o plano.");
+      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o plano.");
+    }
+  }
+
+  async function updatePlan(id: number, title: string, categoryId: number, planDate: string) {
+    try {
+      const result = await api.updateWeeklyPlan(id, { title, categoryId, planDate });
+      setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o plano.");
     }
   }
 
@@ -374,7 +383,6 @@ export default function DashboardPage() {
   const total = tasks.length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
   const streakQualified = percentage >= 50;
-  const streak = snapshot?.streak.currentStreak ?? 0;
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
 
   const checkins = snapshot?.checkins ?? [];
@@ -431,7 +439,15 @@ export default function DashboardPage() {
                 <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIARIO</span>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">Isso nos ajuda a ajustar suas metas de foco hoje</p>
               </div>
-              {streak > 0 && <StreakBadge streak={streak} shouldPop={streakPop} />}
+              {snapshot?.streak && (
+                <StreakBadge
+                  streak={snapshot.streak.currentStreak}
+                  todayStatus={snapshot.streak.todayStatus ?? null}
+                  yesterdayStatus={snapshot.streak.yesterdayStatus ?? null}
+                  shieldCount={snapshot.streak.shieldCount}
+                  shouldPop={streakPop}
+                />
+              )}
             </div>
 
             <h2 className="font-display text-lg sm:text-xl text-[var(--text-secondary)] mb-4">Como voce dormiu na noite passada?</h2>
@@ -576,7 +592,7 @@ export default function DashboardPage() {
 
         {/* Weekly Plan */}
         <section className="mb-8">
-          <WeeklyPlan plans={weeklyPlans} categories={categories} onComplete={completePlan} onDelete={deletePlan} onCreate={createPlan} />
+          <WeeklyPlan plans={weeklyPlans} categories={categories} onDelete={deletePlan} onCreate={createPlan} onUpdate={updatePlan} onToggleCompleted={togglePlanCompleted} />
         </section>
 
         {/* Kanban */}
@@ -636,43 +652,88 @@ export default function DashboardPage() {
   );
 }
 
-function StreakBadge({ streak, shouldPop }: { streak: number; shouldPop: boolean }) {
+type StreakBadgeState = "saved" | "protected" | "lost";
+
+function StreakBadge({
+  streak,
+  todayStatus,
+  yesterdayStatus,
+  shieldCount,
+  shouldPop,
+}: {
+  streak: number;
+  todayStatus: StreakDayStatus | null;
+  yesterdayStatus: StreakDayStatus | null;
+  shieldCount: number;
+  shouldPop: boolean;
+}) {
   const progress = Math.min(streak / 30, 1);
-  const circumference = 2 * Math.PI * 11;
+  const circumference = 2 * Math.PI * 19;
   const offset = circumference - progress * circumference;
 
+  const protectedNow = todayStatus === "protected" || yesterdayStatus === "protected";
+  const state: StreakBadgeState = protectedNow ? "protected" : streak > 0 ? "saved" : "lost";
+
+  const iconSrc = state === "lost"
+    ? "/energies/flame/flame_die.png"
+    : "/energies/flame/flame_full.png";
+
+  const statusLabel = state === "protected"
+    ? shieldCount > 0
+      ? `Sua sequência foi protegida por um escudo — você ainda tem ${shieldCount} escudo${shieldCount > 1 ? "s" : ""}!`
+      : "Sua sequência foi protegida por um escudo!"
+    : state === "lost"
+      ? "Você perdeu sua sequência — não desista!"
+      : streak > 0
+        ? "Sua sequência está ativa!"
+        : "Complete suas tarefas para começar sua sequência!";
+
+  const dayLabel = streak === 1 ? "1 dia" : `${streak} dias`;
+
   return (
-    <div className={`streak-badge ${shouldPop ? "pop" : ""}`}>
+    <div className={`streak-badge state-${state} ${shouldPop ? "pop" : ""}`} tabIndex={0}>
       <div className="flame-ring">
-        <svg width="28" height="28" viewBox="0 0 28 28">
+        <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
           {/* Background ring */}
           <circle
-            cx="14" cy="14" r="11"
+            cx="24" cy="24" r="19"
             fill="none"
             stroke="rgba(255,184,107,.12)"
-            strokeWidth="2.5"
+            strokeWidth="3"
           />
           {/* Progress ring */}
           <circle
-            cx="14" cy="14" r="11"
+            cx="24" cy="24" r="19"
             fill="none"
             stroke="var(--orange)"
-            strokeWidth="2.5"
+            strokeWidth="3"
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
-            transform="rotate(-90 14 14)"
+            transform="rotate(-90 24 24)"
             style={{ transition: "stroke-dashoffset 0.5s ease" }}
           />
         </svg>
         <div className="flame-value">
-          <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
+          <Image src={iconSrc} alt={statusLabel} title={statusLabel} width={30} height={30} style={{ objectFit: "contain" }} unoptimized className="streak-flame" draggable={false} />
+          {state === "protected" && (
+            <span className="streak-shield-mark" title={statusLabel}>
+              <Shield size={11} strokeWidth={2.5} fill="currentColor" />
+            </span>
+          )}
         </div>
+        {shieldCount > 0 && (
+          <span className="streak-shield-count" title={`${shieldCount} escudo${shieldCount > 1 ? "s" : ""} disponíve${shieldCount > 1 ? "is" : "l"}`}>
+            <Shield size={9} strokeWidth={2.5} fill="currentColor" />
+            <span>{shieldCount}</span>
+          </span>
+        )}
       </div>
       <div className="flex flex-col">
-        <span className="font-mono text-xs font-bold text-[var(--orange)]">{streak} dias</span>
-        <span className="text-[9px] text-[var(--text-faint)]">sequencia</span>
+        <span className="font-mono text-sm font-bold leading-tight text-[var(--orange)]">{dayLabel}</span>
+        <span className="text-[10px] leading-tight text-[var(--text-faint)]">sequência</span>
       </div>
+      <span className="streak-tooltip" role="status">{statusLabel}</span>
     </div>
   );
 }

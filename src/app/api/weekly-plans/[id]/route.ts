@@ -1,15 +1,42 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
-import { handleRoute, jsonOk } from "@/lib/http";
-import { completeWeeklyPlan, deleteWeeklyPlan } from "@/lib/db/weekly-plans";
+import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import type { WeeklyPlan } from "@/types";
+import { completeWeeklyPlan, deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
 import { awardTaskXP } from "@/lib/db/xp";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    const plan = await completeWeeklyPlan(profileId, Number(id));
-    await awardTaskXP(profileId, plan.id, 10);
+    let body: Record<string, unknown> = {};
+    try {
+      body = await request.json();
+    } catch {
+      // corpo vazio = concluir (compatível com o cliente antigo)
+    }
+    const planId = Number(id);
+    let plan: WeeklyPlan;
+    if (body.completed === false) {
+      plan = await setWeeklyPlanCompleted(profileId, planId, false);
+    } else {
+      plan = await completeWeeklyPlan(profileId, planId);
+      await awardTaskXP(profileId, plan.id, 10);
+    }
+    return jsonOk({ plan });
+  });
+}
+
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return handleRoute(async () => {
+    const { profileId } = await requireAuth(request);
+    const { id } = await params;
+    const body = await readJsonBody(request);
+    const plan = await updateWeeklyPlan(profileId, Number(id), {
+      title: body.title as string | undefined,
+      categoryId: body.categoryId as number | undefined,
+      planDate: body.planDate as string | undefined,
+    });
     return jsonOk({ plan });
   });
 }

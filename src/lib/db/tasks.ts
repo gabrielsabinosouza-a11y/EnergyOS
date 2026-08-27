@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { Task } from "@/types";
+import type { StreakDayStatus, Task } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { consumeShield, getShieldCount, logStreakDay } from "./store";
@@ -193,6 +193,9 @@ export interface StreakInfo {
   longestStreak: number;
   todayQualified: boolean;
   todayTotal: number;
+  todayStatus?: StreakDayStatus | null;
+  yesterdayStatus?: StreakDayStatus | null;
+  shieldCount: number;
 }
 
 /**
@@ -203,21 +206,29 @@ export interface StreakInfo {
 export async function computeStreak(profileId: string, today: string): Promise<StreakInfo> {
   parseProfileId(profileId);
   const days = await dailyCompletions(profileId, addDays(today, -365), today);
+  const baseShields = await getShieldCount(profileId);
   if (days.length === 0) {
     await persistStreak(profileId, 0, 0);
-    return { currentStreak: 0, longestStreak: 0, todayQualified: false, todayTotal: 0 };
+    return {
+      currentStreak: 0,
+      longestStreak: 0,
+      todayQualified: false,
+      todayTotal: 0,
+      todayStatus: null,
+      yesterdayStatus: null,
+      shieldCount: baseShields,
+    };
   }
 
   let streak = 0;
   let shieldsUsed = 0;
-  const maxShields = await getShieldCount(profileId);
 
   for (const day of days) {
     const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
     if (!qualifies) {
       if (day.date === today && streak === 0) continue;
       // Try to protect this day with a shield (only for past days, not today)
-      if (day.date !== today && shieldsUsed < maxShields) {
+      if (day.date !== today && shieldsUsed < baseShields) {
         shieldsUsed += 1;
         streak += 1;
         continue;
@@ -258,11 +269,25 @@ export async function computeStreak(profileId: string, today: string): Promise<S
 
   const todayEntry = days.find((day) => day.date === today);
   await persistStreak(profileId, streak, longest);
+
+  // Pull latest streak-day log statuses so the UI can render saved/protected/lost states
+  const yesterday = addDays(today, -1);
+  const logRes = await pool.query<{ log_date: string; status: string }>(
+    `select log_date, status
+     from streak_day_log
+     where profile_id = $1 and log_date in ($2, $3)`,
+    [profileId, yesterday, today],
+  );
+  const logByDate = new Map(logRes.rows.map((r) => [r.log_date, r.status]));
+
   return {
     currentStreak: streak,
     longestStreak: longest,
     todayQualified: Boolean(todayEntry && todayEntry.completed / todayEntry.total >= 0.5),
     todayTotal: todayEntry?.total ?? 0,
+    todayStatus: (logByDate.get(today) as StreakDayStatus | undefined) ?? null,
+    yesterdayStatus: (logByDate.get(yesterday) as StreakDayStatus | undefined) ?? null,
+    shieldCount: baseShields - shieldsUsed,
   };
 }
 

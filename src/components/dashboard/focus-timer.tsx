@@ -503,18 +503,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                 />
               )}
             </div>
-
-            {state === "idle" && (
-              <span style={{
-                position: "absolute", bottom: imageSize * 0.05,
-                fontSize: 9, color: "var(--text-faint)",
-                letterSpacing: "0.08em", pointerEvents: "none", textTransform: "uppercase",
-              }}>
-                toque para trocar
-              </span>
-            )}
           </div>
         </div>
+
+        {/* "toque para trocar" hint — sits below the ring, never overlaps the image */}
+        {state === "idle" && (
+          <div className="mt-3 flex items-center justify-center">
+            <span className="text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
+              toque para trocar
+            </span>
+          </div>
+        )}
 
         {/* Countdown display */}
         <div className="mt-4 flex flex-col items-center gap-1">
@@ -557,7 +556,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
               whileTap={{ scale: 0.92 }}
               onClick={handleStart}
               className="flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
-              style={{ background: cfg.accent }}
+              style={{ background: cfg.accent, transition: "background-color 0.4s ease, opacity 0.2s" }}
             >
               <Play size={14} fill="currentColor" /> Iniciar foco
             </motion.button>
@@ -580,7 +579,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             <>
               <motion.button whileTap={{ scale: 0.92 }} onClick={handleResume}
                 className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
-                style={{ background: cfg.accent }}>
+                style={{ background: cfg.accent, transition: "background-color 0.4s ease, opacity 0.2s" }}>
                 <Play size={14} fill="currentColor" /> Continuar
               </motion.button>
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => handleStop(true)}
@@ -595,7 +594,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       {/* Today stats */}
       <div className="grid grid-cols-2 gap-2 mt-6">
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
-          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent }}>{todayStats.minutesFocused}min</div>
+          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{todayStats.minutesFocused}min</div>
           <div className="text-[10px] text-[var(--text-faint)]">foco hoje</div>
         </div>
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">

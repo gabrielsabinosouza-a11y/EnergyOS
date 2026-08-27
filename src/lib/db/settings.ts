@@ -1,4 +1,4 @@
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import pool from "../db";
 import type { UserSettings } from "@/types";
 import { ensureProfile } from "./profiles";

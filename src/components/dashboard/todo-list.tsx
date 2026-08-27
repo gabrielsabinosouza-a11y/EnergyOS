@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Plus, X, Loader2, Pencil, Trash2, Zap, ListTodo } from "lucide-react";
 import type { Category, Task } from "@/types";
 import { sortCategoriesForPicker } from "@/lib/categories";
+import { CategoryChips } from "@/components/category-chips";
 
 interface TodoListProps {
   tasks: Task[];
@@ -19,6 +20,9 @@ interface TodoListProps {
 
 export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUpdate, onPromote, streakQualified }: TodoListProps) {
   const sortedCategories = sortCategoriesForPicker(categories);
+  // Rápido contexto diário "Hoje": só categorias acionáveis de check-off, sem "Sono"
+  // (o sono é rastreado pelo fluxo de Check-in separado). "Nova meta" e Kanban mantêm o conjunto completo.
+  const hojeCategories = sortedCategories.filter((c) => c.name !== "Sono");
   const firstCategoryId = sortedCategories[0]?.id ?? 0;
   const [showForm, setShowForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -72,7 +76,7 @@ export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUp
             <div className="progress-value" style={{ width: `${percentage}%` }} />
           </div>
           <span className="text-xs text-[var(--text-secondary)]">{completed}/{total}</span>
-          <span className="text-[10px] text-[var(--text-faint)]">{streakQualified ? "✦ streak" : "继续"}</span>
+          <span className="text-[10px] text-[var(--text-faint)]">{streakQualified ? "✦ streak" : "continuar"}</span>
         </div>
       )}
 
@@ -93,21 +97,11 @@ export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUp
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               </button>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {sortedCategories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setNewCategoryId(cat.id)}
-                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
-                    selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
-                  }`}
-                  style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+            <CategoryChips
+              categories={hojeCategories}
+              selectedId={selectedCategoryId}
+              onSelect={setNewCategoryId}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -130,30 +124,24 @@ export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUp
             className="group flex items-center gap-2 py-2.5 border-b border-[var(--border-subtle)] last:border-0"
           >
             {editingId === task.id ? (
-              <div className="flex flex-1 items-center gap-2">
+              <div className="flex flex-1 items-center gap-2 min-w-0">
                 <input
                   autoFocus
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { onUpdate(task.id, editTitle, selectedEditCategoryId); setEditingId(null); } if (e.key === "Escape") setEditingId(null); }}
-                  className="auth-input !py-1 !text-sm flex-1"
+                  className="auth-input !py-1 !text-sm flex-1 min-w-0"
                 />
-                <div className="flex gap-1 flex-wrap">
-                  {sortedCategories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setEditCategoryId(cat.id)}
-                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
-                        selectedEditCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
-                      }`}
-                      style={selectedEditCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
+                <CategoryChips
+                  categories={hojeCategories}
+                  selectedId={selectedEditCategoryId}
+                  onSelect={setEditCategoryId}
+                  compact
+                />
+                <div className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => { onUpdate(task.id, editTitle, selectedEditCategoryId); setEditingId(null); }} className="icon-button small !w-6 !h-6" title="Salvar"><Check size={12} /></button>
+                  <button onClick={() => setEditingId(null)} className="icon-button small !w-6 !h-6" title="Cancelar"><X size={12} /></button>
                 </div>
-                <button onClick={() => { onUpdate(task.id, editTitle, selectedEditCategoryId); setEditingId(null); }} className="icon-button small"><Check size={12} /></button>
-                <button onClick={() => setEditingId(null)} className="icon-button small"><X size={12} /></button>
               </div>
             ) : (
               <>

@@ -125,6 +125,62 @@ export async function completeWeeklyPlan(profileId: string, planId: number): Pro
   return mapPlan(result.rows[0]);
 }
 
+/** Define o estado de conclusão do plano (true = concluído, false = reabrir). */
+export async function setWeeklyPlanCompleted(profileId: string, planId: number, completed: boolean): Promise<WeeklyPlan> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
+  const updated = await pool.query<{ id: string | number }>(
+    `update weekly_plans set completed_at = ${completed ? "now()" : "null"}
+     where profile_id = $1 and id = $2
+     returning id`,
+    [profileId, planId],
+  );
+  if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado.");
+  const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
+  return mapPlan(result.rows[0]);
+}
+
+export interface UpdateWeeklyPlanInput {
+  title?: string;
+  categoryId?: number;
+  planDate?: string;
+}
+
+/** Edita campos de um plano (título, categoria, data). */
+export async function updateWeeklyPlan(profileId: string, planId: number, input: UpdateWeeklyPlanInput): Promise<WeeklyPlan> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
+  const title = input.title !== undefined ? parseTitle(input.title) : undefined;
+  const planDate = input.planDate !== undefined ? parseDate(input.planDate, "Data do plano") : undefined;
+  const categoryId = input.categoryId !== undefined
+    ? await assertCategoryForProfile(profileId, input.categoryId)
+    : undefined;
+
+  const sets: string[] = [];
+  const colValues: unknown[] = [];
+  let n = 0;
+  const push = (sql: string, val: unknown) => {
+    n += 1;
+    sets.push(sql.replace("$N", `$${n}`));
+    colValues.push(val);
+  };
+  if (title !== undefined) push("title = $N", title);
+  if (planDate !== undefined) push("plan_date = $N::date", planDate);
+  if (categoryId !== undefined) push("category_id = $N", categoryId);
+  if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
+
+  colValues.push(profileId, planId);
+  const updated = await pool.query<{ id: string | number }>(
+    `update weekly_plans set ${sets.join(", ")}
+     where profile_id = $${n + 1} and id = $${n + 2}
+     returning id`,
+    colValues,
+  );
+  if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado.");
+  const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
+  return mapPlan(result.rows[0]);
+}
+
 export async function deleteWeeklyPlan(profileId: string, planId: number): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");

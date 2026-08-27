@@ -27,6 +27,7 @@ import { api } from "@/lib/api-client";
 import { ProgressBar } from "@/components/ui";
 import { CategoryForm } from "@/components/category-form";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
+import { CategoryChips } from "@/components/category-chips";
 
 const FREQ_LABELS: Record<Goal["frequency"], string> = {
   daily: "Diária", weekly: "Semanal", monthly: "Mensal",
@@ -267,30 +268,13 @@ export default function MetasPage() {
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Categoria</label>
-                  <div className="flex flex-wrap gap-2">
-                    {sortedCategories.map((cat) => {
-                      const Icon = categoryIcon(cat.icon);
-                      const selected = draft.categoryId === cat.id;
-                      return (
-                        <button
-                          key={cat.id}
-                          onClick={() => setDraftField("categoryId", cat.id)}
-                          style={selected ? { borderColor: cat.color, color: cat.color } : {}}
-                          className={`answer-option w-auto! gap-1.5 px-3 py-1.5 text-xs ${selected ? "selected" : ""}`}
-                        >
-                          <Icon size={12} /> {cat.name}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={() => setShowCategoryForm((v) => !v)}
-                      aria-label="Nova categoria"
-                      title="Nova categoria"
-                      className={`answer-option w-auto! gap-1 px-3 py-1.5 text-xs ${showCategoryForm ? "selected" : ""}`}
-                    >
-                      {showCategoryForm ? <X size={12} /> : <Plus size={12} />} Nova categoria
-                    </button>
-                  </div>
+                  <CategoryChips
+                    categories={sortedCategories}
+                    selectedId={draft.categoryId}
+                    onSelect={(id) => setDraftField("categoryId", id)}
+                    onAdd={() => setShowCategoryForm((v) => !v)}
+                    addActive={showCategoryForm}
+                  />
                   {showCategoryForm && (
                     <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
                       <CategoryForm

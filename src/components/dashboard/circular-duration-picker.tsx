@@ -36,6 +36,17 @@ export function CircularDurationPicker({
 }: CircularDurationPickerProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false);
+  const disabledRef = useRef(disabled);
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   const cx = size / 2;
   const cy = size / 2;
@@ -54,7 +65,7 @@ export function CircularDurationPicker({
 
   const computeMinutesFromPointer = useCallback(
     (clientX: number, clientY: number) => {
-      if (!svgRef.current) return value;
+      if (!svgRef.current) return valueRef.current;
       const rect = svgRef.current.getBoundingClientRect();
       const svgCx = rect.left + rect.width / 2;
       const svgCy = rect.top + rect.height / 2;
@@ -66,39 +77,41 @@ export function CircularDurationPicker({
       const rawMinutes = (degrees / 360) * maxDurationMinutes;
       return clampAndSnap(rawMinutes, minMinutes, maxDurationMinutes, snapIncrement);
     },
-    [value, maxDurationMinutes, minMinutes, snapIncrement],
+    [maxDurationMinutes, minMinutes, snapIncrement],
   );
+
+  function clearWindowListeners(move: (e: PointerEvent) => void, up: (e: PointerEvent) => void) {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+  }
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (disabled) return;
+      if (disabledRef.current) return;
       e.preventDefault();
       e.stopPropagation();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      draggingRef.current = true;
       setDragging(true);
-      const minutes = computeMinutesFromPointer(e.clientX, e.clientY);
-      onChange(minutes);
-    },
-    [disabled, computeMinutesFromPointer, onChange],
-  );
+      svgRef.current?.setPointerCapture(e.pointerId);
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!dragging || disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const minutes = computeMinutesFromPointer(e.clientX, e.clientY);
-      onChange(minutes);
-    },
-    [dragging, disabled, computeMinutesFromPointer, onChange],
-  );
+      const move = (ev: PointerEvent) => {
+        ev.preventDefault();
+        if (!draggingRef.current || disabledRef.current) return;
+        onChange(computeMinutesFromPointer(ev.clientX, ev.clientY));
+      };
+      const up = () => {
+        draggingRef.current = false;
+        setDragging(false);
+        clearWindowListeners(move, up);
+      };
 
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      e.stopPropagation();
-      setDragging(false);
+      move(e.nativeEvent);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
     },
-    [],
+    [computeMinutesFromPointer, onChange],
   );
 
   useEffect(() => {
@@ -107,15 +120,15 @@ export function CircularDurationPicker({
     function handleKey(e: KeyboardEvent) {
       if (e.key === "ArrowUp" || e.key === "ArrowRight") {
         e.preventDefault();
-        onChange(clampAndSnap(value + snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
+        onChange(clampAndSnap(valueRef.current + snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
       } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
         e.preventDefault();
-        onChange(clampAndSnap(value - snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
+        onChange(clampAndSnap(valueRef.current - snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [dragging, value, onChange, snapIncrement, minMinutes, maxDurationMinutes]);
+  }, [dragging, onChange, snapIncrement, minMinutes, maxDurationMinutes]);
 
   const minutes = Math.round(value);
   const displayText = `${String(minutes).padStart(2, "0")}:00`;
@@ -130,9 +143,6 @@ export function CircularDurationPicker({
         className="circular-duration-svg"
         style={{ touchAction: "none", cursor: disabled ? "default" : "grab", maxWidth: "100%", height: "auto", display: "block" }}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
         onClick={(e) => e.stopPropagation()}
       >
         <defs>
@@ -195,7 +205,7 @@ export function CircularDurationPicker({
           transform={`rotate(-90 ${cx} ${cy})`}
           style={{
             filter: "url(#duration-glow)",
-            transition: dragging ? "none" : "stroke-dasharray 0.15s ease-out",
+            transition: dragging ? "none" : "stroke-dasharray 0.15s ease-out, stroke 0.4s ease",
           }}
         />
 
@@ -211,7 +221,7 @@ export function CircularDurationPicker({
             filter="url(#handle-shadow)"
             style={{
               cursor: "grab",
-              transition: dragging ? "none" : "r 0.15s ease-out",
+              transition: dragging ? "none" : "r 0.15s ease-out, fill 0.4s ease, stroke 0.4s ease",
               opacity: disabled ? 0.3 : 1,
             }}
           />
