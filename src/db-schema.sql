@@ -135,8 +135,12 @@ create table if not exists kanban_labels (
 create index if not exists kanban_labels_profile_idx on kanban_labels(profile_id);
 
 -- Focus Rooms (co-focus with friends)
-create type room_status as enum ('waiting', 'active', 'completed');
-create type participant_session_status as enum ('waiting', 'focusing', 'completed', 'left');
+do $$ begin
+  create type room_status as enum ('waiting', 'active', 'completed');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type participant_session_status as enum ('waiting', 'focusing', 'completed', 'left');
+exception when duplicate_object then null; end $$;
 
 create table if not exists focus_rooms (
   id bigserial primary key,
@@ -170,7 +174,9 @@ create index if not exists room_participants_room_idx on room_participants(room_
 create index if not exists room_participants_profile_idx on room_participants(profile_id);
 
 -- League System
-create type league_tier as enum ('BRONZE', 'PRATA', 'OURO', 'DIAMANTE', 'LENDAS');
+do $$ begin
+  create type league_tier as enum ('BRONZE', 'PRATA', 'OURO', 'DIAMANTE', 'LENDAS');
+exception when duplicate_object then null; end $$;
 
 create table if not exists league_groups (
   id bigserial primary key,
@@ -388,7 +394,9 @@ on conflict (id) do nothing;
 -- Daily Quests System
 -- ========================================
 
-create type quest_type as enum ('SESSIONS_COUNT', 'TOTAL_MINUTES', 'ROOM_SESSION');
+do $$ begin
+  create type quest_type as enum ('SESSIONS_COUNT', 'TOTAL_MINUTES', 'ROOM_SESSION');
+exception when duplicate_object then null; end $$;
 
 create table if not exists daily_quests (
   id bigserial primary key,
@@ -461,7 +469,9 @@ create table if not exists streak_shield_usage (
 create unique index if not exists streak_shield_usage_profile_date_idx
   on streak_shield_usage (profile_id, used_on_date);
 
-create type streak_day_status as enum ('success', 'protected', 'lost');
+do $$ begin
+  create type streak_day_status as enum ('success', 'protected', 'lost');
+exception when duplicate_object then null; end $$;
 
 create table if not exists streak_day_log (
   profile_id text not null references profiles(id) on delete cascade,
@@ -544,9 +554,12 @@ CREATE INDEX IF NOT EXISTS external_events_profile_time_idx ON external_events(p
 CREATE INDEX IF NOT EXISTS external_events_connection_idx ON external_events(connection_id);
 
 -- ── Category unification: backfill legacy text columns → categories(id) ────
--- Legado: goals ('sono','estudo','treino','saude','foco'),
---         tasks/kanban_tasks/weekly_plans ('FOCO','CORPO','MENTE','ORDEM','ENERGIA').
--- "Saúde" e as antigas categorias sem equivalente direto caem em "Outros".
+-- Bancos existentes ainda não possuem a coluna category_id (instalações novas
+-- já a declaram no create table). Adicionamos de forma idempotente para ambos.
+alter table goals add column if not exists category_id bigint;
+alter table tasks add column if not exists category_id bigint;
+alter table kanban_tasks add column if not exists category_id bigint;
+alter table weekly_plans add column if not exists category_id bigint;
 do $$
 begin
   if exists (select 1 from information_schema.columns where table_name = 'goals' and column_name = 'category') then

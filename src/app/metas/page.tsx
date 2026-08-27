@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Target,
 } from "lucide-react";
 import Link from "next/link";
 import type { Category, Goal, Habit } from "@/types";

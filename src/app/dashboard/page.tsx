@@ -7,7 +7,7 @@ import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, TaskCategory, Metric, Goal, KanbanTask, KanbanLabel, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanCategory, KanbanStatus, QuestProgressWithQuest } from "@/types";
+import type { Task, Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { weekStartIso } from "@/lib/db/dates";
@@ -103,6 +103,7 @@ export default function DashboardPage() {
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [dailyQuests, setDailyQuests] = useState<QuestProgressWithQuest[]>([]);
   const [coins, setCoins] = useState(0);
@@ -167,6 +168,9 @@ export default function DashboardPage() {
         api.getKanban()
           .then((data) => { if (!cancelled) { setKanbanTasks(data.tasks); setKanbanLabels(data.labels); } })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, kanban: "Erro ao carregar kanban." })); }),
+        api.getCategories()
+          .then((data) => { if (!cancelled) setCategories(data.categories); })
+          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, kanban: "Erro ao carregar categorias." })); }),
         api.getWeeklyPlans(weekStartIso(new Date().toISOString().slice(0, 10)))
           .then((p) => { if (!cancelled) setWeeklyPlans(p); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, plans: "Erro ao carregar planos." })); }),
@@ -233,18 +237,18 @@ export default function DashboardPage() {
     }
   }
 
-  async function createTask(title: string, category: TaskCategory) {
+  async function createTask(title: string, categoryId: number) {
     try {
-      const result = await api.createTask({ title, category });
+      const result = await api.createTask({ title, categoryId });
       setTasks((prev) => [...prev, result.task]);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel criar a tarefa.");
     }
   }
 
-  async function updateTask(id: number, title: string, category: TaskCategory) {
+  async function updateTask(id: number, title: string, categoryId: number) {
     try {
-      const result = await api.updateTask(id, { title, category });
+      const result = await api.updateTask(id, { title, categoryId });
       setTasks((prev) => prev.map((item) => item.id === id ? result.task : item));
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel editar a tarefa.");
@@ -275,7 +279,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function createKanbanTask(task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) {
+  async function createKanbanTask(task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) {
     try {
       const result = await api.createKanbanTask(task);
       setKanbanTasks((prev) => [...prev, result.task]);
@@ -284,7 +288,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function updateKanbanTask(id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) {
+  async function updateKanbanTask(id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) {
     const prev = kanbanTasks;
     setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, ...updates } : k));
     try {
@@ -346,9 +350,9 @@ export default function DashboardPage() {
     }
   }
 
-  async function createPlan(planDate: string, title: string, category: TaskCategory) {
+  async function createPlan(planDate: string, title: string, categoryId: number) {
     try {
-      const result = await api.createWeeklyPlan({ planDate, title, category });
+      const result = await api.createWeeklyPlan({ planDate, title, categoryId });
       setWeeklyPlans((prev) => [...prev, result.plan]);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel criar o plano.");
@@ -560,6 +564,7 @@ export default function DashboardPage() {
           <GoalsCard goals={goals} />
           <TodoList
             tasks={tasks}
+            categories={categories}
             onToggle={toggleTask}
             onDelete={deleteTask}
             onCreate={createTask}
@@ -571,7 +576,7 @@ export default function DashboardPage() {
 
         {/* Weekly Plan */}
         <section className="mb-8">
-          <WeeklyPlan plans={weeklyPlans} onComplete={completePlan} onDelete={deletePlan} onCreate={createPlan} />
+          <WeeklyPlan plans={weeklyPlans} categories={categories} onComplete={completePlan} onDelete={deletePlan} onCreate={createPlan} />
         </section>
 
         {/* Kanban */}
@@ -579,6 +584,7 @@ export default function DashboardPage() {
           <KanbanBoard
             tasks={kanbanTasks}
             labels={kanbanLabels}
+            categories={categories}
             onMove={moveKanbanTask}
             onCreate={createKanbanTask}
             onUpdate={updateKanbanTask}

@@ -59,8 +59,8 @@ interface KanbanBoardProps {
   labels: KanbanLabel[];
   categories: Category[];
   onMove: (id: number, newStatus: KanbanStatus, newPosition: number) => void;
-  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) => Promise<void>;
-  onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) => Promise<void>;
+  onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => Promise<void>;
   onDelete: (id: number) => void;
   onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
   onDeleteLabel: (id: number) => Promise<void>;
@@ -222,8 +222,8 @@ interface ColumnProps {
   labels: KanbanLabel[];
   categories: Category[];
   onMove: (id: number, newStatus: KanbanStatus, newPosition: number) => void;
-  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) => Promise<void>;
-  onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) => Promise<void>;
+  onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => Promise<void>;
   onDelete: (id: number) => void;
   onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
   onEdit: (task: KanbanTask) => void;
@@ -576,7 +576,7 @@ interface TaskDetailModalProps {
   labels: KanbanLabel[];
   categories: Category[];
   onClose: () => void;
-  onSave: (task: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onSave: (task: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => Promise<void>;
   onDelete: (id: number) => void;
   onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
 }
@@ -899,14 +899,14 @@ export function KanbanBoard({
   );
 
   const handleCreate = useCallback(
-    async (task: Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">) => {
+    async (task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) => {
       await onCreate(task);
     },
     [onCreate]
   );
 
   const handleUpdate = useCallback(
-    async (id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "createdAt" | "updatedAt">>) => {
+    async (id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => {
       await onUpdate(id, updates);
       setEditingTask((prev) => (prev?.id === id ? null : prev));
     },
