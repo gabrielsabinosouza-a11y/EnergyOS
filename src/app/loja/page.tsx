@@ -506,7 +506,6 @@ export default function LojaPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [error, setError] = useState("");
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);

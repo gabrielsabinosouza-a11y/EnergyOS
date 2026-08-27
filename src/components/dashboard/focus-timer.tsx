@@ -522,8 +522,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                     left: "50%",
                     top: "50%",
                     transform: "translate(-50%, -50%)",
-                    width: imageSize * 0.9,
-                    height: imageSize * 0.9,
+                    width: imageSize * 0.5,
+                    height: imageSize * 0.5,
                     cursor: "pointer",
                     background: "none",
                     border: "none",
@@ -644,7 +644,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                       boxShadow: isSel ? `0 0 12px ${acfg.glow}` : "none",
                     }}
                   >
-                    <Image src={acfg.assets.spark} alt={acfg.label} width={30} height={30} style={{ objectFit: "contain" }} unoptimized />
+                    <Image src={acfg.assets.full} alt={acfg.label} width={30} height={30} style={{ objectFit: "contain" }} unoptimized />
                   </button>
                 );
               })}

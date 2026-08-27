@@ -70,7 +70,7 @@ function EnergyPickerModal({
                 }}
               >
                 <div className="relative w-12 h-12">
-                  <Image src={cfg.assets.spark} alt={cfg.label} fill style={{ objectFit: "contain" }} unoptimized />
+                  <Image src={cfg.assets.full} alt={cfg.label} fill style={{ objectFit: "contain" }} unoptimized />
                 </div>
                 <span className="text-[9px] text-[var(--text-muted)] leading-none">{cfg.label}</span>
               </button>
@@ -192,7 +192,7 @@ function ParticipantCircle({
               {participant.selectedEnergyType && (
                 <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-6 h-6 bg-[var(--bg-primary)] rounded-full border-2 border-[var(--border-subtle)] flex items-center justify-center p-0.5">
                   <Image
-                    src={energyConfig.assets.spark}
+                    src={energyConfig.assets.full}
                     alt={energyConfig.label}
                     width={20}
                     height={20}
@@ -883,7 +883,7 @@ export default function FocusRoomsPage() {
                         {participant.selectedEnergyType && energyConfig && (
                           <p className="text-[8px] text-[var(--text-muted)] flex items-center gap-1">
                             <Image
-                              src={energyConfig.assets.spark}
+                              src={energyConfig.assets.full}
                               alt={energyConfig.label}
                               width={12}
                               height={12}
