@@ -73,6 +73,7 @@ export function CircularDurationPicker({
     (e: React.PointerEvent) => {
       if (disabled) return;
       e.preventDefault();
+      e.stopPropagation();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       setDragging(true);
       const minutes = computeMinutesFromPointer(e.clientX, e.clientY);
@@ -85,6 +86,7 @@ export function CircularDurationPicker({
     (e: React.PointerEvent) => {
       if (!dragging || disabled) return;
       e.preventDefault();
+      e.stopPropagation();
       const minutes = computeMinutesFromPointer(e.clientX, e.clientY);
       onChange(minutes);
     },
@@ -92,7 +94,8 @@ export function CircularDurationPicker({
   );
 
   const onPointerUp = useCallback(
-    (_e: React.PointerEvent) => {
+    (e: React.PointerEvent) => {
+      e.stopPropagation();
       setDragging(false);
     },
     [],
@@ -130,6 +133,7 @@ export function CircularDurationPicker({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onClick={(e) => e.stopPropagation()}
       >
         <defs>
           <filter id="duration-glow">

@@ -417,8 +417,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             />
           )}
 
-          {/* Energy image */}
-          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2 }}>
+          {/* Energy image - positioned in center with constrained click area */}
+          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2, pointerEvents: "none" }}>
             <div style={{
               position: "absolute",
               width: imageSize * 0.9, height: imageSize * 0.9,
@@ -427,11 +427,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
               filter: "blur(2px)",
             }} />
 
-            <button
-              onClick={() => { if (state === "idle") setShowPicker(true); }}
-              style={{ position: "relative", zIndex: 1, cursor: state === "idle" ? "pointer" : "default", background: "none", border: "none", padding: 0 }}
-              aria-label="Escolher energia"
-            >
+            <div style={{ position: "relative", zIndex: 1, width: imageSize * 0.9, height: imageSize * 0.9, pointerEvents: "none" }}>
               <AnimatePresence mode="wait">
                 {showComplete && rewardCount > 1 ? (
                   <motion.div
@@ -480,7 +476,26 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
                   </motion.div>
                 )}
               </AnimatePresence>
-            </button>
+              {state === "idle" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPicker(true);
+                  }}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    cursor: "pointer",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    borderRadius: "50%",
+                    pointerEvents: "auto",
+                  }}
+                  aria-label="Escolher energia"
+                />
+              )}
+            </div>
 
             {state === "idle" && (
               <span style={{
