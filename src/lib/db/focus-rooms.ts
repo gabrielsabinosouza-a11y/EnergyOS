@@ -403,6 +403,17 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
   return rooms;
 }
 
+// Permanently delete a focus room and its participants (cascade)
+export async function deleteFocusRoom(roomId: number): Promise<void> {
+  const result = await pool.query<{ id: string | number }>(
+    `delete from focus_rooms where id = $1 returning id`,
+    [roomId],
+  );
+  if (!result.rows[0]) {
+    throw new Error("Room not found");
+  }
+}
+
 // Clean up stale rooms (older than 24 hours)
 export async function cleanupStaleRooms(): Promise<void> {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

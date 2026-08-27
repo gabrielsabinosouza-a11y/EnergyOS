@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { UnauthorizedError } from "./errors";
 import { parseProfileId } from "./db/validation";
-import { touchLastActive } from "./db/profiles";
+import { touchLastActive, getUserRole } from "./db/profiles";
 
 interface VerifiedIdentity {
   uid: string;
@@ -85,6 +85,7 @@ export interface AuthenticatedRequest {
   email: string | null;
   displayName: string | null;
   photoUrl: string | null;
+  role: "user" | "admin";
 }
 
 /** Garante isolamento por usuário: todo endpoint resolve o perfil pelo token, nunca por parâmetro do cliente. */
@@ -93,7 +94,8 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
   if (devProfileId) {
     console.log('[auth] Using dev bypass profile:', devProfileId);
     touchLastActive(devProfileId);
-    return { profileId: devProfileId, email: null, displayName: null, photoUrl: null };
+    const role = await getUserRole(devProfileId);
+    return { profileId: devProfileId, email: null, displayName: null, photoUrl: null, role };
   }
 
   const token = extractToken(request);
@@ -108,5 +110,15 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
   
   const profileId = parseProfileId(identity.uid);
   touchLastActive(profileId);
-  return { profileId, email: identity.email, displayName: identity.displayName, photoUrl: identity.photoUrl };
+  const role = await getUserRole(profileId);
+  return { profileId, email: identity.email, displayName: identity.displayName, photoUrl: identity.photoUrl, role };
+}
+
+/** Verifica se o usuário autenticado tem permissão de admin */
+export async function requireAdmin(request: NextRequest): Promise<AuthenticatedRequest> {
+  const auth = await requireAuth(request);
+  if (auth.role !== 'admin') {
+    throw new UnauthorizedError("Permissão de administrador necessária.");
+  }
+  return auth;
 }

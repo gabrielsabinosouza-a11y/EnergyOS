@@ -187,6 +187,8 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/select-energy`, { method: "POST", body: JSON.stringify({ energyType }) }),
   updateRoomDuration: (roomId: number, durationMinutes: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/update-duration`, { method: "POST", body: JSON.stringify({ durationMinutes }) }),
+  deleteFocusRoom: (roomId: number) =>
+    request<{ ok: true; message: string }>(`/api/focus-rooms/${roomId}`, { method: "DELETE" }),
 
   // Social
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),

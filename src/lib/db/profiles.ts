@@ -13,9 +13,10 @@ interface ProfileRow {
   last_active_at: Date | string | null;
   current_streak: number | null;
   longest_streak: number | null;
+  role: string | null;
 }
 
-const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak`;
+const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role`;
 
 function mapToUser(row: ProfileRow): User {
   return {
@@ -28,6 +29,7 @@ function mapToUser(row: ProfileRow): User {
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
     currentStreak: row.current_streak ?? 0,
     longestStreak: row.longest_streak ?? 0,
+    role: (row.role as "user" | "admin" | undefined) ?? "user",
   };
 }
 
@@ -161,4 +163,16 @@ export function touchLastActive(profileId: string): void {
   if (now - prev < TOUCH_TTL_MS) return;
   lastTouch.set(profileId, now);
   void pool.query(`update profiles set last_active_at = now() where id = $1`, [profileId]).catch(() => undefined);
+}
+
+export async function getUserRole(profileId: string): Promise<"user" | "admin"> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ role: string | null }>(
+    `select role from profiles where id = $1`,
+    [profileId],
+  );
+  if (!result.rows[0]) {
+    throw new NotFoundError("Perfil não encontrado.");
+  }
+  return (result.rows[0].role as "user" | "admin") ?? "user";
 }

@@ -13,6 +13,8 @@ export interface Category {
 }
 export type MetricKind = "sleep" | "study" | "training" | "energy" | "tasks";
 
+export type UserRole = "user" | "admin";
+
 export interface User {
   id: string;
   displayName: string;
@@ -28,6 +30,7 @@ export interface User {
   bannerImageUrl?: string;
   equippedDecorationId?: string;
   streakShieldCount?: number;
+  role?: UserRole;
 }
 
 export type FriendshipStatus = "pending" | "accepted";
@@ -95,6 +98,7 @@ export interface PublicProfile {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  role?: UserRole;
   createdAt?: string;
   lastActiveAt?: string;
   currentStreak: number;

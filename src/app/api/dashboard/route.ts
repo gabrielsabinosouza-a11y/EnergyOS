@@ -5,8 +5,8 @@ import { buildDashboardSnapshot } from "@/lib/db/dashboard";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
-    const { profileId, displayName, email } = await requireAuth(request);
-    const snapshot = await buildDashboardSnapshot(profileId, displayName ?? undefined, email ?? undefined);
+    const { profileId, displayName, email, role } = await requireAuth(request);
+    const snapshot = await buildDashboardSnapshot(profileId, displayName ?? undefined, email ?? undefined, role);
     return jsonOk(snapshot);
   });
 }

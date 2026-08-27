@@ -216,8 +216,8 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const isOwner = viewerId === otherId;
   if (!isOwner) await assertFriends(viewerId, otherId);
 
-  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null }>(
-    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role
      from profiles where id = $1`,
     [otherId],
   );
@@ -240,6 +240,7 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
     displayName: row.display_name,
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    role: (row.role as "user" | "admin" | null) ?? "user",
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
     currentStreak: streak.currentStreak,

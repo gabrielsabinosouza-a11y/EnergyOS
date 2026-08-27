@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/server-auth";
+import { requireAuth, requireAdmin } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
 import {
   getFocusRoomById,
   getFocusRoomByCode,
   endFocusRoom,
   addParticipantToRoom,
+  deleteFocusRoom,
 } from "@/lib/db/focus-rooms";
 
 function isNumeric(value: string) {
@@ -72,5 +73,21 @@ export async function PATCH(
 
     const ended = await endFocusRoom(Number(roomId));
     return jsonOk({ room: ended, message: "Room ended successfully" });
+  });
+}
+
+// DELETE /api/focus-rooms/[roomId] — permanently delete a room (admin only)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ roomId: string }> }
+) {
+  return handleRoute(async () => {
+    await requireAdmin(request);
+    const { roomId } = await params;
+
+    if (!isNumeric(roomId)) return badRequest("Invalid room ID");
+
+    await deleteFocusRoom(Number(roomId));
+    return jsonOk({ ok: true, message: "Room deleted successfully" });
   });
 }

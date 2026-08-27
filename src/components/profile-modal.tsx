@@ -55,7 +55,14 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                   : initials}
               </div>
               <div>
-                <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
+                  {profile.role === "admin" && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
+                      Admin
+                    </span>
+                  )}
+                </div>
                 {profile.username && (
                   <p className="text-xs text-[var(--text-faint)]">@{profile.username}</p>
                 )}

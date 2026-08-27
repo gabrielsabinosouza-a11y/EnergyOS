@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   Sparkles,
   Zap,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -290,10 +291,16 @@ export default function FocusRoomsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [userRole, setUserRole] = useState<"user" | "admin">("user");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [roomToDelete, setRoomToDelete] = useState<FocusRoom | null>(null);
 
   useEffect(() => {
     if (!loading && user) {
       fetchRooms();
+      api.getProfile()
+        .then(({ user: profile }) => setUserRole(profile.role ?? "user"))
+        .catch(() => {});
     }
   }, [loading, user]);
 
@@ -417,6 +424,27 @@ export default function FocusRoomsPage() {
     setTimeout(() => setCopied(false), 2000);
   }, [roomCode]);
 
+  const handleDeleteRoom = useCallback(async () => {
+    if (!roomToDelete) return;
+    setLoadingAction("deleting");
+    setError(null);
+    try {
+      await api.deleteFocusRoom(roomToDelete.id);
+      setRooms((prev) => prev.filter((r) => r.id !== roomToDelete.id));
+      if (currentRoom?.id === roomToDelete.id) {
+        setCurrentRoom(null);
+        setPageState("list");
+      }
+      setSuccessMessage("Sala excluída com sucesso.");
+      setShowDeleteConfirm(false);
+      setRoomToDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir sala");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [roomToDelete, currentRoom]);
+
   const isHost = currentRoom?.hostProfileId === user?.uid;
   const canStart = isHost && currentRoom?.status === "waiting";
   const canEnd = isHost && currentRoom?.status === "active";
@@ -480,6 +508,18 @@ export default function FocusRoomsPage() {
                     <Users size={12} />
                     {room.participants.length}
                   </span>
+                  {userRole === "admin" && (
+                    <button
+                      onClick={() => {
+                        setRoomToDelete(room);
+                        setShowDeleteConfirm(true);
+                      }}
+                      className="rounded-lg p-1.5 text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      title="Excluir sala"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setCurrentRoom(room);
@@ -1002,6 +1042,39 @@ export default function FocusRoomsPage() {
           >
             {successMessage}
           </motion.div>
+        )}
+
+        {showDeleteConfirm && roomToDelete && (
+          <Modal onClose={() => { setShowDeleteConfirm(false); setRoomToDelete(null); }}>
+            <div className="glass-card w-full max-w-sm p-6">
+              <h3 className="font-display text-lg mb-2">Excluir sala?</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-1">
+                Tem certeza que deseja excluir a sala <span className="font-mono font-medium text-[var(--text)]">{roomToDelete.code}</span>?
+              </p>
+              <p className="text-xs text-[var(--text-faint)] mb-6">
+                Esta ação é permanente e removerá todos os participantes da sala.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); setRoomToDelete(null); }}
+                  className="flex-1 rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteRoom}
+                  disabled={loadingAction === "deleting"}
+                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  {loadingAction === "deleting" ? (
+                    <Loader2 size={16} className="animate-spin mx-auto" />
+                  ) : (
+                    "Excluir"
+                  )}
+                </button>
+              </div>
+            </div>
+          </Modal>
         )}
       </main>
     </AppShell>

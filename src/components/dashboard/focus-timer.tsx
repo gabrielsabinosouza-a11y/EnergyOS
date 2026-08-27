@@ -11,6 +11,57 @@ import { ENERGY_CONFIGS, ENERGY_TYPES, AURA_DEFS, AURA_RARITY_COLORS, AURA_RARIT
 import { api } from "@/lib/api-client";
 import { addGardenEntry } from "@/lib/garden-store";
 
+// ─── Session Persistence Types ───────────────────────────────────────────────
+
+type PersistedSessionState = "idle" | "running" | "paused" | "completed";
+
+interface PersistedSession {
+  sessionId: number | null;
+  selectedEnergy: EnergyType;
+  durationMinutes: number;
+  sessionStartedAt: number | null; // timestamp in ms
+  status: PersistedSessionState;
+  lastUpdatedAt: number; // timestamp in ms
+}
+
+const STORAGE_KEY = "energyos_focus_session";
+
+// ─── Session Persistence Utilities ───────────────────────────────────────────
+
+function saveSessionState(session: PersistedSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.warn("Failed to save session state:", e);
+  }
+}
+
+function loadSessionState(): PersistedSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return null;
+    return JSON.parse(data);
+  } catch (e) {
+    console.warn("Failed to load session state:", e);
+    return null;
+  }
+}
+
+function clearSessionState(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn("Failed to clear session state:", e);
+  }
+}
+
+// Multi-tab behavior: Each tab manages its own session state independently.
+// This allows users to have different sessions in different tabs without conflicts.
+// If cross-tab sync is needed in the future, add a 'storage' event listener.
+
 const RING_SIZE = 260;
 const MAX_DURATION = 120;
 const SNAP_INCREMENT = 5;
@@ -233,6 +284,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
   const [showPicker, setShowPicker] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+  const [mounted, setMounted] = useState(false);
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
@@ -252,6 +304,128 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setRemaining(duration * 60);
     }
   }, [duration, state]);
+
+  // ─── Session Persistence ─────────────────────────────────────────────────────
+
+  // Load persisted session state on mount
+  useEffect(() => {
+    setMounted(true);
+    const persisted = loadSessionState();
+    if (!persisted) return;
+
+    // Restore selected energy and duration as defaults
+    if (persisted.selectedEnergy) {
+      setSelectedEnergy(persisted.selectedEnergy);
+      selectedEnergyRef.current = persisted.selectedEnergy;
+    }
+    if (persisted.durationMinutes && persisted.durationMinutes >= MIN_DURATION && persisted.durationMinutes <= MAX_DURATION) {
+      setDuration(persisted.durationMinutes);
+      durationRef.current = persisted.durationMinutes;
+    }
+
+    // Handle running/paused sessions
+    if ((persisted.status === "running" || persisted.status === "paused") && persisted.sessionId && persisted.sessionStartedAt) {
+      const now = Date.now();
+      const elapsedMs = now - persisted.sessionStartedAt;
+      const totalDurationMs = persisted.durationMinutes * 60 * 1000;
+      const remainingMs = totalDurationMs - elapsedMs;
+
+      if (remainingMs > 0) {
+        // Session still in progress - restore it
+        sessionRef.current = { id: persisted.sessionId, startedAt: persisted.sessionStartedAt };
+        const remainingSec = Math.max(0, Math.round(remainingMs / 1000));
+        remainingRef.current = remainingSec;
+        setRemaining(remainingSec);
+        setState(persisted.status as TimerState);
+        stateRef.current = persisted.status as TimerState;
+
+        // If it was running, restart the interval after a small delay to ensure refs are set
+        if (persisted.status === "running") {
+          setTimeout(() => {
+            if (stateRef.current === "running") {
+              startInterval();
+            }
+          }, 100);
+        }
+      } else {
+        // Session completed while tab was closed - trigger completion
+        // Use a temporary function to handle this case
+        const handleCompletedWhileClosed = async (sessionId: number, durationMinutes: number, energyType: EnergyType) => {
+          try {
+            const focusedSeconds = durationMinutes * 60;
+            const result = await onEnd(sessionId, focusedSeconds);
+            
+            setLastCoins(result.xpAwarded);
+            const reward = getEnergyReward(durationMinutes);
+            setRewardCount(reward);
+            setShowComplete(true);
+
+            if (reward > 0) {
+              for (let i = 0; i < reward; i++) {
+                addGardenEntry({
+                  energyType,
+                  durationMinutes,
+                  reward,
+                  plantedAt: new Date().toISOString(),
+                });
+              }
+            }
+
+            // Reset state
+            sessionRef.current = null;
+            setState("idle");
+            stateRef.current = "idle";
+            remainingRef.current = durationMinutes * 60;
+            setRemaining(durationMinutes * 60);
+            
+            // Clear persistence
+            clearSessionState();
+
+            // Notify user
+            sendNotification(
+              "⚡ Sessão concluída!",
+              `Você ganhou ${result.xpAwarded} moedas enquanto estava ausente.`
+            );
+          } catch (error) {
+            console.error("Failed to handle completed session:", error);
+            // On error, reset to idle state but don't show completion
+            sessionRef.current = null;
+            setState("idle");
+            stateRef.current = "idle";
+            clearSessionState();
+          }
+        };
+
+        handleCompletedWhileClosed(persisted.sessionId, persisted.durationMinutes, persisted.selectedEnergy);
+      }
+    } else if (persisted.status === "completed") {
+      // Clear completed session state so it doesn't persist indefinitely
+      clearSessionState();
+    }
+  }, []);
+
+  // Save session state on meaningful changes
+  useEffect(() => {
+    if (!mounted) return;
+
+    const sessionState: PersistedSession = {
+      sessionId: sessionRef.current?.id ?? null,
+      selectedEnergy: selectedEnergyRef.current,
+      durationMinutes: durationRef.current,
+      sessionStartedAt: sessionRef.current?.startedAt ?? null,
+      status: stateRef.current as PersistedSessionState,
+      lastUpdatedAt: Date.now(),
+    };
+
+    saveSessionState(sessionState);
+  }, [state, selectedEnergy, duration, mounted]);
+
+  // Clear persistence when session is completed or cancelled
+  useEffect(() => {
+    if (state === "idle" && !sessionRef.current) {
+      clearSessionState();
+    }
+  }, [state]);
 
   // Load which auras this user owns
   useEffect(() => {
@@ -337,6 +511,9 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     sessionRef.current = null;
     setState("idle");
     stateRef.current = "idle";
+    
+    // Clear persisted session state on completion
+    clearSessionState();
   }
 
   async function handleStart() {
@@ -359,6 +536,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setState("running");
       stateRef.current = "running";
       startInterval();
+      
+      // Persistence is handled by the useEffect that watches state changes
     } catch { /* handled by parent */ }
   }
 
@@ -398,6 +577,9 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     stateRef.current = "idle";
     remainingRef.current = durationRef.current * 60;
     setRemaining(durationRef.current * 60);
+    
+    // Clear persisted session state on stop/cancel
+    clearSessionState();
   }
 
   // Cleanup on unmount

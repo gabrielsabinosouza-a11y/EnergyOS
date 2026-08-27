@@ -255,6 +255,7 @@ alter table profiles add column if not exists photo_url text;
 alter table profiles add column if not exists last_active_at timestamptz;
 alter table profiles add column if not exists current_streak integer not null default 0;
 alter table profiles add column if not exists longest_streak integer not null default 0;
+alter table profiles add column if not exists role text not null default 'user' check (role in ('user', 'admin'));
 
 create unique index if not exists profiles_username_lower_idx
   on profiles (lower(username)) where username is not null;

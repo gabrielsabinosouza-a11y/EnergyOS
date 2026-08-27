@@ -25,6 +25,7 @@ export async function buildDashboardSnapshot(
   profileId: string,
   displayName?: string,
   email?: string,
+  role?: "user" | "admin",
 ): Promise<DashboardSnapshotResponse> {
   const today = todayIso();
   const weekStart = addDaysIso(today, -6);
@@ -40,6 +41,11 @@ export async function buildDashboardSnapshot(
     generateWeeklyInsights(profileId, today),
     computeStreak(profileId, today),
   ]);
+
+  // Override role from auth to ensure it's current
+  if (role) {
+    (user as any).role = role;
+  }
 
   const metrics: Metric[] = [
     {

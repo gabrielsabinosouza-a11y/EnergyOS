@@ -591,6 +591,11 @@ export default function PerfilPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <h2 className="font-display text-2xl tracking-[-0.03em]">{displayName}</h2>
+                    {dashboard?.user?.role === 'admin' && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
+                        Admin
+                      </span>
+                    )}
                     <button onClick={startEdit} className="icon-button small !h-7 !w-7">
                       <Pencil size={12} />
                     </button>
