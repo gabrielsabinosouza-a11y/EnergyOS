@@ -450,7 +450,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           )}
 
           {/* Energy image - positioned in center with constrained click area */}
-          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2 }}>
+          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2, pointerEvents: "none" }}>
             <div style={{
               position: "absolute",
               width: imageSize * 0.9, height: imageSize * 0.9,
