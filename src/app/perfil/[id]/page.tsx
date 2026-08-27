@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { Modal } from "@/components/modal";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { PublicProfile, AchievementProgress } from "@/types";
@@ -78,11 +79,9 @@ const fadeUp = {
 function AchievementModal({
   achievement,
   onClose,
-  reduced,
 }: {
   achievement: AchievementProgress;
   onClose: () => void;
-  reduced?: boolean;
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const Icon = ACHIEVEMENT_ICONS[achievement.id] ?? DEFAULT_ICON;
@@ -90,22 +89,10 @@ function AchievementModal({
   const currentIdx = isEarned ? Math.min(achievement.unlockedTier - 1, achievement.thresholds.length - 1) : 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+    <Modal onClose={onClose}>
+      <div
         className="glass-card relative w-full max-w-sm overflow-hidden p-6"
         style={{ border: `1px solid ${colors.primary}22` }}
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
@@ -175,8 +162,8 @@ function AchievementModal({
             })}
           </p>
         )}
-      </motion.div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }
 
@@ -523,15 +510,12 @@ export default function FriendProfilePage() {
       </main>
 
       {/* ─── Achievement Detail Modal ────────────────────────────── */}
-      <AnimatePresence>
-        {selectedAchievement && (
-          <AchievementModal
-            achievement={selectedAchievement}
-            onClose={() => setSelectedAchievement(null)}
-            reduced={!!reduced}
-          />
-        )}
-      </AnimatePresence>
+      {selectedAchievement && (
+        <AchievementModal
+          achievement={selectedAchievement}
+          onClose={() => setSelectedAchievement(null)}
+        />
+      )}
     </AppShell>
   );
 }

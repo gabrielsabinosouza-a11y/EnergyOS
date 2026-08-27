@@ -641,3 +641,21 @@ alter table goals drop column if exists category;
 alter table tasks drop column if exists category;
 alter table kanban_tasks drop column if exists category;
 alter table weekly_plans drop column if exists category;
+
+-- ── User Auras (energia ownership) ────────────────────────────────────────
+create table if not exists user_auras (
+  profile_id text not null references profiles(id) on delete cascade,
+  aura_type text not null check (aura_type in ('flame','water','thunder','ice','wind','earth','light','shadow','cosmic','crystal','nature','solar')),
+  unlocked_at timestamptz not null default now(),
+  primary key (profile_id, aura_type)
+);
+
+insert into user_auras (profile_id, aura_type)
+select p.id, 'flame' from profiles p
+on conflict do nothing;
+
+insert into user_auras (profile_id, aura_type)
+select p.id, 'water' from profiles p
+on conflict do nothing;
+
+create index if not exists user_auras_profile_idx on user_auras(profile_id);

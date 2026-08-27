@@ -241,11 +241,13 @@ export const api = {
     request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
 
   // Store
-  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number }>("/api/store"),
+  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[] }>("/api/store"),
   purchaseDecoration: (decorationId: string) =>
     request<{ balance: number }>("/api/store/decorations", { method: "POST", body: JSON.stringify({ decorationId }) }),
   equipDecoration: (decorationId: string | null) =>
     request<{ ok: true }>("/api/store/decorations", { method: "PATCH", body: JSON.stringify({ decorationId }) }),
+  purchaseAura: (auraType: string) =>
+    request<{ balance: number }>("/api/store/auras", { method: "POST", body: JSON.stringify({ auraType }) }),
   unlockBanner: () =>
     request<{ balance: number }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "unlock" }) }),
   updateBannerImage: (imageUrl: string) =>

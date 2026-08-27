@@ -286,6 +286,76 @@ export async function logStreakDay(
   );
 }
 
+// ── Auras ──────────────────────────────────────────────────────────────
+
+const AURA_PRICES: Record<string, number> = {
+  flame: 0, water: 0,
+  ice: 500, wind: 500,
+  earth: 750, thunder: 750, cosmic: 750,
+  light: 1000, shadow: 1000, crystal: 1000, nature: 1000, solar: 1000,
+};
+
+const AURA_TYPES = Object.keys(AURA_PRICES);
+
+export async function getOwnedAuras(profileId: string): Promise<string[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ aura_type: string }>(
+    `select aura_type from user_auras where profile_id = $1`,
+    [profileId],
+  );
+  return result.rows.map((r) => r.aura_type);
+}
+
+export async function ensureDefaultAuras(profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  await pool.query(
+    `insert into user_auras (profile_id, aura_type) values ($1, 'flame'), ($1, 'water') on conflict do nothing`,
+    [profileId],
+  );
+}
+
+export async function purchaseAura(
+  profileId: string,
+  auraType: string,
+): Promise<{ balance: number }> {
+  parseProfileId(profileId);
+  if (!AURA_TYPES.includes(auraType)) {
+    throw new NotFoundError("Energia não encontrada.");
+  }
+  const price = AURA_PRICES[auraType];
+  if (price <= 0) throw new ConflictError("Esta energia já está disponível.");
+
+  const already = await pool.query(
+    `select 1 from user_auras where profile_id = $1 and aura_type = $2`,
+    [profileId, auraType],
+  );
+  if (already.rows[0]) throw new ConflictError("Você já possui esta energia.");
+
+  const balance = await getCoinBalance(profileId);
+  if (balance < price) throw new ForbiddenError("Moedas insuficientes.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      `update user_settings set coins = coins - $1 where profile_id = $2`,
+      [price, profileId],
+    );
+    await client.query(
+      `insert into user_auras (profile_id, aura_type) values ($1, $2) on conflict do nothing`,
+      [profileId, auraType],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return { balance: balance - price };
+}
+
 // ── Monthly Recaps ─────────────────────────────────────────────────────────
 
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {

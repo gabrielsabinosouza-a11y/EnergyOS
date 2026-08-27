@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { X, Timer, Trophy, Lock } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api-client";
 import type { PublicProfile } from "@/types";
+import { Modal } from "@/components/modal";
 
 interface ProfileModalProps {
   profileId: string;
@@ -25,32 +25,13 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
     return () => { active = false; };
   }, [profileId]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const initials = profile?.displayName
     ? profile.displayName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : "?";
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.93, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.93, y: 16 }}
-        transition={{ type: "spring", stiffness: 360, damping: 28 }}
-        className="glass-card w-full max-w-sm overflow-hidden p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose}>
+      <div className="glass-card w-full max-w-sm overflow-hidden p-6">
         <button
           onClick={onClose}
           className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] transition"
@@ -126,7 +107,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
             )}
           </>
         )}
-      </motion.div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }

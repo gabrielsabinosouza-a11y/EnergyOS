@@ -3,6 +3,44 @@ export type EnergyType =
   | "flame" | "water" | "earth" | "wind" | "thunder" | "ice"
   | "shadow" | "light" | "crystal" | "nature" | "cosmic" | "solar";
 
+export type AuraRarity = "common" | "uncommon" | "rare" | "epic";
+
+export interface AuraInfo {
+  rarity: AuraRarity;
+  price: number;
+  label: string;
+}
+
+export const AURA_RARITY_LABELS: Record<AuraRarity, string> = {
+  common: "Comum",
+  uncommon: "Incomum",
+  rare: "Rara",
+  epic: "Épica",
+};
+
+export const AURA_RARITY_COLORS: Record<AuraRarity, { border: string; bg: string; glow: string }> = {
+  common:   { border: "#71d4ff",   bg: "rgba(113,212,255,0.08)",   glow: "rgba(113,212,255,0.3)" },
+  uncommon: { border: "#4ade80",   bg: "rgba(74,222,128,0.08)",   glow: "rgba(74,222,128,0.3)" },
+  rare:     { border: "#b69cff",   bg: "rgba(182,156,255,0.08)",   glow: "rgba(182,156,255,0.3)" },
+  epic:     { border: "#ffd76b",   bg: "rgba(255,215,107,0.08)",   glow: "rgba(255,215,107,0.3)" },
+};
+
+export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
+  flame:   { rarity: "common",   price: 0,    label: "Flame" },
+  water:   { rarity: "common",   price: 0,    label: "Water" },
+  ice:     { rarity: "uncommon", price: 500,   label: "Ice" },
+  wind:    { rarity: "uncommon", price: 500,   label: "Wind" },
+  earth:   { rarity: "rare",     price: 750,   label: "Earth" },
+  thunder: { rarity: "rare",     price: 750,   label: "Thunder" },
+  cosmic:  { rarity: "rare",     price: 750,   label: "Cosmic" },
+  // Epic tier (proposed, pending confirmation)
+  light:   { rarity: "epic",     price: 1000,  label: "Light" },
+  shadow:  { rarity: "epic",     price: 1000,  label: "Shadow" },
+  crystal: { rarity: "epic",     price: 1000,  label: "Crystal" },
+  nature:  { rarity: "epic",     price: 1000,  label: "Nature" },
+  solar:   { rarity: "epic",     price: 1000,  label: "Solar" },
+};
+
 /** Paleta de tema por energia — usada em anel, botões, glow e acentos. */
 export const ENERGY_THEME_COLORS: Record<EnergyType, string> = {
   flame:   "#F97316",
@@ -30,8 +68,7 @@ function glowOf(type: EnergyType, alpha = 0.22): string {
   return rgba(ENERGY_THEME_COLORS[type], alpha);
 }
 
-export interface EnergyConfig {
-  label: string;
+export interface EnergyConfig extends AuraInfo {
   locked: boolean;
   accent: string;
   glow: string;
@@ -39,18 +76,18 @@ export interface EnergyConfig {
 }
 
 export const ENERGY_CONFIGS: Record<EnergyType, EnergyConfig> = {
-  flame:   { label: "Flame",   locked: false, accent: ENERGY_THEME_COLORS.flame,   glow: glowOf("flame"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
-  water:   { label: "Water",   locked: false, accent: ENERGY_THEME_COLORS.water,   glow: glowOf("water"),   assets: { spark: "/energies/water/water_start.png",   forming: "/energies/water/water_mid.png",   full: "/energies/water/water_full.png",   extinguished: "/energies/water/water_give_up.png"   } },
-  thunder: { label: "Thunder", locked: true,  accent: ENERGY_THEME_COLORS.thunder, glow: glowOf("thunder"), assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png" } },
-  ice:     { label: "Ice",     locked: true,  accent: ENERGY_THEME_COLORS.ice,     glow: glowOf("ice"),     assets: { spark: "/energies/water/water_start.png",   forming: "/energies/water/water_mid.png",   full: "/energies/water/water_full.png",   extinguished: "/energies/water/water_give_up.png"     } },
-  wind:    { label: "Wind",    locked: true,  accent: ENERGY_THEME_COLORS.wind,    glow: glowOf("wind"),    assets: { spark: "/energies/water/water_start.png",    forming: "/energies/water/water_mid.png",    full: "/energies/water/water_full.png",    extinguished: "/energies/water/water_give_up.png"    } },
-  earth:   { label: "Earth",   locked: true,  accent: ENERGY_THEME_COLORS.earth,   glow: glowOf("earth"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
-  light:   { label: "Light",   locked: true,  accent: ENERGY_THEME_COLORS.light,   glow: glowOf("light"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
-  shadow:  { label: "Shadow",  locked: true,  accent: ENERGY_THEME_COLORS.shadow,  glow: glowOf("shadow"),  assets: { spark: "/energies/water/water_start.png",  forming: "/energies/water/water_mid.png",  full: "/energies/water/water_full.png",  extinguished: "/energies/water/water_give_up.png"  } },
-  cosmic:  { label: "Cosmic",  locked: true,  accent: ENERGY_THEME_COLORS.cosmic,  glow: glowOf("cosmic"),  assets: { spark: "/energies/flame/flame_start.png",  forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"  } },
-  crystal: { label: "Crystal", locked: true,  accent: ENERGY_THEME_COLORS.crystal, glow: glowOf("crystal"), assets: { spark: "/energies/water/water_start.png", forming: "/energies/water/water_mid.png", full: "/energies/water/water_full.png", extinguished: "/energies/water/water_give_up.png" } },
-  nature:  { label: "Nature",  locked: true,  accent: ENERGY_THEME_COLORS.nature,  glow: glowOf("nature"),  assets: { spark: "/energies/flame/flame_start.png",  forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"  } },
-  solar:   { label: "Solar",   locked: true,  accent: ENERGY_THEME_COLORS.solar,   glow: glowOf("solar"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
+  flame:   { ...AURA_DEFS.flame,   locked: false, accent: ENERGY_THEME_COLORS.flame,   glow: glowOf("flame"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
+  water:   { ...AURA_DEFS.water,   locked: false, accent: ENERGY_THEME_COLORS.water,   glow: glowOf("water"),   assets: { spark: "/energies/water/water_start.png",   forming: "/energies/water/water_mid.png",   full: "/energies/water/water_full.png",   extinguished: "/energies/water/water_give_up.png"   } },
+  thunder: { ...AURA_DEFS.thunder, locked: true,  accent: ENERGY_THEME_COLORS.thunder, glow: glowOf("thunder"), assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png" } },
+  ice:     { ...AURA_DEFS.ice,     locked: true,  accent: ENERGY_THEME_COLORS.ice,     glow: glowOf("ice"),     assets: { spark: "/energies/water/water_start.png",   forming: "/energies/water/water_mid.png",   full: "/energies/water/water_full.png",   extinguished: "/energies/water/water_give_up.png"     } },
+  wind:    { ...AURA_DEFS.wind,    locked: true,  accent: ENERGY_THEME_COLORS.wind,    glow: glowOf("wind"),    assets: { spark: "/energies/water/water_start.png",    forming: "/energies/water/water_mid.png",    full: "/energies/water/water_full.png",    extinguished: "/energies/water/water_give_up.png"    } },
+  earth:   { ...AURA_DEFS.earth,   locked: true,  accent: ENERGY_THEME_COLORS.earth,   glow: glowOf("earth"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
+  light:   { ...AURA_DEFS.light,   locked: true,  accent: ENERGY_THEME_COLORS.light,   glow: glowOf("light"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
+  shadow:  { ...AURA_DEFS.shadow,  locked: true,  accent: ENERGY_THEME_COLORS.shadow,  glow: glowOf("shadow"),  assets: { spark: "/energies/water/water_start.png",  forming: "/energies/water/water_mid.png",  full: "/energies/water/water_full.png",  extinguished: "/energies/water/water_give_up.png"  } },
+  cosmic:  { ...AURA_DEFS.cosmic,  locked: true,  accent: ENERGY_THEME_COLORS.cosmic,  glow: glowOf("cosmic"),  assets: { spark: "/energies/flame/flame_start.png",  forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"  } },
+  crystal: { ...AURA_DEFS.crystal, locked: true,  accent: ENERGY_THEME_COLORS.crystal, glow: glowOf("crystal"), assets: { spark: "/energies/water/water_start.png", forming: "/energies/water/water_mid.png", full: "/energies/water/water_full.png", extinguished: "/energies/water/water_give_up.png" } },
+  nature:  { ...AURA_DEFS.nature,  locked: true,  accent: ENERGY_THEME_COLORS.nature,  glow: glowOf("nature"),  assets: { spark: "/energies/flame/flame_start.png",  forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"  } },
+  solar:   { ...AURA_DEFS.solar,   locked: true,  accent: ENERGY_THEME_COLORS.solar,   glow: glowOf("solar"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",   full: "/energies/flame/flame_full.png",   extinguished: "/energies/flame/flame_die.png"   } },
 };
 
 export const ENERGY_TYPES = Object.keys(ENERGY_CONFIGS) as EnergyType[];

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { X, Download, Share2, Trophy } from "lucide-react";
 import { TIER_META } from "@/lib/league-meta";
 import type { LeagueTier } from "@/types";
+import { Modal } from "@/components/modal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -381,35 +382,22 @@ export function MonthlyRecap({
       </motion.button>
 
       {/* Overlay */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.25 }}
-            className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-6 p-4"
-            style={{ background: "rgba(0,0,0,.75)", backdropFilter: "blur(12px)" }}
-            onClick={() => setOpen(false)}
-          >
+      {open && (
+        <Modal onClose={() => setOpen(false)}>
+          <div className="flex w-full max-w-[360px] flex-col items-center gap-6">
             {/* Close */}
             <button
               onClick={() => setOpen(false)}
-              className="absolute top-4 right-4 icon-button"
+              className="icon-button self-end"
               aria-label="Fechar"
             >
               <X size={18} />
             </button>
 
             {/* Card preview */}
-            <motion.div
+            <div
               ref={cardRef}
-              initial={{ opacity: 0, scale: 0.92, y: 24 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: 24 }}
-              transition={{ duration: reduced ? 0 : 0.35, ease: [0.16, 1, 0.3, 1] }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[360px] overflow-hidden rounded-2xl border border-[rgba(255,255,255,.1)]"
+              className="w-full overflow-hidden rounded-2xl border border-[rgba(255,255,255,.1)]"
               style={{ aspectRatio: `${CARD_W}/${CARD_H}`, background: "#0a0e1a" }}
             >
               <div className="relative w-full h-full p-6 flex flex-col">
@@ -559,16 +547,10 @@ export function MonthlyRecap({
                   </p>
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* Action buttons */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: reduced ? 0 : 0.15 }}
-              className="flex items-center gap-3 relative z-10"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleDownload}
                 disabled={downloading}
@@ -585,10 +567,10 @@ export function MonthlyRecap({
                 <Share2 size={15} />
                 Compartilhar
               </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

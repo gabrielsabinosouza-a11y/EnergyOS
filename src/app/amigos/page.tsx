@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { Modal } from "@/components/modal";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type {
@@ -85,11 +86,6 @@ const stagger: Variants = {
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
-};
-const slideRight: Variants = {
-  hidden: { x: "100%", opacity: 0 },
-  visible: { x: 0, opacity: 1, transition: { type: "spring", stiffness: 300, damping: 30 } },
-  exit: { x: "100%", opacity: 0, transition: { duration: 0.2 } },
 };
 
 /* ------------------------------------------------------------------ */
@@ -471,23 +467,21 @@ export default function AmigosPage() {
         {/* -------------------------------------------------------------- */}
         {/*  DM Chat Panel                                                 */}
         {/* -------------------------------------------------------------- */}
-        <AnimatePresence>
-          {activeChat && (
-            <ChatPanel
-              friend={activeChat}
-              currentUserId={user.uid}
-              reduced={!!reduced}
-              onClose={() => setActiveChat(null)}
-              onRead={() => {
-                setFriends((prev) =>
-                  prev.map((x) =>
-                    x.id === activeChat.id ? { ...x, unreadCount: 0 } : x,
-                  ),
-                );
-              }}
-            />
-          )}
-        </AnimatePresence>
+        {activeChat && (
+          <ChatPanel
+            friend={activeChat}
+            currentUserId={user.uid}
+            reduced={!!reduced}
+            onClose={() => setActiveChat(null)}
+            onRead={() => {
+              setFriends((prev) =>
+                prev.map((x) =>
+                  x.id === activeChat.id ? { ...x, unreadCount: 0 } : x,
+                ),
+              );
+            }}
+          />
+        )}
       </main>
     </AppShell>
   );
@@ -584,13 +578,8 @@ function ChatPanel({
   }
 
   return (
-    <motion.div
-      variants={slideRight}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl sm:max-w-lg"
-    >
+    <Modal onClose={onClose} variant="side-right">
+      <div className="flex h-full w-full flex-col border-l border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
         <UserAvatar user={friend} size={36} />
@@ -672,6 +661,7 @@ function ChatPanel({
           </button>
         </div>
       </div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }

@@ -24,6 +24,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
+import { Modal } from "@/components/modal";
 import type { FocusRoom, RoomParticipant } from "@/lib/db/focus-rooms";
 import { ENERGY_CONFIGS, ENERGY_TYPES, type EnergyType } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
@@ -45,21 +46,8 @@ function EnergyPickerModal({
   const availableTypes = ENERGY_TYPES.filter((t) => !ENERGY_CONFIGS[t].locked);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-4 pb-4 sm:pb-0"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 24, scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 380, damping: 28 }}
-        className="glass-card w-full max-w-sm overflow-hidden p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} variant="bottom-sheet">
+      <div className="glass-card w-full max-w-sm overflow-hidden p-5">
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Escolher energia</span>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] transition">
@@ -89,8 +77,8 @@ function EnergyPickerModal({
             );
           })}
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }
 
@@ -277,15 +265,13 @@ function ParticipantCircle({
       </div>
 
       {/* Energy picker modal */}
-      <AnimatePresence>
-        {showPicker && (
-          <EnergyPickerModal
-            current={participant.selectedEnergyType || "flame"}
-            onSelect={onEnergySelect}
-            onClose={() => setShowPicker(false)}
-          />
-        )}
-      </AnimatePresence>
+      {showPicker && (
+        <EnergyPickerModal
+          current={participant.selectedEnergyType || "flame"}
+          onSelect={onEnergySelect}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   );
 }

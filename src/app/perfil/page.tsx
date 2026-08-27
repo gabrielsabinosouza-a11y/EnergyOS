@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { updateProfile } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { auth } from "@/lib/firebase";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
 import type { AchievementProgress } from "@/types";
@@ -166,7 +167,6 @@ function AchievementModal({
   onClose,
   isOwn,
   onToggleFeatured,
-  reduced,
 }: {
   achievement: AchievementProgress;
   onClose: () => void;
@@ -180,22 +180,10 @@ function AchievementModal({
   const currentIdx = isEarned ? Math.min(achievement.unlockedTier - 1, achievement.thresholds.length - 1) : 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+    <Modal onClose={onClose}>
+      <div
         className="glass-card relative w-full max-w-sm overflow-hidden p-6"
         style={{ border: `1px solid ${colors.primary}22` }}
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
@@ -285,8 +273,8 @@ function AchievementModal({
             {achievement.isFeatured ? "Remover dos destaques" : "Adicionar aos destaques"}
           </button>
         )}
-      </motion.div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }
 
@@ -888,36 +876,19 @@ export default function PerfilPage() {
       </main>
 
       {/* ─── Achievement Detail Modal ────────────────────────────── */}
-      <AnimatePresence>
-        {selectedAchievement && (
-          <AchievementModal
-            achievement={selectedAchievement}
-            onClose={() => setSelectedAchievement(null)}
-            isOwn
-            onToggleFeatured={() => handleToggleFeatured(selectedAchievement.id)}
-            reduced={!!reduced}
-          />
-        )}
-      </AnimatePresence>
+      {selectedAchievement && (
+        <AchievementModal
+          achievement={selectedAchievement}
+          onClose={() => setSelectedAchievement(null)}
+          isOwn
+          onToggleFeatured={() => handleToggleFeatured(selectedAchievement.id)}
+        />
+      )}
 
       {/* ─── Picker Modal ────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showPicker && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-            onClick={() => setShowPicker(false)}
-          >
-            <motion.div
-              initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }}
-              transition={{ type: "spring", stiffness: 360, damping: 28 }}
-              className="glass-card w-full max-w-sm overflow-hidden p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
+      {showPicker && (
+        <Modal onClose={() => setShowPicker(false)}>
+          <div className="glass-card w-full max-w-sm overflow-hidden p-6">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-display text-lg">Escolha uma conquista</h3>
                 <button
@@ -964,10 +935,9 @@ export default function PerfilPage() {
                   </p>
                 )}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </Modal>
+      )}
     </AppShell>
   );
 }

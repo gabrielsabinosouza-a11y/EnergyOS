@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
+import { Modal } from "@/components/modal";
 
 const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
   { status: "todo", label: "A Fazer", color: "#71d4ff" },
@@ -647,17 +648,8 @@ await onSave({
   }, [labels, editedTask.labels]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div
@@ -873,7 +865,7 @@ await onSave({
           </button>
         </div>
       </div>
-    </motion.div>
+    </Modal>
   );
 }
 

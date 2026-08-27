@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Image as ImageIcon,
   Frame,
@@ -15,8 +15,19 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { Modal } from "@/components/modal";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
+import Image from "next/image";
+import { Lock } from "lucide-react";
+import {
+  AURA_DEFS,
+  AURA_RARITY_COLORS,
+  AURA_RARITY_LABELS,
+  ENERGY_CONFIGS,
+  ENERGY_TYPES,
+  type EnergyType,
+} from "@/lib/energy-assets";
 import type { StoreItem, DecorationRarity } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -338,7 +349,6 @@ function DecorationModal({
   onEquip,
   onUnequip,
   processing,
-  reduced,
 }: {
   item: StoreItem;
   user: { photoURL: string | null; displayName: string | null };
@@ -347,7 +357,6 @@ function DecorationModal({
   onEquip: () => void;
   onUnequip: () => void;
   processing: string | null;
-  reduced: boolean;
 }) {
   const c = RARITY_COLORS[item.rarity];
   const isProcessing = processing === item.id;
@@ -355,26 +364,10 @@ function DecorationModal({
   const ringSize = 120;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={
-          reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }
-        }
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={
-          reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 }
-        }
-        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+    <Modal onClose={onClose}>
+      <div
         className="glass-card relative w-full max-w-sm overflow-hidden p-6"
         style={{ border: `1px solid ${c.border}22` }}
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
@@ -487,8 +480,8 @@ function DecorationModal({
             Fechar
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </Modal>
   );
 }
 
@@ -513,8 +506,10 @@ export default function LojaPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
+  const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
 
   function flash(msg: string) {
     setFeedback(msg);
@@ -525,6 +520,7 @@ export default function LojaPage() {
     try {
       const data = await api.getStore();
       setStore(data);
+      if (data.ownedAuras) setOwnedAuras(data.ownedAuras);
     } catch {
       setError("Não foi possível carregar a loja.");
     } finally {
@@ -672,6 +668,20 @@ export default function LojaPage() {
     } finally {
       setProcessing(null);
       if (bannerFileRef.current) bannerFileRef.current.value = "";
+    }
+  }
+
+  async function handleBuyAura(type: string) {
+    setProcessing(`aura-${type}`);
+    try {
+      const { balance } = await api.purchaseAura(type);
+      setStore((s) => (s ? { ...s, balance } : s));
+      setOwnedAuras((prev) => [...prev, type]);
+      flash(`${ENERGY_CONFIGS[type as EnergyType]?.label ?? type} comprado!`);
+    } catch {
+      setError("Moedas insuficientes ou energia já possuída.");
+    } finally {
+      setProcessing(null);
     }
   }
 
@@ -976,53 +986,123 @@ export default function LojaPage() {
             </button>
           </motion.section>
 
-          {/* ─── Section 4: Energias Raras (placeholder) ──── */}
+          {/* ─── Section 4: Auras ─────────────── */}
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.3 }}
-            className="glass-card p-6 opacity-50 sm:p-8"
+            className="glass-card mb-8 p-6 sm:p-8"
           >
             <div className="mb-5 flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--text-faint)]" />
-              <span className="text-xs uppercase tracking-[0.15em] text-[var(--text-faint)]">
-                Energias Raras
+              <Sparkles size={16} className="text-[#ffd76b]" />
+              <span className="text-xs uppercase tracking-[0.15em] text-[#ffd76b]">
+                Auras
               </span>
             </div>
-            <p className="text-sm text-[var(--text-faint)]">
-              Em breve — energias premium e limitadas
-            </p>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {ENERGY_TYPES.map((type) => {
+                const info = AURA_DEFS[type];
+                const rc = AURA_RARITY_COLORS[info.rarity];
+                const isOwned = ownedAuras.includes(type);
+                const isProcessing = processing === `aura-${type}`;
+                const balance = store.balance;
+                return (
+                  <div
+                    key={type}
+                    className="flex flex-col items-center gap-2 rounded-xl border p-4 text-center"
+                    style={{
+                      borderColor: isOwned ? `${rc.border}33` : "var(--border-subtle)",
+                      background: isOwned ? rc.bg : "var(--bg-tertiary)",
+                    }}
+                  >
+                    <div className="relative flex h-16 w-16 items-center justify-center">
+                      <Image
+                        src={ENERGY_CONFIGS[type].assets.full}
+                        alt={info.label}
+                        width={60}
+                        height={60}
+                        style={{ objectFit: "contain", opacity: isOwned ? 1 : 0.35 }}
+                        unoptimized
+                      />
+                      {!isOwned && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Lock size={18} className="text-[var(--text-faint)]" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-[var(--text-secondary)]">{info.label}</span>
+                    <span
+                      className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={{
+                        background: rc.bg,
+                        color: rc.border,
+                        border: `1px solid ${rc.border}33`,
+                      }}
+                    >
+                      {AURA_RARITY_LABELS[info.rarity]}
+                    </span>
+
+                    {isOwned ? (
+                      <span className="flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
+                        <Check size={10} />
+                        Possuída
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleBuyAura(type)}
+                        disabled={isProcessing || balance < info.price}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-semibold transition disabled:opacity-40"
+                        style={{ background: rc.bg, color: rc.border }}
+                      >
+                        {isProcessing ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <>
+                            <Coins size={11} />
+                            {info.price}
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {store.balance < 500 && (
+              <p className="mt-4 text-center text-[10px] text-[var(--text-faint)]">
+                Complete sessões de foco para ganhar moedas.
+              </p>
+            )}
           </motion.section>
         </div>
       </main>
 
       {/* ─── Decoration Preview Modal ────────────────────────────── */}
-      <AnimatePresence>
-        {selectedItem && user && (
-          <DecorationModal
-            item={selectedItem}
-            user={{
-              photoURL: user.photoURL,
-              displayName: user.displayName,
-            }}
-            onClose={() => setSelectedItem(null)}
-            onBuy={() => {
-              handleBuyDecoration(selectedItem.id);
-              setSelectedItem(null);
-            }}
-            onEquip={() => {
-              handleEquipDecoration(selectedItem.id);
-              setSelectedItem(null);
-            }}
-            onUnequip={() => {
-              handleUnequipDecoration();
-              setSelectedItem(null);
-            }}
-            processing={processing}
-            reduced={!!reduced}
-          />
-        )}
-      </AnimatePresence>
+      {selectedItem && user && (
+        <DecorationModal
+          item={selectedItem}
+          user={{
+            photoURL: user.photoURL,
+            displayName: user.displayName,
+          }}
+          onClose={() => setSelectedItem(null)}
+          onBuy={() => {
+            handleBuyDecoration(selectedItem.id);
+            setSelectedItem(null);
+          }}
+          onEquip={() => {
+            handleEquipDecoration(selectedItem.id);
+            setSelectedItem(null);
+          }}
+          onUnequip={() => {
+            handleUnequipDecoration();
+            setSelectedItem(null);
+          }}
+          processing={processing}
+        />
+      )}
     </AppShell>
   );
 }

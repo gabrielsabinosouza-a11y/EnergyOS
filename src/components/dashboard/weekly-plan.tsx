@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Plus, Check, X, Loader2 } from "lucide-react";
 import type { Category, WeeklyPlan } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
@@ -126,7 +126,8 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
         ))}
       </div>
 
-      <Modal open={!!editingPlan} onClose={() => setEditingPlan(null)}>
+      {editingPlan && (
+        <Modal onClose={() => setEditingPlan(null)}>
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -196,7 +197,8 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
                 </button>
               </div>
         </div>
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 }
