@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
+import { formatStat } from "@/lib/format";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -514,9 +515,9 @@ export default function PerfilPage() {
   }
 
   const metrics = [
-    { icon: Moon, color: "#71d4ff", label: "Sono", kind: "sleep" as const },
-    { icon: Timer, color: "#b69cff", label: "Estudo", kind: "study" as const },
-    { icon: Target, color: "#ffb86b", label: "Treino", kind: "training" as const },
+    { icon: Moon, color: "#71d4ff", label: "Sono", kind: "sleep" as const, unit: "h" },
+    { icon: Timer, color: "#b69cff", label: "Estudo", kind: "study" as const, unit: "min" },
+    { icon: Target, color: "#ffb86b", label: "Treino", kind: "training" as const, unit: "min" },
   ];
 
   return (
@@ -826,17 +827,21 @@ export default function PerfilPage() {
             <div className="mb-6">
               <span className="eyebrow muted mb-4 block">MÉDIAS DA SEMANA</span>
               <div className="grid gap-3 sm:grid-cols-3">
-                {metrics.map(({ icon: Icon, color, label, kind }) => (
-                  <div key={label} className="metric-card flex items-center gap-3">
-                    <div className="metric-icon" style={{ color }}><Icon size={15} /></div>
-                    <div>
-                      <div className="metric-caption">{label}</div>
-                      <div className="font-display text-base text-[var(--text-secondary)]">
-                        {dashboard?.metrics.find((m) => m.kind === kind)?.value ?? "Sem dados"}
+                {metrics.map(({ icon: Icon, color, label, kind, unit }) => {
+                  const metric = dashboard?.metrics.find((m) => m.kind === kind);
+                  const displayValue = metric ? formatStat(metric.value, unit) : "Sem dados";
+                  return (
+                    <div key={label} className="metric-card flex items-center gap-3">
+                      <div className="metric-icon" style={{ color }}><Icon size={15} /></div>
+                      <div>
+                        <div className="metric-caption">{label}</div>
+                        <div className="font-display text-base text-[var(--text-secondary)]">
+                          {displayValue}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <p className="mt-4 text-xs text-[var(--text-faint)]">
                 Médias calculadas conforme você registrar check-ins diários.

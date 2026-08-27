@@ -101,9 +101,21 @@ export function AnimatedNumber({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
+  // Format with pt-BR locale (comma separator) when decimals > 0
+  const formatValue = (num: number, dec: number): string => {
+    if (dec === 0) {
+      return Math.round(num).toLocaleString("pt-BR");
+    }
+    const rounded = Math.round(num * Math.pow(10, dec)) / Math.pow(10, dec);
+    return rounded.toLocaleString("pt-BR", {
+      minimumFractionDigits: dec,
+      maximumFractionDigits: dec,
+    });
+  };
+
   return (
     <span className={className}>
-      {display.toFixed(decimals)}{suffix}
+      {formatValue(display, decimals)}{suffix}
     </span>
   );
 }

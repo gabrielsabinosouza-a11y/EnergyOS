@@ -36,9 +36,10 @@ const METRIC_ICONS: Record<string, React.ElementType> = { sleep: Moon, study: Ti
 const METRIC_COLORS: Record<string, string> = { sleep: "#71d4ff", study: "#b69cff", training: "#ffb86b" };
 
 function formatMetric(m: Metric) {
-  if (m.unit === "h") return m.value > 0 ? `${m.value.toFixed(1)}h` : "—";
-  if (m.unit === "min") return m.value > 0 ? `${Math.round(m.value)}min` : "—";
-  return m.value > 0 ? String(m.value) : "—";
+  if (m.value <= 0) return "—";
+  if (m.unit === "h") return `${m.value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h`;
+  if (m.unit === "min") return `${Math.round(m.value)}min`;
+  return String(m.value);
 }
 
 function todayLabel() {

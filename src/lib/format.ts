@@ -42,3 +42,38 @@ export function formatMessageTime(iso: string): string {
   }
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
+
+/**
+ * Format a numeric stat value for display, using pt-BR locale.
+ * - Rounds to 1 decimal place for fractional values
+ * - Uses comma as decimal separator (pt-BR)
+ * - Omits trailing ",0" for whole numbers
+ * - Handles edge cases (0, null, undefined, negative)
+ */
+export function formatStat(value: number | null | undefined, unit?: string): string {
+  if (value === null || value === undefined || value < 0) {
+    return "—";
+  }
+  
+  // For zero, return "0" with appropriate unit
+  if (value === 0) {
+    return unit ? `0${unit}` : "0";
+  }
+  
+  // Check if it's a whole number
+  const isWhole = value % 1 === 0;
+  
+  if (isWhole) {
+    // Whole number - format without decimals
+    return unit ? `${Math.round(value)}${unit}` : String(Math.round(value));
+  }
+  
+  // Fractional number - round to 1 decimal and format with pt-BR locale
+  const rounded = Math.round(value * 10) / 10;
+  const formatted = rounded.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  
+  return unit ? `${formatted}${unit}` : formatted;
+}

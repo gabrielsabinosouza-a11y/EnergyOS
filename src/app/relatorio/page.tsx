@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api-client";
+import { formatStat } from "@/lib/format";
 import {
   LineChart,
   Line,
@@ -268,7 +269,7 @@ export default function RelatorioPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-display text-[#71d4ff]">
-                    {reportData.weeklyComparison.thisWeek.sleep.toFixed(1)}h
+                    {formatStat(reportData.weeklyComparison.thisWeek.sleep, "h")}
                   </div>
                   <div className="text-xs text-[var(--text-muted)]">
                     média esta semana
@@ -323,7 +324,7 @@ export default function RelatorioPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-display text-[#b69cff]">
-                    {Math.round(reportData.weeklyComparison.thisWeek.study)}min
+                    {formatStat(reportData.weeklyComparison.thisWeek.study, "min")}
                   </div>
                   <div className="text-xs text-[var(--text-muted)]">
                     média esta semana
@@ -518,8 +519,16 @@ function ComparisonCard({
   color: string; 
 }) {
   const change = current - previous;
-  const percentChange = previous > 0 ? ((change / previous) * 100).toFixed(1) : '0';
+  const percentChange = previous > 0 ? Math.round(((change / previous) * 100) * 10) / 10 : 0;
   const isPositive = change >= 0;
+  
+  // Format values based on unit
+  const formatCurrent = (): string => {
+    if (unit === "h") return formatStat(current, "h");
+    if (unit === "min") return formatStat(current, "min");
+    if (unit === "%") return `${Math.round(current)}%`;
+    return formatStat(current);
+  };
 
   return (
     <div className="bg-[var(--bg-surface-hover)] rounded-lg p-4">
@@ -530,13 +539,13 @@ function ComparisonCard({
       <div className="flex items-end justify-between">
         <div>
           <div className="text-2xl font-display" style={{ color }}>
-            {current.toFixed(1)}{unit}
+            {formatCurrent()}
           </div>
           <div className="text-xs text-[var(--text-muted)]">esta semana</div>
         </div>
         <div className={`text-right ${isPositive ? 'text-[#6bffb8]' : 'text-red-400'}`}>
           <div className="text-sm font-medium">
-            {isPositive ? '+' : ''}{percentChange}%
+            {isPositive ? '+' : ''}{percentChange.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
           </div>
           <div className="text-xs text-[var(--text-muted)]">vs. anterior</div>
         </div>
