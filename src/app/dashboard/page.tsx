@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Shield, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Shield, Sparkles, Target, Timer } from "lucide-react";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -544,7 +544,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        {/* Focus Timer + Insight */}
+        {/* Focus Timer + Daily Tasks */}
         <section className="mb-8 grid gap-5 lg:grid-cols-2">
           <div className="lg:col-span-1">
             <FocusTimer
@@ -555,19 +555,7 @@ export default function DashboardPage() {
             />
           </div>
           <div className="lg:col-span-1">
-            {/* Insight */}
-            {snapshot?.insights?.[0] ? (
-              <div className="insight-panel p-6 h-full">
-                <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-                <h2 className="mt-5 font-display text-base leading-tight text-[var(--text-secondary)]">{snapshot.insights[0].title}</h2>
-                <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{snapshot.insights[0].description}</p>
-              </div>
-            ) : (
-              <div className="insight-panel p-6 flex flex-col justify-center h-full">
-                <span className="eyebrow orange"><TrendingUp size={13} /> INSIGHT</span>
-                <p className="mt-5 text-xs text-[var(--text-muted)]">Os insights aparecem conforme voce registra check-ins e conclui tarefas.</p>
-              </div>
-            )}
+            <DailyTasksWidget />
           </div>
         </section>
       </main>
