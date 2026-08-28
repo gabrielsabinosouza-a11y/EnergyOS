@@ -509,6 +509,7 @@ export default function LojaPage() {
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+  const [equippedEnergyId, setEquippedEnergyId] = useState<string | null>("flame");
 
   function flash(msg: string) {
     setFeedback(msg);
@@ -520,6 +521,7 @@ export default function LojaPage() {
       const data = await api.getStore();
       setStore(data);
       if (data.ownedAuras) setOwnedAuras(data.ownedAuras);
+      setEquippedEnergyId(data.equippedEnergyId ?? "flame");
     } catch {
       setError("Não foi possível carregar a loja.");
     } finally {
@@ -681,6 +683,33 @@ export default function LojaPage() {
       flash(`${ENERGY_CONFIGS[type as EnergyType]?.label ?? type} comprado!`);
     } catch {
       setError("Moedas insuficientes ou energia já possuída.");
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleEquipAura(type: string) {
+    setProcessing(`aura-equip-${type}`);
+    try {
+      await api.equipAura(type);
+      setEquippedEnergyId(type);
+      flash(`${ENERGY_CONFIGS[type as EnergyType]?.label ?? type} equipada!`);
+    } catch {
+      setError("Erro ao equipar energia.");
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleUnequipAura() {
+    if (!equippedEnergyId) return;
+    setProcessing(`aura-unequip-${equippedEnergyId}`);
+    try {
+      await api.equipAura(null);
+      setEquippedEnergyId(null);
+      flash("Energia desequipada — padrão: Flame");
+    } catch {
+      setError("Erro ao desequipar energia.");
     } finally {
       setProcessing(null);
     }
@@ -1006,15 +1035,21 @@ export default function LojaPage() {
                 const info = AURA_DEFS[type];
                 const rc = AURA_RARITY_COLORS[info.rarity];
                 const isOwned = ownedAuras.includes(type);
-                const isProcessing = processing === `aura-${type}`;
+                const isEquipped = equippedEnergyId === type;
+                const isProcessing = processing === `aura-${type}` || processing === `aura-equip-${type}` || processing === `aura-unequip-${type}`;
                 const balance = store.balance;
                 return (
                   <div
                     key={type}
                     className="flex flex-col items-center gap-2 rounded-xl border p-4 text-center"
                     style={{
-                      borderColor: isOwned ? `${rc.border}33` : "var(--border-subtle)",
-                      background: isOwned ? rc.bg : "var(--bg-tertiary)",
+                      borderColor: isEquipped
+                        ? `${rc.border}88`
+                        : isOwned
+                          ? `${rc.border}33`
+                          : "var(--border-subtle)",
+                      background: isEquipped ? rc.bg : isOwned ? rc.bg : "var(--bg-tertiary)",
+                      boxShadow: isEquipped ? `0 0 20px ${rc.glow}` : undefined,
                     }}
                   >
                     <div className="relative flex h-16 w-16 items-center justify-center">
@@ -1045,10 +1080,35 @@ export default function LojaPage() {
                     </span>
 
                     {isOwned ? (
-                      <span className="flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
-                        <Check size={10} />
-                        Possuída
-                      </span>
+                      isEquipped ? (
+                        <div className="flex w-full flex-col gap-1.5">
+                          <span className="flex items-center justify-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
+                            <Check size={10} />
+                            Equipada
+                          </span>
+                          <button
+                            onClick={handleUnequipAura}
+                            disabled={isProcessing}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-1.5 text-[10px] text-[var(--text-muted)] transition hover:bg-white/[0.06] disabled:opacity-40"
+                          >
+                            {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Desequipar"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-col gap-1.5">
+                          <span className="flex items-center justify-center gap-1 rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+                            Possuída
+                          </span>
+                          <button
+                            onClick={() => handleEquipAura(type)}
+                            disabled={isProcessing}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-semibold transition disabled:opacity-40"
+                            style={{ background: rc.bg, color: rc.border, border: `1px solid ${rc.border}33` }}
+                          >
+                            {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Equipar"}
+                          </button>
+                        </div>
+                      )
                     ) : (
                       <button
                         onClick={() => handleBuyAura(type)}

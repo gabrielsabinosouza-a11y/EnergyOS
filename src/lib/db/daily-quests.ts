@@ -5,9 +5,10 @@ import { parseProfileId } from "./validation";
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso } from "./dates";
 import { ConflictError, NotFoundError } from "../errors";
+import { DAILY_MISSION_LIMIT } from "../daily-limits";
 
-// Number of missions randomly assigned to each user per day.
-export const DAILY_MISSION_LIMIT = 3;
+// Re-export for server callers
+export { DAILY_MISSION_LIMIT };
 
 // ========================================
 // Quest Definitions (mission pool)

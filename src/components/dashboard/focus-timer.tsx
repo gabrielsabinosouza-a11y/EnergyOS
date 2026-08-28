@@ -7,7 +7,7 @@ import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
-import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 import { addGardenEntry } from "@/lib/garden-store";
 
@@ -336,13 +336,23 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     }
   }, [state]);
 
-  // Load which auras this user owns
+  // Load owned auras + equipped default from profile
   useEffect(() => {
-    // If window exists, we're client-side and auth is available via the request
     api.getStore()
       .then((data) => {
-        if (data.ownedAuras && data.ownedAuras.length > 0) {
-          setOwnedAuras(data.ownedAuras);
+        const owned = data.ownedAuras?.length ? data.ownedAuras : ["flame", "water"];
+        setOwnedAuras(owned);
+
+        const persisted = loadSessionState();
+        const hasActiveSession =
+          persisted &&
+          (persisted.status === "running" || persisted.status === "paused") &&
+          persisted.sessionId;
+
+        if (!hasActiveSession) {
+          const def = resolveEquippedEnergy(owned, data.equippedEnergyId);
+          setSelectedEnergy(def);
+          selectedEnergyRef.current = def;
         }
       })
       .catch(() => { /* default owns flame+water */ });

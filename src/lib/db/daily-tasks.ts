@@ -1,21 +1,16 @@
 import pool from "../db";
-import { ForbiddenError, NotFoundError, ValidationError } from "../errors";
-import { parseProfileId } from "./validation";
+import { ForbiddenError, NotFoundError } from "../errors";
+import { parseProfileId, ValidationError } from "./validation";
 import { todayIso } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
 
-/** Max user-written daily tasks per day. */
-export const DAILY_TASK_LIMIT = 3;
-
-/** XP awarded when the user checks off one daily task. */
-export const DAILY_TASK_XP = 10;
-
-/** Coins awarded per completed daily task. */
-export const DAILY_TASK_COINS = 5;
-
-/** Bonus coins when all daily tasks for the day are completed. */
-export const DAILY_TASK_ALL_BONUS_COINS = 10;
+import {
+  DAILY_TASK_LIMIT,
+  DAILY_TASK_XP,
+  DAILY_TASK_COINS,
+  DAILY_TASK_ALL_BONUS_COINS,
+} from "../daily-limits";
 
 export interface UserDailyTask {
   id: number;
@@ -49,6 +44,17 @@ function mapRow(row: Row): UserDailyTask {
 export async function ensureDailyTasksSchema(): Promise<void> {
   await pool.query(`alter table user_daily_tasks add column if not exists title text`);
   await pool.query(`alter table user_daily_tasks alter column task_id drop not null`);
+  await pool.query(`
+    do $$ begin
+      alter table xp_ledger drop constraint if exists xp_ledger_source_check;
+    exception when undefined_object then null;
+    end $$`);
+  await pool.query(`
+    do $$ begin
+      alter table xp_ledger add constraint xp_ledger_source_check
+        check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task'));
+    exception when duplicate_object then null;
+    end $$`);
 }
 
 /**
@@ -163,8 +169,8 @@ export async function toggleDailyTask(
     );
     await pool.query(
       `insert into user_xp (profile_id, total_xp, level, updated_at)
-       values ($1, $3, 1, now())
-       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
+       values ($1, $2, 1, now())
+       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
       [profileId, xpAwarded],
     );
     await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded, questDate: date });
@@ -181,4 +187,10 @@ export async function toggleDailyTask(
   return { task, xpAwarded, coinsAwarded };
 }
 
-export { todayIso };
+export { todayIso } from "./dates";
+export {
+  DAILY_TASK_LIMIT,
+  DAILY_TASK_XP,
+  DAILY_TASK_COINS,
+  DAILY_TASK_ALL_BONUS_COINS,
+} from "../daily-limits";

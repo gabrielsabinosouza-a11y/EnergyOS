@@ -98,3 +98,13 @@ export function getEnergyReward(durationMinutes: number): number {
   if (durationMinutes >= 10) return 1;
   return 0;
 }
+
+/** Picks the user's equipped aura when owned, else flame, else first owned. */
+export function resolveEquippedEnergy(ownedAuras: string[], equippedEnergyId?: string | null): EnergyType {
+  if (equippedEnergyId && ownedAuras.includes(equippedEnergyId)) {
+    return equippedEnergyId as EnergyType;
+  }
+  if (ownedAuras.includes("flame")) return "flame";
+  if (ownedAuras.length > 0) return ownedAuras[0] as EnergyType;
+  return "flame";
+}

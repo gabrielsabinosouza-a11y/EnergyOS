@@ -170,10 +170,14 @@ export const api = {
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
   claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
-  // Daily Tasks (exactly 3 random/day)
+  // Daily Tasks (user-written, reset daily)
   getDailyTasks: () => request<{ tasks: UserDailyTask[]; date: string }>("/api/daily-tasks"),
+  createDailyTask: (title: string) =>
+    request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify({ title }) }),
   toggleDailyTask: (id: number, completed: boolean) =>
-    request<{ task: UserDailyTask; xpAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+  deleteDailyTask: (id: number) =>
+    request<{ ok: boolean }>(`/api/daily-tasks/${id}`, { method: "DELETE" }),
 
   // Env / config status (diagnostic: masked values, never full secrets)
   getEnvStatus: () => request<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean }>("/api/env-status"),
@@ -262,13 +266,15 @@ export const api = {
     request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
 
   // Store
-  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[] }>("/api/store"),
+  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[]; equippedEnergyId: string | null }>("/api/store"),
   purchaseDecoration: (decorationId: string) =>
     request<{ balance: number }>("/api/store/decorations", { method: "POST", body: JSON.stringify({ decorationId }) }),
   equipDecoration: (decorationId: string | null) =>
     request<{ ok: true }>("/api/store/decorations", { method: "PATCH", body: JSON.stringify({ decorationId }) }),
   purchaseAura: (auraType: string) =>
     request<{ balance: number }>("/api/store/auras", { method: "POST", body: JSON.stringify({ auraType }) }),
+  equipAura: (auraType: string | null) =>
+    request<{ ok: true }>("/api/store/auras", { method: "PATCH", body: JSON.stringify({ auraType }) }),
   unlockBanner: () =>
     request<{ balance: number }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "unlock" }) }),
   updateBannerImage: (imageUrl: string) =>

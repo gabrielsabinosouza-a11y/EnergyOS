@@ -29,7 +29,7 @@ import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
 import { addGardenEntry } from "@/lib/garden-store";
 
@@ -292,12 +292,13 @@ export default function FocusRoomsPage() {
     if (loading || !user) return;
     api.getStore()
       .then((data) => {
-        if (!data.ownedAuras?.length) return;
-        setOwnedAuras(data.ownedAuras);
+        const owned = data.ownedAuras?.length ? data.ownedAuras : ["flame", "water"];
+        setOwnedAuras(owned);
+        const def = resolveEquippedEnergy(owned, data.equippedEnergyId);
         setSelectedEnergyType((prev) => {
-          if (data.ownedAuras.includes(prev)) return prev;
-          if (data.ownedAuras.includes("flame")) return "flame";
-          return data.ownedAuras[0];
+          const next = owned.includes(prev) ? prev : def;
+          selectEnergyRef.current = next;
+          return next;
         });
       })
       .catch(() => { /* default flame+water */ });

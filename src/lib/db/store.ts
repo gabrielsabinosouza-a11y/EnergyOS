@@ -347,6 +347,41 @@ export async function ensureDefaultAuras(profileId: string): Promise<void> {
     `insert into user_auras (profile_id, aura_type) values ($1, 'flame'), ($1, 'water') on conflict do nothing`,
     [profileId],
   );
+  await pool.query(
+    `update profiles set equipped_energy_id = 'flame' where id = $1 and equipped_energy_id is null`,
+    [profileId],
+  );
+}
+
+export async function getEquippedEnergyId(profileId: string): Promise<string | null> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ equipped_energy_id: string | null }>(
+    `select equipped_energy_id from profiles where id = $1`,
+    [profileId],
+  );
+  return result.rows[0]?.equipped_energy_id ?? null;
+}
+
+export async function equipAura(
+  profileId: string,
+  auraType: string | null,
+): Promise<void> {
+  parseProfileId(profileId);
+  if (auraType) {
+    if (!AURA_TYPES.includes(auraType)) {
+      throw new NotFoundError("Energia não encontrada.");
+    }
+    const owned = await pool.query(
+      `select 1 from user_auras where profile_id = $1 and aura_type = $2`,
+      [profileId, auraType],
+    );
+    if (!owned.rows[0]) throw new ForbiddenError("Você não possui esta energia.");
+  }
+  const result = await pool.query(
+    `update profiles set equipped_energy_id = $2 where id = $1`,
+    [profileId, auraType],
+  );
+  if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Perfil não encontrado.");
 }
 
 export async function purchaseAura(

@@ -13,12 +13,12 @@ import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { GoalsCard } from "@/components/dashboard/goals-card";
-import { DailyTasksWidget } from "@/components/dashboard/daily-tasks-widget";
 import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
+import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
 import { AnimatedNumber, ProgressBar } from "@/components/ui";
 
 import type { Variants } from "framer-motion";
@@ -179,7 +179,7 @@ export default function DashboardPage() {
         api.getDailyQuests()
           .then((data) => { 
             if (!cancelled) { 
-              setDailyQuests(data.quests);
+              setDailyQuests(data.quests.slice(0, DAILY_MISSION_LIMIT));
             } 
           })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar missões diárias." })); }),
@@ -518,12 +518,6 @@ export default function DashboardPage() {
           )}
         </section>
 
-        {/* Goals + Daily Tasks */}
-        <section className="mb-8 grid gap-5 lg:grid-cols-2">
-          <GoalsCard goals={goals} />
-          <DailyTasksWidget />
-        </section>
-
         {/* Weekly Plan */}
         <section className="mb-8">
           <WeeklyPlan plans={weeklyPlans} categories={categories} onDelete={deletePlan} onCreate={createPlan} onUpdate={updatePlan} onToggleCompleted={togglePlanCompleted} />
@@ -544,19 +538,15 @@ export default function DashboardPage() {
           />
         </section>
 
-        {/* Focus Timer + Daily Tasks */}
+        {/* Focus + Goals */}
         <section className="mb-8 grid gap-5 lg:grid-cols-2">
-          <div className="lg:col-span-1">
-            <FocusTimer
-              todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
-              history={focusData?.history ?? []}
-              onStart={startFocus}
-              onEnd={endFocus}
-            />
-          </div>
-          <div className="lg:col-span-1">
-            <DailyTasksWidget />
-          </div>
+          <FocusTimer
+            todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
+            history={focusData?.history ?? []}
+            onStart={startFocus}
+            onEnd={endFocus}
+          />
+          <GoalsCard goals={goals} />
         </section>
       </main>
 

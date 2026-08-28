@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, ChevronRight, Clock, Sparkles, CircleDollarSign, Package, Loader2, AlertTriangle } from "lucide-react";
 import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
-import { todayIso } from "@/lib/db/dates";
+import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
 
 const QUEST_TITLES: Record<string, string> = {
   SESSIONS_COUNT: "Complete 2 sessões hoje",
@@ -39,22 +39,22 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
     }
   }, [claimError]);
 
-  useEffect(() => {
-    if (initialQuests.length > 0) {
-      setQuests(initialQuests);
-    } else {
-      fetchQuests();
-    }
-  }, [initialQuests]);
-
   const fetchQuests = useCallback(async () => {
     try {
       const data = await api.getDailyQuests();
-      setQuests(data.quests);
+      setQuests(data.quests.slice(0, DAILY_MISSION_LIMIT));
     } catch (error) {
       console.error("Failed to fetch daily quests:", error);
     }
   }, []);
+
+  useEffect(() => {
+    if (initialQuests.length > 0) {
+      setQuests(initialQuests.slice(0, DAILY_MISSION_LIMIT));
+    } else {
+      fetchQuests();
+    }
+  }, [initialQuests, fetchQuests]);
 
   const handleClaim = useCallback(async (progressId: number, index: number) => {
     const quest = quests[index];
@@ -140,6 +140,9 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-[var(--accent)]" />
           <span className="eyebrow muted">MISSÕES DIÁRIAS</span>
+          <span className="rounded-full bg-[var(--bg-surface-hover)] px-2 py-0.5 text-[9px] text-[var(--text-faint)]">
+            {DAILY_MISSION_LIMIT} por dia
+          </span>
         </div>
         <span className="text-[10px] text-[var(--text-faint)]">
           Novas em {hours}h {minutes}min
