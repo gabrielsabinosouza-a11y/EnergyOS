@@ -8,12 +8,12 @@ import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import Link from "next/link";
-import type { Task, Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest, StreakDayStatus } from "@/types";
+import type { Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest, StreakDayStatus } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { GoalsCard } from "@/components/dashboard/goals-card";
-import { TodoList } from "@/components/dashboard/todo-list";
+import { DailyTasksWidget } from "@/components/dashboard/daily-tasks-widget";
 import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
@@ -99,7 +99,6 @@ export default function DashboardPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const reduced = useReducedMotion();
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
@@ -144,7 +143,6 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error();
       const data = (await res.json()) as DashboardSnapshotResponse;
       setSnapshot(data);
-      setTasks(data.tasks);
     } catch {
       setSectionErrors((prev) => ({ ...prev, metrics: "Nao foi possivel carregar as medias." }));
     } finally {
@@ -161,7 +159,7 @@ export default function DashboardPage() {
       Promise.allSettled([
         fetch("/api/dashboard", { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => r.ok ? r.json() : Promise.reject())
-          .then((data) => { if (!cancelled) { setSnapshot(data); setTasks(data.tasks); } })
+          .then((data) => { if (!cancelled) { setSnapshot(data); } })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, metrics: "Nao foi possivel carregar as medias." })); }),
         api.getGoals()
           .then((bundles) => { if (!cancelled) setGoals(bundles.map((b) => b.goal)); })
@@ -211,58 +209,6 @@ export default function DashboardPage() {
       showError(error instanceof Error ? error.message : "Nao foi possivel salvar o check-in.");
     } finally {
       setCheckinSaving(false);
-    }
-  }
-
-  async function toggleTask(task: Task) {
-    const completed = !task.completedAt;
-    const previousTasks = tasks;
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, completedAt: completed ? new Date().toISOString() : undefined } : t));
-    try {
-      const response = await api.setTaskCompleted(task.id, completed);
-      setTasks((prev) => prev.map((item) => item.id === task.id ? response.task : item));
-    } catch (error) {
-      setTasks(previousTasks);
-      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar a tarefa.");
-    }
-  }
-
-  async function deleteTask(id: number) {
-    const previousTasks = tasks;
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-    try {
-      await api.deleteTask(id);
-    } catch (error) {
-      setTasks(previousTasks);
-      showError(error instanceof Error ? error.message : "Nao foi possivel excluir a tarefa.");
-    }
-  }
-
-  async function createTask(title: string, categoryId: number) {
-    try {
-      const result = await api.createTask({ title, categoryId });
-      setTasks((prev) => [...prev, result.task]);
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel criar a tarefa.");
-    }
-  }
-
-  async function updateTask(id: number, title: string, categoryId: number) {
-    try {
-      const result = await api.updateTask(id, { title, categoryId });
-      setTasks((prev) => prev.map((item) => item.id === id ? result.task : item));
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel editar a tarefa.");
-    }
-  }
-
-  async function promoteTask(taskId: number) {
-    try {
-      const result = await api.promoteTaskToKanban(taskId);
-      setKanbanTasks((prev) => [...prev, result.task]);
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, completedAt: new Date().toISOString() } : t));
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel promover a tarefa.");
     }
   }
 
@@ -380,10 +326,6 @@ export default function DashboardPage() {
     return result;
   }
 
-  const completed = tasks.filter((t) => Boolean(t.completedAt)).length;
-  const total = tasks.length;
-  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const streakQualified = percentage >= 50;
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
 
   const checkins = snapshot?.checkins ?? [];
@@ -576,19 +518,10 @@ export default function DashboardPage() {
           )}
         </section>
 
-        {/* Goals + Todo */}
+        {/* Goals + Daily Tasks */}
         <section className="mb-8 grid gap-5 lg:grid-cols-2">
           <GoalsCard goals={goals} />
-          <TodoList
-            tasks={tasks}
-            categories={categories}
-            onToggle={toggleTask}
-            onDelete={deleteTask}
-            onCreate={createTask}
-            onUpdate={updateTask}
-            onPromote={promoteTask}
-            streakQualified={streakQualified}
-          />
+          <DailyTasksWidget />
         </section>
 
         {/* Weekly Plan */}

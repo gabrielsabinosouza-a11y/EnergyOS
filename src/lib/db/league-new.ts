@@ -48,7 +48,7 @@ function mapLeagueGroup(row: LeagueGroupRow): LeagueGroup {
   };
 }
 
-function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string }): LeagueGroupMember {
+function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string; equipped_decoration_id?: string | null }): LeagueGroupMember {
   return {
     id: Number(row.id),
     leagueGroupId: Number(row.league_group_id),
@@ -59,6 +59,7 @@ function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: strin
       displayName: row.display_name,
       photoUrl: row.photo_url ?? undefined,
       username: row.username ?? undefined,
+      equippedDecorationId: row.equipped_decoration_id ?? undefined,
     } : undefined,
     weeklyXP: row.weekly_xp,
     rank: row.rank ?? 0,
@@ -330,7 +331,7 @@ export async function addMemberToGroup(groupId: number, profileId: string): Prom
 
 export async function getLeagueGroupMembers(groupId: number): Promise<LeagueGroupMember[]> {
   const result = await pool.query<LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string }>(
-    `select lgm.*, p.display_name, p.photo_url, p.username
+    `select lgm.*, p.display_name, p.photo_url, p.username, p.equipped_decoration_id
      from league_group_members lgm left join profiles p on lgm.profile_id = p.id
      where lgm.league_group_id = $1 order by lgm.weekly_xp desc, lgm.joined_at`,
     [groupId]
@@ -340,7 +341,7 @@ export async function getLeagueGroupMembers(groupId: number): Promise<LeagueGrou
 
 export async function getLeagueGroupMember(groupId: number, profileId: string): Promise<LeagueGroupMember | null> {
   const result = await pool.query<LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string }>(
-    `select lgm.*, p.display_name, p.photo_url, p.username
+    `select lgm.*, p.display_name, p.photo_url, p.username, p.equipped_decoration_id
      from league_group_members lgm left join profiles p on lgm.profile_id = p.id
      where lgm.league_group_id = $1 and lgm.profile_id = $2`,
     [groupId, profileId]

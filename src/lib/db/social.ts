@@ -216,8 +216,8 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const isOwner = viewerId === otherId;
   if (!isOwner) await assertFriends(viewerId, otherId);
 
-  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null }>(
-    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id
      from profiles where id = $1`,
     [otherId],
   );
@@ -246,6 +246,7 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
     currentStreak: streak.currentStreak,
     longestStreak: Math.max(streak.longestStreak, row.longest_streak ?? 0),
     weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
     achievements,
     featuredAchievements: featured,
     isFriend,

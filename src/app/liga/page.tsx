@@ -12,6 +12,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
+import { Avatar as SharedAvatar } from "@/components/avatar";
 import type { NewLeagueTier } from "@/types";
 import type { LeagueNewSnapshot } from "@/lib/db/league-new";
 
@@ -83,17 +84,14 @@ function fmtCountdown(t: { days: number; hours: number; minutes: number; seconds
 
 // ── Avatar cell ───────────────────────────────────────────────────────────────
 
-function Avatar({ photoUrl, name, size = 32 }: { photoUrl?: string; name?: string; size?: number }) {
-  const initials = (name ?? "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+function Avatar({ photoUrl, name, size = 32, equippedDecorationId }: { photoUrl?: string; name?: string; size?: number; equippedDecorationId?: string }) {
   return (
-    <div
-      className="shrink-0 rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-bg)] font-bold text-[var(--accent)]"
-      style={{ width: size, height: size, fontSize: size * 0.35 }}
-    >
-      {photoUrl
-        ? <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
-        : initials}
-    </div>
+    <SharedAvatar
+      photoUrl={photoUrl}
+      name={name}
+      size={size}
+      equippedDecorationId={equippedDecorationId}
+    />
   );
 }
 
@@ -333,7 +331,7 @@ export default function LigaPage() {
 
                     {/* Avatar + name */}
                     <div className="flex items-center gap-2 min-w-0">
-                      <Avatar photoUrl={photoUrl} name={name} size={32} />
+                      <Avatar photoUrl={photoUrl} name={name} size={32} equippedDecorationId={member.profile?.equippedDecorationId} />
                       <div className="min-w-0">
                         <p className="truncate text-[11px] font-medium text-[var(--text)]">{name}</p>
                         {isMe && <p className="text-[8px] text-amber-400">você</p>}

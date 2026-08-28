@@ -1,4 +1,6 @@
 import pool from "../db";
+import { recordMissionProgress } from "./daily-quests";
+import { todayIso } from "./dates";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired";
@@ -555,6 +557,24 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
      where room_id = $2 and session_status = 'focusing'`,
     [now, roomId],
   );
+
+  // Advance the "participate in N different rooms today" mission (DISTINCT_ROOMS)
+  // for every participant who just finished in this room.
+  const participants = await pool.query<{ profile_id: string }>(
+    `select distinct profile_id from room_participants
+     where room_id = $1 and session_status = 'completed'`,
+    [roomId],
+  );
+  const today = todayIso();
+  const dayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
+  for (const p of participants.rows) {
+    const cnt = await pool.query<{ n: string | number }>(
+      `select count(distinct room_id) as n from room_participants
+       where profile_id = $1 and completed_at is not null and completed_at >= $2`,
+      [p.profile_id, dayStart],
+    );
+    await recordMissionProgress(p.profile_id, "DISTINCT_ROOMS", { setTo: Number(cnt.rows[0]?.n || 0) });
+  }
 
   const room = await pool.query<{ id: string | number; host_profile_id: string }>(
     `select id, host_profile_id from focus_rooms where id = $1`,

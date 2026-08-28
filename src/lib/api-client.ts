@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, User, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -169,6 +169,14 @@ export const api = {
   // Daily Quests
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
   claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
+
+  // Daily Tasks (exactly 3 random/day)
+  getDailyTasks: () => request<{ tasks: UserDailyTask[]; date: string }>("/api/daily-tasks"),
+  toggleDailyTask: (id: number, completed: boolean) =>
+    request<{ task: UserDailyTask; xpAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+
+  // Env / config status (diagnostic: masked values, never full secrets)
+  getEnvStatus: () => request<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean }>("/api/env-status"),
 
   // Focus Rooms
   createFocusRoom: (durationMinutes: number, energyType?: string) =>

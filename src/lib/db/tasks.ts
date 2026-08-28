@@ -4,6 +4,7 @@ import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { consumeShield, getShieldCount, logStreakDay } from "./store";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
+import { recordMissionProgress } from "./daily-quests";
 
 function assertTaskId(taskId: number): void {
   if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");
@@ -153,6 +154,9 @@ export async function setTaskCompleted(profileId: string, taskId: number, comple
     [profileId, taskId, completed],
   );
   if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+  if (completed) {
+    await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1 });
+  }
   const result = await pool.query<TaskRow>(`${TASK_SELECT} where t.id = $1`, [updated.rows[0].id]);
   return mapTask(result.rows[0]);
 }
@@ -277,6 +281,12 @@ export async function computeStreak(profileId: string, today: string): Promise<S
 
   const todayEntry = chronological.find((day) => day.date === today);
   await persistStreak(profileId, streak, longest);
+
+  // Record the "keep your streak alive one more day" mission (idempotent: it
+  // sets today's value to 1 or 0 rather than incrementing, so repeated reads
+  // never over-count).
+  const todayQualifies = Boolean(todayEntry && todayEntry.total > 0 && todayEntry.completed / todayEntry.total >= 0.5);
+  await recordMissionProgress(profileId, "STREAK_DAY", { setTo: todayQualifies ? 1 : 0, questDate: today });
 
   // Pull latest streak-day log statuses so the UI can render saved/protected/lost states.
   const yesterday = addDays(today, -1);

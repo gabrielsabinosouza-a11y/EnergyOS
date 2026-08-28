@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Timer, Trophy, Lock } from "lucide-react";
+import { X, Timer } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { api } from "@/lib/api-client";
 import type { PublicProfile } from "@/types";
 import { Modal } from "@/components/modal";
+import { Avatar } from "@/components/avatar";
+import { AchievementBadge } from "@/lib/achievement-ui";
 
 interface ProfileModalProps {
   profileId: string;
@@ -24,10 +27,6 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [profileId]);
-
-  const initials = profile?.displayName
-    ? profile.displayName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-    : "?";
 
   return (
     <Modal onClose={onClose}>
@@ -49,11 +48,12 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
           <>
             {/* Avatar + name */}
             <div className="flex items-center gap-4 mb-6">
-              <div className="h-14 w-14 shrink-0 rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-bg)] text-lg font-bold text-[var(--accent)]">
-                {profile.photoUrl
-                  ? <img src={profile.photoUrl} alt={profile.displayName} className="h-full w-full object-cover" />
-                  : initials}
-              </div>
+              <Avatar
+                photoUrl={profile.photoUrl}
+                name={profile.displayName}
+                size={56}
+                equippedDecorationId={profile.equippedDecorationId}
+              />
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
@@ -101,17 +101,23 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                 <div className="flex gap-3 flex-wrap">
                   {profile.featuredAchievements.map((ach) => (
                     <div key={ach.id} className="flex flex-col items-center gap-1">
-                      <div className="h-10 w-10 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
-                        {ach.unlockedTier > 0
-                          ? <Trophy size={18} className="text-[var(--accent)]" />
-                          : <Lock size={14} className="text-[var(--text-faint)]" />}
-                      </div>
+                      <AchievementBadge achievement={ach} size={40} iconSize={18} />
                       <span className="text-[9px] text-[var(--text-faint)] max-w-[48px] text-center leading-tight">{ach.title}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+
+            {/* View full profile */}
+            <Link
+              href={`/perfil/${profile.id}`}
+              onClick={onClose}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-bg)] px-4 py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-bg)]/70"
+            >
+              Ver perfil completo
+              <span aria-hidden>→</span>
+            </Link>
           </>
         )}
       </div>

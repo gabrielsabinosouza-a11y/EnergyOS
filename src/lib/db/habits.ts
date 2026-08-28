@@ -2,6 +2,7 @@ import pool, { mapHabitRow, type DbHabitRow, type HabitWithCompletion } from "..
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseEnum, parseProfileId, parseTitle } from "./validation";
 import { todayIso } from "./dates";
+import { recordMissionProgress } from "./daily-quests";
 
 export const HABIT_FREQUENCY_VALUES = ["daily", "weekly"] as const;
 export type HabitFrequency = (typeof HABIT_FREQUENCY_VALUES)[number];
@@ -132,6 +133,7 @@ export async function setHabitCompletion(
        on conflict (habit_id, completed_date) do nothing`,
       [habitId, profileId, targetDate],
     );
+    await recordMissionProgress(profileId, "HABITS_COMPLETED", { incrementBy: 1, questDate: todayIso() });
   } else {
     await pool.query(
       `delete from habit_completions where habit_id = $1 and completed_date = $2::date`,

@@ -11,6 +11,7 @@ import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
 import type { AchievementProgress } from "@/types";
+import { FRAME_ASSETS } from "@/components/avatar";
 import React from "react";
 import Image from "next/image";
 import {
@@ -371,6 +372,7 @@ export default function PerfilPage() {
   const [photoSaving, setPhotoSaving] = useState(false);
   const [photoError, setPhotoError] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [equippedDecorationId, setEquippedDecorationId] = useState<string | undefined>();
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
@@ -378,6 +380,8 @@ export default function PerfilPage() {
   const [recaps, setRecaps] = useState<MonthlyRecapType[]>([]);
   const [generatingRecap, setGeneratingRecap] = useState(false);
   const [recapError, setRecapError] = useState("");
+  const [envStatus, setEnvStatus] = useState<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean } | null>(null);
+  const [showEnv, setShowEnv] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
 
@@ -389,12 +393,15 @@ export default function PerfilPage() {
       api.getAchievements().catch(() => null),
       api.getRecaps().catch(() => null),
       api.getProfile().catch(() => null),
-    ]).then(([dash, ach, recapResult, profileResult]) => {
+      api.getEnvStatus().catch(() => null),
+    ]).then(([dash, ach, recapResult, profileResult, env]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
       if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
+      if (profileResult?.user?.equippedDecorationId) setEquippedDecorationId(profileResult.user.equippedDecorationId);
+      if (env) setEnvStatus(env);
     });
     return () => { active = false; };
   }, [user?.uid]);
@@ -453,16 +460,18 @@ export default function PerfilPage() {
 
   async function uploadPhoto(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file || !auth?.currentUser) return;
-    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
-      setPhotoError("Escolha uma imagem de até 5 MB.");
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 7 * 1024 * 1024) {
+      setPhotoError("Escolha uma imagem de até 7 MB.");
       return;
     }
     setPhotoSaving(true);
     setPhotoError("");
     try {
       const photoUrl = await fileToDataUrl(file);
-      await updateProfile(auth.currentUser, { photoURL: photoUrl });
+      if (auth?.currentUser) {
+        try { await updateProfile(auth.currentUser, { photoURL: photoUrl }); } catch { /* best-effort */ }
+      }
       await api.updatePhotoUrl(photoUrl);
       setPhotoUrl(photoUrl);
       setSaved(true);
@@ -539,6 +548,49 @@ export default function PerfilPage() {
         <div className="mx-auto max-w-2xl">
           <Header eyebrow="CONTA" title="Meu perfil" />
 
+          {/* ─── Env / config status (diagnostic) ─────────────── */}
+          {envStatus && (
+            <button
+              onClick={() => setShowEnv((v) => !v)}
+              className="mb-6 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3 text-left text-sm transition-colors hover:border-[var(--accent-border)]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-[var(--text)]">Status do ambiente</span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    envStatus.allSet
+                      ? "bg-green-500/15 text-green-400"
+                      : "bg-amber-500/15 text-amber-400"
+                  }`}
+                >
+                  {envStatus.allSet ? "Todas configuradas" : "Faltam variáveis"}
+                </span>
+              </div>
+              {showEnv && (
+                <div className="mt-3 space-y-3 border-t border-[var(--border-subtle)] pt-3">
+                  {envStatus.groups.map((group) => (
+                    <div key={group.label}>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+                        {group.label}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {group.vars.map((v) => (
+                          <li key={v.key} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="truncate font-mono text-[var(--text-muted)]">{v.key}</span>
+                            <span className={v.set ? "text-green-400" : "text-red-400"}>
+                              {v.set ? `✓ ${v.value ?? ""}` : "não definida"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-[var(--text-faint)]">Valores mascarados por segurança.</p>
+                </div>
+              )}
+            </button>
+          )}
+
           <input
             ref={fileRef}
             type="file"
@@ -583,6 +635,15 @@ export default function PerfilPage() {
                       : <Camera size={20} className="text-white" />}
                   </span>
                 </button>
+                {equippedDecorationId && FRAME_ASSETS[equippedDecorationId] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={FRAME_ASSETS[equippedDecorationId].imageUrl}
+                    alt=""
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 z-[1] h-full w-full select-none"
+                  />
+                )}
                 <span className="pointer-events-none absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
                   {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
                 </span>

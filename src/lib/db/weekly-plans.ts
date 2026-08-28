@@ -3,6 +3,7 @@ import type { WeeklyPlan } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
+import { recordMissionProgress } from "./daily-quests";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
@@ -121,6 +122,7 @@ export async function completeWeeklyPlan(profileId: string, planId: number): Pro
     [profileId, planId],
   );
   if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado ou já concluído.");
+  await recordMissionProgress(profileId, "WEEKLY_PLAN_COMPLETED", { incrementBy: 1 });
   const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
   return mapPlan(result.rows[0]);
 }

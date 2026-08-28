@@ -1,8 +1,10 @@
 # Por que não consigo enviar uma foto de perfil?
 
-Resumo do fluxo, causas prováveis e como corrigir. Este documento é uma análise de
-código — nenhuma correção foi aplicada. Número de linhas refere-se a `src/app/perfil/page.tsx`
-e `src/lib/db/profiles.ts` na data de escrita.
+Resumo do fluxo, causas prováveis e como corrigir. Número de linhas refere-se a
+`src/app/perfil/page.tsx` e `src/lib/db/profiles.ts` na data de escrita.
+
+> ✅ Atualização: o limite de envio de foto de perfil foi **aumentado de ~370 KB para 7 MB**
+> (cliente `perfil/page.tsx:461` e servidor `profiles.ts:127-128`). Ver seção "7 MB aplicado".
 
 ## Fluxo atual (como o envio acontece hoje)
 
@@ -30,17 +32,18 @@ Qualquer falha cai no `catch` de `:470`, que mostra apenas: **"Não foi possíve
   - o `currentUser` é null e a função nem chega a enviar.
 - Sintoma típico: o avatar não muda e aparece "Não foi possível enviar a foto." (ou nada acontece).
 
-### 2) Limite de tamanho do servidor (~370 KB) vs. 5 MB permitido no cliente
-- O cliente deixa **até 5 MB** (`:457`), mas o servidor rejeita data URLs **> 500.000 caracteres
-  (~370 KB)** em `src/lib/db/profiles.ts:127-128`:
-  ```
-  if (photoUrl.startsWith("data:image/")) {
-    if (photoUrl.length > 500_000)
-      throw new ValidationError("Imagem muito grande (máx. ~370 KB).");
-  }
-  ```
-- Mesmo com o resize para 400 px, fotos "pesadas"/com muito ruído (JPG 0.82) podem passar de 370 KB.
-- Resultado: erro no servidor, e o `catch` no cliente vira o genérico "Não foi possível enviar a foto."
+### 2) Limite de tamanho do servidor vs. limite permitido no cliente
+- O cliente permitia **até 5 MB** (`:457`), mas o servidor rejeitava data URLs **> 500.000 caracteres
+  (~370 KB)** em `src/lib/db/profiles.ts:127-128` — daí imagens grandes falharem
+  ("Imagem muito grande (máx. ~370 KB)") mesmo com o resize para 400 px.
+- ⚠️ Mesmo limpo, o `catch` no cliente vira o genérico "Não foi possível enviar a foto."
+
+> ### 🐞 Cloudinary NÃO é a foto de perfil
+> O erro `https://api.cloudinary.com/v1_/dch7w7ncj/image/upload` (404 + CORS) vem do
+> **banner da Loja** (`src/app/loja/page.tsx:634-671`), não do perfil.
+> O perfil usa base64 (canvas) direto no Postgres — não chama Cloudinary.
+> O 404 do Cloudinary significa nuvem/preset inválido ou preset não habilitado para upload
+> unsigned (Cloudinary omite o header CORS nesses erros, gerando o "CORS + 404").
 
 ### 3) `createImageBitmap`/canvas falha em alguns formatos
 - `fileToDataUrl` usa `createImageBitmap(file)` (`:43`). Isso **lança** para:
@@ -64,14 +67,34 @@ Qualquer falha cai no `catch` de `:470`, que mostra apenas: **"Não foi possíve
 **Correções por causa:**
 - **Causa 1:** não chamar `updateProfile` do Firebase quando não houver `currentUser` real;
   gravar só no banco (`api.updatePhotoUrl`) e propagar a imagem apenas pelo DB.
-- **Causa 2:** alinhar o limite. Ou reduzir o upload no cliente (ex.: redimensionar para ~256 px /
-  qualidade menor) para ficar folgado abaixo de 370 KB, ou aumentar o limite do servidor.
+- **Causa 2:** ✅ aplicado — limite alto para 7 MB (cliente e servidor). Ver "7 MB aplicado" abaixo.
 - **Causa 3:** envolver o decode em `try/catch` e/ou restringir `accept` a `image/jpeg,image/png,image/webp`.
 - **Causa 4:** propagar a mensagem real do erro (ex.: `error.message`) no `setPhotoError`.
 
 ## Arquivos-chave
-- `src/app/perfil/page.tsx` — upload/UI (`uploadPhoto` :454, `fileToDataUrl` :42, input :542).
+- `src/app/perfil/page.tsx` — upload/UI (`uploadPhoto` :458, `fileToDataUrl` :42, input :593).
 - `src/app/api/profile/route.ts` — endpoint `PATCH` (`:14-27`).
 - `src/lib/db/profiles.ts` — `updatePhotoUrl` e o limite de tamanho (`:124-139`).
 - `src/lib/server-auth.ts` — bypass de dev (`:71-81`, log `:95`).
 - `src/lib/api-client.ts:73-74` — `api.updatePhotoUrl`.
+
+---
+
+## 7 MB aplicado (esta mudança)
+
+**Shift climático:** a foto de perfil segue o fluxo de **base64 (canvas)** direto pro Postgres —
+**não passa pelo Cloudinary**. Por isso, o limite de 7 MB é **código**, não configuração de DB.
+
+O que mudou:
+- `src/app/perfil/page.tsx:461` → cliente aceita arquivos de **até 7 MB**
+  (`file.size > 7 * 1024 * 1024`).
+- `src/lib/db/profiles.ts:127-128` → servidor aceita data URLs de **até ~9.400.000 chars** (~7 MB
+  em base64, fator ~1,33):
+  ```ts
+  if (photoUrl.length > 9_400_000)
+    throw new ValidationError("Imagem muito grande (máx. ~7 MB).");
+  ```
+
+**Não há comando de DB para isso** — o limite é uma constante no código. Se quiser mudar de novo,
+edite esses dois pontos. Observação: o upload ainda redimensiona para **400 px** antes de gravar,
+então o valor armazenado continua pequeno; o limite maior permite arquivos-fonte maiores.

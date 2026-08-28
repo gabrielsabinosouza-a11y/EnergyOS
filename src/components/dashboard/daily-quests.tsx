@@ -104,11 +104,15 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
   };
 
   const formatQuestTitle = (quest: QuestProgressWithQuest) => {
-    return quest.quest.title || QUEST_TITLES[quest.quest.type] || quest.quest.type;
+    const type = quest.quest.type;
+    const fallback = type && QUEST_TITLES[type];
+    return quest.quest.title || fallback || quest.quest.type || "";
   };
 
   const formatQuestDescription = (quest: QuestProgressWithQuest) => {
-    return quest.quest.description || QUEST_DESCRIPTIONS[quest.quest.type] || "";
+    const type = quest.quest.type;
+    const fallback = type && QUEST_DESCRIPTIONS[type];
+    return quest.quest.description || fallback || "";
   };
 
   const timeUntilReset = () => {

@@ -59,6 +59,7 @@ export interface LeagueGroupMember {
     displayName: string;
     photoUrl?: string;
     username?: string;
+    equippedDecorationId?: string;
   };
   weeklyXP: number;
   rank: number;
@@ -104,6 +105,7 @@ export interface PublicProfile {
   currentStreak: number;
   longestStreak: number;
   weeklyFocusMinutes: number;
+  equippedDecorationId?: string;
   achievements: AchievementProgress[];
   featuredAchievements: AchievementProgress[];
   isFriend?: boolean;
@@ -427,6 +429,14 @@ export interface UserQuestProgress {
 
 export interface QuestProgressWithQuest extends UserQuestProgress {
   quest: DailyQuest;
+}
+
+export interface UserDailyTask {
+  id: number;
+  title: string;
+  taskDate: string;
+  isCompleted: boolean;
+  completedAt?: string;
 }
 
 export type DecorationRarity = "common" | "rare" | "epic" | "legendary";

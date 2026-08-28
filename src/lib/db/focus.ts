@@ -89,34 +89,36 @@ export async function endFocusSession(
        on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
       [profileId, xpAwarded],
     );
+    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded });
   }
 
-  // Update daily quests
-  const today = todayIso();
-  await initializeUserDailyQuests(profileId, today);
-  
-  let questsUpdated = 0;
-  
-  // Increment SESSIONS_COUNT quest (questId: 1)
-  try {
-    await incrementQuestProgress(profileId, 1, today, 1);
-    questsUpdated++;
-  } catch { /* Quest may not exist */ }
-  
-  // Increment TOTAL_MINUTES quest (questId: 2)
-  try {
-    await incrementQuestProgress(profileId, 2, today, durationMinutes);
-    questsUpdated++;
-  } catch { /* Quest may not exist */ }
-  
-  // Increment ROOM_SESSION quest (questId: 3) if applicable
+  // Update daily missions via the shared metric hook. This replaces the old
+  // hardcoded quest-id increments (1/2/3), which broke because mission row ids
+  // are no longer fixed. Every completed session advances the SESSIONS_COMPLETED
+  // and TOTAL_MINUTES metrics; room sessions additionally advance the
+  // ROOM_SESSION_COMPLETED metric regardless of the assigned row ids.
+  await recordMissionProgress(profileId, "SESSIONS_COMPLETED", { incrementBy: 1 });
+  await recordMissionProgress(profileId, "TOTAL_MINUTES", { incrementBy: durationMinutes });
+
   if (isRoomSession) {
-    try {
-      await incrementQuestProgress(profileId, 3, today, 1);
-      questsUpdated++;
-    } catch { /* Quest may not exist */ }
+    await recordMissionProgress(profileId, "ROOM_SESSION_COMPLETED", { incrementBy: 1 });
   }
 
+  if (durationMinutes >= 60) {
+    await recordMissionProgress(profileId, "LONG_SESSION_60", { incrementBy: 1 });
+  }
+
+  // "Focus before 9am" is evaluated against the session start in the product TZ.
+  const startedLocalHour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: APP_TIMEZONE, hour: "numeric", hour12: false }).format(
+      new Date(typeof session.rows[0].started_at === "string" ? session.rows[0].started_at : session.rows[0].started_at),
+    ),
+  );
+  if (startedLocalHour < 9) {
+    await recordMissionProgress(profileId, "EARLY_SESSION_9AM", { incrementBy: 1 });
+  }
+
+  const questsUpdated = 1;
   return { session: mapFocus(updated.rows[0]), xpAwarded, questsUpdated };
 }
 

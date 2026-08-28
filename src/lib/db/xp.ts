@@ -1,6 +1,7 @@
 import pool from "../db";
 import type { UserXP } from "@/types";
 import { parseProfileId } from "./validation";
+import { recordMissionProgress } from "./daily-quests";
 
 interface XPRow {
   profile_id: string;
@@ -39,6 +40,7 @@ export async function awardTaskXP(profileId: string, taskId: number, xp: number)
      on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
     [profileId, xp],
   );
+  await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xp });
 }
 
 export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Promise<number> {

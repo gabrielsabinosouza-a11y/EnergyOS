@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
+import { Avatar } from "@/components/avatar";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { PublicProfile, AchievementProgress } from "@/types";
@@ -250,7 +251,6 @@ export default function FriendProfilePage() {
   }
 
   const displayName = profile.displayName;
-  const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const createdAt = profile.createdAt
     ? new Date(profile.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "—";
@@ -316,13 +316,13 @@ export default function FriendProfilePage() {
             className="glass-card mb-6 p-6 sm:p-8"
           >
             <div className="flex items-center gap-5 mb-6">
-              <div className="avatar" style={{ width: 80, height: 80, fontSize: 28, boxShadow: avatarGlow }}>
-                {profile.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.photoUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
-                ) : (
-                  initials
-                )}
+              <div className="shrink-0" style={{ boxShadow: avatarGlow, borderRadius: "9999px" }}>
+                <Avatar
+                  photoUrl={profile.photoUrl}
+                  name={displayName}
+                  size={80}
+                  equippedDecorationId={profile.equippedDecorationId}
+                />
               </div>
               <div>
                 <div className="flex items-center gap-2">

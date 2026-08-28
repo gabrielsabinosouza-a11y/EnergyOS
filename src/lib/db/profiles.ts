@@ -14,9 +14,10 @@ interface ProfileRow {
   current_streak: number | null;
   longest_streak: number | null;
   role: string | null;
+  equipped_decoration_id: string | null;
 }
 
-const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role`;
+const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role, equipped_decoration_id`;
 
 function mapToUser(row: ProfileRow): User {
   return {
@@ -30,6 +31,7 @@ function mapToUser(row: ProfileRow): User {
     currentStreak: row.current_streak ?? 0,
     longestStreak: row.longest_streak ?? 0,
     role: (row.role as "user" | "admin" | undefined) ?? "user",
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
   };
 }
 
@@ -125,7 +127,7 @@ export async function updatePhotoUrl(profileId: string, photoUrl: string): Promi
   parseProfileId(profileId);
   if (!photoUrl) throw new ValidationError("URL da foto inválida.");
   if (photoUrl.startsWith("data:image/")) {
-    if (photoUrl.length > 500_000) throw new ValidationError("Imagem muito grande (máx. ~370 KB).");
+    if (photoUrl.length > 9_400_000) throw new ValidationError("Imagem muito grande (máx. ~7 MB).");
   } else if (photoUrl.length > 2000) {
     throw new ValidationError("URL da foto inválida.");
   }

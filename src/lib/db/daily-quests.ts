@@ -308,14 +308,16 @@ export async function initializeUserDailyQuests(
 export interface RecordMissionProgressOptions {
   questDate?: string;
   incrementBy?: number;
+  /** When provided, sets current_value to this exact value instead of incrementing (used for count-of-distinct-events metrics like DISTINCT_ROOMS). */
+  setTo?: number;
   client?: PoolClient;
 }
 
 /**
- * Increments progress for every mission assigned to the user today whose
- * metric matches. This is the single shared hook that all daily event sites
- * call — it replaces the old hardcoded quest-id increments so missions are
- * advanced regardless of the actual daily_quests row ids.
+ * Advances progress for every mission assigned to the user whose metric
+ * matches. This is the single shared hook that all daily event sites call —
+ * it replaces the old hardcoded quest-id increments so missions are advanced
+ * regardless of the actual daily_quests row ids.
  */
 export async function recordMissionProgress(
   profileId: string,
@@ -325,30 +327,52 @@ export async function recordMissionProgress(
   parseProfileId(profileId);
 
   const questDate = options.questDate ?? todayIso();
-  const amount = options.incrementBy ?? 1;
 
   // Make sure today's missions are assigned before recording progress.
   await initializeUserDailyQuests(profileId, questDate);
 
-  const query = `
-    update user_quest_progress uqp
-    set current_value = uqp.current_value + $4,
-        is_completed = uqp.is_completed or (uqp.current_value + $4) >= q.target_value,
-        completed_at = case
-          when (uqp.current_value + $4) >= q.target_value and uqp.completed_at is null then now()
-          else uqp.completed_at
-        end
-    from daily_quests q
-    where q.id = uqp.quest_id
-      and q.is_active = true
-      and q.metric = $1
-      and uqp.profile_id = $2 and uqp.quest_date = $3
-  `;
+  let query: string;
+  let params: (string | number)[];
+
+  if (options.setTo !== undefined) {
+    query = `
+      update user_quest_progress uqp
+      set current_value = $4,
+          is_completed = uqp.is_completed or $4 >= q.target_value,
+          completed_at = case
+            when $4 >= q.target_value and uqp.completed_at is null then now()
+            else uqp.completed_at
+          end
+      from daily_quests q
+      where q.id = uqp.quest_id
+        and q.is_active = true
+        and q.metric = $1
+        and uqp.profile_id = $2 and uqp.quest_date = $3
+    `;
+    params = [metric, profileId, questDate, options.setTo];
+  } else {
+    const amount = options.incrementBy ?? 1;
+    query = `
+      update user_quest_progress uqp
+      set current_value = uqp.current_value + $4,
+          is_completed = uqp.is_completed or (uqp.current_value + $4) >= q.target_value,
+          completed_at = case
+            when (uqp.current_value + $4) >= q.target_value and uqp.completed_at is null then now()
+            else uqp.completed_at
+          end
+      from daily_quests q
+      where q.id = uqp.quest_id
+        and q.is_active = true
+        and q.metric = $1
+        and uqp.profile_id = $2 and uqp.quest_date = $3
+    `;
+    params = [metric, profileId, questDate, amount];
+  }
 
   if (options.client) {
-    await options.client.query(query, [metric, profileId, questDate, amount]);
+    await options.client.query(query, params);
   } else {
-    await pool.query(query, [metric, profileId, questDate, amount]);
+    await pool.query(query, params);
   }
 }
 
@@ -524,6 +548,10 @@ export async function claimQuestReward(
     );
 
     await client.query("commit");
+
+    // Claiming also awards XP (recorded in the ledger), which feeds the
+    // "Earn N XP today" mission.
+    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: row.q_coin_reward });
 
     const quest: DailyQuest = {
       id: Number(row.uqp_quest_id),
