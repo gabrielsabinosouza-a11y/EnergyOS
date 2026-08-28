@@ -10,7 +10,7 @@ import Link from "next/link";
 import type { Task, Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest, StreakDayStatus } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
-import { weekStartIso } from "@/lib/db/dates";
+import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { TodoList } from "@/components/dashboard/todo-list";
 import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
@@ -171,7 +171,7 @@ export default function DashboardPage() {
         api.getCategories()
           .then((data) => { if (!cancelled) setCategories(data.categories); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, kanban: "Erro ao carregar categorias." })); }),
-        api.getWeeklyPlans(weekStartIso(new Date().toISOString().slice(0, 10)))
+        api.getWeeklyPlans(weekStartIso(todayIso()))
           .then((p) => { if (!cancelled) setWeeklyPlans(p); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, plans: "Erro ao carregar planos." })); }),
         api.getFocusData()
@@ -676,7 +676,9 @@ function StreakBadge({
 
   const iconSrc = state === "lost"
     ? "/energies/flame/flame_die.png"
-    : "/energies/flame/flame_full.png";
+    : state === "protected"
+      ? "/streak/image-removebg-preview(1).png"
+      : "/streak/image-removebg-preview.png";
 
   const statusLabel = state === "protected"
     ? shieldCount > 0

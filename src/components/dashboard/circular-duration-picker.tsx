@@ -21,6 +21,17 @@ function clampAndSnap(raw: number, min: number, max: number, snap: number): numb
   return Math.max(min, Math.min(max, snapped));
 }
 
+/**
+ * Maps a duration (in minutes) to a progress fraction of the ring.
+ * The ring spans [minMinutes, maxDurationMinutes] across 360°, so the
+ * minimum always sits at the 12 o'clock start (fraction 0) and the
+ * maximum at the end of the arc (fraction 1).
+ */
+function progressForMinutes(minutes: number, min: number, max: number): number {
+  if (max <= min) return 0;
+  return Math.max(0, Math.min(1, (minutes - min) / (max - min)));
+}
+
 export function CircularDurationPicker({
   value,
   onChange,
@@ -40,6 +51,12 @@ export function CircularDurationPicker({
   const disabledRef = useRef(disabled);
   const valueRef = useRef(value);
 
+  // Drag tracking state — deltas are accumulated against the last pointer
+  // angle so small movements near the 0°/360° boundary never cause the
+  // value to snap between min and max.
+  const lastDragAngleRef = useRef(0);
+  const runningValueRef = useRef(0);
+
   useEffect(() => {
     disabledRef.current = disabled;
   }, [disabled]);
@@ -55,7 +72,7 @@ export function CircularDurationPicker({
   const strokeWidth = 6;
   const handleRadius = 10;
 
-  const fraction = Math.max(0, Math.min(1, value / maxDurationMinutes));
+  const fraction = progressForMinutes(value, minMinutes, maxDurationMinutes);
   const arcLength = fraction * circumference;
 
   const handleAngleDeg = fraction * 360;
@@ -63,9 +80,9 @@ export function CircularDurationPicker({
   const handleX = cx + radius * Math.cos(handleRad);
   const handleY = cy + radius * Math.sin(handleRad);
 
-  const computeMinutesFromPointer = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!svgRef.current) return valueRef.current;
+  const computeAngleDegrees = useCallback(
+    (clientX: number, clientY: number): number => {
+      if (!svgRef.current) return lastDragAngleRef.current;
       const rect = svgRef.current.getBoundingClientRect();
       const svgCx = rect.left + rect.width / 2;
       const svgCy = rect.top + rect.height / 2;
@@ -74,11 +91,16 @@ export function CircularDurationPicker({
       const angle = Math.atan2(dx, -dy);
       let degrees = (angle * 180) / Math.PI;
       if (degrees < 0) degrees += 360;
-      const rawMinutes = (degrees / 360) * maxDurationMinutes;
-      return clampAndSnap(rawMinutes, minMinutes, maxDurationMinutes, snapIncrement);
+      return degrees;
     },
-    [maxDurationMinutes, minMinutes, snapIncrement],
+    [],
   );
+
+  /**
+   * Angular width that corresponds to a change of one minute, used to
+   * convert an angular delta into a change in duration.
+   */
+  const minutesPerDegree = (maxDurationMinutes - minMinutes) / 360;
 
   function clearWindowListeners(move: (e: PointerEvent) => void, up: (e: PointerEvent) => void) {
     window.removeEventListener("pointermove", move);
@@ -95,10 +117,25 @@ export function CircularDurationPicker({
       setDragging(true);
       svgRef.current?.setPointerCapture(e.pointerId);
 
+      const startAngle = computeAngleDegrees(e.clientX, e.clientY);
+      lastDragAngleRef.current = startAngle;
+      runningValueRef.current = valueRef.current;
+
       const move = (ev: PointerEvent) => {
         ev.preventDefault();
         if (!draggingRef.current || disabledRef.current) return;
-        onChange(computeMinutesFromPointer(ev.clientX, ev.clientY));
+
+        const currentAngle = computeAngleDegrees(ev.clientX, ev.clientY);
+        let delta = currentAngle - lastDragAngleRef.current;
+        lastDragAngleRef.current = currentAngle;
+
+        // Normalize the per-frame delta to the shortest path around the
+        // circle so tiny movements near 0°/360° never wrap the wrong way.
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        runningValueRef.current += delta * minutesPerDegree;
+        onChange(clampAndSnap(runningValueRef.current, minMinutes, maxDurationMinutes, snapIncrement));
       };
       const up = () => {
         draggingRef.current = false;
@@ -111,7 +148,7 @@ export function CircularDurationPicker({
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", up);
     },
-    [computeMinutesFromPointer, onChange],
+    [computeAngleDegrees, minutesPerDegree, minMinutes, maxDurationMinutes, snapIncrement, onChange],
   );
 
   useEffect(() => {
@@ -169,24 +206,26 @@ export function CircularDurationPicker({
           opacity={0.5}
         />
 
-        {/* Tick marks at snap intervals */}
-        {Array.from({ length: Math.floor(maxDurationMinutes / snapIncrement) }, (_, i) => {
-          const tickFrac = (i * snapIncrement) / maxDurationMinutes;
+        {/* Tick marks at snap intervals (min-aware positions) */}
+        {Array.from({ length: Math.floor((maxDurationMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
+          const tickMinutes = minMinutes + i * snapIncrement;
+          const tickFrac = progressForMinutes(tickMinutes, minMinutes, maxDurationMinutes);
           const tickAngle = tickFrac * 360 - 90;
           const tickRad = (tickAngle * Math.PI) / 180;
-          const isMajor = i % (60 / snapIncrement) === 0;
+          const isMajor = tickMinutes % 60 === 0;
           const innerR = radius - (isMajor ? 14 : 10);
           const outerR = radius - 7;
+          const active = tickMinutes <= value;
           return (
             <line
-              key={i}
+              key={tickMinutes}
               x1={cx + innerR * Math.cos(tickRad)}
               y1={cy + innerR * Math.sin(tickRad)}
               x2={cx + outerR * Math.cos(tickRad)}
               y2={cy + outerR * Math.sin(tickRad)}
-              stroke={tickFrac <= fraction ? accentColor : trackColor}
+              stroke={active ? accentColor : trackColor}
               strokeWidth={isMajor ? 2 : 1}
-              opacity={tickFrac <= fraction ? 0.6 : 0.25}
+              opacity={active ? 0.6 : 0.25}
               style={{ transition: "stroke 0.15s, opacity 0.15s" }}
             />
           );

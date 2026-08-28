@@ -22,11 +22,11 @@ const TIER_CONFIG: Record<NewLeagueTier, {
   icon: React.ElementType; description: string; shortLabel: string;
   iconPath: string;
 }> = {
-  BRONZE:   { label: "Bronze",   color: "#cd7f32", glow: "rgba(205,127,50,0.4)",  icon: Medal,  description: "O início da jornada",           shortLabel: "BR", iconPath: "/assets/leagues/bronze.png"   },
-  PRATA:    { label: "Prata",    color: "#c0c0c0", glow: "rgba(192,192,192,0.4)", icon: Medal,  description: "Consistência crescendo",         shortLabel: "PR", iconPath: "/assets/leagues/prata.png"    },
-  OURO:     { label: "Ouro",     color: "#ffd700", glow: "rgba(255,215,0,0.4)",   icon: Trophy, description: "Domínio do foco",               shortLabel: "OU", iconPath: "/assets/leagues/ouro.png"     },
-  DIAMANTE: { label: "Diamante", color: "#00bfff", glow: "rgba(0,191,255,0.4)",   icon: Crown,  description: "Elite do foco",                 shortLabel: "DI", iconPath: "/assets/leagues/diamante.png" },
-  LENDAS:   { label: "Lendas",   color: "#ff69b4", glow: "rgba(255,105,180,0.4)", icon: Star,   description: "Os melhores entre os melhores", shortLabel: "LE", iconPath: "/assets/leagues/lendas.png"   },
+  BRONZE:   { label: "Bronze",   color: "#cd7f32", glow: "rgba(205,127,50,0.4)",  icon: Medal,  description: "O início da jornada",           shortLabel: "BR", iconPath: "/leaderboard/bronze.png"   },
+  PRATA:    { label: "Prata",    color: "#c0c0c0", glow: "rgba(192,192,192,0.4)", icon: Medal,  description: "Consistência crescendo",         shortLabel: "PR", iconPath: "/leaderboard/prata.png"    },
+  OURO:     { label: "Ouro",     color: "#ffd700", glow: "rgba(255,215,0,0.4)",   icon: Trophy, description: "Domínio do foco",               shortLabel: "OU", iconPath: "/leaderboard/ouro.png"     },
+  DIAMANTE: { label: "Diamante", color: "#00bfff", glow: "rgba(0,191,255,0.4)",   icon: Crown,  description: "Elite do foco",                 shortLabel: "DI", iconPath: "/leaderboard/diamante.png" },
+  LENDAS:   { label: "Lendas",   color: "#ff69b4", glow: "rgba(255,105,180,0.4)", icon: Star,   description: "Os melhores entre os melhores", shortLabel: "LE", iconPath: "/leaderboard/lendas.png"   },
 };
 
 const TIER_ORDER: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
@@ -185,7 +185,7 @@ export default function LigaPage() {
                     className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl"
                     style={{ background: `${tierCfg.color}20`, boxShadow: `0 0 40px ${tierCfg.glow}`, border: `1px solid ${tierCfg.color}40` }}
                   >
-                    <tierCfg.icon size={32} style={{ color: tierCfg.color }} />
+                    <Image src={tierCfg.iconPath} alt={tierCfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
                   </motion.div>
                   <div>
                     <h2 className="font-display text-3xl font-bold tracking-tight" style={{ color: tierCfg.color }}>
@@ -239,10 +239,9 @@ export default function LigaPage() {
                           background: isCurrent ? `${cfg.color}25` : isPast ? `${cfg.color}10` : "rgba(255,255,255,.03)",
                           border: `1px solid ${isCurrent ? cfg.color + "60" : "rgba(255,255,255,.06)"}`,
                           boxShadow: isCurrent ? `0 0 20px ${cfg.glow}` : "none",
-                          color: isCurrent ? cfg.color : isPast ? `${cfg.color}90` : "var(--text-faint)",
                         }}
                       >
-                        <cfg.icon size={isCurrent ? 20 : 16} />
+                        <Image src={cfg.iconPath} alt={cfg.label} width={isCurrent ? 20 : 16} height={isCurrent ? 20 : 16} style={{ objectFit: "contain", filter: isCurrent || isPast ? "none" : "grayscale(1) opacity(.5)" }} unoptimized />
                         {isCurrent && (
                           <motion.div
                             className="absolute -inset-1 rounded-xl border-2"

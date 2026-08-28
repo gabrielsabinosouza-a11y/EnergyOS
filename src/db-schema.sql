@@ -136,7 +136,10 @@ create index if not exists kanban_labels_profile_idx on kanban_labels(profile_id
 
 -- Focus Rooms (co-focus with friends)
 do $$ begin
-  create type room_status as enum ('waiting', 'active', 'completed');
+  create type room_status as enum ('waiting', 'active', 'completed', 'expired');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type room_status add value if not exists 'expired';
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type participant_session_status as enum ('waiting', 'focusing', 'completed', 'left');

@@ -1,7 +1,7 @@
 import pool from "../db";
 
 // Types matching the database schema
-export type RoomStatus = "waiting" | "active" | "completed";
+export type RoomStatus = "waiting" | "active" | "completed" | "expired";
 export type ParticipantSessionStatus = "waiting" | "focusing" | "completed" | "left";
 
 export interface FocusRoomRow {
@@ -369,17 +369,35 @@ export async function participantCompleted(roomId: number, profileId: string): P
   );
 }
 
-// Get all focus rooms for a user
-export async function getUserFocusRooms(profileId: string): Promise<FocusRoom[]> {
-  const result = await pool.query<{ room_id: string | number }>(
+// Get all focus rooms for a user.
+// When `forList` is true (default list view) we hide stale/archived rooms:
+//  - EXPIRED rooms are always hidden.
+//  - COMPLETED rooms older than `completedRetentionMs` (24h) are hidden so the
+//    list doesn't accumulate clutter. Open/active/waiting rooms always show.
+export async function getUserFocusRooms(
+  profileId: string,
+  forList: boolean = true,
+  completedRetentionMs = 24 * 60 * 60 * 1000,
+): Promise<FocusRoom[]> {
+  const ret = await pool.query<{ room_id: string | number }>(
     `select room_id from room_participants where profile_id = $1 order by joined_at desc`,
-    [profileId]
+    [profileId],
   );
 
   const rooms: FocusRoom[] = [];
-  for (const row of result.rows) {
+  for (const row of ret.rows) {
     const room = await getFocusRoomById(profileId, Number(row.room_id));
-    if (room) rooms.push(room);
+    if (!room) continue;
+
+    if (forList) {
+      if (room.status === "expired") continue;
+      if (room.status === "completed") {
+        const reference = new Date(room.endedAt ?? room.createdAt).getTime();
+        if (Date.now() - reference > completedRetentionMs) continue;
+      }
+    }
+
+    rooms.push(room);
   }
 
   return rooms;
@@ -403,24 +421,98 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
   return rooms;
 }
 
-// Permanently delete a focus room and its participants (cascade)
+// Permanently delete a focus room and its participants (cascade).
+// Refuses to delete a room that is currently ACTIVE (a live session).
 export async function deleteFocusRoom(roomId: number): Promise<void> {
-  const result = await pool.query<{ id: string | number }>(
-    `delete from focus_rooms where id = $1 returning id`,
+  const result = await pool.query<{ id: string | number; status: string }>(
+    `select id, status from focus_rooms where id = $1`,
     [roomId],
   );
   if (!result.rows[0]) {
     throw new Error("Room not found");
   }
+  if (result.rows[0].status === "active") {
+    throw new Error("Cannot delete a room that is currently in progress");
+  }
+
+  const deleted = await pool.query<{ id: string | number }>(
+    `delete from focus_rooms where id = $1 returning id`,
+    [roomId],
+  );
+  if (!deleted.rows[0]) {
+    throw new Error("Room not found");
+  }
 }
 
-// Clean up stale rooms (older than 24 hours)
-export async function cleanupStaleRooms(): Promise<void> {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+// Mark a WAITING room as expired (stale, never started). No-op if not WAITING.
+export async function expireFocusRoom(roomId: number): Promise<boolean> {
+  const result = await pool.query<{ id: string | number }>(
+    `update focus_rooms
+     set status = 'expired',
+         ended_at = coalesce(ended_at, now())
+     where id = $1 and status = 'waiting'
+     returning id`,
+    [roomId],
+  );
+  return Boolean(result.rows[0]);
+}
+
+// Mark a room as completed (idempotent). Anyone who finished a session may call
+// this — it transitions the room and marks any still-"focusing" participants as
+// completed so the historical record is accurate.
+export async function completeFocusRoom(roomId: number): Promise<FocusRoom | null> {
+  const now = new Date().toISOString();
 
   await pool.query(
-    `delete from focus_rooms 
-     where created_at < $1 and status != 'active'`,
-    [twentyFourHoursAgo]
+    `update focus_rooms
+     set status = 'completed', ended_at = coalesce(ended_at, $1)
+     where id = $2 and status != 'completed'`,
+    [now, roomId],
   );
+
+  await pool.query(
+    `update room_participants
+     set session_status = 'completed', completed_at = coalesce(completed_at, $1)
+     where room_id = $2 and session_status = 'focusing'`,
+    [now, roomId],
+  );
+
+  const room = await pool.query<{ id: string | number; host_profile_id: string }>(
+    `select id, host_profile_id from focus_rooms where id = $1`,
+    [roomId],
+  );
+  if (!room.rows[0]) return null;
+
+  return getFocusRoomById(room.rows[0].host_profile_id, roomId);
+}
+
+/**
+ * Clean up focus rooms:
+ *  - WAITING rooms older than `waitingTimeoutMs` (default 45 min) are marked "expired"
+ *    so stale rooms that were never started don't accumulate.
+ *  - COMPLETED/EXPIRED rooms older than `retentionMs` (default 24h) are hard-deleted.
+ *    (They are already hidden from the default list after `listRetentionMs`.)
+ * Returns a summary for logging.
+ */
+export async function cleanupStaleRooms(
+  waitingTimeoutMs = 45 * 60 * 1000,
+  retentionMs = 24 * 60 * 60 * 1000,
+): Promise<{ expired: number; deleted: number }> {
+  const waitingCutoff = new Date(Date.now() - waitingTimeoutMs).toISOString();
+  const retentionCutoff = new Date(Date.now() - retentionMs).toISOString();
+
+  const exp = await pool.query(
+    `update focus_rooms
+     set status = 'expired', ended_at = coalesce(ended_at, now())
+     where status = 'waiting' and created_at < $1`,
+    [waitingCutoff],
+  );
+
+  const del = await pool.query(
+    `delete from focus_rooms
+     where status in ('completed', 'expired') and coalesce(ended_at, created_at) < $1`,
+    [retentionCutoff],
+  );
+
+  return { expired: exp.rowCount ?? 0, deleted: del.rowCount ?? 0 };
 }

@@ -174,6 +174,7 @@ export const api = {
   createFocusRoom: (durationMinutes: number, energyType?: string) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>("/api/focus-rooms", { method: "POST", body: JSON.stringify({ durationMinutes, energyType }) }),
   getFocusRooms: () => request<{ rooms: import("@/lib/db/focus-rooms").FocusRoom[] }>("/api/focus-rooms"),
+  getFocusRoomById: (id: number) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${id}`),
   getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${code}`),
   joinFocusRoom: (code: string, energyType?: string) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
@@ -189,6 +190,12 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/update-duration`, { method: "POST", body: JSON.stringify({ durationMinutes }) }),
   deleteFocusRoom: (roomId: number) =>
     request<{ ok: true; message: string }>(`/api/focus-rooms/${roomId}`, { method: "DELETE" }),
+  giveUpFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/give-up`, { method: "POST" }),
+  completeFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom | null; message: string }>(`/api/focus-rooms/${roomId}/complete`, { method: "POST" }),
+  cleanupFocusRooms: () =>
+    request<{ ok: true; expired: number; deleted: number }>("/api/focus-rooms/cleanup", { method: "POST" }),
 
   // Social
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),

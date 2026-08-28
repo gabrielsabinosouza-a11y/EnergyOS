@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { requireAuth, requireAdmin } from "@/lib/server-auth";
+import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
 import {
   getFocusRoomById,
@@ -76,18 +76,31 @@ export async function PATCH(
   });
 }
 
-// DELETE /api/focus-rooms/[roomId] — permanently delete a room (admin only)
+// DELETE /api/focus-rooms/[roomId] — permanently delete a room.
+// Only the room's host (or an admin) can delete it. Active rooms cannot be
+// deleted while a session is in progress.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   return handleRoute(async () => {
-    await requireAdmin(request);
+    const { profileId, role } = await requireAuth(request);
     const { roomId } = await params;
 
     if (!isNumeric(roomId)) return badRequest("Invalid room ID");
 
+    const room = await getFocusRoomById(profileId, Number(roomId));
+    if (!room) return notFound("Room not found");
+
+    if (room.hostProfileId !== profileId && role !== "admin") {
+      return badRequest("Only the host can delete this room");
+    }
+
+    if (room.status === "active") {
+      return badRequest("Não é possível excluir uma sala em andamento");
+    }
+
     await deleteFocusRoom(Number(roomId));
-    return jsonOk({ ok: true, message: "Room deleted successfully" });
+    return jsonOk({ ok: true, message: "Sala excluída com sucesso." });
   });
 }

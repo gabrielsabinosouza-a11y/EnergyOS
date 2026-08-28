@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
@@ -11,30 +10,65 @@ import {
   Clock,
   Users,
   Play,
-  Square,
   Copy,
+  Share2,
   CheckCircle,
-  XCircle,
   Loader2,
   ChevronLeft,
   Sparkles,
   Zap,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { Modal } from "@/components/modal";
-import type { FocusRoom, RoomParticipant } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, type EnergyType } from "@/lib/energy-assets";
+import type { FocusRoom } from "@/lib/db/focus-rooms";
+import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
+import { addGardenEntry } from "@/lib/garden-store";
 
-type PageState = "list" | "create" | "waiting" | "active" | "join";
+type PageState = "list" | "create" | "join" | "room";
 
 const DEFAULT_DURATION = 25;
+const POLL_INTERVAL_MS = 4000;
+const ROOM_SESSION_KEY = (roomId: number) => `energyos_room_session_${roomId}`;
 
-// Energy picker modal for room participants
+interface PersistedRoomSession {
+  sessionId: number;
+  created: string;
+  finalized: boolean;
+}
+
+function saveRoomSession(roomId: number, s: PersistedRoomSession) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(ROOM_SESSION_KEY(roomId), JSON.stringify(s)); } catch { /* ignore */ }
+}
+function loadRoomSession(roomId: number): PersistedRoomSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(ROOM_SESSION_KEY(roomId));
+    return raw ? JSON.parse(raw) as PersistedRoomSession : null;
+  } catch { return null; }
+}
+
+function formatTime(totalSeconds: number): string {
+  const m = Math.max(0, Math.floor(totalSeconds / 60));
+  const s = Math.max(0, totalSeconds % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function resolveStage(progress: number, isRunning: boolean): EnergyStage {
+  if (!isRunning) return "spark";
+  if (progress < 25) return "spark";
+  if (progress < 70) return "forming";
+  return "full";
+}
+
+// ─── Energy picker modal ─────────────────────────────────────────────────────
+
 function EnergyPickerModal({
   current,
   onSelect,
@@ -45,7 +79,6 @@ function EnergyPickerModal({
   onClose: () => void;
 }) {
   const availableTypes = ENERGY_TYPES.filter((t) => !ENERGY_CONFIGS[t].locked);
-
   return (
     <Modal onClose={onClose} variant="bottom-sheet">
       <div className="glass-card w-full max-w-sm overflow-hidden p-5">
@@ -83,203 +116,165 @@ function EnergyPickerModal({
   );
 }
 
-// Participant circle component - shows each user's focus circle in waiting room
-function ParticipantCircle({
-  participant,
-  room,
-  currentUserId,
-  isHost,
-  onDurationChange,
-  onEnergySelect,
-  disabled,
+// ─── Small avatar with optional energy badge ─────────────────────────────────
+
+function RoomAvatar({
+  profile,
+  energyType,
+  size = 40,
+  muted = false,
+  dimmed = false,
 }: {
-  participant: RoomParticipant & { profile: { id: string; displayName: string; photoUrl?: string } };
-  room: FocusRoom;
-  currentUserId: string;
-  isHost: boolean;
-  onDurationChange?: (minutes: number) => void;
-  onEnergySelect: (energyType: string) => void;
-  disabled: boolean;
+  profile?: { id: string; displayName: string; photoUrl?: string };
+  energyType?: string | null;
+  size?: number;
+  muted?: boolean;
+  dimmed?: boolean;
 }) {
-  const isCurrentUser = participant.profile.id === currentUserId;
-  const canEditDuration = isCurrentUser && isHost;
-  const canEditEnergy = isCurrentUser;
-  
-  const [showPicker, setShowPicker] = useState(false);
-  
-  // Get energy config for the participant's selected energy
-  const energyConfig =
-    (participant.selectedEnergyType && ENERGY_CONFIGS[participant.selectedEnergyType as EnergyType]) ||
-    ENERGY_CONFIGS.flame;
-
-  const displayName = participant.profile.displayName || "Anônimo";
+  const displayName = profile?.displayName || "Anônimo";
   const initials = displayName.charAt(0).toUpperCase();
-  const photoUrl = participant.profile.photoUrl;
-
-  const RING_SIZE = 140;
+  const cfg = energyType ? ENERGY_CONFIGS[energyType as EnergyType] : null;
+  const opacity = dimmed ? 0.45 : 1;
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
-        {/* Duration picker for host */}
-        {canEditDuration ? (
-          <CircularDurationPicker
-            value={room.durationMinutes}
-            onChange={onDurationChange || (() => {})}
-            maxDurationMinutes={120}
-            snapIncrement={5}
-            minMinutes={10}
-            size={RING_SIZE}
-            accentColor={energyConfig.accent}
-            disabled={disabled}
-            centerContent={null}
-          />
-        ) : (
-          <div className="relative" style={{ width: RING_SIZE, height: RING_SIZE }}>
-            {/* Read-only circle for non-host participants */}
-            <svg
-              width={RING_SIZE}
-              height={RING_SIZE}
-              viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
-              style={{ maxWidth: "100%", height: "auto", display: "block" }}
-            >
-              <defs>
-                <filter id="room-countdown-glow">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                </filter>
-              </defs>
-              <circle
-                cx={RING_SIZE / 2}
-                cy={RING_SIZE / 2}
-                r={(RING_SIZE - 16) / 2}
-                fill="none"
-                stroke="var(--border-subtle)"
-                strokeWidth={6}
-                opacity={0.5}
-              />
-              <circle
-                cx={RING_SIZE / 2}
-                cy={RING_SIZE / 2}
-                r={(RING_SIZE - 16) / 2}
-                fill="none"
-                stroke={energyConfig.accent}
-                strokeWidth={8}
-                strokeLinecap="round"
-                strokeDasharray={`${(room.durationMinutes / 120) * 2 * Math.PI * ((RING_SIZE - 16) / 2)} ${2 * Math.PI * ((RING_SIZE - 16) / 2) - (room.durationMinutes / 120) * 2 * Math.PI * ((RING_SIZE - 16) / 2)}`}
-                transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-                style={{ filter: "url(#room-countdown-glow)" }}
-              />
-            </svg>
-            
-            {/* Center - avatar */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              {photoUrl ? (
-                <Image
-                  src={photoUrl}
-                  alt={displayName}
-                  width={60}
-                  height={60}
-                  className="rounded-full object-cover border-2 border-[var(--bg-primary)]"
-                  unoptimized
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--orange)] flex items-center justify-center border-2 border-[var(--bg-primary)]">
-                  <span className="text-[10px] font-bold text-white">{initials}</span>
-                </div>
-              )}
-              
-              {/* Energy icon indicator */}
-              {participant.selectedEnergyType && (
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-6 h-6 bg-[var(--bg-primary)] rounded-full border-2 border-[var(--border-subtle)] flex items-center justify-center p-0.5">
-                  <Image
-                    src={energyConfig.assets.full}
-                    alt={energyConfig.label}
-                    width={20}
-                    height={20}
-                    style={{ objectFit: "contain" }}
-                    unoptimized
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Duration label for all */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-center pointer-events-none">
-          <span className="text-xs font-mono text-[var(--text)] bg-[var(--bg-primary)]/80 px-2 py-0.5 rounded-full backdrop-blur-sm">
-            {room.durationMinutes}min
-          </span>
-        </div>
-
-        {/* Energy picker button for current user */}
-        {canEditEnergy && !canEditDuration && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowPicker(true);
-            }}
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ zIndex: 10 }}
-          >
-            <div className="w-full h-full rounded-full" style={{ cursor: "pointer" }} />
-          </button>
-        )}
-
-        {/* Host label */}
-        {isCurrentUser && isHost && (
-          <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-full border border-yellow-400/20">
-            Anfitrião
-          </span>
-        )}
-      </div>
-
-      {/* Participant name */}
-      <div className="text-center">
-        <p className="text-[10px] font-medium text-[var(--text)] truncate max-w-full">
-          {displayName}
-          {isCurrentUser && <span className="text-[var(--text-faint)]"> (você)</span>}
-        </p>
-        
-        {/* Read-only indicator for non-host participants */}
-        {isCurrentUser && !isHost && (
-          <p className="text-[8px] text-[var(--text-muted)] mt-0.5">
-            Duração pelo anfitrião
-          </p>
-        )}
-
-        {/* Host can edit duration */}
-        {canEditDuration && (
-          <p className="text-[8px] text-[var(--text-muted)] mt-0.5">
-            Ajuste o tempo
-          </p>
-        )}
-
-        {/* Non-host current user can change energy */}
-        {canEditEnergy && !canEditDuration && (
-          <p className="text-[8px] text-[var(--text-muted)] mt-0.5 cursor-pointer hover:text-[var(--text)]" 
-             onClick={() => setShowPicker(true)}>
-            Toque para trocar energia
-          </p>
-        )}
-      </div>
-
-      {/* Energy picker modal */}
-      {showPicker && (
-        <EnergyPickerModal
-          current={participant.selectedEnergyType || "flame"}
-          onSelect={onEnergySelect}
-          onClose={() => setShowPicker(false)}
+    <div className="relative shrink-0" style={{ width: size, height: size, opacity }}>
+      {profile?.photoUrl ? (
+        <Image
+          src={profile.photoUrl}
+          alt={displayName}
+          width={size}
+          height={size}
+          className="rounded-full object-cover border-2 border-[var(--bg-primary)]"
+          style={{ width: size, height: size }}
+          unoptimized
         />
+      ) : (
+        <div
+          className="rounded-full flex items-center justify-center border-2 border-[var(--bg-primary)] bg-gradient-to-br from-[var(--accent)] to-[var(--orange)]"
+          style={{ width: size, height: size }}
+        >
+          <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{initials}</span>
+        </div>
+      )}
+      {cfg && (
+        <div
+          className="absolute -bottom-0.5 -right-0.5 bg-[var(--bg-primary)] rounded-full border border-[var(--border-subtle)] flex items-center justify-center"
+          style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42), opacity: muted ? 0.5 : 1 }}
+        >
+          <Image src={cfg.assets.full} alt={cfg.label} width={Math.round(size * 0.3)} height={Math.round(size * 0.3)} style={{ objectFit: "contain" }} unoptimized />
+        </div>
+      )}
+      {muted && (
+        <div
+          className="absolute inset-0 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(7,17,31,0.6)" }}
+        >
+          <X size={Math.round(size * 0.4)} className="text-[var(--text-muted)]" />
+        </div>
       )}
     </div>
   );
 }
 
+// ─── Shared focus ring (centerpiece) ─────────────────────────────────────────
+
+const RING_SIZE = 240;
+
+function SharedRing({
+  room,
+  isHost,
+  onDurationChange,
+  disabled,
+  remainingMs,
+  myEnergy,
+}: {
+  room: FocusRoom;
+  isHost: boolean;
+  onDurationChange: (m: number) => void;
+  disabled: boolean;
+  remainingMs: number | null;
+  myEnergy: string;
+}) {
+  const cfg = ENERGY_CONFIGS[myEnergy as EnergyType] || ENERGY_CONFIGS.flame;
+
+  // idle / waiting — host can drag, others see live-updated read-only circle
+  if (room.status === "waiting") {
+    if (isHost) {
+      return (
+        <CircularDurationPicker
+          value={room.durationMinutes}
+          onChange={onDurationChange}
+          maxDurationMinutes={120}
+          snapIncrement={5}
+          minMinutes={10}
+          size={RING_SIZE}
+          accentColor={cfg.accent}
+          disabled={disabled}
+          centerContent={null}
+        />
+      );
+    }
+
+    const total = 120 * 60 * 1000;
+    const frac = Math.max(0, Math.min(1, (room.durationMinutes * 60 * 1000) / total));
+    const radius = (RING_SIZE - 16) / 2;
+    const circumference = 2 * Math.PI * radius;
+    return (
+      <svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} style={{ maxWidth: "100%", height: "auto", display: "block" }}>
+        <defs>
+          <filter id="shared-ring-glow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={6} opacity={0.5} />
+        <circle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none"
+          stroke={cfg.accent} strokeWidth={8} strokeLinecap="round"
+          strokeDasharray={`${frac * circumference} ${circumference - frac * circumference}`}
+          transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+          style={{ filter: "url(#shared-ring-glow)", transition: "stroke-dasharray 0.2s ease-out, stroke 0.4s ease" }}
+        />
+        <circle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none"
+          stroke={cfg.accent} strokeWidth={4}
+          strokeDasharray={`${frac * circumference * 0.02} ${circumference}`}
+          strokeLinecap="round" opacity={0.6}
+        />
+      </svg>
+    );
+  }
+
+  // active / completed — synchronized countdown ring
+  const totalMs = room.durationMinutes * 60 * 1000;
+  const remaining = remainingMs ?? totalMs;
+  const progress = Math.max(0, Math.min(100, ((totalMs - remaining) / totalMs) * 100));
+  const radius = (RING_SIZE - 16) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const arc = (progress / 100) * circumference;
+
+  return (
+    <svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} style={{ maxWidth: "100%", height: "auto", display: "block" }}>
+      <defs>
+        <filter id="countdown-ring-glow">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={8} opacity={0.35} />
+      <circle
+        cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none"
+        stroke={cfg.accent} strokeWidth={8} strokeLinecap="round"
+        strokeDasharray={`${arc} ${circumference - arc}`}
+        transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+        style={{ filter: "url(#countdown-ring-glow)", transition: "stroke-dasharray 1s linear, stroke 0.3s" }}
+      />
+    </svg>
+  );
+}
+
 export default function FocusRoomsPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
-  const router = useRouter();
   const [pageState, setPageState] = useState<PageState>("list");
   const [rooms, setRooms] = useState<FocusRoom[]>([]);
   const [currentRoom, setCurrentRoom] = useState<FocusRoom | null>(null);
@@ -291,18 +286,16 @@ export default function FocusRoomsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [userRole, setUserRole] = useState<"user" | "admin">("user");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState<FocusRoom | null>(null);
 
-  useEffect(() => {
-    if (!loading && user) {
-      fetchRooms();
-      api.getProfile()
-        .then(({ user: profile }) => setUserRole(profile.role ?? "user"))
-        .catch(() => {});
-    }
-  }, [loading, user]);
+  // Countdown clock
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [lastCoins, setLastCoins] = useState(0);
+  const [showEnergyPicker, setShowEnergyPicker] = useState(false);
+
+  const roomSessionRef = useRef<PersistedRoomSession | null>(null);
 
   const fetchRooms = useCallback(async () => {
     setLoadingRooms(true);
@@ -310,21 +303,169 @@ export default function FocusRoomsPage() {
     try {
       const data = await api.getFocusRooms();
       setRooms(data.rooms);
-    } catch (err) {
+    } catch {
       setError("Erro ao carregar salas");
     } finally {
       setLoadingRooms(false);
     }
   }, []);
 
+  // Poll rooms list on mount
+  useEffect(() => {
+    if (!loading && user) {
+      fetchRooms();
+      // Lazy stale-room sweep: runs the cleanup job on load so stale rooms get
+      // expired even without an external cron.
+      api.cleanupFocusRooms().then(() => {}).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
+  // ── Room detail polling ────────────────────────────────────────────────────
+  const pollRoom = useCallback(async () => {
+    if (!currentRoom) return;
+    try {
+      const data = await api.getFocusRoomById(currentRoom.id);
+      const next = data.room;
+      setCurrentRoom(next);
+
+      // If the room disappeared (deleted), fall back to list
+      if (!next) {
+        setCurrentRoom(null);
+        setPageState("list");
+        fetchRooms();
+      }
+    } catch {
+      // transient polling failure — ignore
+    }
+  }, [currentRoom, fetchRooms]);
+
+  // Poll while in a waiting or active room view
+  useEffect(() => {
+    if (pageState !== "room" || !currentRoom) return;
+    if (currentRoom.status !== "waiting" && currentRoom.status !== "active") return;
+    const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
+
+  // 1-second clock for the shared countdown while active
+  useEffect(() => {
+    if (pageState !== "room" || currentRoom?.status !== "active") return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [pageState, currentRoom?.status, currentRoom?.id]);
+
+  // ── Initialize this participant's focus session when the room goes active ──
+  useEffect(() => {
+    if (!user) return;
+    if (pageState !== "room" || !currentRoom) return;
+    if (currentRoom.status !== "active") return;
+
+    const persisted = loadRoomSession(currentRoom.id);
+    const myParticipant = currentRoom.participants.find((p) => p.profileId === user.uid);
+
+    // If I already gave up, don't create a new session
+    if (myParticipant && myParticipant.sessionStatus === "left") return;
+
+    if (persisted && persisted.sessionId && !persisted.finalized) {
+      roomSessionRef.current = persisted;
+      return;
+    }
+
+    // Create my session for XP/quest crediting, driven by the room startedAt
+    let cancelled = false;
+    api.startFocus(currentRoom.durationMinutes)
+      .then(({ session }) => {
+        if (cancelled) return;
+        const created = new Date().toISOString();
+        const state: PersistedRoomSession = { sessionId: session.id, created, finalized: false };
+        roomSessionRef.current = state;
+        saveRoomSession(currentRoom.id, state);
+        setLastCoins(0);
+      })
+      .catch(() => { /* keep waiting for next poll */ });
+
+    return () => { cancelled = true; };
+  }, [user, pageState, currentRoom?.id, currentRoom?.status, currentRoom?.durationMinutes]);
+
+  // ── Shared countdown derivation ────────────────────────────────────────────
+  const isActive = currentRoom?.status === "active";
+  const startedAtMs = currentRoom?.startedAt ? new Date(currentRoom.startedAt).getTime() : null;
+  const totalMs = currentRoom ? currentRoom.durationMinutes * 60 * 1000 : 0;
+
+  const sharedRemainingMs = useMemo(() => {
+    if (!isActive || startedAtMs == null) return null;
+    return Math.max(0, startedAtMs + totalMs - nowMs);
+  }, [isActive, startedAtMs, totalMs, nowMs]);
+
+  // ── Finalize my session on completion ───────────────────────────────────────
+  const finalizingRef = useRef(false);
+  const finalizeSession = useCallback(async (room: FocusRoom, focusedSeconds: number, addGarden: boolean) => {
+    if (finalizingRef.current) return;
+    if (!user) return;
+    const sess = roomSessionRef.current;
+    if (!sess || sess.finalized) return;
+
+    finalizingRef.current = true;
+    try {
+      const end = await api.endFocus(sess.sessionId, focusedSeconds, true);
+      setLastCoins(end.xpAwarded);
+
+      if (addGarden) {
+        const reward = getEnergyReward(room.durationMinutes);
+        if (reward > 0) {
+          for (let i = 0; i < reward; i++) {
+            addGardenEntry({
+              energyType: (selectEnergyRef.current || "flame") as EnergyType,
+              durationMinutes: room.durationMinutes,
+              reward,
+              plantedAt: new Date().toISOString(),
+            });
+          }
+        }
+        setShowCompletion(true);
+        // Mark room completed (idempotent — first finisher wins)
+        await api.completeFocusRoom(room.id).catch(() => {});
+      }
+    } catch {
+      // ignore — next poll may retry
+    } finally {
+      const s = roomSessionRef.current;
+      if (s) {
+        const updated = { ...s, finalized: true };
+        roomSessionRef.current = updated;
+        saveRoomSession(room.id, updated);
+      }
+      finalizingRef.current = false;
+    }
+  }, [user]);
+
+  // Watch for countdown reaching zero → finalize (full completion)
+  useEffect(() => {
+    if (!currentRoom || !isActive) return;
+    if (sharedRemainingMs == null) return;
+    if (sharedRemainingMs <= 0) {
+      // Award this participant's XP/quest/jardim and mark the room completed.
+      finalizeSession(currentRoom, currentRoom.durationMinutes * 60, true);
+      // Also transition the local view immediately
+      setCurrentRoom((prev) => prev ? { ...prev, status: "completed" } : prev);
+    }
+  }, [isActive, sharedRemainingMs, currentRoom, finalizeSession]);
+
+  // Keep selected energy in a ref so completion closure reads latest
+  const selectEnergyRef = useRef<string>(selectedEnergyType);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
   const handleCreateRoom = useCallback(async () => {
     setLoadingAction("creating");
     setError(null);
     try {
+      selectEnergyRef.current = selectedEnergyType;
       const room = await api.createFocusRoom(selectedDuration, selectedEnergyType);
       setCurrentRoom(room.room);
       setRoomCode(room.room.code);
-      setPageState("waiting");
+      setPageState("room");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar sala");
     } finally {
@@ -333,16 +474,14 @@ export default function FocusRoomsPage() {
   }, [selectedDuration, selectedEnergyType]);
 
   const handleJoinRoom = useCallback(async () => {
-    if (!roomCode.trim()) {
-      setError("Digite o código da sala");
-      return;
-    }
+    if (!roomCode.trim()) { setError("Digite o código da sala"); return; }
     setLoadingAction("joining");
     setError(null);
     try {
+      selectEnergyRef.current = selectedEnergyType;
       const result = await api.joinFocusRoom(roomCode, selectedEnergyType);
       setCurrentRoom(result.room);
-      setPageState("waiting");
+      setPageState("room");
       setSuccessMessage("Você entrou na sala!");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao entrar na sala");
@@ -358,7 +497,7 @@ export default function FocusRoomsPage() {
     try {
       const result = await api.startFocusRoom(currentRoom.id);
       setCurrentRoom(result.room);
-      setPageState("active");
+      setNowMs(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao iniciar sala");
     } finally {
@@ -366,28 +505,19 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom]);
 
-  const handleEndRoom = useCallback(async () => {
-    if (!currentRoom) return;
-    setLoadingAction("ending");
-    setError(null);
-    try {
-      const result = await api.endFocusRoom(currentRoom.id);
-      setCurrentRoom(result.room);
-      setPageState("list");
-      fetchRooms();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao finalizar sala");
-    } finally {
-      setLoadingAction(null);
-    }
-  }, [currentRoom, fetchRooms]);
-
   const handleLeaveRoom = useCallback(async () => {
     if (!currentRoom) return;
     setLoadingAction("leaving");
     setError(null);
     try {
-      await api.leaveFocusRoom(currentRoom.id);
+      if (currentRoom.status === "active") {
+        // Active: mark as gave up instead of removing from history
+        await api.giveUpFocusRoom(currentRoom.id);
+        await finalizeSession(currentRoom, 0, false);
+        setError(null);
+      } else {
+        await api.leaveFocusRoom(currentRoom.id);
+      }
       setPageState("list");
       fetchRooms();
     } catch (err) {
@@ -395,34 +525,72 @@ export default function FocusRoomsPage() {
     } finally {
       setLoadingAction(null);
     }
-  }, [currentRoom, fetchRooms]);
+  }, [currentRoom, fetchRooms, finalizeSession]);
+
+  const handleGiveUp = useCallback(async () => {
+    if (!currentRoom) return;
+    setLoadingAction("givingup");
+    setError(null);
+    try {
+      await api.giveUpFocusRoom(currentRoom.id);
+      await finalizeSession(currentRoom, 0, false);
+      // Mark locally as left in the room view
+      setCurrentRoom((prev) => prev ? {
+        ...prev,
+        participants: prev.participants.map((p) => p.profileId === user?.uid ? { ...p, sessionStatus: "left" } : p),
+      } : prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao desistir");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom, user, finalizeSession]);
 
   const handleUpdateDuration = useCallback(async (minutes: number) => {
     if (!currentRoom) return;
     try {
       const result = await api.updateRoomDuration(currentRoom.id, minutes);
       setCurrentRoom(result.room);
-    } catch (err) {
-      console.error("Failed to update duration:", err);
+    } catch {
+      // silent — synced via poll
     }
   }, [currentRoom]);
 
   const handleSelectEnergy = useCallback(async (energyType: string) => {
     if (!currentRoom || !user) return;
+    setSelectedEnergyType(energyType);
+    selectEnergyRef.current = energyType;
     try {
       const result = await api.selectEnergy(currentRoom.id, energyType);
       setCurrentRoom(result.room);
-    } catch (err) {
-      console.error("Failed to select energy:", err);
+    } catch {
+      // silent
     }
   }, [currentRoom, user]);
 
+  const handleOpenEnergyPicker = useCallback(() => {
+    setShowEnergyPicker(true);
+  }, []);
+
   const copyToClipboard = useCallback(() => {
-    if (!roomCode) return;
-    navigator.clipboard.writeText(roomCode);
+    if (!currentRoom) return;
+    navigator.clipboard.writeText(currentRoom.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [roomCode]);
+  }, [currentRoom]);
+
+  const shareRoom = useCallback(async () => {
+    if (!currentRoom) return;
+    const text = `Venha focar comigo em uma Sala de Foco! Código: ${currentRoom.code}`;
+    const url = `${window.location.origin}/salas-de-foco?join=${currentRoom.code}`;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ title: "Sala de Foco", text, url });
+        return;
+      } catch { /* fall through to copy */ }
+    }
+    await copyToClipboard();
+  }, [currentRoom, copyToClipboard]);
 
   const handleDeleteRoom = useCallback(async () => {
     if (!roomToDelete) return;
@@ -445,104 +613,91 @@ export default function FocusRoomsPage() {
     }
   }, [roomToDelete, currentRoom]);
 
-  const isHost = currentRoom?.hostProfileId === user?.uid;
-  const canStart = isHost && currentRoom?.status === "waiting";
-  const canEnd = isHost && currentRoom?.status === "active";
-
-  // Get current user's participant data
-  const currentUserParticipant = useMemo(() => {
-    if (!currentRoom || !user) return null;
-    return currentRoom.participants.find(p => p.profileId === user.uid);
-  }, [currentRoom, user]);
-
+  // ═══════════════════════ VIEWS ═══════════════════════
   const renderListView = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="flex items-center gap-4">
         <motion.button
           onClick={() => setPageState("create")}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--text)] transition-colors"
         >
-          <Plus size={16} />
-          Criar sala
+          <Plus size={16} /> Criar sala
         </motion.button>
         <motion.button
           onClick={() => setPageState("join")}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--text)] transition-colors"
         >
-          <Users size={16} />
-          Entrar em sala
+          <Users size={16} /> Entrar em sala
         </motion.button>
       </div>
 
       <div className="grid gap-4">
         {rooms.length > 0 ? (
-          rooms.map((room) => (
-            <motion.div
-              key={room.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-[var(--text-faint)] mb-0.5">
-                    Sala: {room.code}
-                  </p>
-                  <p className="text-sm font-medium text-[var(--text)]">
-                    {room.durationMinutes} min • {room.energyType || "Foco"}
-                  </p>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                    Status: {room.status === "waiting" ? "Aguardando" : room.status === "active" ? "Ativa" : "Concluída"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
-                    <Users size={12} />
-                    {room.participants.length}
-                  </span>
-                  {userRole === "admin" && (
+          rooms.map((room) => {
+            const isMyRoomHost = room.hostProfileId === user?.uid;
+            return (
+              <motion.div
+                key={room.id}
+                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[var(--text-faint)] mb-0.5">Sala: {room.code}</p>
+                    <p className="text-sm font-medium text-[var(--text)]">
+                      {room.durationMinutes} min • {room.energyType || "Foco"}
+                    </p>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                      Status:{" "}
+                      {room.status === "waiting" ? "Aguardando" :
+                       room.status === "active" ? "Em andamento" :
+                       room.status === "completed" ? "Concluída" : "Expirada"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
+                      <Users size={12} /> {room.participants.length}
+                    </span>
+                    {/* Delete — host (or admin) only, disabled for active rooms */}
+                    {isMyRoomHost && (
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          if (room.status === "active") { setError("Não é possível excluir uma sala em andamento"); return; }
+                          setRoomToDelete(room);
+                          setShowDeleteConfirm(true);
+                        }}
+                        disabled={room.status === "active"}
+                        className="rounded-lg p-1.5 text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={room.status === "active" ? "Sala em andamento" : "Excluir sala"}
+                      >
+                        <Trash2 size={14} />
+                      </motion.button>
+                    )}
                     <button
                       onClick={() => {
-                        setRoomToDelete(room);
-                        setShowDeleteConfirm(true);
+                        setShowCompletion(false);
+                        setLastCoins(0);
+                        setCurrentRoom(room);
+                        setPageState("room");
                       }}
-                      className="rounded-lg p-1.5 text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                      title="Excluir sala"
+                      className="text-button text-[10px]"
                     >
-                      <Trash2 size={14} />
+                      Ver
                     </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setCurrentRoom(room);
-                      setPageState(room.status === "waiting" ? "waiting" : "active");
-                    }}
-                    className="text-button text-[10px]"
-                  >
-                    Ver
-                  </button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))
+              </motion.div>
+            );
+          })
         ) : (
           !loadingRooms && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Sparkles size={32} className="text-[var(--text-faint)] mb-3" />
-              <p className="text-sm text-[var(--text-muted)]">
-                Você não está em nenhuma sala no momento
-              </p>
-              <p className="text-[10px] text-[var(--text-faint)] mt-1">
-                Crie uma sala ou junte-se a uma sala existente
-              </p>
+              <p className="text-sm text-[var(--text-muted)]">Você não está em nenhuma sala no momento</p>
+              <p className="text-[10px] text-[var(--text-faint)] mt-1">Crie uma sala ou junte-se a uma sala existente</p>
             </div>
           )
         )}
@@ -556,90 +711,39 @@ export default function FocusRoomsPage() {
   );
 
   const renderCreateView = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setPageState("list")}
-          className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
-        >
-          <ChevronLeft size={16} />
-          Voltar
+        <button onClick={() => setPageState("list")} className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors">
+          <ChevronLeft size={16} /> Voltar
         </button>
       </div>
-
       <div className="panel p-6">
         <h2 className="font-display text-xl mb-6">Criar Sala de Foco</h2>
-
         <div className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-              Duração
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Duração</label>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSelectedDuration(Math.max(5, selectedDuration - 5))}
-                className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-              >
-                -5
-              </button>
-              <span className="font-mono text-lg text-[var(--text)] min-w-[40px] text-center">
-                {selectedDuration}
-              </span>
-              <button
-                onClick={() => setSelectedDuration(Math.min(120, selectedDuration + 5))}
-                className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-              >
-                +5
-              </button>
+              <button onClick={() => setSelectedDuration(Math.max(5, selectedDuration - 5))} className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors">-5</button>
+              <span className="font-mono text-lg text-[var(--text)] min-w-[40px] text-center">{selectedDuration}</span>
+              <button onClick={() => setSelectedDuration(Math.min(120, selectedDuration + 5))} className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors">+5</button>
               <span className="text-[10px] text-[var(--text-faint)]">minutos</span>
             </div>
           </div>
-
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-              Tipo de Energia Inicial
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Tipo de Energia Inicial</label>
             <div className="flex gap-2 flex-wrap">
-              {Object.entries(ENERGY_CONFIGS)
-                .filter(([_, cfg]) => !cfg.locked)
-                .map(([type, cfg]) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedEnergyType(type)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${
-                      selectedEnergyType === type
-                        ? `bg-[${cfg.accent}]20 text-[${cfg.accent}]`
-                        : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"
-                    }`}
-                    style={{
-                      border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none",
-                    }}
-                  >
-                    {cfg.label}
-                  </button>
-                ))}
+              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => (
+                <button key={type} onClick={() => setSelectedEnergyType(type)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${selectedEnergyType === type ? "" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"}`}
+                  style={{ border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none" }}>
+                  {cfg.label}
+                </button>
+              ))}
             </div>
           </div>
-
           <div className="pt-4">
-            <motion.button
-              onClick={handleCreateRoom}
-              disabled={loadingAction === "creating"}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="primary-button w-full"
-            >
-              {loadingAction === "creating" ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Play size={16} /> Criar Sala
-                </>
-              )}
+            <motion.button onClick={handleCreateRoom} disabled={loadingAction === "creating"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
+              {loadingAction === "creating" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Criar Sala</>}
             </motion.button>
           </div>
         </div>
@@ -648,80 +752,36 @@ export default function FocusRoomsPage() {
   );
 
   const renderJoinView = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setPageState("list")}
-          className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
-        >
-          <ChevronLeft size={16} />
-          Voltar
+        <button onClick={() => setPageState("list")} className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors">
+          <ChevronLeft size={16} /> Voltar
         </button>
       </div>
-
       <div className="panel p-6">
         <h2 className="font-display text-xl mb-6">Entrar em Sala</h2>
-
         <div className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-              Código da Sala (6 caracteres)
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Código da Sala (6 caracteres)</label>
             <div className="flex gap-2">
-              <input
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 6))}
-                placeholder="ABC123"
-                className="auth-input flex-1 text-center text-lg tracking-widest"
-              />
+              <input value={roomCode} onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="ABC123" className="auth-input flex-1 text-center text-lg tracking-widest" />
             </div>
           </div>
-
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-              Tipo de Energia (opcional)
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Tipo de Energia (opcional)</label>
             <div className="flex gap-2 flex-wrap">
-              {Object.entries(ENERGY_CONFIGS)
-                .filter(([_, cfg]) => !cfg.locked)
-                .map(([type, cfg]) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedEnergyType(type)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${
-                      selectedEnergyType === type
-                        ? `bg-[${cfg.accent}]20 text-[${cfg.accent}]`
-                        : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"
-                    }`}
-                    style={{
-                      border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none",
-                    }}
-                  >
-                    {cfg.label}
-                  </button>
-                ))}
+              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => (
+                <button key={type} onClick={() => setSelectedEnergyType(type)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${selectedEnergyType === type ? "" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"}`}
+                  style={{ border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none" }}>
+                  {cfg.label}
+                </button>
+              ))}
             </div>
           </div>
-
           <div className="pt-4">
-            <motion.button
-              onClick={handleJoinRoom}
-              disabled={loadingAction === "joining" || !roomCode.trim()}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="primary-button w-full"
-            >
-              {loadingAction === "joining" ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Users size={16} /> Entrar na Sala
-                </>
-              )}
+            <motion.button onClick={handleJoinRoom} disabled={loadingAction === "joining" || !roomCode.trim()} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
+              {loadingAction === "joining" ? <Loader2 size={16} className="animate-spin" /> : <><Users size={16} /> Entrar na Sala</>}
             </motion.button>
           </div>
         </div>
@@ -729,272 +789,282 @@ export default function FocusRoomsPage() {
     </motion.div>
   );
 
-  const renderWaitingRoom = () => {
-    if (!currentRoom || !user) return null;
+  // ── Room detail view ───────────────────────────────────────────────────────
 
-    const isHost = currentRoom.hostProfileId === user.uid;
+  const renderRoomView = () => {
+    if (!currentRoom || !user) return null;
+    const room = currentRoom;
+    const isHost = room.hostProfileId === user.uid;
+    const myParticipant = room.participants.find((p) => p.profileId === user.uid);
+    const myEnergy = myParticipant?.selectedEnergyType || room.energyType || selectedEnergyType;
+    const myProgress = sharedRemainingMs != null
+      ? Math.max(0, Math.min(100, ((totalMs - sharedRemainingMs) / totalMs) * 100))
+      : room.status === "completed" ? 100 : 0;
+    const running = room.status === "active";
+    const completed = room.status === "completed";
 
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-6"
-      >
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {/* Header: back + room code + copy/share */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setCurrentRoom(null);
-              setPageState("list");
-            }}
-            className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
-          >
-            <ChevronLeft size={16} />
-            Voltar
+          <button onClick={() => { setCurrentRoom(null); setPageState("list"); }} className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors">
+            <ChevronLeft size={16} /> Voltar
           </button>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] font-mono text-[var(--text-faint)]">
-              Sala: {currentRoom.code}
+            <span className="px-3 py-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] font-mono text-[var(--text)] tracking-widest">
+              {room.code}
             </span>
-            <button
-              onClick={copyToClipboard}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-            >
+            <button onClick={copyToClipboard} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
               {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? "Copiado!" : "Copiar código"}
+              {copied ? "Copiado!" : "Copiar"}
+            </button>
+            <button onClick={shareRoom} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors" title="Compartilhar">
+              <Share2 size={12} /> Compartilhar
             </button>
           </div>
         </div>
 
         <div className="panel p-6">
-          <div className="mb-6">
-            <h2 className="font-display text-xl">Sala de Espera</h2>
-            <p className="text-sm text-[var(--text-muted)] mt-1">
-              {currentRoom.durationMinutes} min • Aguardando início
-            </p>
+          {/* Status */}
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="font-display text-xl">
+              {room.status === "waiting" ? "Sala de Foco" :
+               room.status === "active" ? "Foco em Grupo" : "Sessão Concluída"}
+            </h2>
+            <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+              {room.status === "waiting" && <><Clock size={12} /> Aguardando início</>}
+              {room.status === "active" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-400" /> Em andamento</motion.span>}
+              {room.status === "completed" && <><CheckCircle size={12} className="text-green-400" /> Concluída</>}
+            </span>
           </div>
 
-          <div className="space-y-6">
-            {/* Individual focus circles for each participant */}
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">
-                Participantes e configurações
+          {/* Participants row + invite slot */}
+          <div className="mb-6">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Participantes</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              {room.participants.map((p) => {
+                return (
+                  <div key={p.id} className="flex flex-col items-center gap-1">
+                    <RoomAvatar profile={p.profile} energyType={p.selectedEnergyType} size={44} muted={p.sessionStatus === "left"} dimmed={p.sessionStatus === "left"} />
+                    <span className="text-[9px] text-[var(--text-muted)] max-w-[52px] truncate">{p.profile?.displayName || "Anônimo"}</span>
+                    {(p.sessionStatus === "completed") && <span className="text-[8px] text-green-400">✓</span>}
+                    {p.sessionStatus === "left" && <span className="text-[8px] text-red-400">desistiu</span>}
+                  </div>
+                );
+              })}
+              {/* "+" invite slot — only meaningful while waiting */}
+              {(room.status === "waiting" || room.status === "active") && (
+                <button onClick={shareRoom} className="flex flex-col items-center gap-1" title="Convidar">
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    className="w-11 h-11 rounded-full border-2 border-dashed border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                    <UserPlus size={18} />
+                  </motion.div>
+                  <span className="text-[9px] text-[var(--text-faint)]">Convidar</span>
+                </button>
+              )}
+              {room.participants.length === 0 && (
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">Compartilhe o código com seus amigos para começar.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Shared circle */}
+          <div className="flex flex-col items-center">
+            <div className="relative" style={{ width: RING_SIZE, maxWidth: "100%" }}>
+              <SharedRing
+                room={room}
+                isHost={isHost}
+                onDurationChange={handleUpdateDuration}
+                disabled={loadingAction !== null}
+                remainingMs={running ? sharedRemainingMs : null}
+                myEnergy={myEnergy}
+              />
+
+              {/* Center energy image */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div style={{ position: "absolute", width: RING_SIZE * 0.62, height: RING_SIZE * 0.62, borderRadius: "50%", background: `radial-gradient(circle, ${cfgGlow(myEnergy)} 0%, transparent 72%)`, filter: "blur(2px)" }} />
+                <div className="relative" style={{ width: RING_SIZE * 0.55, height: RING_SIZE * 0.55 }}>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={`${myEnergy}-${resolveStage(myProgress, running)}`}
+                      initial={{ opacity: 0, scale: 0.88, filter: "blur(6px)" }}
+                      animate={{ opacity: room.status === "active" && myParticipant?.sessionStatus === "left" ? 0.35 : 1, scale: 1, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
+                      transition={{ duration: 0.5, ease: "easeInOut" }}
+                    >
+                      <Image
+                        src={ENERGY_CONFIGS[myEnergy as EnergyType].assets[myParticipant?.sessionStatus === "left" ? "extinguished" : resolveStage(myProgress, running)]}
+                        alt={myEnergy}
+                        width={RING_SIZE * 0.55} height={RING_SIZE * 0.55} style={{ objectFit: "contain" }} unoptimized />
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Energy edit button for current user (over image) */}
+              {room.status !== "completed" && myParticipant?.sessionStatus !== "left" && (
+                <button
+                  onClick={handleOpenEnergyPicker}
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  style={{ width: RING_SIZE * 0.3, height: RING_SIZE * 0.3, cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                  aria-label="Escolher energia"
+                />
+              )}
+            </div>
+
+            {/* Countdown / duration label */}
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 42, letterSpacing: "-0.04em", color: "var(--text)" }}>
+                {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(room.durationMinutes).padStart(2, "0")}:00`}
               </span>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {currentRoom.participants.map((participant) => {
-                  const participantProfile = participant.profile || { id: participant.profileId, displayName: "Anônimo" };
-                  
+              <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
+                {running ? "em andamento" : "duração"}
+              </span>
+              {room.status === "waiting" && !isHost && (
+                <span className="mt-1 text-[10px] text-[var(--text-muted)]">Duração definida pelo anfitrião</span>
+              )}
+            </div>
+
+            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-faint)]">
+              <span className="opacity-60 italic">toque no círculo para trocar sua energia</span>
+            </div>
+          </div>
+
+          {/* Live progress panel — active session */}
+          {room.status === "active" && room.participants.length > 0 && (
+            <div className="mt-6 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Progresso da sala</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {room.participants.map((p) => {
+                  const isMe = p.profileId === user.uid;
+                  const prog = p.sessionStatus === "left" ? 0 : p.sessionStatus === "completed" ? 100 : myProgress;
+                  const size = 48;
+                  const r = (size - 8) / 2;
+                  const c = 2 * Math.PI * r;
+                  const arc = (prog / 100) * c;
+                  const color = p.sessionStatus === "left" ? "#ff5a5a" : p.sessionStatus === "completed" ? "#4ade80" : (p.selectedEnergyType ? ENERGY_CONFIGS[p.selectedEnergyType as EnergyType].accent : "var(--accent)");
                   return (
-                    <ParticipantCircle
-                      key={participant.id}
-                      participant={{ ...participant, profile: participantProfile }}
-                      room={currentRoom}
-                      currentUserId={user.uid}
-                      isHost={isHost}
-                      onDurationChange={handleUpdateDuration}
-                      onEnergySelect={handleSelectEnergy}
-                      disabled={loadingAction !== null}
-                    />
+                    <div key={p.id} className="flex items-center gap-2.5">
+                      <div className="relative" style={{ width: size, height: size }}>
+                        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+                          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth={4} opacity={0.4} />
+                          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={4} strokeLinecap="round" strokeDasharray={`${arc} ${c - arc}`} />
+                        </svg>
+                        <div className="absolute inset-[6px] rounded-full overflow-hidden">
+                          {p.profile?.photoUrl ? (
+                            <Image src={p.profile.photoUrl} alt={p.profile.displayName} width={size} height={size} className="w-full h-full object-cover" unoptimized />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--orange)]">
+                              <span className="text-[10px] font-bold text-white">{p.profile?.displayName?.charAt(0) || "?"}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-medium text-[var(--text)] truncate">{p.profile?.displayName || "Anônimo"}{isMe ? " (você)" : ""}</p>
+                        <p className="text-[8px]" style={{ color }}>
+                          {p.sessionStatus === "left" ? "Desistiu" : p.sessionStatus === "completed" ? "Concluído" : `${Math.round(prog)}%`}
+                        </p>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             </div>
+          )}
 
-            {/* Host controls */}
-            {canStart && currentRoom.participants.length > 0 && (
-              <motion.button
-                onClick={handleStartRoom}
-                disabled={loadingAction === "starting" || !currentRoom}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="primary-button w-full"
+          {/* Completion celebration */}
+          <AnimatePresence>
+            {showCompletion && completed && (
+              <motion.div
+                initial={{ opacity: 0, y: 16, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -12, scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 340, damping: 24 }}
+                className="mt-6 rounded-2xl border p-4 flex flex-col items-center gap-3 text-center"
+                style={{ borderColor: `${ENERGY_CONFIGS[myEnergy as EnergyType].accent}33`, background: `${ENERGY_CONFIGS[myEnergy as EnergyType].accent}0f` }}
               >
-                {loadingAction === "starting" ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <>
-                    <Play size={16} /> Iniciar Sessão para Todos
-                  </>
-                )}
+                <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Sessão concluída!</span>
+                <div className="flex items-center gap-2">
+                  <Zap size={16} className="text-[#ffb86b]" />
+                  <span className="font-mono font-bold text-[#ffb86b] text-lg">+{lastCoins} moedas</span>
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)]">Sua energia foi plantada no seu Meu Jardim e conta para seus objetivos e quests diárias.</p>
+                <button onClick={() => setShowCompletion(false)} className="rounded-full px-6 py-2 text-sm font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+                  style={{ background: ENERGY_CONFIGS[myEnergy as EnergyType].accent }}>
+                  Concluído
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Controls */}
+          <div className="mt-8 space-y-3">
+            {room.status === "waiting" && isHost && (
+              <motion.button onClick={handleStartRoom} disabled={loadingAction === "starting"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
+                {loadingAction === "starting" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Iniciar sessão para todos</>}
               </motion.button>
             )}
-
-            {currentRoom.participants.length === 0 && (
-              <div className="text-center py-6">
-                <p className="text-sm text-[var(--text-muted)]">
-                  Aguardando participantes...
-                </p>
-                <p className="text-[10px] text-[var(--text-faint)] mt-1">
-                  Compartilhe o código {currentRoom.code} com seus amigos
-                </p>
+            {room.status === "waiting" && !isHost && myParticipant && (
+              <div className="flex flex-col items-center gap-2 py-3">
+                <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <Loader2 size={14} className="animate-spin" /> Aguardando o anfitrião iniciar...
+                </motion.div>
               </div>
+            )}
+
+            {(room.status === "active" || room.status === "completed") && myParticipant?.sessionStatus !== "left" && (
+              <>
+                {myParticipant?.sessionStatus === "completed" && (
+                  <div className="text-center text-[10px] text-green-400 flex items-center gap-1 justify-center">
+                    <CheckCircle size={12} /> Você concluiu esta sessão
+                  </div>
+                )}
+                {room.status === "active" && myParticipant?.sessionStatus === "focusing" && (
+                  <button
+                    onClick={handleGiveUp}
+                    disabled={loadingAction === "givingup"}
+                    className="w-full rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400 transition-colors hover:bg-red-500/15 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loadingAction === "givingup" ? <Loader2 size={16} className="animate-spin" /> : <>
+                      <X size={15} /> Desistir da sessão
+                    </>}
+                  </button>
+                )}
+              </>
+            )}
+
+            {room.status === "waiting" && !isHost && (
+              <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
+              </button>
+            )}
+
+            {room.status === "active" && isHost && (
+              <p className="text-center text-[10px] text-[var(--text-faint)]">
+                Você é o anfitrião. Os participantes verão seu progresso em tempo real.
+              </p>
             )}
           </div>
         </div>
 
-        {/* Leave button for non-host participants */}
-        {!isHost && (
-          <motion.button
-            onClick={handleLeaveRoom}
-            disabled={loadingAction === "leaving"}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400 transition-colors hover:bg-red-500/15"
-          >
-            {loadingAction === "leaving" ? (
-              <Loader2 size={16} className="animate-spin mx-auto" />
-            ) : (
-              "Sair da Sala"
-            )}
-          </motion.button>
+        {/* Energy picker */}
+        {showEnergyPicker && (
+          <EnergyPickerModal
+            current={myEnergy}
+            onSelect={handleSelectEnergy}
+            onClose={() => setShowEnergyPicker(false)}
+          />
         )}
       </motion.div>
     );
   };
 
-  const renderActiveRoom = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => {
-            if (canEnd) {
-              handleEndRoom();
-            } else {
-              handleLeaveRoom();
-            }
-          }}
-          className="flex items-center gap-1 text-[var(--text-faint)] hover:text-red-400 transition-colors"
-        >
-          <X size={16} />
-          {canEnd ? "Finalizar Sessão" : "Sair da Sala"}
-        </button>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-[10px] font-mono text-[var(--text-faint)]">
-            Sala: {currentRoom?.code}
-          </span>
-        </div>
-      </div>
-
-      <div className="panel p-6">
-        <div className="mb-6 text-center">
-          <h2 className="font-display text-2xl">Foco em Grupo</h2>
-          <p className="text-sm text-[var(--text-muted)] mt-2">
-            Duração: {currentRoom?.durationMinutes} min
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2 block">
-              Participantes
-            </span>
-            <div className="grid gap-3">
-              {currentRoom?.participants.map((participant) => {
-                const isCurrentUser = participant.profileId === user?.uid;
-                const energyConfig = participant.selectedEnergyType 
-                  ? ENERGY_CONFIGS[participant.selectedEnergyType as EnergyType]
-                  : null;
-                
-                return (
-                  <motion.div
-                    key={participant.id}
-                    layout
-                    className={`flex items-center justify-between p-3 rounded-xl ${
-                      isCurrentUser
-                        ? "bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
-                        : "bg-[var(--bg-tertiary)]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--orange)] flex items-center justify-center">
-                        <span className="text-[10px] font-bold text-white">
-                          {participant.profile?.displayName?.charAt(0) || "?"}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-medium text-[var(--text)]">
-                          {participant.profile?.displayName || "Anônimo"}
-                          {isCurrentUser && <span className="text-[var(--text-faint)]"> (você)</span>}
-                        </p>
-                        {participant.selectedEnergyType && energyConfig && (
-                          <p className="text-[8px] text-[var(--text-muted)] flex items-center gap-1">
-                            <Image
-                              src={energyConfig.assets.full}
-                              alt={energyConfig.label}
-                              width={12}
-                              height={12}
-                              style={{ objectFit: "contain", display: "inline-block" }}
-                              unoptimized
-                            />
-                            {energyConfig.label}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {participant.sessionStatus === "focusing" && (
-                        <motion.div
-                          animate={{ opacity: [1, 0.5, 1] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                          className="w-2 h-2 rounded-full bg-green-400"
-                        />
-                      )}
-                      {participant.sessionStatus === "completed" && (
-                        <CheckCircle size={14} className="text-green-400" />
-                      )}
-                      {participant.sessionStatus === "left" && (
-                        <XCircle size={14} className="text-red-400" />
-                      )}
-                      {participant.sessionStatus === "waiting" && (
-                        <div className="w-2 h-2 rounded-full bg-amber-400" />
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-
-          {canEnd && (
-            <motion.button
-              onClick={handleEndRoom}
-              disabled={loadingAction === "ending"}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 font-medium transition-colors hover:bg-red-500/20"
-            >
-              {loadingAction === "ending" ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <>
-                  <Square size={16} className="fill-current" /> Finalizar Sessão para Todos
-                </>
-              )}
-            </motion.button>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-
   const renderCurrentView = () => {
     switch (pageState) {
-      case "list":
-        return renderListView();
-      case "create":
-        return renderCreateView();
-      case "join":
-        return renderJoinView();
-      case "waiting":
-        return renderWaitingRoom();
-      case "active":
-        return renderActiveRoom();
-      default:
-        return renderListView();
+      case "list": return renderListView();
+      case "create": return renderCreateView();
+      case "join": return renderJoinView();
+      case "room": return renderRoomView();
+      default: return renderListView();
     }
   };
 
@@ -1018,28 +1088,17 @@ export default function FocusRoomsPage() {
           <span className="font-display text-xl font-semibold tracking-[-0.04em]">Salas de Foco</span>
         </header>
 
-        <AnimatePresence mode="wait">
-          {renderCurrentView()}
-        </AnimatePresence>
+        <AnimatePresence mode="wait">{renderCurrentView()}</AnimatePresence>
 
         {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="mt-4 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400"
-          >
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+            className="mt-4 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
             {error}
           </motion.div>
         )}
-
         {successMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="mt-4 rounded-lg border border-green-500/20 bg-green-500/8 px-4 py-3 text-sm text-green-400"
-          >
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+            className="mt-4 rounded-lg border border-green-500/20 bg-green-500/8 px-4 py-3 text-sm text-green-400">
             {successMessage}
           </motion.div>
         )}
@@ -1052,25 +1111,16 @@ export default function FocusRoomsPage() {
                 Tem certeza que deseja excluir a sala <span className="font-mono font-medium text-[var(--text)]">{roomToDelete.code}</span>?
               </p>
               <p className="text-xs text-[var(--text-faint)] mb-6">
-                Esta ação é permanente e removerá todos os participantes da sala.
+                Todos os participantes serão removidos. Esta ação é permanente.
               </p>
               <div className="flex gap-3">
-                <button
-                  onClick={() => { setShowDeleteConfirm(false); setRoomToDelete(null); }}
-                  className="flex-1 rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-                >
+                <button onClick={() => { setShowDeleteConfirm(false); setRoomToDelete(null); }}
+                  className="flex-1 rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors">
                   Cancelar
                 </button>
-                <button
-                  onClick={handleDeleteRoom}
-                  disabled={loadingAction === "deleting"}
-                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                >
-                  {loadingAction === "deleting" ? (
-                    <Loader2 size={16} className="animate-spin mx-auto" />
-                  ) : (
-                    "Excluir"
-                  )}
+                <button onClick={handleDeleteRoom} disabled={loadingAction === "deleting"}
+                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                  {loadingAction === "deleting" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Excluir"}
                 </button>
               </div>
             </div>
@@ -1079,4 +1129,9 @@ export default function FocusRoomsPage() {
       </main>
     </AppShell>
   );
+}
+
+// Helper: energy glow used inside room view
+function cfgGlow(type: string): string {
+  return (ENERGY_CONFIGS[type as EnergyType] || ENERGY_CONFIGS.flame).glow;
 }

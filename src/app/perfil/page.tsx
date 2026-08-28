@@ -108,57 +108,63 @@ function AchievementBadge({
   const inner = Math.round(size * 0.84);
 
   return (
-    // outer wrapper clips nothing — glow is contained by keeping inner circle smaller
-    <motion.button
-      type="button"
-      onClick={onClick}
-      whileHover={reduced ? undefined : { scale: 1.06 }}
-      whileTap={reduced ? undefined : { scale: 0.95 }}
-      className="group relative shrink-0 cursor-pointer flex flex-col items-center justify-start"
+    <motion.div
+      className="group relative block shrink-0"
       style={{ width: size }}
     >
-      {/* glow container — fixed square so shadow never bleeds outside size×size */}
-      <div
-        className="flex items-center justify-center rounded-full"
-        style={{
-          width: inner,
-          height: inner,
-          background: isEarned
-            ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
-            : "rgba(255,255,255,0.04)",
-          boxShadow: isEarned ? `0 0 12px 2px ${colors.glow}` : "none",
-          border: isEarned ? "none" : "1px dashed rgba(255,255,255,0.12)",
-        }}
+      <motion.button
+        type="button"
+        onClick={onClick}
+        whileHover={reduced ? undefined : { scale: 1.06 }}
+        whileTap={reduced ? undefined : { scale: 0.95 }}
+        className="block w-full cursor-pointer"
       >
-        {isEarned ? (
-          <Icon size={inner * 0.38} style={{ color: "#000" }} strokeWidth={2} />
-        ) : (
-          <Lock size={inner * 0.28} className="text-[var(--text-faint)]" strokeWidth={1.5} />
-        )}
-      </div>
+        <span className="flex flex-col items-center justify-start">
+          {/* glow container — fixed square so shadow never bleeds outside size×size */}
+          <span
+            className="flex items-center justify-center rounded-full"
+            style={{
+              width: inner,
+              height: inner,
+              background: isEarned
+                ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
+                : "rgba(255,255,255,0.04)",
+              boxShadow: isEarned ? `0 0 12px 2px ${colors.glow}` : "none",
+              border: isEarned ? "none" : "1px dashed rgba(255,255,255,0.12)",
+            }}
+          >
+            {isEarned ? (
+              <Icon size={inner * 0.38} style={{ color: "#000" }} strokeWidth={2} />
+            ) : (
+              <Lock size={inner * 0.28} className="text-[var(--text-faint)]" strokeWidth={1.5} />
+            )}
+          </span>
 
-      {isEarned && achievement.thresholds.length > 1 && (
-        <div className="mt-1.5 flex justify-center gap-1">
-          {achievement.thresholds.map((_, i) => (
-            <span
-              key={i}
-              className="block h-1 w-1 rounded-full"
-              style={{ background: i < achievement.unlockedTier ? colors.primary : "rgba(255,255,255,0.15)" }}
-            />
-          ))}
-        </div>
-      )}
+          {isEarned && achievement.thresholds.length > 1 && (
+            <span className="mt-1.5 flex justify-center gap-1">
+              {achievement.thresholds.map((_, i) => (
+                <span
+                  key={i}
+                  className="block h-1 w-1 rounded-full"
+                  style={{ background: i < achievement.unlockedTier ? colors.primary : "rgba(255,255,255,0.15)" }}
+                />
+              ))}
+            </span>
+          )}
+        </span>
+      </motion.button>
 
-      {showRemove && (
+      {showRemove && onRemove && (
         <button
           type="button"
+          aria-label="Remover destaque"
           onClick={onRemove}
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--red)] text-black opacity-0 shadow-md transition group-hover:opacity-100"
+          className="absolute -right-1 -top-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-[var(--red)] text-black opacity-0 shadow-md transition group-hover:opacity-100"
         >
           <X size={11} />
         </button>
       )}
-    </motion.button>
+    </motion.div>
   );
 }
 
@@ -346,6 +352,7 @@ export default function PerfilPage() {
   const [saved, setSaved] = useState(false);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
@@ -363,11 +370,13 @@ export default function PerfilPage() {
       api.getDashboard().catch(() => null),
       api.getAchievements().catch(() => null),
       api.getRecaps().catch(() => null),
-    ]).then(([dash, ach, recapResult]) => {
+      api.getProfile().catch(() => null),
+    ]).then(([dash, ach, recapResult, profileResult]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
+      if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
     });
     return () => { active = false; };
   }, [user?.uid]);
@@ -384,6 +393,7 @@ export default function PerfilPage() {
 
   const displayName = user.displayName ?? "Usuário";
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const avatarSrc = photoUrl ?? user.photoURL ?? undefined;
   const createdAt = user.metadata.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "—";
@@ -445,6 +455,7 @@ export default function PerfilPage() {
       const photoUrl = data.secure_url as string;
       await updateProfile(auth.currentUser, { photoURL: photoUrl });
       await api.updatePhotoUrl(photoUrl);
+      setPhotoUrl(photoUrl);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -550,9 +561,9 @@ export default function PerfilPage() {
                     transition: "box-shadow 0.4s ease",
                   }}
                 >
-                  {user.photoURL ? (
+                  {avatarSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={user.photoURL} alt={displayName} className="h-full w-full rounded-full object-cover" />
+                    <img src={avatarSrc} alt={displayName} className="h-full w-full rounded-full object-cover" />
                   ) : (
                     initials
                   )}

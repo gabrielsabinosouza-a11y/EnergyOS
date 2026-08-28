@@ -238,29 +238,54 @@ export async function purchaseShield(profileId: string): Promise<{ balance: numb
   return { balance: balance - SHIELD_COST, shieldCount: current + 1 };
 }
 
-export async function consumeShield(profileId: string, streakValue: number): Promise<boolean> {
+export async function isDayProtected(profileId: string, date: string): Promise<boolean> {
   parseProfileId(profileId);
-  const count = await getShieldCount(profileId);
-  if (count <= 0) return false;
+  const res = await pool.query(
+    `select 1 from streak_shield_usage where profile_id = $1 and used_on_date = $2`,
+    [profileId, date],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
 
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+/**
+ * Idempotently consumes one streak shield to protect a specific missed day.
+ *
+ * Returns `true` only when a shield was actually consumed for `missedDate`.
+ * If that day was already protected (or the user has no shields), no shield is
+ * spent. This guards against a single missed day eating multiple shields on
+ * repeated streak evaluations.
+ */
+export async function consumeShield(
+  profileId: string,
+  missedDate: string,
+  streakValue: number,
+): Promise<boolean> {
+  parseProfileId(profileId);
+  if (await isDayProtected(profileId, missedDate)) return false;
 
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update profiles set streak_shield_count = streak_shield_count - 1 where id = $1`,
+    const updated = await client.query(
+      `update profiles set streak_shield_count = streak_shield_count - 1
+       where id = $1 and streak_shield_count > 0
+       returning streak_shield_count`,
       [profileId],
     );
+    if ((updated.rowCount ?? 0) === 0) {
+      await client.query("rollback");
+      return false;
+    }
     await client.query(
       `insert into streak_shield_usage (profile_id, used_on_date, streak_value_at_use)
        values ($1, $2, $3) on conflict do nothing`,
-      [profileId, today, streakValue],
+      [profileId, missedDate, streakValue],
     );
     await client.query(
       `insert into streak_day_log (profile_id, log_date, status)
-       values ($1, $2, 'protected') on conflict (profile_id, log_date) do update set status = 'protected'`,
-      [profileId, today],
+       values ($1, $2, 'protected')
+       on conflict (profile_id, log_date) do update set status = 'protected'`,
+      [profileId, missedDate],
     );
     await client.query("commit");
     return true;
