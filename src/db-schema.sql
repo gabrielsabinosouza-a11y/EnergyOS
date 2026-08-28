@@ -136,10 +136,13 @@ create index if not exists kanban_labels_profile_idx on kanban_labels(profile_id
 
 -- Focus Rooms (co-focus with friends)
 do $$ begin
-  create type room_status as enum ('waiting', 'active', 'completed', 'expired');
+  create type room_status as enum ('waiting', 'active', 'paused', 'completed', 'expired');
 exception when duplicate_object then null; end $$;
 do $$ begin
   alter type room_status add value if not exists 'expired';
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter type room_status add value if not exists 'paused';
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type participant_session_status as enum ('waiting', 'focusing', 'completed', 'left');
@@ -154,8 +157,18 @@ create table if not exists focus_rooms (
   energy_type text,
   created_at timestamptz not null default now(),
   started_at timestamptz,
-  ended_at timestamptz
+  ended_at timestamptz,
+  elapsed_seconds integer not null default 0,
+  last_resumed_at timestamptz
 );
+
+-- Pause bookkeeping for existing rooms created before the pause feature
+do $$ begin
+  alter table focus_rooms add column if not exists elapsed_seconds integer not null default 0;
+exception when duplicate_column then null; end $$;
+do $$ begin
+  alter table focus_rooms add column if not exists last_resumed_at timestamptz;
+exception when duplicate_column then null; end $$;
 
 create index if not exists focus_rooms_code_idx on focus_rooms(code);
 create index if not exists focus_rooms_host_idx on focus_rooms(host_profile_id);

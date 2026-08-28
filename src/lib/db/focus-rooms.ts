@@ -1,7 +1,7 @@
 import pool from "../db";
 
 // Types matching the database schema
-export type RoomStatus = "waiting" | "active" | "completed" | "expired";
+export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired";
 export type ParticipantSessionStatus = "waiting" | "focusing" | "completed" | "left";
 
 export interface FocusRoomRow {
@@ -14,6 +14,8 @@ export interface FocusRoomRow {
   created_at: Date | string;
   started_at: Date | string | null;
   ended_at: Date | string | null;
+  elapsed_seconds: number;
+  last_resumed_at: Date | string | null;
 }
 
 export interface RoomParticipantRow {
@@ -38,6 +40,8 @@ export interface FocusRoom {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
+  elapsedSeconds: number;
+  lastResumedAt?: string;
   participants: RoomParticipant[];
 }
 
@@ -64,6 +68,8 @@ function mapFocusRoom(row: FocusRoomRow, participants: RoomParticipant[] = []): 
     createdAt: typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString(),
     startedAt: row.started_at ? (typeof row.started_at === "string" ? row.started_at : row.started_at.toISOString()) : undefined,
     endedAt: row.ended_at ? (typeof row.ended_at === "string" ? row.ended_at : row.ended_at.toISOString()) : undefined,
+    elapsedSeconds: row.elapsed_seconds,
+    lastResumedAt: row.last_resumed_at ? (typeof row.last_resumed_at === "string" ? row.last_resumed_at : row.last_resumed_at.toISOString()) : undefined,
     participants,
   };
 }
@@ -126,7 +132,7 @@ export async function createFocusRoom(
   const result = await pool.query<FocusRoomRow>(
     `insert into focus_rooms (code, host_profile_id, status, duration_minutes, energy_type)
      values ($1, $2, $3, $4, $5)
-     returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at`,
+     returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at`,
     [code, hostProfileId, "waiting", durationMinutes, energyType ?? null]
   );
 
@@ -145,7 +151,7 @@ export async function createFocusRoom(
 // Get a focus room by ID
 export async function getFocusRoomById(profileId: string, roomId: number): Promise<FocusRoom | null> {
   const result = await pool.query<FocusRoomRow>(
-    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at
+    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
      from focus_rooms where id = $1`,
     [roomId]
   );
@@ -159,7 +165,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
 // Get a focus room by code
 export async function getFocusRoomByCode(code: string): Promise<FocusRoom | null> {
   const result = await pool.query<FocusRoomRow>(
-    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at
+    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
      from focus_rooms where code = $1`,
     [code]
   );
@@ -299,7 +305,7 @@ export async function startFocusRoom(roomId: number, hostProfileId: string): Pro
   const now = new Date().toISOString();
 
   await pool.query(
-    `update focus_rooms set status = 'active', started_at = $1 where id = $2`,
+    `update focus_rooms set status = 'active', started_at = $1, elapsed_seconds = 0, last_resumed_at = $1 where id = $2`,
     [now, roomId]
   );
 
@@ -314,12 +320,85 @@ export async function startFocusRoom(roomId: number, hostProfileId: string): Pro
   return startedRoom!;
 }
 
+// Pause an active focus room (host only)
+export async function pauseFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  const room = await pool.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null }>(
+    `select host_profile_id, status, last_resumed_at from focus_rooms where id = $1`,
+    [roomId]
+  );
+
+  if (!room.rows[0]) {
+    throw new Error("Room not found");
+  }
+
+  if (room.rows[0].host_profile_id !== hostProfileId) {
+    throw new Error("Only the host can pause the room");
+  }
+
+  if (room.rows[0].status !== "active") {
+    throw new Error("Room is not in an active state");
+  }
+
+  const now = Date.now();
+  const lastResumed = room.rows[0].last_resumed_at
+    ? new Date(
+        typeof room.rows[0].last_resumed_at === "string"
+          ? room.rows[0].last_resumed_at
+          : room.rows[0].last_resumed_at.toISOString()
+      ).getTime()
+    : now;
+
+  const currentSegment = Math.max(0, Math.round((now - lastResumed) / 1000));
+
+  await pool.query(
+    `update focus_rooms
+       set status = 'paused',
+           elapsed_seconds = elapsed_seconds + $1,
+           last_resumed_at = null
+     where id = $2`,
+    [currentSegment, roomId]
+  );
+
+  const pausedRoom = await getFocusRoomById(hostProfileId, roomId);
+  return pausedRoom!;
+}
+
+// Resume a paused focus room (host only)
+export async function resumeFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  const room = await pool.query<{ host_profile_id: string; status: string }>(
+    `select host_profile_id, status from focus_rooms where id = $1`,
+    [roomId]
+  );
+
+  if (!room.rows[0]) {
+    throw new Error("Room not found");
+  }
+
+  if (room.rows[0].host_profile_id !== hostProfileId) {
+    throw new Error("Only the host can resume the room");
+  }
+
+  if (room.rows[0].status !== "paused") {
+    throw new Error("Room is not paused");
+  }
+
+  const now = new Date().toISOString();
+
+  await pool.query(
+    `update focus_rooms set status = 'active', last_resumed_at = $1 where id = $2`,
+    [now, roomId]
+  );
+
+  const resumedRoom = await getFocusRoomById(hostProfileId, roomId);
+  return resumedRoom!;
+}
+
 // End a focus room
 export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
   const now = new Date().toISOString();
 
   await pool.query(
-    `update focus_rooms set status = 'completed', ended_at = $1 where id = $2 and status = 'active'`,
+    `update focus_rooms set status = 'completed', ended_at = $1 where id = $2 and status in ('active', 'paused')`,
     [now, roomId]
   );
 
@@ -415,14 +494,14 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
   const rooms: FocusRoom[] = [];
   for (const row of result.rows) {
     const room = await getFocusRoomById(profileId, Number(row.room_id));
-    if (room && room.status === "active") rooms.push(room);
+    if (room && (room.status === "active" || room.status === "paused")) rooms.push(room);
   }
 
   return rooms;
 }
 
 // Permanently delete a focus room and its participants (cascade).
-// Refuses to delete a room that is currently ACTIVE (a live session).
+// Refuses to delete a room that is currently ACTIVE or PAUSED (a live session).
 export async function deleteFocusRoom(roomId: number): Promise<void> {
   const result = await pool.query<{ id: string | number; status: string }>(
     `select id, status from focus_rooms where id = $1`,
@@ -431,7 +510,7 @@ export async function deleteFocusRoom(roomId: number): Promise<void> {
   if (!result.rows[0]) {
     throw new Error("Room not found");
   }
-  if (result.rows[0].status === "active") {
+  if (result.rows[0].status === "active" || result.rows[0].status === "paused") {
     throw new Error("Cannot delete a room that is currently in progress");
   }
 

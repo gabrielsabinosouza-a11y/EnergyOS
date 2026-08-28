@@ -206,12 +206,9 @@ export interface StreakInfo {
 export async function computeStreak(profileId: string, today: string): Promise<StreakInfo> {
   parseProfileId(profileId);
   const days = await dailyCompletions(profileId, addDays(today, -365), today);
-  let baseShields = await getShieldCount(profileId);
+  const baseShields = await getShieldCount(profileId);
 
-  // oldest -> newest, so each day's outcome is evaluated and persisted once in order.
-  const chronological = [...days].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-
-  if (chronological.length === 0) {
+  if (days.length === 0) {
     await persistStreak(profileId, 0, 0);
     console.log(`[streak] ${profileId} no qualifying activity window -> current=0, shields=${baseShields}`);
     return {
@@ -225,26 +222,17 @@ export async function computeStreak(profileId: string, today: string): Promise<S
     };
   }
 
-  // Current streak: consecutive qualifying (or shield-protected) days ending "now".
+  // Days newest -> oldest: current streak counts consecutive qualifying (or
+  // shield-protected) days going backward from today, stopping at the first
+  // unprotected missed day.
+  const descending = [...days].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
   let streak = 0;
   let shieldsUsed = 0;
 
-  // Longest qualifying run across the whole window (ignores shield protection).
-  let run = 0;
-  let longest = 0;
-
-  for (const day of chronological) {
+  for (const day of descending) {
     if (day.date > today) continue;
     const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
-    const isToday = day.date === today;
-
-    // Longest run (qualifying days only, no shields).
-    if (qualifies) {
-      run += 1;
-      if (run > longest) longest = run;
-    } else {
-      run = 0;
-    }
 
     if (qualifies) {
       streak += 1;
@@ -253,12 +241,12 @@ export async function computeStreak(profileId: string, today: string): Promise<S
     }
 
     // Non-qualifying day.
-    if (isToday) {
-      // Today in progress: ignore for streak (never breaks, never consumes a shield).
+    if (day.date === today) {
+      // Today in progress: never breaks, never consumes a shield.
       continue;
     }
 
-    // A fully-missed past day: attempt protection with a shield.
+    // A fully-missed past day: attempt idempotent protection with a shield.
     const protectedNow = await consumeShield(profileId, day.date, streak + 1);
     if (protectedNow) {
       shieldsUsed += 1;
@@ -267,10 +255,24 @@ export async function computeStreak(profileId: string, today: string): Promise<S
       continue;
     }
 
-    // No shield available/protection already consumed for prior days -> streak breaks.
+    // No shield available (or already spent on this day) -> streak breaks.
     await logStreakDay(profileId, day.date, "lost");
     console.log(`[streak] ${profileId} day ${day.date} missed without shield -> current streak reset to ${streak}`);
     break;
+  }
+
+  // Longest qualifying run across the whole window (ignores shield protection).
+  const chronological = [...days].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  let run = 0;
+  let longest = 0;
+  for (const day of chronological) {
+    const qualifies = day.total > 0 && day.completed / day.total >= 0.5;
+    if (qualifies) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 0;
+    }
   }
 
   const todayEntry = chronological.find((day) => day.date === today);

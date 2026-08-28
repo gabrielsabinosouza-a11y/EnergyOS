@@ -1,5 +1,6 @@
 import pool from "../db";
 import type { NewLeagueTier, LeagueGroup, LeagueGroupMember, CohortMember } from "@/types";
+import { addCoins } from "./settings";
 
 // Configuration
 const PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
@@ -9,7 +10,7 @@ const PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
   DIAMANTE: 5,   // top 5 qualify for Lendas
   LENDAS:   0,   // no promotion above Lendas
 };
-const REGULAR_TIER_COIN_REWARDS: [number, number, number] = [125, 100, 75];
+const REGULAR_TIER_COIN_REWARDS: [number, number, number] = [150, 100, 75];
 const DEMOTION_COUNT = 3;        // bottom N demoted each week
 const LEGENDS_TOP_N = 5;         // top N from each Diamante group qualify for Lendas
 const LEGENDS_MAX_SIZE = 20;     // target Lendas group size
@@ -157,19 +158,13 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           // Award coins to top 3
           if (rank <= 3) {
             const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
-            await client.query(
-              `update profiles set coin_balance = coalesce(coin_balance, 0) + $1 where id = $2`,
-              [coins, member.profile_id]
-            );
+            await addCoins(member.profile_id, coins, client);
           }
         } else if (group.tier === "LENDAS") {
           // Award coins to top 3; no promotion above Lendas
           if (rank <= 3) {
             const coins = LEGENDS_LEAGUE_REWARDS[rank - 1];
-            await client.query(
-              `update profiles set coin_balance = coalesce(coin_balance, 0) + $1 where id = $2`,
-              [coins, member.profile_id]
-            );
+            await addCoins(member.profile_id, coins, client);
           }
           // Bottom DEMOTION_COUNT drop back to Diamante next week
           if (prevTier && rank > n - DEMOTION_COUNT) {
@@ -179,10 +174,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           // Bronze / Prata / Ouro — tier-specific promotion cutoff
           if (rank <= 3) {
             const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
-            await client.query(
-              `update profiles set coin_balance = coalesce(coin_balance, 0) + $1 where id = $2`,
-              [coins, member.profile_id]
-            );
+            await addCoins(member.profile_id, coins, client);
           }
           if (nextTier && rank <= promoCutoff) targetTier = nextTier;
           else if (prevTier && rank > n - DEMOTION_COUNT) targetTier = prevTier;

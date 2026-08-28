@@ -220,8 +220,13 @@ button { cursor: pointer; font: inherit; }
 .streak-badge .streak-shield-count { position:absolute; top:-5px; right:-5px; z-index:3; display:flex; align-items:center; gap:3px; padding:2px 6px 2px 5px; border-radius:999px; background:rgba(113,212,255,.16); border:1px solid rgba(113,212,255,.35); color:var(--accent); font-family:'DM Mono',monospace; font-size:10px; font-weight:700; }
 @keyframes streak-pop { 0% { transform:scale(1); } 50% { transform:scale(1.2); } 100% { transform:scale(1); } }
 .streak-badge.pop .flame-ring { animation: streak-pop .4s ease-out; }
-.streak-badge .streak-tooltip { position:absolute; top:calc(100% + 10px); left:50%; transform:translateX(-50%) translateY(-4px); z-index:50; padding:8px 12px; border-radius:8px; background:var(--bg-secondary); border:1px solid rgba(113,212,255,.28); color:var(--text); font-size:12px; line-height:1.4; font-weight:600; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease; box-shadow:0 12px 32px rgba(0,0,0,.45); }
-.streak-badge:hover .streak-tooltip, .streak-badge:focus-visible .streak-tooltip { opacity:1; transform:translateX(-50%) translateY(0); }
+/* Streak warning renders as a cartoon/manga speech balloon via a portal to
+   <body> so it is never clipped by the check-in card's `overflow-hidden` /
+   stacking context. Width and tail x are set inline from the badge's bounds. */
+.streak-balloon { position:fixed; z-index:1000; width:240px; padding:11px 14px 12px; border-radius:14px; background:#fffdf5; border:3px solid #1c1c20; box-shadow:4px 5px 0 rgba(0,0,0,.28); color:#1c1c20; pointer-events:none; box-sizing:border-box; }
+.streak-balloon__label { display:block; text-align:center; font-size:12px; line-height:1.45; font-weight:800; word-wrap:break-word; }
+.streak-balloon__tail { position:absolute; top:-15px; width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-bottom:15px solid #1c1c20; }
+.streak-balloon__tail::after { content:''; position:absolute; top:4px; left:-7px; width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent; border-bottom:11px solid #fffdf5; }
 
 /* Toast notification */
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:100; display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:10px; font-size:13px; backdrop-filter:blur(12px); box-shadow:0 8px 32px rgba(0,0,0,.3); }

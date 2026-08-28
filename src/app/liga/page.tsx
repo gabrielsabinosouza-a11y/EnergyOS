@@ -39,16 +39,17 @@ const PROMOTION_TEXT: Record<NewLeagueTier, string> = {
   LENDAS:   "Lendas é o tier mais alto. Os top 3 ganham moedas ao final da semana.",
 };
 
-const MEDAL_COLORS = ["#ffd700", "#c0c0c0", "#cd7f32"] as const;
+const MEDAL_IMAGES = ["/places/first_place.png", "/places/second_place.png", "/places/third_place.png"] as const;
 
-function MedalBadge({ rank }: { rank: number }) {
+function MedalBadge({ rank, size = 28 }: { rank: number; size?: number }) {
   if (rank > 3) return <span className="font-mono text-[10px] text-[var(--text-faint)]">{rank}</span>;
   return (
     <div
-      className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-      style={{ background: MEDAL_COLORS[rank - 1], color: rank === 1 ? "#000" : "#000" }}
+      className="relative flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+      title={rank === 1 ? "1º lugar" : rank === 2 ? "2º lugar" : "3º lugar"}
     >
-      {rank}
+      <Image src={MEDAL_IMAGES[rank - 1]} alt={`${rank}º lugar`} width={size} height={size} style={{ objectFit: "contain" }} unoptimized draggable={false} />
     </div>
   );
 }
@@ -182,10 +183,10 @@ export default function LigaPage() {
                   <motion.div
                     initial={{ scale: 0.5, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.15 }}
-                    className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl"
+                    className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl sm:h-28 sm:w-28"
                     style={{ background: `${tierCfg.color}20`, boxShadow: `0 0 40px ${tierCfg.glow}`, border: `1px solid ${tierCfg.color}40` }}
                   >
-                    <Image src={tierCfg.iconPath} alt={tierCfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
+                    <Image src={tierCfg.iconPath} alt={tierCfg.label} fill sizes="112px" className="object-contain p-1.5" unoptimized />
                   </motion.div>
                   <div>
                     <h2 className="font-display text-3xl font-bold tracking-tight" style={{ color: tierCfg.color }}>
@@ -241,7 +242,7 @@ export default function LigaPage() {
                           boxShadow: isCurrent ? `0 0 20px ${cfg.glow}` : "none",
                         }}
                       >
-                        <Image src={cfg.iconPath} alt={cfg.label} width={isCurrent ? 20 : 16} height={isCurrent ? 20 : 16} style={{ objectFit: "contain", filter: isCurrent || isPast ? "none" : "grayscale(1) opacity(.5)" }} unoptimized />
+                        <Image src={cfg.iconPath} alt={cfg.label} fill sizes="64px" className="object-contain p-1" style={{ filter: isCurrent || isPast ? "none" : "grayscale(1) opacity(.5)" }} unoptimized />
                         {isCurrent && (
                           <motion.div
                             className="absolute -inset-1 rounded-xl border-2"
@@ -389,20 +390,43 @@ export default function LigaPage() {
             <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
               {PROMOTION_TEXT[snapshot.currentTier]}
             </p>
+            <div className="mt-3 flex flex-col gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-faint)]">Recompensas do pódio</p>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
+                  <Image src="/places/first_place.png" alt="1º" width={16} height={16} unoptimized draggable={false} /> 1º lugar
+                </span>
+                <span className="font-mono font-bold text-[var(--accent)]">150 moedas</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
+                  <Image src="/places/second_place.png" alt="2º" width={16} height={16} unoptimized draggable={false} /> 2º lugar
+                </span>
+                <span className="font-mono font-bold text-[var(--accent)]">100 moedas</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
+                  <Image src="/places/third_place.png" alt="3º" width={16} height={16} unoptimized draggable={false} /> 3º lugar
+                </span>
+                <span className="font-mono font-bold text-[var(--accent)]">75 moedas</span>
+              </div>
+            </div>
             {nextTier && (() => {
               const next = TIER_CONFIG[nextTier];
-              const NextIcon = next.icon;
               return (
                 <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
                   <p className="mb-2 text-[10px] text-[var(--text-faint)]">Próximo tier</p>
                   <div className="flex items-center gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-lg"
-                      style={{ background: `${next.color}20` }}>
-                      <NextIcon size={14} style={{ color: next.color }} />
+                    <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                      style={{ background: `${next.color}20`, border: `1px solid ${next.color}30` }}>
+                      <Image src={next.iconPath} alt={next.label} fill sizes="36px" className="object-contain p-0.5" unoptimized />
                     </div>
-                    <span className="text-sm font-medium" style={{ color: next.color }}>
-                      {next.label}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium" style={{ color: next.color }}>
+                        {next.label}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-faint)]">{next.description}</span>
+                    </div>
                   </div>
                 </div>
               );

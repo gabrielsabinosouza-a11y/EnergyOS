@@ -10,6 +10,7 @@ import {
   Clock,
   Users,
   Play,
+  Pause,
   Copy,
   Share2,
   CheckCircle,
@@ -340,26 +341,28 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom, fetchRooms]);
 
-  // Poll while in a waiting or active room view
+  // Poll while in a waiting, active or paused room view
   useEffect(() => {
     if (pageState !== "room" || !currentRoom) return;
-    if (currentRoom.status !== "waiting" && currentRoom.status !== "active") return;
+    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused") return;
     const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
 
-  // 1-second clock for the shared countdown while active
+  // 1-second clock for the shared countdown while the session is running
   useEffect(() => {
-    if (pageState !== "room" || currentRoom?.status !== "active") return;
+    if (pageState !== "room") return;
+    if (currentRoom?.status !== "active" && currentRoom?.status !== "paused") return;
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.status, currentRoom?.id]);
 
   // ── Initialize this participant's focus session when the room goes active ──
+  const sessionCreatingRef = useRef(false);
   useEffect(() => {
     if (!user) return;
     if (pageState !== "room" || !currentRoom) return;
-    if (currentRoom.status !== "active") return;
+    if (currentRoom.status !== "active" && currentRoom.status !== "paused") return;
 
     const persisted = loadRoomSession(currentRoom.id);
     const myParticipant = currentRoom.participants.find((p) => p.profileId === user.uid);
@@ -371,8 +374,11 @@ export default function FocusRoomsPage() {
       roomSessionRef.current = persisted;
       return;
     }
+    if (roomSessionRef.current?.sessionId && !roomSessionRef.current.finalized) return;
+    if (sessionCreatingRef.current) return;
 
     // Create my session for XP/quest crediting, driven by the room startedAt
+    sessionCreatingRef.current = true;
     let cancelled = false;
     api.startFocus(currentRoom.durationMinutes)
       .then(({ session }) => {
@@ -383,20 +389,35 @@ export default function FocusRoomsPage() {
         saveRoomSession(currentRoom.id, state);
         setLastCoins(0);
       })
-      .catch(() => { /* keep waiting for next poll */ });
+      .catch(() => { /* keep waiting for next poll */ })
+      .finally(() => { sessionCreatingRef.current = false; });
 
     return () => { cancelled = true; };
   }, [user, pageState, currentRoom?.id, currentRoom?.status, currentRoom?.durationMinutes]);
 
   // ── Shared countdown derivation ────────────────────────────────────────────
   const isActive = currentRoom?.status === "active";
+  const isRunningRoom = currentRoom?.status === "active" || currentRoom?.status === "paused";
+  const isPausedRoom = currentRoom?.status === "paused";
   const startedAtMs = currentRoom?.startedAt ? new Date(currentRoom.startedAt).getTime() : null;
   const totalMs = currentRoom ? currentRoom.durationMinutes * 60 * 1000 : 0;
 
+  // Pause-aware remaining time. The server keeps `elapsedSeconds` (accumulated
+  // focused time before the current run segment) plus `lastResumedAt` (when the
+  // current active segment began). While paused, only `elapsedSeconds` counts.
   const sharedRemainingMs = useMemo(() => {
-    if (!isActive || startedAtMs == null) return null;
-    return Math.max(0, startedAtMs + totalMs - nowMs);
-  }, [isActive, startedAtMs, totalMs, nowMs]);
+    if (!currentRoom || !isRunningRoom) return null;
+    const totalSec = currentRoom.durationMinutes * 60;
+    let elapsed = currentRoom.elapsedSeconds ?? 0;
+    if (currentRoom.status === "active") {
+      const resumeAt =
+        currentRoom.lastResumedAt
+          ? new Date(currentRoom.lastResumedAt).getTime()
+          : startedAtMs ?? Date.now();
+      elapsed += Math.floor((nowMs - resumeAt) / 1000);
+    }
+    return Math.max(0, (totalSec - elapsed) * 1000);
+  }, [currentRoom, isRunningRoom, startedAtMs, nowMs]);
 
   // ── Finalize my session on completion ───────────────────────────────────────
   const finalizingRef = useRef(false);
@@ -442,7 +463,7 @@ export default function FocusRoomsPage() {
 
   // Watch for countdown reaching zero → finalize (full completion)
   useEffect(() => {
-    if (!currentRoom || !isActive) return;
+    if (!currentRoom || !isRunningRoom) return;
     if (sharedRemainingMs == null) return;
     if (sharedRemainingMs <= 0) {
       // Award this participant's XP/quest/jardim and mark the room completed.
@@ -450,7 +471,7 @@ export default function FocusRoomsPage() {
       // Also transition the local view immediately
       setCurrentRoom((prev) => prev ? { ...prev, status: "completed" } : prev);
     }
-  }, [isActive, sharedRemainingMs, currentRoom, finalizeSession]);
+  }, [isRunningRoom, sharedRemainingMs, currentRoom, finalizeSession]);
 
   // Keep selected energy in a ref so completion closure reads latest
   const selectEnergyRef = useRef<string>(selectedEnergyType);
@@ -505,13 +526,31 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom]);
 
+  const handleTogglePause = useCallback(async () => {
+    if (!currentRoom) return;
+    setLoadingAction(currentRoom.status === "active" ? "pausing" : "resuming");
+    setError(null);
+    try {
+      const result =
+        currentRoom.status === "active"
+          ? await api.pauseFocusRoom(currentRoom.id)
+          : await api.resumeFocusRoom(currentRoom.id);
+      setCurrentRoom(result.room);
+      setNowMs(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao pausar/retomar sala");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom]);
+
   const handleLeaveRoom = useCallback(async () => {
     if (!currentRoom) return;
     setLoadingAction("leaving");
     setError(null);
     try {
-      if (currentRoom.status === "active") {
-        // Active: mark as gave up instead of removing from history
+      if (currentRoom.status === "active" || currentRoom.status === "paused") {
+        // Active/paused: mark as gave up instead of removing from history
         await api.giveUpFocusRoom(currentRoom.id);
         await finalizeSession(currentRoom, 0, false);
         setError(null);
@@ -653,6 +692,7 @@ export default function FocusRoomsPage() {
                       Status:{" "}
                       {room.status === "waiting" ? "Aguardando" :
                        room.status === "active" ? "Em andamento" :
+                       room.status === "paused" ? "Pausada" :
                        room.status === "completed" ? "Concluída" : "Expirada"}
                     </p>
                   </div>
@@ -660,18 +700,18 @@ export default function FocusRoomsPage() {
                     <span className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
                       <Users size={12} /> {room.participants.length}
                     </span>
-                    {/* Delete — host (or admin) only, disabled for active rooms */}
+                    {/* Delete — host (or admin) only, disabled while a session is live */}
                     {isMyRoomHost && (
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
-                          if (room.status === "active") { setError("Não é possível excluir uma sala em andamento"); return; }
+                          if (room.status === "active" || room.status === "paused") { setError("Não é possível excluir uma sala em andamento"); return; }
                           setRoomToDelete(room);
                           setShowDeleteConfirm(true);
                         }}
-                        disabled={room.status === "active"}
+                        disabled={room.status === "active" || room.status === "paused"}
                         className="rounded-lg p-1.5 text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={room.status === "active" ? "Sala em andamento" : "Excluir sala"}
+                        title={room.status === "active" || room.status === "paused" ? "Sala em andamento" : "Excluir sala"}
                       >
                         <Trash2 size={14} />
                       </motion.button>
@@ -800,7 +840,8 @@ export default function FocusRoomsPage() {
     const myProgress = sharedRemainingMs != null
       ? Math.max(0, Math.min(100, ((totalMs - sharedRemainingMs) / totalMs) * 100))
       : room.status === "completed" ? 100 : 0;
-    const running = room.status === "active";
+    const running = room.status === "active" || room.status === "paused";
+    const paused = room.status === "paused";
     const completed = room.status === "completed";
 
     return (
@@ -829,11 +870,13 @@ export default function FocusRoomsPage() {
           <div className="mb-5 flex items-center justify-between">
             <h2 className="font-display text-xl">
               {room.status === "waiting" ? "Sala de Foco" :
-               room.status === "active" ? "Foco em Grupo" : "Sessão Concluída"}
+               room.status === "active" ? "Foco em Grupo" :
+               room.status === "paused" ? "Sessão Pausada" : "Sessão Concluída"}
             </h2>
             <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
               {room.status === "waiting" && <><Clock size={12} /> Aguardando início</>}
               {room.status === "active" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-400" /> Em andamento</motion.span>}
+              {room.status === "paused" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" /> Pausada</motion.span>}
               {room.status === "completed" && <><CheckCircle size={12} className="text-green-400" /> Concluída</>}
             </span>
           </div>
@@ -852,8 +895,8 @@ export default function FocusRoomsPage() {
                   </div>
                 );
               })}
-              {/* "+" invite slot — only meaningful while waiting */}
-              {(room.status === "waiting" || room.status === "active") && (
+              {/* "+" invite slot — only meaningful while the room is live */}
+              {(room.status === "waiting" || room.status === "active" || room.status === "paused") && (
                 <button onClick={shareRoom} className="flex flex-col items-center gap-1" title="Convidar">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                     className="w-11 h-11 rounded-full border-2 border-dashed border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
@@ -888,7 +931,7 @@ export default function FocusRoomsPage() {
                     <motion.div
                       key={`${myEnergy}-${resolveStage(myProgress, running)}`}
                       initial={{ opacity: 0, scale: 0.88, filter: "blur(6px)" }}
-                      animate={{ opacity: room.status === "active" && myParticipant?.sessionStatus === "left" ? 0.35 : 1, scale: 1, filter: "blur(0px)" }}
+                      animate={{ opacity: running && myParticipant?.sessionStatus === "left" ? 0.35 : 1, scale: 1, filter: "blur(0px)" }}
                       exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
                       transition={{ duration: 0.5, ease: "easeInOut" }}
                     >
@@ -918,8 +961,13 @@ export default function FocusRoomsPage() {
                 {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(room.durationMinutes).padStart(2, "0")}:00`}
               </span>
               <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
-                {running ? "em andamento" : "duração"}
+                {running ? (paused ? "pausada" : "em andamento") : "duração"}
               </span>
+              {paused && (
+                <span className="mt-1 flex items-center gap-1 text-[10px] text-amber-400">
+                  <Pause size={11} /> O anfitrião pausou a sessão
+                </span>
+              )}
               {room.status === "waiting" && !isHost && (
                 <span className="mt-1 text-[10px] text-[var(--text-muted)]">Duração definida pelo anfitrião</span>
               )}
@@ -930,8 +978,8 @@ export default function FocusRoomsPage() {
             </div>
           </div>
 
-          {/* Live progress panel — active session */}
-          {room.status === "active" && room.participants.length > 0 && (
+          {/* Live progress panel — active/paused session */}
+          {(room.status === "active" || room.status === "paused") && room.participants.length > 0 && (
             <div className="mt-6 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Progresso da sala</span>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1011,14 +1059,14 @@ export default function FocusRoomsPage() {
               </div>
             )}
 
-            {(room.status === "active" || room.status === "completed") && myParticipant?.sessionStatus !== "left" && (
+            {(room.status === "active" || room.status === "paused" || room.status === "completed") && myParticipant?.sessionStatus !== "left" && (
               <>
                 {myParticipant?.sessionStatus === "completed" && (
                   <div className="text-center text-[10px] text-green-400 flex items-center gap-1 justify-center">
                     <CheckCircle size={12} /> Você concluiu esta sessão
                   </div>
                 )}
-                {room.status === "active" && myParticipant?.sessionStatus === "focusing" && (
+                {(room.status === "active" || room.status === "paused") && myParticipant?.sessionStatus === "focusing" && (
                   <button
                     onClick={handleGiveUp}
                     disabled={loadingAction === "givingup"}
@@ -1032,16 +1080,50 @@ export default function FocusRoomsPage() {
               </>
             )}
 
+            {/* Host-only Play/Pause — non-hosts see the disabled control */}
+            {(room.status === "active" || room.status === "paused") && (
+              <div className="space-y-2">
+                {isHost ? (
+                  <motion.button
+                    onClick={handleTogglePause}
+                    disabled={loadingAction === "pausing" || loadingAction === "resuming"}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                    style={{
+                      background: paused ? "linear-gradient(180deg, var(--accent), var(--orange))" : "var(--bg-surface-hover)",
+                      color: paused ? "#fff" : "var(--text)",
+                      border: paused ? "none" : "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    {(loadingAction === "pausing" || loadingAction === "resuming") ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : paused ? (
+                      <><Play size={15} /> Retomar sessão</>
+                    ) : (
+                      <><Pause size={15} /> Pausar sessão</>
+                    )}
+                  </motion.button>
+                ) : (
+                  <button
+                    disabled
+                    title="Apenas o anfitrião pode controlar a sessão"
+                    className="w-full rounded-xl px-4 py-3 text-sm text-[var(--text-faint)] bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] opacity-60 cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {paused ? <><Play size={15} /> Retomar sessão</> : <><Pause size={15} /> Pausar sessão</>}
+                  </button>
+                )}
+                <p className="text-center text-[10px] text-[var(--text-faint)]">
+                  {isHost
+                    ? "Você é o anfitrião. Somente você pode pausar/retomar a sessão."
+                    : "Apenas o anfitrião pode pausar/retomar a sessão."}
+                </p>
+              </div>
+            )}
+
             {room.status === "waiting" && !isHost && (
               <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
                 {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
               </button>
-            )}
-
-            {room.status === "active" && isHost && (
-              <p className="text-center text-[10px] text-[var(--text-faint)]">
-                Você é o anfitrião. Os participantes verão seu progresso em tempo real.
-              </p>
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Shield, Sparkles, Target, Timer, TrendingUp } from "lucide-react";
 import Image from "next/image";
@@ -692,50 +693,111 @@ function StreakBadge({
 
   const dayLabel = streak === 1 ? "1 dia" : `${streak} dias`;
 
+  // Portal-based tooltip so it is never trapped inside the check-in card's
+  // `overflow-hidden` / stacking context. Positioned from the badge's on-screen
+  // bounds, flipping to the left when it would run off the right viewport edge.
+  const badgeRef = useRef<HTMLDivElement>(null);
+  const [tipPos, setTipPos] = useState<{ top: number; left: number; tail: number } | null>(null);
+
+  const BALLOON_W = 240;
+  const updateTip = useCallback(() => {
+    const el = badgeRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const gap = 12;
+    const anchorX = (rect.left + rect.right) / 2;
+    const left = Math.min(Math.max(anchorX - BALLOON_W / 2, 8), window.innerWidth - BALLOON_W - 8);
+    const tail = Math.min(Math.max(anchorX - left, 18), BALLOON_W - 18);
+    setTipPos({
+      top: Math.min(rect.bottom + gap, window.innerHeight - 48),
+      left,
+      tail,
+    });
+  }, []);
+
+  const open = useCallback(() => {
+    updateTip();
+  }, [updateTip]);
+
+  useEffect(() => {
+    if (!tipPos) return;
+    const reposition = () => updateTip();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [tipPos, updateTip]);
+
   return (
-    <div className={`streak-badge state-${state} ${shouldPop ? "pop" : ""}`} tabIndex={0}>
-      <div className="flame-ring">
-        <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
-          {/* Background ring */}
-          <circle
-            cx="24" cy="24" r="19"
-            fill="none"
-            stroke="rgba(255,184,107,.12)"
-            strokeWidth="3"
-          />
-          {/* Progress ring */}
-          <circle
-            cx="24" cy="24" r="19"
-            fill="none"
-            stroke="var(--orange)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            transform="rotate(-90 24 24)"
-            style={{ transition: "stroke-dashoffset 0.5s ease" }}
-          />
-        </svg>
-        <div className="flame-value">
-          <Image src={iconSrc} alt={statusLabel} title={statusLabel} width={30} height={30} style={{ objectFit: "contain" }} unoptimized className="streak-flame" draggable={false} />
-          {state === "protected" && (
-            <span className="streak-shield-mark" title={statusLabel}>
-              <Shield size={11} strokeWidth={2.5} fill="currentColor" />
+    <>
+      <div
+        ref={badgeRef}
+        className={`streak-badge state-${state} ${shouldPop ? "pop" : ""}`}
+        tabIndex={0}
+        onPointerEnter={open}
+        onPointerLeave={() => setTipPos(null)}
+        onFocus={open}
+        onBlur={() => setTipPos(null)}
+        aria-describedby="streak-tooltip"
+      >
+        <div className="flame-ring">
+          <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+            {/* Background ring */}
+            <circle
+              cx="24" cy="24" r="19"
+              fill="none"
+              stroke="rgba(255,184,107,.12)"
+              strokeWidth="3"
+            />
+            {/* Progress ring */}
+            <circle
+              cx="24" cy="24" r="19"
+              fill="none"
+              stroke="var(--orange)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              transform="rotate(-90 24 24)"
+              style={{ transition: "stroke-dashoffset 0.5s ease" }}
+            />
+          </svg>
+          <div className="flame-value">
+            <Image src={iconSrc} alt={statusLabel} title={statusLabel} width={30} height={30} style={{ objectFit: "contain" }} unoptimized className="streak-flame" draggable={false} />
+            {state === "protected" && (
+              <span className="streak-shield-mark" title={statusLabel}>
+                <Shield size={11} strokeWidth={2.5} fill="currentColor" />
+              </span>
+            )}
+          </div>
+          {shieldCount > 0 && (
+            <span className="streak-shield-count" title={`${shieldCount} escudo${shieldCount > 1 ? "s" : ""} disponíve${shieldCount > 1 ? "is" : "l"}`}>
+              <Shield size={9} strokeWidth={2.5} fill="currentColor" />
+              <span>{shieldCount}</span>
             </span>
           )}
         </div>
-        {shieldCount > 0 && (
-          <span className="streak-shield-count" title={`${shieldCount} escudo${shieldCount > 1 ? "s" : ""} disponíve${shieldCount > 1 ? "is" : "l"}`}>
-            <Shield size={9} strokeWidth={2.5} fill="currentColor" />
-            <span>{shieldCount}</span>
-          </span>
+        <div className="flex flex-col">
+          <span className="font-mono text-sm font-bold leading-tight text-[var(--orange)]">{dayLabel}</span>
+          <span className="text-[10px] leading-tight text-[var(--text-faint)]">sequência</span>
+        </div>
+      </div>
+
+      {tipPos &&
+        createPortal(
+          <div
+            id="streak-tooltip"
+            role="status"
+            className="streak-balloon"
+            style={{ top: tipPos.top, left: tipPos.left }}
+          >
+            <span className="streak-balloon__tail" style={{ left: tipPos.tail }} />
+            <span className="streak-balloon__label">{statusLabel}</span>
+          </div>,
+          document.body,
         )}
-      </div>
-      <div className="flex flex-col">
-        <span className="font-mono text-sm font-bold leading-tight text-[var(--orange)]">{dayLabel}</span>
-        <span className="text-[10px] leading-tight text-[var(--text-faint)]">sequência</span>
-      </div>
-      <span className="streak-tooltip" role="status">{statusLabel}</span>
-    </div>
+    </>
   );
 }

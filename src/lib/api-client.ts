@@ -180,6 +180,10 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
   startFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/start`, { method: "POST" }),
+  pauseFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/pause`, { method: "POST" }),
+  resumeFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/resume`, { method: "POST" }),
   endFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
   leaveFocusRoom: (roomId: number) =>

@@ -266,6 +266,19 @@ export async function consumeShield(
   const client = await pool.connect();
   try {
     await client.query("begin");
+
+    // Insert the protection marker first; `on conflict do nothing` reports
+    // whether this date was already protected by an earlier evaluation.
+    const marker = await client.query(
+      `insert into streak_shield_usage (profile_id, used_on_date, streak_value_at_use)
+       values ($1, $2, $3) on conflict do nothing`,
+      [profileId, missedDate, streakValue],
+    );
+    if ((marker.rowCount ?? 0) === 0) {
+      await client.query("rollback");
+      return false;
+    }
+
     const updated = await client.query(
       `update profiles set streak_shield_count = streak_shield_count - 1
        where id = $1 and streak_shield_count > 0
@@ -273,14 +286,11 @@ export async function consumeShield(
       [profileId],
     );
     if ((updated.rowCount ?? 0) === 0) {
+      // No shields left even though the marker succeeded (edge case) — undo marker.
       await client.query("rollback");
       return false;
     }
-    await client.query(
-      `insert into streak_shield_usage (profile_id, used_on_date, streak_value_at_use)
-       values ($1, $2, $3) on conflict do nothing`,
-      [profileId, missedDate, streakValue],
-    );
+
     await client.query(
       `insert into streak_day_log (profile_id, log_date, status)
        values ($1, $2, 'protected')
