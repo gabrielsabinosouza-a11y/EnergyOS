@@ -439,12 +439,18 @@ export default function FriendProfilePage() {
                 <Trophy size={16} className="text-[var(--accent)]" />
                 <span className="text-xs uppercase tracking-[0.15em] text-[var(--accent)]">Conquistas</span>
               </div>
-              <span className="text-xs text-[var(--text-faint)]">
-                {unlocked.length} de {allSorted.length} desbloqueadas
-              </span>
+              {profile.isFriend || profile.isOwner ? (
+                <span className="text-xs text-[var(--text-faint)]">
+                  {unlocked.length} de {allSorted.length} desbloqueadas
+                </span>
+              ) : null}
             </div>
 
-            {allSorted.length === 0 ? (
+            {!profile.isFriend && !profile.isOwner ? (
+              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                Adicione como amigo para ver as conquistas.
+              </p>
+            ) : allSorted.length === 0 ? (
               <p className="py-6 text-center text-sm text-[var(--text-muted)]">
                 Nenhuma conquista disponível.
               </p>

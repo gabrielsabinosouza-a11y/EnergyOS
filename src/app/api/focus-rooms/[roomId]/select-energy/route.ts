@@ -1,7 +1,9 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
-import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
+import { handleRoute, jsonOk, readJsonBody, notFound, badRequest, jsonError } from "@/lib/http";
 import { updateParticipantEnergyType, getFocusRoomById } from "@/lib/db/focus-rooms";
+import { getOwnedAuras } from "@/lib/db/store";
+import { ENERGY_TYPES } from "@/lib/energy-assets";
 
 // POST /api/focus-rooms/[roomId]/select-energy - Update participant's selected energy type
 export async function POST(
@@ -18,10 +20,13 @@ export async function POST(
       return badRequest("energyType is required");
     }
 
-    // Validate energy type
-    const validEnergyTypes = ["flame", "water", "earth", "wind", "light", "FOCO", "CORPO", "MENTE", "ORDEM", "ENERGIA"];
-    if (!validEnergyTypes.includes(energyType)) {
+    if (!ENERGY_TYPES.includes(energyType as (typeof ENERGY_TYPES)[number])) {
       return badRequest("Invalid energy type");
+    }
+
+    const ownedAuras = await getOwnedAuras(profileId);
+    if (!ownedAuras.includes(energyType)) {
+      return jsonError(403, "You do not own this energy type");
     }
 
     // Verify room exists and participant is in it

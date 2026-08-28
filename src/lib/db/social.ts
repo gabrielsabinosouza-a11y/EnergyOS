@@ -210,6 +210,47 @@ export async function assertFriends(profileId: string, otherId: string): Promise
   }
 }
 
+export async function getBasicPublicProfile(viewerId: string, targetId: string): Promise<PublicProfile> {
+  parseProfileId(viewerId);
+  const otherId = parseProfileId(targetId);
+  if (viewerId === otherId) return getPublicProfile(viewerId, otherId);
+
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id
+     from profiles where id = $1`,
+    [otherId],
+  );
+  if (!result.rows[0]) throw new NotFoundError("Perfil não encontrado.");
+
+  const row = result.rows[0];
+  const weekStart = sundayWeekStartIso(todayIso());
+  const [minutesMap, achievements] = await Promise.all([
+    getWeeklyFocusMinutesForProfiles([otherId], weekStart),
+    listAchievementProgress(otherId),
+  ]);
+  const featured = achievements
+    .filter((item) => item.isFeatured && item.unlockedTier > 0)
+    .sort((a, b) => (a.featuredOrder ?? 99) - (b.featuredOrder ?? 99));
+
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    username: row.username ?? undefined,
+    photoUrl: row.photo_url ?? undefined,
+    role: (row.role as "user" | "admin" | null) ?? "user",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+    lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
+    currentStreak: row.current_streak ?? 0,
+    longestStreak: row.longest_streak ?? 0,
+    weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
+    achievements: [],
+    featuredAchievements: featured,
+    isFriend: false,
+    isOwner: false,
+  };
+}
+
 export async function getPublicProfile(viewerId: string, targetId: string): Promise<PublicProfile> {
   parseProfileId(viewerId);
   const otherId = parseProfileId(targetId);

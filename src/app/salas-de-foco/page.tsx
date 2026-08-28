@@ -24,8 +24,10 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
-import { api } from "@/lib/api-client";
+import { EnergyPickerModal } from "@/components/energy-picker-modal";
+import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { Modal } from "@/components/modal";
+import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
 import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
@@ -34,6 +36,8 @@ import { addGardenEntry } from "@/lib/garden-store";
 type PageState = "list" | "create" | "join" | "room";
 
 const DEFAULT_DURATION = 25;
+const CREATE_RING_SIZE = 210;
+const JOIN_RING_SIZE = 120;
 const POLL_INTERVAL_MS = 4000;
 const ROOM_SESSION_KEY = (roomId: number) => `energyos_room_session_${roomId}`;
 
@@ -66,55 +70,6 @@ function resolveStage(progress: number, isRunning: boolean): EnergyStage {
   if (progress < 25) return "spark";
   if (progress < 70) return "forming";
   return "full";
-}
-
-// ─── Energy picker modal ─────────────────────────────────────────────────────
-
-function EnergyPickerModal({
-  current,
-  onSelect,
-  onClose,
-}: {
-  current: string;
-  onSelect: (t: string) => void;
-  onClose: () => void;
-}) {
-  const availableTypes = ENERGY_TYPES.filter((t) => !ENERGY_CONFIGS[t].locked);
-  return (
-    <Modal onClose={onClose} variant="bottom-sheet">
-      <div className="glass-card w-full max-w-sm overflow-hidden p-5">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Escolher energia</span>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] transition">
-            <X size={15} />
-          </button>
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          {availableTypes.map((type) => {
-            const cfg = ENERGY_CONFIGS[type];
-            const isSelected = type === current;
-            return (
-              <button
-                key={type}
-                onClick={() => { onSelect(type); onClose(); }}
-                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition"
-                style={{
-                  background: isSelected ? cfg.glow : "transparent",
-                  border: isSelected ? `1px solid ${cfg.accent}44` : "1px solid transparent",
-                  cursor: "pointer",
-                }}
-              >
-                <div className="relative w-12 h-12">
-                  <Image src={cfg.assets.full} alt={cfg.label} fill style={{ objectFit: "contain" }} unoptimized />
-                </div>
-                <span className="text-[9px] text-[var(--text-muted)] leading-none">{cfg.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </Modal>
-  );
 }
 
 // ─── Small avatar with optional energy badge ─────────────────────────────────
@@ -295,6 +250,17 @@ export default function FocusRoomsPage() {
   const [showCompletion, setShowCompletion] = useState(false);
   const [lastCoins, setLastCoins] = useState(0);
   const [showEnergyPicker, setShowEnergyPicker] = useState(false);
+  const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+
+  const ownedAurasSet = useMemo(() => new Set(ownedAuras), [ownedAuras]);
+  const selectedEnergyCfg = ENERGY_CONFIGS[selectedEnergyType as EnergyType] || ENERGY_CONFIGS.flame;
+  const energyPickerCurrent = useMemo(() => {
+    if (pageState === "room" && currentRoom && user) {
+      const mine = currentRoom.participants.find((p) => p.profileId === user.uid);
+      return mine?.selectedEnergyType || selectedEnergyType;
+    }
+    return selectedEnergyType;
+  }, [pageState, currentRoom, user, selectedEnergyType]);
 
   const roomSessionRef = useRef<PersistedRoomSession | null>(null);
 
@@ -320,6 +286,21 @@ export default function FocusRoomsPage() {
       api.cleanupFocusRooms().then(() => {}).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    api.getStore()
+      .then((data) => {
+        if (!data.ownedAuras?.length) return;
+        setOwnedAuras(data.ownedAuras);
+        setSelectedEnergyType((prev) => {
+          if (data.ownedAuras.includes(prev)) return prev;
+          if (data.ownedAuras.includes("flame")) return "flame";
+          return data.ownedAuras[0];
+        });
+      })
+      .catch(() => { /* default flame+water */ });
   }, [loading, user]);
 
   // ── Room detail polling ────────────────────────────────────────────────────
@@ -758,46 +739,37 @@ export default function FocusRoomsPage() {
       <div className="panel p-6">
         <h2 className="font-display text-xl mb-6">Criar Sala de Foco</h2>
         <div className="space-y-5">
-          <div className="text-center">
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Duração</label>
-            <div className="flex justify-center pt-2">
+          <div className="flex flex-col items-center">
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Duração e energia</label>
+            <div className="relative mx-auto pt-2" style={{ width: CREATE_RING_SIZE, maxWidth: "100%", aspectRatio: "1 / 1" }}>
               <CircularDurationPicker
                 value={selectedDuration}
                 onChange={setSelectedDuration}
                 maxDurationMinutes={120}
                 snapIncrement={5}
                 minMinutes={10}
-                size={210}
-                centerContent={
-                  <div className="text-center">
-                    <div className="font-mono font-bold leading-none" style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}>{selectedDuration}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-widest text-[var(--text-faint)]">minutos</div>
-                  </div>
-                }
+                size={CREATE_RING_SIZE}
+                accentColor={selectedEnergyCfg.accent}
+                centerContent={<></>}
+              />
+              <EnergyRingCenter
+                energyType={selectedEnergyType}
+                ringSize={CREATE_RING_SIZE}
+                onPick={() => setShowEnergyPicker(true)}
               />
             </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3">Tipo de Energia Inicial</label>
-            <div className="flex flex-wrap gap-3">
-              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => {
-                const isSel = selectedEnergyType === type;
-                return (
-                  <button key={type} onClick={() => setSelectedEnergyType(type)} title={cfg.label}
-                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2.5 py-2.5 transition"
-                    style={{
-                      borderColor: isSel ? `${cfg.accent}66` : "var(--border-subtle)",
-                      background: isSel ? cfg.glow : "transparent",
-                      boxShadow: isSel ? `0 0 16px ${cfg.glow}` : "none",
-                    }}>
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full">
-                      <Image src={cfg.assets.full} alt={cfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
-                    </span>
-                    <span className="text-[10px] font-medium" style={{ color: isSel ? cfg.accent : "var(--text-muted)" }}>{cfg.label}</span>
-                  </button>
-                );
-              })}
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <span
+                className="font-mono font-bold tabular-nums leading-none"
+                style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}
+              >
+                {String(selectedDuration).padStart(2, "0")}:00
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">duração</span>
             </div>
+            <span className="mt-2 text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
+              toque no centro para trocar a energia
+            </span>
           </div>
           <div className="pt-4">
             <motion.button onClick={handleCreateRoom} disabled={loadingAction === "creating"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
@@ -825,27 +797,29 @@ export default function FocusRoomsPage() {
               <input value={roomCode} onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 6))} placeholder="ABC123" className="auth-input flex-1 text-center text-lg tracking-widest" />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3">Tipo de Energia (opcional)</label>
-            <div className="flex flex-wrap gap-3">
-              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => {
-                const isSel = selectedEnergyType === type;
-                return (
-                  <button key={type} onClick={() => setSelectedEnergyType(type)} title={cfg.label}
-                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2.5 py-2.5 transition"
-                    style={{
-                      borderColor: isSel ? `${cfg.accent}66` : "var(--border-subtle)",
-                      background: isSel ? cfg.glow : "transparent",
-                      boxShadow: isSel ? `0 0 16px ${cfg.glow}` : "none",
-                    }}>
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full">
-                      <Image src={cfg.assets.full} alt={cfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
-                    </span>
-                    <span className="text-[10px] font-medium" style={{ color: isSel ? cfg.accent : "var(--text-muted)" }}>{cfg.label}</span>
-                  </button>
-                );
-              })}
+          <div className="flex flex-col items-center">
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3">Sua energia (opcional)</label>
+            <div
+              className="relative rounded-full"
+              style={{
+                width: JOIN_RING_SIZE,
+                height: JOIN_RING_SIZE,
+                boxShadow: `0 0 24px ${selectedEnergyCfg.glow}`,
+                border: `2px solid ${selectedEnergyCfg.accent}44`,
+              }}
+            >
+              <EnergyRingCenter
+                energyType={selectedEnergyType}
+                ringSize={JOIN_RING_SIZE}
+                onPick={() => setShowEnergyPicker(true)}
+              />
             </div>
+            <span className="mt-2 text-[10px] font-medium" style={{ color: selectedEnergyCfg.accent }}>
+              {selectedEnergyCfg.label}
+            </span>
+            <span className="mt-1 text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
+              toque para trocar
+            </span>
           </div>
           <div className="pt-4">
             <motion.button onClick={handleJoinRoom} disabled={loadingAction === "joining" || !roomCode.trim()} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
@@ -864,7 +838,7 @@ export default function FocusRoomsPage() {
     const room = currentRoom;
     const isHost = room.hostProfileId === user.uid;
     const myParticipant = room.participants.find((p) => p.profileId === user.uid);
-    const myEnergy = myParticipant?.selectedEnergyType || room.energyType || selectedEnergyType;
+    const myEnergy = myParticipant?.selectedEnergyType || selectedEnergyType;
     const myProgress = sharedRemainingMs != null
       ? Math.max(0, Math.min(100, ((totalMs - sharedRemainingMs) / totalMs) * 100))
       : room.status === "completed" ? 100 : 0;
@@ -952,35 +926,17 @@ export default function FocusRoomsPage() {
               />
 
               {/* Center energy image */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div style={{ position: "absolute", width: RING_SIZE * 0.62, height: RING_SIZE * 0.62, borderRadius: "50%", background: `radial-gradient(circle, ${cfgGlow(myEnergy)} 0%, transparent 72%)`, filter: "blur(2px)" }} />
-                <div className="relative" style={{ width: RING_SIZE * 0.55, height: RING_SIZE * 0.55 }}>
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={`${myEnergy}-${resolveStage(myProgress, running)}`}
-                      initial={{ opacity: 0, scale: 0.88, filter: "blur(6px)" }}
-                      animate={{ opacity: running && myParticipant?.sessionStatus === "left" ? 0.35 : 1, scale: 1, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
-                      transition={{ duration: 0.5, ease: "easeInOut" }}
-                    >
-                      <Image
-                        src={ENERGY_CONFIGS[myEnergy as EnergyType].assets[myParticipant?.sessionStatus === "left" ? "extinguished" : resolveStage(myProgress, running)]}
-                        alt={myEnergy}
-                        width={RING_SIZE * 0.55} height={RING_SIZE * 0.55} style={{ objectFit: "contain" }} unoptimized />
-                    </motion.div>
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              {/* Energy edit button for current user (over image) */}
-              {room.status !== "completed" && myParticipant?.sessionStatus !== "left" && (
-                <button
-                  onClick={handleOpenEnergyPicker}
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                  style={{ width: RING_SIZE * 0.3, height: RING_SIZE * 0.3, cursor: "pointer", background: "none", border: "none", padding: 0 }}
-                  aria-label="Escolher energia"
-                />
-              )}
+              <EnergyRingCenter
+                energyType={myEnergy}
+                ringSize={RING_SIZE}
+                stage={myParticipant?.sessionStatus === "left" ? "extinguished" : resolveStage(myProgress, running)}
+                dimmed={running && myParticipant?.sessionStatus === "left"}
+                onPick={
+                  room.status !== "completed" && myParticipant?.sessionStatus !== "left"
+                    ? handleOpenEnergyPicker
+                    : undefined
+                }
+              />
             </div>
 
             {/* Countdown / duration label */}
@@ -1155,15 +1111,6 @@ export default function FocusRoomsPage() {
             )}
           </div>
         </div>
-
-        {/* Energy picker */}
-        {showEnergyPicker && (
-          <EnergyPickerModal
-            current={myEnergy}
-            onSelect={handleSelectEnergy}
-            onClose={() => setShowEnergyPicker(false)}
-          />
-        )}
       </motion.div>
     );
   };
@@ -1236,12 +1183,23 @@ export default function FocusRoomsPage() {
             </div>
           </Modal>
         )}
+
+        {showEnergyPicker && (
+          <EnergyPickerModal
+            current={energyPickerCurrent}
+            ownedAuras={ownedAurasSet}
+            onSelect={(type) => {
+              if (pageState === "room" && currentRoom) {
+                void handleSelectEnergy(type);
+              } else {
+                setSelectedEnergyType(type);
+                selectEnergyRef.current = type;
+              }
+            }}
+            onClose={() => setShowEnergyPicker(false)}
+          />
+        )}
       </main>
     </AppShell>
   );
-}
-
-// Helper: energy glow used inside room view
-function cfgGlow(type: string): string {
-  return (ENERGY_CONFIGS[type as EnergyType] || ENERGY_CONFIGS.flame).glow;
 }

@@ -1,14 +1,21 @@
 import pool from "../db";
-import { NotFoundError } from "../errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "../errors";
 import { parseProfileId } from "./validation";
-import { addDaysIso, todayIso } from "./dates";
+import { todayIso } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
+import { addCoins } from "./settings";
 
-// Exact number of daily tasks assigned to each user per day.
+/** Max user-written daily tasks per day. */
 export const DAILY_TASK_LIMIT = 3;
 
-// XP awarded when the user checks off one daily task.
+/** XP awarded when the user checks off one daily task. */
 export const DAILY_TASK_XP = 10;
+
+/** Coins awarded per completed daily task. */
+export const DAILY_TASK_COINS = 5;
+
+/** Bonus coins when all daily tasks for the day are completed. */
+export const DAILY_TASK_ALL_BONUS_COINS = 10;
 
 export interface UserDailyTask {
   id: number;
@@ -37,107 +44,92 @@ function mapRow(row: Row): UserDailyTask {
 }
 
 /**
- * Ensures the daily-task pool is seeded (falls back if the SQL seed was not run).
+ * Ensures the user_daily_tasks table supports user-written titles (migration-safe).
  */
-export async function ensureDailyTaskPool(): Promise<void> {
-  const existing = await pool.query<{ count: string }>(
-    `select count(*)::int as count from daily_task_pool where is_active = true`,
-  );
-  if (Number(existing.rows[0]?.count || 0) === 0) {
-    const titles = [
-      "Beber 2L de água", "Ler 20 minutos", "Fazer 10 minutos de alongamento",
-      "Meditar 5 minutos", "Organizar sua mesa", "Anotar 3 ideias",
-      "Responder e-mails pendentes", "Revisar metas da semana", "Caminhar 30 minutos",
-      "Planejar o dia de amanhã", "Estudar 45 minutos", "Treinar 30 minutos",
-      "Refletir e agradecer", "Desconectar 1h das telas", "Ligar para um amigo ou parente",
-      "Fazer uma refeição saudável", "Escrever 200 palavras", "Organizar o ambiente digital",
-      "Beber água a cada hora", "Dormir cedo esta noite",
-    ];
-    for (let i = 0; i < titles.length; i++) {
-      await pool.query(
-        `insert into daily_task_pool (title, sort_order) values ($1, $2) on conflict (title) do nothing`,
-        [titles[i], i + 1],
-      );
-    }
-  }
+export async function ensureDailyTasksSchema(): Promise<void> {
+  await pool.query(`alter table user_daily_tasks add column if not exists title text`);
+  await pool.query(`alter table user_daily_tasks alter column task_id drop not null`);
 }
 
-function shuffle<T>(array: T[]): T[] {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
+/**
+ * Removes legacy auto-assigned pool tasks so only user-written tasks remain.
+ */
+async function purgeLegacyPoolTasks(profileId: string, taskDate: string): Promise<void> {
+  await pool.query(
+    `delete from user_daily_tasks
+     where profile_id = $1 and task_date = $2::date
+       and (title is null or title = '')`,
+    [profileId, taskDate],
+  );
 }
 
 export async function listDailyTasks(profileId: string, taskDate: string): Promise<UserDailyTask[]> {
   parseProfileId(profileId);
+  await ensureDailyTasksSchema();
+  await purgeLegacyPoolTasks(profileId, taskDate);
+
   const result = await pool.query<Row>(
-    `select udt.id, t.title, udt.task_date, udt.is_completed, udt.completed_at
-     from user_daily_tasks udt
-     join daily_task_pool t on t.id = udt.task_id
-     where udt.profile_id = $1 and udt.task_date = $2::date
-     order by udt.id`,
+    `select id, title, task_date, is_completed, completed_at
+     from user_daily_tasks
+     where profile_id = $1 and task_date = $2::date and title is not null and title <> ''
+     order by id`,
     [profileId, taskDate],
   );
   return result.rows.map(mapRow);
 }
 
-/**
- * Assigns exactly DAILY_TASK_LIMIT (3) random tasks to the user for the date,
- * preferring to avoid repeating yesterday's exact set when enough tasks exist.
- */
-export async function ensureUserDailyTasks(profileId: string, taskDate: string): Promise<UserDailyTask[]> {
+export async function createDailyTask(
+  profileId: string,
+  taskDate: string,
+  title: string,
+): Promise<UserDailyTask> {
   parseProfileId(profileId);
-  await ensureDailyTaskPool();
+  const trimmed = title.trim();
+  if (!trimmed) throw new ValidationError("Digite o nome da tarefa.");
+  if (trimmed.length > 120) throw new ValidationError("Tarefa muito longa (máx. 120 caracteres).");
 
-  const poolArr = await pool.query<{ id: string | number }>(
-    `select id from daily_task_pool where is_active = true order by id`,
-  );
-  const ids = poolArr.rows.map((r) => Number(r.id));
+  await ensureDailyTasksSchema();
+  await purgeLegacyPoolTasks(profileId, taskDate);
 
   const existing = await listDailyTasks(profileId, taskDate);
   if (existing.length >= DAILY_TASK_LIMIT) {
-    return existing;
+    throw new ForbiddenError(`Você pode adicionar no máximo ${DAILY_TASK_LIMIT} tarefas por dia.`);
   }
 
-  const existingIds = new Set(existing.map((t) => t.id));
-  const yesterday = addDaysIso(taskDate, -1);
-  const yesterdayRows = await listDailyTasks(profileId, yesterday);
-  const yesterdayIds = new Set(yesterdayRows.map((t) => t.id));
+  const result = await pool.query<Row>(
+    `insert into user_daily_tasks (profile_id, title, task_date)
+     values ($1, $2, $3::date)
+     returning id, title, task_date, is_completed, completed_at`,
+    [profileId, trimmed, taskDate],
+  );
 
-  const notAssigned = ids.filter((id) => !existingIds.has(id));
-  const fresh = notAssigned.filter((id) => !yesterdayIds.has(id));
-  const pickPool = fresh.length >= DAILY_TASK_LIMIT ? fresh : notAssigned;
+  return mapRow(result.rows[0]);
+}
 
-  const need = DAILY_TASK_LIMIT - existing.length;
-  const pick = shuffle(pickPool).slice(0, need);
-
-  for (const taskId of pick) {
-    await pool.query(
-      `insert into user_daily_tasks (profile_id, task_id, task_date) values ($1, $2, $3::date)
-       on conflict (profile_id, task_id, task_date) do nothing`,
-      [profileId, taskId, taskDate],
-    );
+export async function deleteDailyTask(profileId: string, taskId: number): Promise<void> {
+  parseProfileId(profileId);
+  const result = await pool.query(
+    `delete from user_daily_tasks where id = $1 and profile_id = $2`,
+    [taskId, profileId],
+  );
+  if ((result.rowCount ?? 0) === 0) {
+    throw new NotFoundError("Tarefa diária não encontrada.");
   }
-
-  return listDailyTasks(profileId, taskDate);
 }
 
 /**
- * Toggles a daily task's completion. Completing a task awards DAILY_TASK_XP
- * (once) and feeds the XP mission. Completing all 3 marks the day's set done.
+ * Toggles a user-written daily task. Completing awards XP + coins (once).
+ * Completing all tasks for the day grants a small bonus.
  */
 export async function toggleDailyTask(
   profileId: string,
   progressId: number,
   completed: boolean,
-): Promise<{ task: UserDailyTask; xpAwarded: number }> {
+): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
 
-  const before = await pool.query<{ profile_id: string; is_completed: boolean }>(
-    `select profile_id, is_completed from user_daily_tasks where id = $1`,
+  const before = await pool.query<{ profile_id: string; is_completed: boolean; task_date: Date | string }>(
+    `select profile_id, is_completed, task_date from user_daily_tasks where id = $1`,
     [progressId],
   );
   if (!before.rows[0] || before.rows[0].profile_id !== profileId) {
@@ -149,24 +141,21 @@ export async function toggleDailyTask(
     `update user_daily_tasks
      set is_completed = $2, completed_at = case when $2 then now() else null end
      where id = $1
-     returning id, task_date, is_completed, completed_at`,
+     returning id, title, task_date, is_completed, completed_at`,
     [progressId, completed],
   );
   if (!updated.rows[0]) throw new NotFoundError("Tarefa diária não encontrada.");
 
-  const taskRow = await pool.query<Row>(
-    `select udt.id, t.title, udt.task_date, udt.is_completed, udt.completed_at
-     from user_daily_tasks udt join daily_task_pool t on t.id = udt.task_id
-     where udt.id = $1`,
-    [progressId],
-  );
-  const task = mapRow(taskRow.rows[0]);
+  const task = mapRow(updated.rows[0]);
+  const date = task.taskDate;
 
   let xpAwarded = 0;
-  // Grant XP only on the transition from not-done -> done.
+  let coinsAwarded = 0;
+
   if (completed && !alreadyDone) {
     xpAwarded = DAILY_TASK_XP;
-    const date = task.taskDate;
+    coinsAwarded = DAILY_TASK_COINS;
+
     await pool.query(
       `insert into xp_ledger (profile_id, source, source_id, xp_amount)
        values ($1, 'daily_task', $2, $3)`,
@@ -179,9 +168,17 @@ export async function toggleDailyTask(
       [profileId, xpAwarded],
     );
     await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded, questDate: date });
+    await addCoins(profileId, coinsAwarded);
+
+    const allToday = await listDailyTasks(profileId, date);
+    const allDone = allToday.length > 0 && allToday.every((t) => t.isCompleted);
+    if (allDone) {
+      coinsAwarded += DAILY_TASK_ALL_BONUS_COINS;
+      await addCoins(profileId, DAILY_TASK_ALL_BONUS_COINS);
+    }
   }
 
-  return { task, xpAwarded };
+  return { task, xpAwarded, coinsAwarded };
 }
 
 export { todayIso };

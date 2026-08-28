@@ -238,10 +238,21 @@ export async function ensureDailyQuestsExist(): Promise<void> {
   }
 }
 
-function shuffle<T>(array: T[]): T[] {
+function hashSeed(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) || 1;
+}
+
+/** Deterministic shuffle — same user gets the same mission order on a given date. */
+function seededShuffle<T>(array: T[], seed: string): T[] {
   const copy = [...array];
+  let state = hashSeed(seed);
   for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    state = (state * 1103515245 + 12345) & 0x7fffffff;
+    const j = state % (i + 1);
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
@@ -263,11 +274,21 @@ export async function initializeUserDailyQuests(
   const quests = await listDailyQuests();
 
   // Check which missions the user already has for this date
-  const existing = await getUserQuestProgress(profileId, questDate);
+  let existing = await getUserQuestProgress(profileId, questDate);
+
+  // Legacy rows: if a user somehow has more than the daily limit, reset today's set.
+  if (existing.length > DAILY_MISSION_LIMIT) {
+    await pool.query(
+      `delete from user_quest_progress where profile_id = $1 and quest_date = $2`,
+      [profileId, questDate],
+    );
+    existing = [];
+  }
+
   const existingQuestIds = new Set(existing.map((p) => p.questId));
 
   // Already fully assigned for today
-  if (existing.length >= DAILY_MISSION_LIMIT) {
+  if (existing.length === DAILY_MISSION_LIMIT) {
     return existing;
   }
 
@@ -283,7 +304,7 @@ export async function initializeUserDailyQuests(
   const poolForPick = candidates.length >= DAILY_MISSION_LIMIT ? candidates : notAssigned;
 
   const need = DAILY_MISSION_LIMIT - existing.length;
-  const pick = shuffle(poolForPick).slice(0, need);
+  const pick = seededShuffle(poolForPick, `${profileId}:${questDate}`).slice(0, need);
 
   const created: UserQuestProgress[] = [];
   for (const quest of pick) {
