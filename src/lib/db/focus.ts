@@ -2,8 +2,8 @@ import pool from "../db";
 import type { FocusSession } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
-import { todayIso } from "./dates";
-import { initializeUserDailyQuests, incrementQuestProgress } from "./daily-quests";
+import { todayIso, APP_TIMEZONE } from "./dates";
+import { recordMissionProgress } from "./daily-quests";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;

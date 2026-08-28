@@ -396,9 +396,7 @@ export default function FocusRoomsPage() {
   }, [user, pageState, currentRoom?.id, currentRoom?.status, currentRoom?.durationMinutes]);
 
   // ── Shared countdown derivation ────────────────────────────────────────────
-  const isActive = currentRoom?.status === "active";
   const isRunningRoom = currentRoom?.status === "active" || currentRoom?.status === "paused";
-  const isPausedRoom = currentRoom?.status === "paused";
   const startedAtMs = currentRoom?.startedAt ? new Date(currentRoom.startedAt).getTime() : null;
   const totalMs = currentRoom ? currentRoom.durationMinutes * 60 * 1000 : 0;
 
@@ -413,7 +411,7 @@ export default function FocusRoomsPage() {
       const resumeAt =
         currentRoom.lastResumedAt
           ? new Date(currentRoom.lastResumedAt).getTime()
-          : startedAtMs ?? Date.now();
+          : startedAtMs ?? nowMs;
       elapsed += Math.floor((nowMs - resumeAt) / 1000);
     }
     return Math.max(0, (totalSec - elapsed) * 1000);
@@ -760,25 +758,45 @@ export default function FocusRoomsPage() {
       <div className="panel p-6">
         <h2 className="font-display text-xl mb-6">Criar Sala de Foco</h2>
         <div className="space-y-5">
-          <div>
+          <div className="text-center">
             <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Duração</label>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setSelectedDuration(Math.max(5, selectedDuration - 5))} className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors">-5</button>
-              <span className="font-mono text-lg text-[var(--text)] min-w-[40px] text-center">{selectedDuration}</span>
-              <button onClick={() => setSelectedDuration(Math.min(120, selectedDuration + 5))} className="w-8 h-8 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors">+5</button>
-              <span className="text-[10px] text-[var(--text-faint)]">minutos</span>
+            <div className="flex justify-center pt-2">
+              <CircularDurationPicker
+                value={selectedDuration}
+                onChange={setSelectedDuration}
+                maxDurationMinutes={120}
+                snapIncrement={5}
+                minMinutes={10}
+                size={210}
+                centerContent={
+                  <div className="text-center">
+                    <div className="font-mono font-bold leading-none" style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}>{selectedDuration}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-widest text-[var(--text-faint)]">minutos</div>
+                  </div>
+                }
+              />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Tipo de Energia Inicial</label>
-            <div className="flex gap-2 flex-wrap">
-              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => (
-                <button key={type} onClick={() => setSelectedEnergyType(type)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${selectedEnergyType === type ? "" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"}`}
-                  style={{ border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none" }}>
-                  {cfg.label}
-                </button>
-              ))}
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3">Tipo de Energia Inicial</label>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => {
+                const isSel = selectedEnergyType === type;
+                return (
+                  <button key={type} onClick={() => setSelectedEnergyType(type)} title={cfg.label}
+                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2.5 py-2.5 transition"
+                    style={{
+                      borderColor: isSel ? `${cfg.accent}66` : "var(--border-subtle)",
+                      background: isSel ? cfg.glow : "transparent",
+                      boxShadow: isSel ? `0 0 16px ${cfg.glow}` : "none",
+                    }}>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full">
+                      <Image src={cfg.assets.full} alt={cfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
+                    </span>
+                    <span className="text-[10px] font-medium" style={{ color: isSel ? cfg.accent : "var(--text-muted)" }}>{cfg.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div className="pt-4">
@@ -808,15 +826,25 @@ export default function FocusRoomsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Tipo de Energia (opcional)</label>
-            <div className="flex gap-2 flex-wrap">
-              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => (
-                <button key={type} onClick={() => setSelectedEnergyType(type)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${selectedEnergyType === type ? "" : "bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)]"}`}
-                  style={{ border: selectedEnergyType === type ? `1px solid ${cfg.accent}` : "none" }}>
-                  {cfg.label}
-                </button>
-              ))}
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3">Tipo de Energia (opcional)</label>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(ENERGY_CONFIGS).filter(([, cfg]) => !cfg.locked).map(([type, cfg]) => {
+                const isSel = selectedEnergyType === type;
+                return (
+                  <button key={type} onClick={() => setSelectedEnergyType(type)} title={cfg.label}
+                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2.5 py-2.5 transition"
+                    style={{
+                      borderColor: isSel ? `${cfg.accent}66` : "var(--border-subtle)",
+                      background: isSel ? cfg.glow : "transparent",
+                      boxShadow: isSel ? `0 0 16px ${cfg.glow}` : "none",
+                    }}>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full">
+                      <Image src={cfg.assets.full} alt={cfg.label} width={40} height={40} style={{ objectFit: "contain" }} unoptimized />
+                    </span>
+                    <span className="text-[10px] font-medium" style={{ color: isSel ? cfg.accent : "var(--text-muted)" }}>{cfg.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div className="pt-4">

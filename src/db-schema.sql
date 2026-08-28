@@ -419,12 +419,16 @@ create table if not exists daily_quests (
   id bigserial primary key,
   title text not null unique,
   description text not null,
-  type quest_type not null,
+  type quest_type,
+  metric text,
   target_value integer not null,
   coin_reward integer not null default 10,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+create index if not exists daily_quests_metric_idx on daily_quests(metric);
+create index if not exists daily_quests_active_idx on daily_quests(is_active);
 
 create table if not exists user_quest_progress (
   id bigserial primary key,
@@ -443,11 +447,25 @@ create table if not exists user_quest_progress (
 create index if not exists user_quest_progress_profile_date_idx on user_quest_progress(profile_id, quest_date);
 create index if not exists user_quest_progress_quest_date_idx on user_quest_progress(quest_id, quest_date);
 
--- Insert default daily quests
-insert into daily_quests (title, description, type, target_value, coin_reward) values
-  ('Complete 2 sessões hoje', 'Conclua 2 sessões de foco hoje', 'SESSIONS_COUNT', 2, 10),
-  ('Foque 90 minutos hoje', 'Acumule 90 minutos de foco hoje', 'TOTAL_MINUTES', 90, 15),
-  ('Foque em uma sala com amigos', 'Participe de uma sessão em uma Sala de Foco', 'ROOM_SESSION', 1, 20)
+-- Mission pool (each user is randomly assigned exactly 3 active missions per day).
+-- `metric` is the machine-readable event used to drive progress; `type` is kept
+-- for backward compatibility with the legacy daily-quests UI/claiming flow.
+insert into daily_quests (title, description, metric, type, target_value, coin_reward) values
+  ('Complete 1 sessão de foco', 'Conclua 1 sessão de foco hoje', 'SESSIONS_COMPLETED', 'SESSIONS_COUNT', 1, 10),
+  ('Complete 2 sessões de foco', 'Conclua 2 sessões de foco hoje', 'SESSIONS_COMPLETED', 'SESSIONS_COUNT', 2, 10),
+  ('Complete 3 sessões de foco', 'Conclua 3 sessões de foco hoje', 'SESSIONS_COMPLETED', 'SESSIONS_COUNT', 3, 15),
+  ('Foque 30 minutos hoje', 'Acumule 30 minutos de foco hoje', 'TOTAL_MINUTES', 'TOTAL_MINUTES', 30, 10),
+  ('Foque 60 minutos hoje', 'Acumule 60 minutos de foco hoje', 'TOTAL_MINUTES', 'TOTAL_MINUTES', 60, 10),
+  ('Foque 90 minutos hoje', 'Acumule 90 minutos de foco hoje', 'TOTAL_MINUTES', 'TOTAL_MINUTES', 90, 15),
+  ('Participe de uma Sala de Foco', 'Participe de uma sessão em uma Sala de Foco', 'ROOM_SESSION_COMPLETED', 'ROOM_SESSION', 1, 20),
+  ('Participe de 2 salas diferentes', 'Participe de sessões em 2 salas de foco diferentes', 'DISTINCT_ROOMS', 'ROOM_SESSION', 2, 15),
+  ('Complete 3 tarefas hoje', 'Conclua 3 tarefas hoje', 'TASKS_COMPLETED', 'SESSIONS_COUNT', 3, 10),
+  ('Mantenha seu streak por mais um dia', 'Atinja a qualificação diária de streak hoje', 'STREAK_DAY', 'SESSIONS_COUNT', 1, 15),
+  ('Complete uma sessão de 60+ minutos', 'Conclua uma única sessão de foco com 60 minutos ou mais', 'LONG_SESSION_60', 'SESSIONS_COUNT', 1, 20),
+  ('Complete 3 hábitos hoje', 'Conclua 3 hábitos diferentes hoje', 'HABITS_COMPLETED', 'SESSIONS_COUNT', 3, 10),
+  ('Foque antes das 9h', 'Complete uma sessão de foco iniciada antes das 9h', 'EARLY_SESSION_9AM', 'SESSIONS_COUNT', 1, 15),
+  ('Complete uma missão da semana', 'Conclua uma missão do seu plano da semana', 'WEEKLY_PLAN_COMPLETED', 'SESSIONS_COUNT', 1, 15),
+  ('Ganhe 50 XP hoje', 'Acumule 50 pontos de XP hoje', 'XP_EARNED', 'SESSIONS_COUNT', 50, 20)
 on conflict (title) do nothing;
 
 -- ── Store: Banner, Decorations, Shields ────────────────────────────────────

@@ -123,7 +123,12 @@ export async function updateDisplayName(profileId: string, displayName: string):
 
 export async function updatePhotoUrl(profileId: string, photoUrl: string): Promise<User> {
   parseProfileId(profileId);
-  if (!photoUrl || photoUrl.length > 2000) throw new ValidationError("URL da foto inválida.");
+  if (!photoUrl) throw new ValidationError("URL da foto inválida.");
+  if (photoUrl.startsWith("data:image/")) {
+    if (photoUrl.length > 500_000) throw new ValidationError("Imagem muito grande (máx. ~370 KB).");
+  } else if (photoUrl.length > 2000) {
+    throw new ValidationError("URL da foto inválida.");
+  }
   const result = await pool.query<ProfileRow>(
     `update profiles set photo_url = $2 where id = $1
      returning ${PROFILE_COLUMNS}`,

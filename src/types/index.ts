@@ -384,11 +384,27 @@ export function getTaskProgress(tasks: Array<Pick<Task, "completedAt"> & { done?
 
 export type QuestType = "SESSIONS_COUNT" | "TOTAL_MINUTES" | "ROOM_SESSION";
 
+// Machine-readable event used to drive a mission's progress. Each trackable
+// daily event maps to exactly one metric.
+export type MissionMetric =
+  | "SESSIONS_COMPLETED"
+  | "TOTAL_MINUTES"
+  | "ROOM_SESSION_COMPLETED"
+  | "DISTINCT_ROOMS"
+  | "TASKS_COMPLETED"
+  | "STREAK_DAY"
+  | "LONG_SESSION_60"
+  | "HABITS_COMPLETED"
+  | "EARLY_SESSION_9AM"
+  | "WEEKLY_PLAN_COMPLETED"
+  | "XP_EARNED";
+
 export interface DailyQuest {
   id: number;
   title: string;
   description: string;
-  type: QuestType;
+  type: QuestType | null;
+  metric?: MissionMetric | string | null;
   targetValue: number;
   coinReward: number;
   isActive: boolean;

@@ -37,6 +37,24 @@ import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
 import { formatStat } from "@/lib/format";
 
+// Lê a imagem escolhida e a comprime para uma thumbnail compacta (data URL),
+// evitando depender de serviços externos de upload.
+async function fileToDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const MAX = 400;
+  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
@@ -443,16 +461,7 @@ export default function PerfilPage() {
     setPhotoSaving(true);
     setPhotoError("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-        { method: "POST", body: formData },
-      );
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      const photoUrl = data.secure_url as string;
+      const photoUrl = await fileToDataUrl(file);
       await updateProfile(auth.currentUser, { photoURL: photoUrl });
       await api.updatePhotoUrl(photoUrl);
       setPhotoUrl(photoUrl);

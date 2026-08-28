@@ -1,20 +1,48 @@
+import type { PoolClient } from "pg";
 import pool from "../db";
-import type { DailyQuest, UserQuestProgress, QuestProgressWithQuest, QuestType } from "@/types";
+import type { DailyQuest, UserQuestProgress, QuestProgressWithQuest, QuestType, MissionMetric } from "@/types";
 import { parseProfileId } from "./validation";
 import { addCoins } from "./settings";
+import { addDaysIso, todayIso } from "./dates";
 import { ConflictError, NotFoundError } from "../errors";
 
+// Number of missions randomly assigned to each user per day.
+export const DAILY_MISSION_LIMIT = 3;
+
 // ========================================
-// Quest Definitions
+// Quest Definitions (mission pool)
 // ========================================
 
-const DEFAULT_DAILY_QUESTS: Array<Omit<DailyQuest, "id" | "createdAt" | "isActive">> = [
-  { title: "Complete 2 sessões hoje", description: "Conclua 2 sessões de foco hoje", type: "SESSIONS_COUNT", targetValue: 2, coinReward: 10 },
-  { title: "Foque 90 minutos hoje", description: "Acumule 90 minutos de foco hoje", type: "TOTAL_MINUTES", targetValue: 90, coinReward: 15 },
-  { title: "Foque em uma sala com amigos", description: "Participe de uma sessão em uma Sala de Foco", type: "ROOM_SESSION", targetValue: 1, coinReward: 20 },
+interface MissionSeed {
+  title: string;
+  description: string;
+  metric: MissionMetric;
+  type: QuestType;
+  targetValue: number;
+  coinReward: number;
+}
+
+// The complete pool of daily missions. Each user is randomly assigned exactly
+// DAILY_MISSION_LIMIT of these per day. Only missions with a trackable metric
+// are included — anything that can't be measured from current data is omitted
+// (see the flagged list in the codebase notes).
+const DEFAULT_DAILY_QUESTS: MissionSeed[] = [
+  { title: "Complete 1 sessão de foco", description: "Conclua 1 sessão de foco hoje", metric: "SESSIONS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 10 },
+  { title: "Complete 2 sessões de foco", description: "Conclua 2 sessões de foco hoje", metric: "SESSIONS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 2, coinReward: 10 },
+  { title: "Complete 3 sessões de foco", description: "Conclua 3 sessões de foco hoje", metric: "SESSIONS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 15 },
+  { title: "Foque 30 minutos hoje", description: "Acumule 30 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 30, coinReward: 10 },
+  { title: "Foque 60 minutos hoje", description: "Acumule 60 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 60, coinReward: 10 },
+  { title: "Foque 90 minutos hoje", description: "Acumule 90 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 90, coinReward: 15 },
+  { title: "Participe de uma Sala de Foco", description: "Participe de uma sessão em uma Sala de Foco", metric: "ROOM_SESSION_COMPLETED", type: "ROOM_SESSION", targetValue: 1, coinReward: 20 },
+  { title: "Participe de 2 salas diferentes", description: "Participe de sessões em 2 salas de foco diferentes", metric: "DISTINCT_ROOMS", type: "ROOM_SESSION", targetValue: 2, coinReward: 15 },
+  { title: "Complete 3 tarefas hoje", description: "Conclua 3 tarefas hoje", metric: "TASKS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 10 },
+  { title: "Mantenha seu streak por mais um dia", description: "Atinja a qualificação diária de streak hoje", metric: "STREAK_DAY", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
+  { title: "Complete uma sessão de 60+ minutos", description: "Conclua uma única sessão de foco com 60 minutos ou mais", metric: "LONG_SESSION_60", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 20 },
+  { title: "Complete 3 hábitos hoje", description: "Conclua 3 hábitos diferentes hoje", metric: "HABITS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 10 },
+  { title: "Foque antes das 9h", description: "Complete uma sessão de foco iniciada antes das 9h", metric: "EARLY_SESSION_9AM", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
+  { title: "Complete uma missão da semana", description: "Conclua uma missão do seu plano da semana", metric: "WEEKLY_PLAN_COMPLETED", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
+  { title: "Ganhe 50 XP hoje", description: "Acumule 50 pontos de XP hoje", metric: "XP_EARNED", type: "SESSIONS_COUNT", targetValue: 50, coinReward: 20 },
 ];
-
-const QUEST_TYPES: readonly QuestType[] = ["SESSIONS_COUNT", "TOTAL_MINUTES", "ROOM_SESSION"];
 
 // ========================================
 // Row Interfaces
@@ -24,7 +52,8 @@ interface DailyQuestRow {
   id: string | number;
   title: string;
   description: string;
-  type: QuestType;
+  type: QuestType | null;
+  metric: string | null;
   target_value: number;
   coin_reward: number;
   is_active: boolean;
@@ -54,6 +83,7 @@ function mapDailyQuest(row: DailyQuestRow): DailyQuest {
     title: row.title,
     description: row.description,
     type: row.type,
+    metric: row.metric,
     targetValue: row.target_value,
     coinReward: row.coin_reward,
     isActive: row.is_active,
@@ -82,14 +112,14 @@ function mapUserQuestProgress(row: UserQuestProgressRow): UserQuestProgress {
 
 export async function listDailyQuests(): Promise<DailyQuest[]> {
   const result = await pool.query<DailyQuestRow>(
-    `select id, title, description, type, target_value, coin_reward, is_active, created_at from daily_quests where is_active = true order by id`,
+    `select id, title, description, type, metric, target_value, coin_reward, is_active, created_at from daily_quests where is_active = true order by id`,
   );
   return result.rows.map(mapDailyQuest);
 }
 
 export async function getDailyQuest(questId: number): Promise<DailyQuest | null> {
   const result = await pool.query<DailyQuestRow>(
-    `select id, title, description, type, target_value, coin_reward, is_active, created_at from daily_quests where id = $1`,
+    `select id, title, description, type, metric, target_value, coin_reward, is_active, created_at from daily_quests where id = $1`,
     [questId],
   );
   return result.rows[0] ? mapDailyQuest(result.rows[0]) : null;
@@ -135,7 +165,8 @@ export async function getUserQuestProgressWithQuests(
     q_id: string | number;
     q_title: string;
     q_description: string;
-    q_type: QuestType;
+    q_type: QuestType | null;
+    q_metric: string | null;
     q_target_value: number;
     q_coin_reward: number;
     q_is_active: boolean;
@@ -148,7 +179,7 @@ export async function getUserQuestProgressWithQuests(
       uqp.completed_at as uqp_completed_at, uqp.claimed_at as uqp_claimed_at,
       uqp.created_at as uqp_created_at,
       q.id as q_id, q.title as q_title, q.description as q_description,
-      q.type as q_type, q.target_value as q_target_value,
+      q.type as q_type, q.metric as q_metric, q.target_value as q_target_value,
       q.coin_reward as q_coin_reward, q.is_active as q_is_active,
       q.created_at as q_created_at
      from user_quest_progress uqp
@@ -175,6 +206,7 @@ export async function getUserQuestProgressWithQuests(
       title: row.q_title,
       description: row.q_description,
       type: row.q_type,
+      metric: row.q_metric,
       target_value: row.q_target_value,
       coin_reward: row.q_coin_reward,
       is_active: row.q_is_active,
@@ -189,59 +221,136 @@ export async function getUserQuestProgressWithQuests(
 
 export async function ensureDailyQuestsExist(): Promise<void> {
   const existing = await pool.query<{ count: string }>(
-    `select count(*)::int as count from daily_quests`,
+    `select count(*)::int as count from daily_quests where is_active = true`,
   );
-  
+
+  // Only seed if the pool is not populated yet (fresh installs).
   if (Number(existing.rows[0]?.count || 0) === 0) {
     for (const quest of DEFAULT_DAILY_QUESTS) {
       await pool.query(
-        `insert into daily_quests (title, description, type, target_value, coin_reward, is_active)
-         values ($1, $2, $3, $4, $5, true)
-         on conflict (title) do nothing`,
-        [quest.title, quest.description, quest.type, quest.targetValue, quest.coinReward],
+        `insert into daily_quests (title, description, type, metric, target_value, coin_reward, is_active)
+         values ($1, $2, $3::quest_type, $4, $5, $6, true)
+         on conflict (title) do update set metric = excluded.metric, description = excluded.description,
+           target_value = excluded.target_value, coin_reward = excluded.coin_reward, is_active = true`,
+        [quest.title, quest.description, quest.type, quest.metric, quest.targetValue, quest.coinReward],
       );
     }
   }
 }
 
+function shuffle<T>(array: T[]): T[] {
+  const copy = [...array];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+// Assigns exactly `DAILY_MISSION_LIMIT` random active missions to the user for
+// the given date (creating any missing rows). Picks replace the previous set:
+// mission set from yesterday is avoided when there are enough other missions.
 export async function initializeUserDailyQuests(
   profileId: string,
   questDate: string,
 ): Promise<UserQuestProgress[]> {
   parseProfileId(profileId);
-  
-  // First, ensure daily quests exist
+
+  // First, ensure the mission pool exists
   await ensureDailyQuestsExist();
-  
-  // Get all active daily quests
+
+  // All active missions in the pool
   const quests = await listDailyQuests();
-  
-  // Check which quests the user already has for this date
+
+  // Check which missions the user already has for this date
   const existing = await getUserQuestProgress(profileId, questDate);
   const existingQuestIds = new Set(existing.map((p) => p.questId));
-  
-  // Create missing quests
+
+  // Already fully assigned for today
+  if (existing.length >= DAILY_MISSION_LIMIT) {
+    return existing;
+  }
+
+  // Yesterday's missions, to avoid repeating the exact same set today.
+  const yesterday = addDaysIso(questDate, -1);
+  const yesterdayProgress = await getUserQuestProgress(profileId, yesterday);
+  const yesterdayIds = new Set(yesterdayProgress.map((p) => p.questId));
+
+  const notAssigned = quests.filter((q) => !existingQuestIds.has(q.id));
+  // Prefer candidates that were NOT assigned yesterday, but fall back to all
+  // available missions if that leaves fewer than we need for a varied set.
+  const candidates = notAssigned.filter((q) => !yesterdayIds.has(q.id));
+  const poolForPick = candidates.length >= DAILY_MISSION_LIMIT ? candidates : notAssigned;
+
+  const need = DAILY_MISSION_LIMIT - existing.length;
+  const pick = shuffle(poolForPick).slice(0, need);
+
   const created: UserQuestProgress[] = [];
-  for (const quest of quests) {
-    if (!existingQuestIds.has(quest.id)) {
-      const result = await pool.query<UserQuestProgressRow>(
-        `insert into user_quest_progress (profile_id, quest_id, quest_date, current_value, is_completed, is_claimed)
-         values ($1, $2, $3, 0, false, false)
-         returning id, profile_id, quest_id, quest_date, current_value, is_completed, is_claimed, completed_at, claimed_at, created_at`,
-        [profileId, quest.id, questDate],
-      );
-      if (result.rows[0]) {
-        created.push(mapUserQuestProgress(result.rows[0]));
-      }
+  for (const quest of pick) {
+    const result = await pool.query<UserQuestProgressRow>(
+      `insert into user_quest_progress (profile_id, quest_id, quest_date, current_value, is_completed, is_claimed)
+       values ($1, $2, $3, 0, false, false)
+       returning id, profile_id, quest_id, quest_date, current_value, is_completed, is_claimed, completed_at, claimed_at, created_at`,
+      [profileId, quest.id, questDate],
+    );
+    if (result.rows[0]) {
+      created.push(mapUserQuestProgress(result.rows[0]));
     }
   }
-  
+
   return [...existing, ...created];
 }
 
 // ========================================
 // Quest Progress Updates
 // ========================================
+
+export interface RecordMissionProgressOptions {
+  questDate?: string;
+  incrementBy?: number;
+  client?: PoolClient;
+}
+
+/**
+ * Increments progress for every mission assigned to the user today whose
+ * metric matches. This is the single shared hook that all daily event sites
+ * call — it replaces the old hardcoded quest-id increments so missions are
+ * advanced regardless of the actual daily_quests row ids.
+ */
+export async function recordMissionProgress(
+  profileId: string,
+  metric: string,
+  options: RecordMissionProgressOptions = {},
+): Promise<void> {
+  parseProfileId(profileId);
+
+  const questDate = options.questDate ?? todayIso();
+  const amount = options.incrementBy ?? 1;
+
+  // Make sure today's missions are assigned before recording progress.
+  await initializeUserDailyQuests(profileId, questDate);
+
+  const query = `
+    update user_quest_progress uqp
+    set current_value = uqp.current_value + $4,
+        is_completed = uqp.is_completed or (uqp.current_value + $4) >= q.target_value,
+        completed_at = case
+          when (uqp.current_value + $4) >= q.target_value and uqp.completed_at is null then now()
+          else uqp.completed_at
+        end
+    from daily_quests q
+    where q.id = uqp.quest_id
+      and q.is_active = true
+      and q.metric = $1
+      and uqp.profile_id = $2 and uqp.quest_date = $3
+  `;
+
+  if (options.client) {
+    await options.client.query(query, [metric, profileId, questDate, amount]);
+  } else {
+    await pool.query(query, [metric, profileId, questDate, amount]);
+  }
+}
 
 export interface UpdateQuestProgressInput {
   questId: number;
