@@ -1,16 +1,20 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { Target } from "lucide-react";
+import { ArrowUpRight, Target } from "lucide-react";
 import type { Goal } from "@/types";
 import Link from "next/link";
 import { categoryIcon } from "@/lib/categories";
 
+/** Máximo de metas exibidas no card antes de delegar o restante ao link "Ver todas". */
+const MAX_VISIBLE_GOALS = 16;
+
 export function GoalsCard({ goals }: { goals: Goal[] }) {
   const reduced = useReducedMotion();
-  const activeGoals = goals.slice(0, 4);
+  const activeGoals = goals.slice(0, MAX_VISIBLE_GOALS);
+  const overflowCount = goals.length - activeGoals.length;
 
-  if (activeGoals.length === 0) {
+  if (goals.length === 0) {
     return (
       <div className="panel p-6 h-full flex flex-col items-center justify-center">
         <motion.div
@@ -26,12 +30,26 @@ export function GoalsCard({ goals }: { goals: Goal[] }) {
   }
 
   return (
-    <div className="panel p-6">
+    <div className="panel p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <span className="eyebrow muted">METAS ATIVAS</span>
-        <Link href="/metas" className="text-xs text-[var(--accent)] hover:underline">Ver todas</Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/metas"
+            aria-label="Ir para Metas e hábitos"
+            title="Ir para Metas e hábitos"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-muted)] transition hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
+          >
+            <ArrowUpRight size={14} />
+          </Link>
+          <Link href="/metas" className="text-xs text-[var(--accent)] hover:underline">
+            Ver todas{overflowCount > 0 ? ` (+${overflowCount})` : ""}
+          </Link>
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      {/* Linhas em crescimento automático: preenchem a altura disponível do card
+          (quando esticado pelo card vizinho) sem nunca esmagar o conteúdo. */}
+      <div className="grid grow grid-cols-2 auto-rows-[minmax(min-content,1fr)] gap-3">
         {activeGoals.map((goal, i) => {
           const { color, icon, name: label } = goal.category;
           const Icon = categoryIcon(icon);
@@ -43,7 +61,7 @@ export function GoalsCard({ goals }: { goals: Goal[] }) {
               key={goal.id}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: Math.min(i, 8) * 0.05 }}
               whileHover={reduced ? undefined : { y: -2 }}
               className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
             >
@@ -78,3 +96,4 @@ export function GoalsCard({ goals }: { goals: Goal[] }) {
     </div>
   );
 }
+

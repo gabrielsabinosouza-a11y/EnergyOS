@@ -3,6 +3,7 @@ import type { KanbanTask, KanbanStatus, KanbanPriority, KanbanLabel } from "@/ty
 import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
+import { recordMissionProgress } from "./daily-quests";
 
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
@@ -148,6 +149,10 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
   parseProfileId(profileId);
   if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");
 
+  const statusUpdate = patch.status !== undefined
+    ? parseEnum(patch.status, KANBAN_STATUSES, "Status")
+    : undefined;
+
   const updates: string[] = [];
   const values: (string | number | string[] | null)[] = [profileId, taskId];
 
@@ -159,8 +164,8 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
     values.push(patch.description);
     updates.push(`description = $${values.length}`);
   }
-  if (patch.status !== undefined) {
-    values.push(parseEnum(patch.status, KANBAN_STATUSES, "Status"));
+  if (statusUpdate !== undefined) {
+    values.push(statusUpdate);
     updates.push(`status = $${values.length}`);
   }
   if (patch.categoryId !== undefined) {
@@ -192,6 +197,13 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
   if (updates.length === 0) throw new ValidationError("Nenhum campo para atualizar.");
   updates.push(`updated_at = now()`);
 
+  const wasDone = await pool.query<{ status: string }>(
+    `select status from kanban_tasks where profile_id = $1 and id = $2`,
+    [profileId, taskId],
+  );
+  if (!wasDone.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
+  const becomingDone = statusUpdate === "done" && wasDone.rows[0].status !== "done";
+
   const updated = await pool.query<{ id: string | number }>(
     `update kanban_tasks set ${updates.join(", ")}
      where profile_id = $1 and id = $2
@@ -200,6 +212,12 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
   );
   if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
   const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
+
+  // Completing via a status update also counts toward daily missions.
+  if (becomingDone) {
+    await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1 });
+  }
+
   return mapKanban(result.rows[0]);
 }
 
@@ -285,8 +303,16 @@ export async function moveKanbanTask(
     );
     
     if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
-    
+
     const result = await client.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
+
+    // A task moved into the "Concluído" (done) column counts toward today's
+    // daily missions ("Complete N tarefas hoje"). Only increment once, i.e.
+    // when it was NOT already done before this move.
+    if (validatedStatus === "done" && oldStatus !== "done") {
+      await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1, client });
+    }
+
     return mapKanban(result.rows[0]);
   } finally {
     client.release();

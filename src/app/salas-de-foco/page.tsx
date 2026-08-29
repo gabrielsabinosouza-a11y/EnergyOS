@@ -286,6 +286,14 @@ export default function FocusRoomsPage() {
       // Lazy stale-room sweep: runs the cleanup job on load so stale rooms get
       // expired even without an external cron.
       api.cleanupFocusRooms().then(() => {}).catch(() => {});
+      // If the user arrived via a shared invite link (?join=CODE), pre-fill the
+      // join screen so they only need to tap "Entrar".
+      const params = new URLSearchParams(window.location.search);
+      const joinCode = params.get("join");
+      if (joinCode) {
+        setRoomCode(joinCode.trim().toUpperCase().slice(0, 6));
+        setPageState("join");
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);

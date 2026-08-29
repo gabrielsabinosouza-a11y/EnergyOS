@@ -362,6 +362,87 @@ export async function getEquippedEnergyId(profileId: string): Promise<string | n
   return result.rows[0]?.equipped_energy_id ?? null;
 }
 
+export interface StoreState {
+  items: StoreItem[];
+  balance: number;
+  banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
+  shieldCount: number;
+  ownedAuras: string[];
+  equippedEnergyId: string | null;
+}
+
+/**
+ * Carrega todo o estado da loja com o menor número possível de consultas.
+ * Combina as várias leituras da tabela `profiles` em uma única query (antes eram
+ * 5+), reduzindo bastante a latência — especialmente em Neon/serverless onde cada
+ * round-trip custa dezenas de ms.
+ */
+export async function getStoreState(profileId: string): Promise<StoreState> {
+  parseProfileId(profileId);
+
+  const [profiles, decs, ownedDecs, coins, auras] = await Promise.all([
+    pool.query<{
+      equipped_decoration_id: string | null;
+      equipped_energy_id: string | null;
+      has_custom_banner: boolean;
+      banner_image_url: string | null;
+      streak_shield_count: number;
+    }>(
+      `select equipped_decoration_id, equipped_energy_id, has_custom_banner, banner_image_url, streak_shield_count
+       from profiles where id = $1`,
+      [profileId],
+    ),
+    pool.query<{
+      id: string; name: string; description: string; image_url: string;
+      price: number; rarity: DecorationRarity; sort_order: number;
+    }>(
+      `select id, name, description, image_url, price, rarity, sort_order
+       from avatar_decorations where is_active = true order by sort_order asc`,
+    ),
+    pool.query<{ decoration_id: string }>(
+      `select decoration_id from user_decorations where profile_id = $1`,
+      [profileId],
+    ),
+    pool.query<{ coins: number }>(
+      `select coins from user_settings where profile_id = $1`,
+      [profileId],
+    ),
+    pool.query<{ aura_type: string }>(
+      `select aura_type from user_auras where profile_id = $1`,
+      [profileId],
+    ),
+  ]);
+
+  const profile = profiles.rows[0];
+  const ownedIds = new Set(ownedDecs.rows.map((row) => row.decoration_id));
+  const equippedDecorationId = profile?.equipped_decoration_id ?? null;
+
+  const items: StoreItem[] = decs.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    imageUrl: row.image_url,
+    price: row.price,
+    rarity: row.rarity,
+    sortOrder: row.sort_order,
+    owned: ownedIds.has(row.id),
+    equipped: equippedDecorationId === row.id,
+  }));
+
+  return {
+    items,
+    balance: Number(coins.rows[0]?.coins ?? 0),
+    banner: {
+      hasCustomBanner: profile?.has_custom_banner ?? false,
+      bannerImageUrl: profile?.banner_image_url ?? null,
+      unlocked: profile?.has_custom_banner ?? false,
+    },
+    shieldCount: Number(profile?.streak_shield_count ?? 0),
+    ownedAuras: auras.rows.map((row) => row.aura_type),
+    equippedEnergyId: profile?.equipped_energy_id ?? null,
+  };
+}
+
 export async function equipAura(
   profileId: string,
   auraType: string | null,
