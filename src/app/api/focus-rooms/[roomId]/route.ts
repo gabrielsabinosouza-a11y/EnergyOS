@@ -96,7 +96,7 @@ export async function DELETE(
       return badRequest("Only the host can delete this room");
     }
 
-    if (room.status === "active") {
+    if (room.status === "active" || room.status === "paused") {
       return badRequest("Não é possível excluir uma sala em andamento");
     }
 

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { categoryIcon } from "@/lib/categories";
 
 /** Máximo de metas exibidas no card antes de delegar o restante ao link "Ver todas". */
-const MAX_VISIBLE_GOALS = 16;
+const MAX_VISIBLE_GOALS = 10;
 
 export function GoalsCard({ goals }: { goals: Goal[] }) {
   const reduced = useReducedMotion();

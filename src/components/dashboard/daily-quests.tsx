@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronRight, Clock, Sparkles, CircleDollarSign, Package, Loader2, AlertTriangle } from "lucide-react";
+import { Check, Sparkles, CircleDollarSign, Package, Loader2, AlertTriangle } from "lucide-react";
 import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
+import { useDailyQuests } from "@/lib/quest-store";
 import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
 
 const QUEST_TITLES: Record<string, string> = {
@@ -20,17 +21,18 @@ const QUEST_DESCRIPTIONS: Record<string, string> = {
 };
 
 export interface DailyQuestsWidgetProps {
-  initialQuests?: QuestProgressWithQuest[];
   coins?: number;
   onCoinsChange?: (coins: number) => void;
 }
 
-export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange }: DailyQuestsWidgetProps) {
-  const [quests, setQuests] = useState<QuestProgressWithQuest[]>(initialQuests);
+export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidgetProps) {
+  // Quest state lives in the shared DailyQuestsProvider so ANY quest-relevant
+  // action (daily task checked, focus session completed, kanban "Feito", ...)
+  // updates this widget instantly — no refetch needed.
+  const { quests, ready, markClaimed, refresh } = useDailyQuests();
   const [claimingId, setClaimingId] = useState<number | null>(null);
   const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; x: number; y: number } | null>(null);
   const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
-  const [lastClaimTime, setLastClaimTime] = useState<string>("");
 
   useEffect(() => {
     if (claimError) {
@@ -39,41 +41,17 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
     }
   }, [claimError]);
 
-  const fetchQuests = useCallback(async () => {
-    try {
-      const data = await api.getDailyQuests();
-      setQuests(data.quests.slice(0, DAILY_MISSION_LIMIT));
-    } catch (error) {
-      console.error("Failed to fetch daily quests:", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (initialQuests.length > 0) {
-      setQuests(initialQuests.slice(0, DAILY_MISSION_LIMIT));
-    } else {
-      fetchQuests();
-    }
-  }, [initialQuests, fetchQuests]);
-
   const handleClaim = useCallback(async (progressId: number, index: number) => {
     const quest = quests[index];
     if (!quest || quest.isClaimed) return;
 
     setClaimingId(progressId);
+    // Optimistic: flip to claimed immediately; reconciled by refresh() below.
+    markClaimed(progressId);
 
     try {
       const result = await api.claimQuestReward(progressId);
-      
-      // Update local state
-      setQuests((prev) =>
-        prev.map((q, i) =>
-          i === index ? { ...q, isClaimed: true, claimedAt: new Date().toISOString() } : q
-        )
-      );
-      
-      setLastClaimTime(new Date().toISOString());
-      
+
       // Update coins
       const newCoins = coins + result.coinsAwarded;
       if (onCoinsChange) {
@@ -83,17 +61,17 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
       // Trigger claim animation
       setShowClaimAnimation({ coins: result.coinsAwarded, x: 100, y: 50 });
 
-      // Refresh quests after a short delay
-      setTimeout(() => {
-        fetchQuests();
-      }, 1000);
+      // Reconcile with server truth
+      void refresh();
     } catch (error) {
       console.error("Failed to claim quest reward:", error);
       setClaimError({ message: error instanceof Error ? error.message : "Não foi possível resgatar a recompensa.", questId: progressId });
+      // Roll back the optimistic claim to server truth
+      void refresh();
     } finally {
       setClaimingId(null);
     }
-  }, [quests, coins, onCoinsChange, fetchQuests]);
+  }, [quests, coins, onCoinsChange, markClaimed, refresh]);
 
   const getProgressPercentage = (quest: QuestProgressWithQuest) => {
     return Math.min((quest.currentValue / quest.quest.targetValue) * 100, 100);
@@ -249,7 +227,7 @@ export function DailyQuestsWidget({ initialQuests = [], coins = 0, onCoinsChange
         {quests.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Sparkles size={24} className="text-[var(--text-faint)] mb-2" />
-            <p className="text-sm text-[var(--text-muted)]">Carregando missões diárias...</p>
+            <p className="text-sm text-[var(--text-muted)]">{ready ? "Nenhuma missão para hoje" : "Carregando missões diárias..."}</p>
           </div>
         )}
       </div>

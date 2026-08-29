@@ -464,16 +464,33 @@ export async function getUserFocusRooms(
     [profileId],
   );
 
+  // The user's own hosted rooms are always kept visible (even orphaned ones
+  // where they no longer appear in room_participants, e.g. after leaving), so
+  // they never lose the ability to see and delete rooms they created.
+  const hosted = await pool.query<{ room_id: string | number }>(
+    `select id as room_id from focus_rooms where host_profile_id = $1 order by created_at desc`,
+    [profileId],
+  );
+
+  const roomIds = new Set<number>();
+  for (const row of ret.rows) roomIds.add(Number(row.room_id));
+  for (const row of hosted.rows) roomIds.add(Number(row.room_id));
+
   const rooms: FocusRoom[] = [];
-  for (const row of ret.rows) {
-    const room = await getFocusRoomById(profileId, Number(row.room_id));
+  for (const id of roomIds) {
+    const room = await getFocusRoomById(profileId, id);
     if (!room) continue;
 
     if (forList) {
-      if (room.status === "expired") continue;
-      if (room.status === "completed") {
-        const reference = new Date(room.endedAt ?? room.createdAt).getTime();
-        if (Date.now() - reference > completedRetentionMs) continue;
+      const IHost = room.hostProfileId === profileId;
+      // Rooms this user created are always kept visible so they can be
+      // reviewed and deleted, even once expired or completed.
+      if (!IHost) {
+        if (room.status === "expired") continue;
+        if (room.status === "completed") {
+          const reference = new Date(room.endedAt ?? room.createdAt).getTime();
+          if (Date.now() - reference > completedRetentionMs) continue;
+        }
       }
     }
 

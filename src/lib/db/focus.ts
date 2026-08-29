@@ -4,6 +4,7 @@ import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
+import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
 
 function calculateCoins(durationMinutes: number): number {
@@ -118,6 +119,14 @@ export async function endFocusSession(
   );
   if (startedLocalHour < 9) {
     await recordMissionProgress(profileId, "EARLY_SESSION_9AM", { incrementBy: 1 });
+  }
+
+  // Real-time streak: a session that reached its full target duration counts as
+  // the day's "success" for streak purposes and advances the streak immediately
+  // (first qualifying session of the day). Given-up sessions (fewer focused
+  // minutes than the target) and abandoned ones do not affect the streak.
+  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+    await onFocusSessionCompleted(profileId);
   }
 
   const questsUpdated = 1;

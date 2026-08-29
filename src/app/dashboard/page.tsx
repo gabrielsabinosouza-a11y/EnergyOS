@@ -3,27 +3,25 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, Check, Loader2, Moon, MoonStar, RefreshCw, Shield, Sparkles, Target, Timer } from "lucide-react";
+import { Check, Loader2, Moon, MoonStar, Shield, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
-import Link from "next/link";
-import type { Metric, Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, QuestProgressWithQuest, StreakDayStatus } from "@/types";
+import type { Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, StreakDayStatus } from "@/types";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
+import { DailyQuestsProvider, useDailyQuests } from "@/lib/quest-store";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
-import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
-import { AnimatedNumber, ProgressBar } from "@/components/ui";
+import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
 
 import type { Variants } from "framer-motion";
 
-const stagger: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
 const fadeUp: Variants = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } } };
 
 const SLEEP_OPTIONS = [
@@ -33,16 +31,6 @@ const SLEEP_OPTIONS = [
   { label: "Mais de 8h", sublabel: "Descanso completo", hours: 8.5, icon: MoonStar, color: "#b69cff", bgColor: "rgba(182,156,255,.08)" },
 ] as const;
 
-const METRIC_ICONS: Record<string, React.ElementType> = { sleep: Moon, study: Timer, training: Target };
-const METRIC_COLORS: Record<string, string> = { sleep: "#71d4ff", study: "#b69cff", training: "#ffb86b" };
-
-function formatMetric(m: Metric) {
-  if (m.value <= 0) return "—";
-  if (m.unit === "h") return `${m.value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h`;
-  if (m.unit === "min") return `${Math.round(m.value)}min`;
-  return String(m.value);
-}
-
 function todayLabel() {
   return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 }
@@ -51,25 +39,6 @@ function greeting(name: string) {
   const h = new Date().getHours();
   const part = h >= 5 && h < 12 ? "Bom dia" : h >= 12 && h < 18 ? "Boa tarde" : "Boa noite";
   return `${part}, ${name.split(" ")[0]}`;
-}
-
-function MiniSparkline({ values, color }: { values: number[]; color: string }) {
-  if (!values.length) return null;
-  const max = Math.max(...values, 1);
-  return (
-    <div className="metric-sparkline">
-      {values.map((v, i) => (
-        <motion.div
-          key={i}
-          className="bar"
-          initial={{ height: 0 }}
-          animate={{ height: `${Math.max(8, (v / max) * 100)}%` }}
-          transition={{ duration: 0.5, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
-          style={{ background: color, opacity: 0.3 + (i / values.length) * 0.7 }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function Toast({ message, type, onDismiss }: { message: string; type: "error" | "success"; onDismiss: () => void }) {
@@ -96,8 +65,19 @@ function Toast({ message, type, onDismiss }: { message: string; type: "error" | 
 }
 
 export default function DashboardPage() {
+  return (
+    <DailyQuestsProvider>
+      <DashboardContent />
+    </DailyQuestsProvider>
+  );
+}
+
+function DashboardContent() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const reduced = useReducedMotion();
+  // Centralized, reactive quest state — shared with DailyQuestsWidget,
+  // RecurringDailyTasks and the focus/kanban flows via DailyQuestsProvider.
+  const { applyMetric, refresh: refreshQuests } = useDailyQuests();
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
@@ -105,7 +85,6 @@ export default function DashboardPage() {
   const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
-  const [dailyQuests, setDailyQuests] = useState<QuestProgressWithQuest[]>([]);
   const [coins, setCoins] = useState(0);
   const [loadingPage, setLoadingPage] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
@@ -176,13 +155,6 @@ export default function DashboardPage() {
         api.getFocusData()
           .then((f) => { if (!cancelled) setFocusData(f); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, focus: "Erro ao carregar dados de foco." })); }),
-        api.getDailyQuests()
-          .then((data) => { 
-            if (!cancelled) { 
-              setDailyQuests(data.quests.slice(0, DAILY_MISSION_LIMIT));
-            } 
-          })
-          .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar missões diárias." })); }),
         api.getSettings()
           .then((s) => { if (!cancelled) setCoins(s.coins ?? 0); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
@@ -212,17 +184,33 @@ export default function DashboardPage() {
     }
   }
 
+  async function refreshXpForDailyTask() {
+    try {
+      const f = await api.getFocusData();
+      if (f) setFocusData(f);
+    } catch {
+      // ignore
+    }
+  }
+
   async function moveKanbanTask(id: number, newStatus: KanbanStatus, newPosition: number) {
     const prev = kanbanTasks;
     // Optimistic update: update the moved task
     setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus, position: newPosition } : k));
+    // Optimistic mission bump when a card reaches "Feito" for the first time
+    // (the server records the same metric only on this transition).
+    const prevTask = prev.find((k) => k.id === id);
+    const enteringDone = newStatus === "done" && prevTask?.status !== "done";
+    if (enteringDone) applyMetric("TASKS_COMPLETED", { incrementBy: 1 });
     try {
-      const result = await api.moveKanbanTask(id, newStatus, newPosition);
+      await api.moveKanbanTask(id, newStatus, newPosition);
       // Re-fetch all tasks to get the updated positions from the server
       const updatedTasks = await api.getKanban();
       setKanbanTasks(updatedTasks.tasks);
+      if (enteringDone) void refreshQuests();
     } catch {
       setKanbanTasks(prev);
+      if (enteringDone) void refreshQuests();
     }
   }
 
@@ -321,19 +309,31 @@ export default function DashboardPage() {
   }
 
   async function endFocus(sessionId: number, focusedSeconds: number) {
-    const result = await api.endFocus(sessionId, focusedSeconds);
-    api.getFocusData().then((f) => setFocusData(f));
-    return result;
+    // Optimistic: advance the focus-related missions in the SAME interaction —
+    // the missões diárias progress bars update instantly and the claim-ready
+    // glow appears the moment a mission completes. The server records the same
+    // metrics (and rolls the streak forward on full-duration sessions);
+    // refreshQuests() reconciles with the authoritative response.
+    const minutes = Math.max(1, Math.round(focusedSeconds / 60));
+    applyMetric("SESSIONS_COMPLETED", { incrementBy: 1 });
+    applyMetric("TOTAL_MINUTES", { incrementBy: minutes });
+    if (minutes >= 60) applyMetric("LONG_SESSION_60", { incrementBy: 1 });
+    try {
+      const result = await api.endFocus(sessionId, focusedSeconds);
+      void refreshQuests();
+      api.getFocusData().then((f) => setFocusData(f));
+      // Re-pull the snapshot so the streak badge reflects the (possibly new)
+      // streak right away — the server already ran the real-time evaluation.
+      void fetchDashboard();
+      return result;
+    } catch (error) {
+      // Roll the optimistic mission bumps back to server truth.
+      void refreshQuests();
+      throw error;
+    }
   }
 
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
-
-  const checkins = snapshot?.checkins ?? [];
-  const sparkData: Record<string, number[]> = {
-    sleep: checkins.slice(-7).map((c) => c.sleepHours ?? 0),
-    study: checkins.slice(-7).map((c) => c.studyMinutes ?? 0),
-    training: checkins.slice(-7).map((c) => c.trainingMinutes ?? 0),
-  };
 
   if (loading || !user) {
     return (
@@ -440,82 +440,19 @@ export default function DashboardPage() {
 
         {/* Daily Quests */}
         <section className="mb-8">
-          <DailyQuestsWidget 
-            initialQuests={dailyQuests} 
-            coins={coins} 
+          <DailyQuestsWidget
+            coins={coins}
             onCoinsChange={setCoins}
           />
         </section>
 
-        {/* Metrics */}
+        {/* Recurring Daily Tasks */}
         <section className="mb-8">
-          <div className="mb-4 flex items-end justify-between">
-            <div>
-              <span className="eyebrow muted">ULTIMOS 7 DIAS</span>
-              <h2 className="mt-2 font-display text-lg text-[var(--text-secondary)]">Medias da semana</h2>
-            </div>
-            <Link href="/relatorio" className="text-button">Ver relatorio <ArrowUpRight size={15} /></Link>
-          </div>
-
-          {sectionErrors.metrics ? (
-            <div className="panel p-6 text-center">
-              <p className="text-sm text-[var(--text-muted)] mb-3">{sectionErrors.metrics}</p>
-              <button
-                onClick={() => { setSectionErrors((p) => { const n = { ...p }; delete n.metrics; return n; }); fetchDashboard(); }}
-                className="text-button text-xs"
-              >
-                <RefreshCw size={13} /> Tentar novamente
-              </button>
-            </div>
-          ) : snapshot?.metrics && snapshot.metrics.length > 0 ? (
-            <motion.div variants={stagger} initial="hidden" animate="visible" className="grid gap-3 md:grid-cols-3">
-              {snapshot.metrics.map((m) => {
-                const Icon = METRIC_ICONS[m.kind] ?? Sparkles;
-                const color = METRIC_COLORS[m.kind] ?? "var(--accent)";
-                const glowMap: Record<string, string> = { sleep: "rgba(113,212,255,.12)", study: "rgba(182,156,255,.12)", training: "rgba(255,184,107,.12)" };
-                const trendUp = m.trend !== undefined && m.trend > 0;
-                const trendDown = m.trend !== undefined && m.trend < 0;
-                return (
-                  <motion.div
-                    key={m.kind}
-                    variants={fadeUp}
-                    whileHover={reduced ? undefined : { y: -2, transition: { duration: 0.15 } }}
-                    className="metric-card relative overflow-hidden"
-                    style={{ boxShadow: `0 0 32px -8px ${color}30` }}
-                  >
-                    <span aria-hidden className="ambient-glow" style={{ width: 160, height: 160, top: -60, right: -40, background: glowMap[m.kind] ?? "transparent" }} />
-                    <div className="relative z-10">
-                      <div className="mb-3 flex justify-between items-start">
-                        <div className="metric-icon" style={{ color }}><Icon size={17} /></div>
-                        {m.trend !== undefined && (
-                          <motion.span
-                            initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
-                            className="font-mono text-[11px]"
-                            style={{ color: trendUp ? "var(--green)" : trendDown ? "var(--red)" : "var(--text-faint)" }}
-                          >
-                            {trendUp ? "+" : ""}{m.trend}%
-                          </motion.span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)] mb-1">{m.label}</div>
-                      <div className="font-display text-xl tracking-[-0.02em] text-[var(--text)]">
-                        <AnimatedNumber
-                          value={m.unit === "h" ? m.value : Math.round(m.value)}
-                          decimals={m.unit === "h" ? 1 : 0}
-                          suffix={m.unit === "h" ? "h" : m.unit === "min" ? "min" : ""}
-                        />
-                      </div>
-                      <MiniSparkline values={sparkData[m.kind] ?? []} color={color} />
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-          ) : (
-            <div className="panel p-8 text-center">
-              <p className="text-sm text-[var(--text-muted)]">Nenhum dado ainda — comece seu primeiro foco hoje</p>
-            </div>
-          )}
+          <RecurringDailyTasks
+            coins={coins}
+            onCoinsChange={setCoins}
+            onXpGain={refreshXpForDailyTask}
+          />
         </section>
 
         {/* Weekly Plan */}

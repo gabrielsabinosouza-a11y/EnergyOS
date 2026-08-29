@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk } from "@/lib/http";
-import { toggleDailyTask, deleteDailyTask } from "@/lib/db/daily-tasks";
+import { todayIso } from "@/lib/db/dates";
+import { toggleDailyTask, deactivateDailyTask } from "@/lib/db/daily-tasks";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -11,7 +12,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json().catch(() => ({}));
     const completed = Boolean(body?.completed);
 
-    const result = await toggleDailyTask(profileId, progressId, completed);
+    const result = await toggleDailyTask(profileId, progressId, completed, todayIso());
 
     const parts: string[] = [];
     if (result.xpAwarded > 0) parts.push(`+${result.xpAwarded} XP`);
@@ -30,7 +31,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    await deleteDailyTask(profileId, Number(id));
+    // Soft-archive: keeps the task row and its completion history, hides it
+    // from the daily checklist from now on.
+    await deactivateDailyTask(profileId, Number(id));
     return jsonOk({ ok: true });
   });
 }

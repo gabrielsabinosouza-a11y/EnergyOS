@@ -30,9 +30,9 @@ import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
-import { addGardenEntry } from "@/lib/garden-store";
+import { addGardenEntriesForSession } from "@/lib/garden-store";
 
 type PageState = "list" | "create" | "join" | "room";
 
@@ -423,17 +423,10 @@ export default function FocusRoomsPage() {
       setLastCoins(end.xpAwarded);
 
       if (addGarden) {
-        const reward = getEnergyReward(room.durationMinutes);
-        if (reward > 0) {
-          for (let i = 0; i < reward; i++) {
-            addGardenEntry({
-              energyType: (selectEnergyRef.current || "flame") as EnergyType,
-              durationMinutes: room.durationMinutes,
-              reward,
-              plantedAt: new Date().toISOString(),
-            });
-          }
-        }
+        addGardenEntriesForSession({
+          energyType: (selectEnergyRef.current || "flame") as EnergyType,
+          focusedMinutes: focusedSeconds / 60,
+        });
         setShowCompletion(true);
         // Mark room completed (idempotent — first finisher wins)
         await api.completeFocusRoom(room.id).catch(() => {});

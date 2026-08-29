@@ -9,7 +9,7 @@ import { CircularDurationPicker } from "./circular-duration-picker";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
-import { addGardenEntry } from "@/lib/garden-store";
+import { addGardenEntriesForSession } from "@/lib/garden-store";
 
 // ─── Session Persistence Types ───────────────────────────────────────────────
 
@@ -270,14 +270,10 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             setShowComplete(true);
 
             if (reward > 0) {
-              for (let i = 0; i < reward; i++) {
-                addGardenEntry({
-                  energyType,
-                  durationMinutes,
-                  reward,
-                  plantedAt: new Date().toISOString(),
-                });
-              }
+              addGardenEntriesForSession({
+                energyType,
+                focusedMinutes: durationMinutes,
+              });
             }
 
             // Reset state
@@ -410,14 +406,10 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setShowComplete(true);
 
       if (reward > 0) {
-        for (let i = 0; i < reward; i++) {
-          addGardenEntry({
-            energyType: selectedEnergyRef.current,
-            durationMinutes: focusedMinutes,
-            reward,
-            plantedAt: new Date().toISOString(),
-          });
-        }
+        addGardenEntriesForSession({
+          energyType: selectedEnergyRef.current,
+          focusedMinutes,
+        });
       }
 
       // Browser notification

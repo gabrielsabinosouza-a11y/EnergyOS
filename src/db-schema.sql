@@ -496,6 +496,29 @@ alter table user_daily_tasks alter column task_id drop not null;
 
 create index if not exists user_daily_tasks_profile_date_idx on user_daily_tasks(profile_id, task_date);
 
+-- ── Recurring Daily Tasks ✓ ──────────────────────────────────────────────
+-- Template: the user's persistent list of daily tasks. Each task here repeats
+-- every day. Completion for a given day is tracked in daily_task_log.
+create table if not exists profile_daily_tasks (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  title text not null,
+  is_active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table profile_daily_tasks add column if not exists is_active boolean not null default true;
+create index if not exists profile_daily_tasks_profile_idx on profile_daily_tasks(profile_id, sort_order, id);
+
+-- Per-day completion log for recurring daily tasks.
+create table if not exists daily_task_log (
+  task_id bigint not null references profile_daily_tasks(id) on delete cascade,
+  log_date date not null,
+  is_completed boolean not null default false,
+  completed_at timestamptz,
+  primary key (task_id, log_date)
+);
+
 -- ── Store: Banner, Decorations, Shields ────────────────────────────────────
 alter table profiles add column if not exists has_custom_banner boolean not null default false;
 alter table profiles add column if not exists banner_image_url text;

@@ -1,4 +1,4 @@
-import type { EnergyType } from "./energy-assets";
+import { getEnergyReward, type EnergyType } from "./energy-assets";
 
 export interface GardenEntry {
   id: string;
@@ -29,6 +29,42 @@ export function addGardenEntry(entry: Omit<GardenEntry, "id">): GardenEntry {
   entries.unshift(full);
   save(entries);
   return full;
+}
+
+/**
+ * Plants the energies earned by a completed focus session.
+ *
+ * The number of plants equals the session reward (each plant is one energy),
+ * but the focused time is split evenly across them so that the SUM of
+ * `durationMinutes` across all plants equals the real focused minutes. This
+ * keeps the garden's "minutos de foco" totals and distribution chart accurate
+ * (previously each plant stored the full duration, inflating totals by the
+ * reward multiplier).
+ *
+ * Returns the list of planted entries (empty when no reward is earned).
+ */
+export function addGardenEntriesForSession(props: {
+  energyType: EnergyType;
+  focusedMinutes: number;
+  plantedAt?: string;
+}): GardenEntry[] {
+  const { energyType, focusedMinutes, plantedAt = new Date().toISOString() } = props;
+  const reward = getEnergyReward(focusedMinutes);
+  if (reward <= 0 || focusedMinutes <= 0) return [];
+
+  const perEnergy = focusedMinutes / reward;
+  const entries: GardenEntry[] = [];
+  for (let i = 0; i < reward; i++) {
+    entries.push(
+      addGardenEntry({
+        energyType,
+        durationMinutes: perEnergy,
+        reward,
+        plantedAt,
+      }),
+    );
+  }
+  return entries;
 }
 
 export function getGardenEntries(): GardenEntry[] {
