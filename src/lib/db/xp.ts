@@ -2,6 +2,7 @@ import pool from "../db";
 import type { UserXP } from "@/types";
 import { parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
+import { addCoins } from "./settings";
 
 interface XPRow {
   profile_id: string;
@@ -25,6 +26,35 @@ export async function getUserXP(profileId: string): Promise<UserXP> {
   );
   if (!result.rows[0]) return { profileId, totalXP: 0, level: 1 };
   return mapXP(result.rows[0]);
+}
+
+/** Acredita XP (leaderboard/level + ledger) e moedas de uma só vez, seguindo o padrão das tarefas diárias. */
+export async function awardXPAndCoins(
+  profileId: string,
+  source: string,
+  sourceId: number | string,
+  xp: number,
+  coins: number,
+): Promise<void> {
+  parseProfileId(profileId);
+  if (xp <= 0 && coins <= 0) return;
+
+  if (xp > 0) {
+    await pool.query(
+      `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, $2, $3, $4)`,
+      [profileId, source, sourceId, xp],
+    );
+    await pool.query(
+      `insert into user_xp (profile_id, total_xp, level, updated_at)
+       values ($1, $2, 1, now())
+       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
+      [profileId, xp],
+    );
+    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xp });
+  }
+  if (coins > 0) {
+    await addCoins(profileId, coins);
+  }
 }
 
 export async function awardTaskXP(profileId: string, taskId: number, xp: number): Promise<void> {

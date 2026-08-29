@@ -4,6 +4,10 @@ import { ensureProfile } from "./profiles";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseNumber, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
+import { awardXPAndCoins } from "./xp";
+
+const GOAL_COMPLETION_XP = 50;
+const GOAL_COMPLETION_COINS = 50;
 
 export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly"] as const;
 export type GoalFrequency = (typeof GOAL_FREQUENCY_VALUES)[number];
@@ -101,6 +105,12 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
   parseProfileId(profileId);
   assertGoalId(goalId);
 
+  // Capture the previous state so we only award on first completion.
+  const before = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.profile_id = $1 and g.id = $2`, [profileId, goalId]);
+  if (!before.rows[0]) throw new NotFoundError("Meta não encontrada.");
+  const prevGoal = mapGoalRow(before.rows[0]);
+  const wasComplete = prevGoal.targetValue > 0 && prevGoal.currentValue >= prevGoal.targetValue;
+
   const updates: string[] = [];
   const values: (string | number)[] = [profileId, goalId];
 
@@ -135,7 +145,15 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
   );
   if (!updated.rows[0]) throw new NotFoundError("Meta não encontrada.");
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [updated.rows[0].id]);
-  return withProgress(mapGoalRow(result.rows[0]));
+  const goal = withProgress(mapGoalRow(result.rows[0]));
+
+  // Award once when the goal reaches its target for the first time.
+  const nowComplete = goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
+  if (nowComplete && !wasComplete) {
+    await awardXPAndCoins(profileId, "goal", goal.id, GOAL_COMPLETION_XP, GOAL_COMPLETION_COINS);
+  }
+
+  return goal;
 }
 
 /** Atualiza apenas o progresso atual da meta (valor acumulado). */

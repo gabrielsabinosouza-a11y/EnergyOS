@@ -569,6 +569,14 @@ export async function claimQuestReward(
       [profileId, questProgressId, row.q_coin_reward],
     );
 
+    // Credit the same amount to the user's cumulative XP (leaderboard/level).
+    await client.query(
+      `insert into user_xp (profile_id, total_xp, level, updated_at)
+       values ($1, $2, 1, now())
+       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
+      [profileId, row.q_coin_reward],
+    );
+
     await client.query("commit");
 
     // Claiming also awards XP (recorded in the ledger), which feeds the

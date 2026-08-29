@@ -1,4 +1,5 @@
 import pool from "../db";
+import { NotFoundError, ConflictError } from "../errors";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
 
@@ -240,18 +241,11 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
   return mapFocusRoom(result.rows[0], participants);
 }
 
-// Add a participant to a room
+// Add a participant to a room (idempotent).
+// Re-joining a room the user is already in (e.g. the host, or a duplicate
+// join) returns the existing participant instead of throwing, and refreshes
+// their selected energy type if one was provided.
 export async function addParticipantToRoom(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomParticipant> {
-  // Check if user is already in the room
-  const existing = await pool.query<{ id: string | number }>(
-    `select id from room_participants where room_id = $1 and profile_id = $2`,
-    [roomId, profileId]
-  );
-
-  if (existing.rows[0]) {
-    throw new Error("User already in room");
-  }
-
   // Check room status
   const room = await pool.query<{ status: string }>(
     `select status from focus_rooms where id = $1`,
@@ -259,16 +253,21 @@ export async function addParticipantToRoom(roomId: number, profileId: string, se
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   if (room.rows[0].status !== "waiting") {
-    throw new Error("Cannot join a room that has already started or completed");
+    throw new ConflictError("Cannot join a room that has already started or completed");
   }
 
+  // Upsert: if the user is already a participant, just update their selected
+  // energy type and return the existing row (relies on the
+  // room_participants_room_id_profile_id_key unique constraint).
   const result = await pool.query<RoomParticipantRow>(
     `insert into room_participants (room_id, profile_id, session_status, selected_energy_type)
      values ($1, $2, $3, $4)
+     on conflict (room_id, profile_id)
+     do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_participants.selected_energy_type)
      returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
     [roomId, profileId, "waiting", selectedEnergyType ?? null]
   );

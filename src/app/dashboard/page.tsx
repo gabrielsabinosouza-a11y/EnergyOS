@@ -685,7 +685,6 @@ function StreakBadge({
           </div>
           {shieldCount > 0 && (
             <span className="streak-shield-count" title={`${shieldCount} escudo${shieldCount > 1 ? "s" : ""} disponíve${shieldCount > 1 ? "is" : "l"}`}>
-              <Shield size={9} strokeWidth={2.5} fill="currentColor" />
               <span>{shieldCount}</span>
             </span>
           )}

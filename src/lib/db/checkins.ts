@@ -1,6 +1,10 @@
 import pool from "../db";
 import type { DailyCheckin } from "@/types";
 import { ValidationError, parseDate, parseNumber, parseProfileId } from "./validation";
+import { awardXPAndCoins } from "./xp";
+
+const CHECKIN_XP = 10;
+const CHECKIN_COINS = 10;
 
 interface CheckinRow {
   id: string | number;
@@ -52,6 +56,14 @@ export async function upsertCheckin(profileId: string, input: UpsertCheckinInput
   console.log('[checkins db] Attempting to upsert checkin:', { profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore });
 
   try {
+    // Detect whether a check-in already exists for this day so rewards are only
+    // granted on the first save (re-saving the same day shouldn't re-award).
+    const existing = await pool.query<{ id: string | number }>(
+      `select id from daily_checkins where profile_id = $1 and checkin_date = $2::date`,
+      [profileId, date],
+    );
+    const isNew = !existing.rows[0];
+
     const result = await pool.query<CheckinRow>(
       `insert into daily_checkins (profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score)
        values ($1, $2, $3, $4, $5, $6)
@@ -63,7 +75,11 @@ export async function upsertCheckin(profileId: string, input: UpsertCheckinInput
        returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score`,
       [profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore],
     );
-    
+
+    if (isNew) {
+      await awardXPAndCoins(profileId, "checkin", result.rows[0].id, CHECKIN_XP, CHECKIN_COINS);
+    }
+
     console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
     return mapCheckin(result.rows[0]);
   } catch (error) {

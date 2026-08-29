@@ -27,6 +27,7 @@ import { AppShell } from "@/components/app-shell";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { Modal } from "@/components/modal";
+import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
 import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
@@ -244,6 +245,7 @@ export default function FocusRoomsPage() {
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState<FocusRoom | null>(null);
+  const [showShare, setShowShare] = useState(false);
 
   // Countdown clock
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -598,18 +600,10 @@ export default function FocusRoomsPage() {
     setTimeout(() => setCopied(false), 2000);
   }, [currentRoom]);
 
-  const shareRoom = useCallback(async () => {
+  const shareRoom = useCallback(() => {
     if (!currentRoom) return;
-    const text = `Venha focar comigo em uma Sala de Foco! Código: ${currentRoom.code}`;
-    const url = `${window.location.origin}/salas-de-foco?join=${currentRoom.code}`;
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({ title: "Sala de Foco", text, url });
-        return;
-      } catch { /* fall through to copy */ }
-    }
-    await copyToClipboard();
-  }, [currentRoom, copyToClipboard]);
+    setShowShare(true);
+  }, [currentRoom]);
 
   const handleDeleteRoom = useCallback(async () => {
     if (!roomToDelete) return;
@@ -865,6 +859,24 @@ export default function FocusRoomsPage() {
             <button onClick={shareRoom} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors" title="Compartilhar">
               <Share2 size={12} /> Compartilhar
             </button>
+            {isHost && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  if (room.status === "active" || room.status === "paused") {
+                    setError("Não é possível excluir uma sala em andamento");
+                    return;
+                  }
+                  setRoomToDelete(room);
+                  setShowDeleteConfirm(true);
+                }}
+                disabled={loadingAction === "deleting" || room.status === "active" || room.status === "paused"}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 text-[10px] text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title={room.status === "active" || room.status === "paused" ? "Sala em andamento" : "Excluir sala"}
+              >
+                {loadingAction === "deleting" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Excluir
+              </motion.button>
+            )}
           </div>
         </div>
 
@@ -1183,6 +1195,15 @@ export default function FocusRoomsPage() {
               </div>
             </div>
           </Modal>
+        )}
+
+        {showShare && currentRoom && (
+          <ShareRoomModal
+            open={showShare}
+            onClose={() => setShowShare(false)}
+            roomCode={currentRoom.code}
+            roomName="Sala de Foco"
+          />
         )}
 
         {showEnergyPicker && (

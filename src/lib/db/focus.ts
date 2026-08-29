@@ -4,6 +4,7 @@ import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
+import { addCoins } from "./settings";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
@@ -90,6 +91,7 @@ export async function endFocusSession(
       [profileId, xpAwarded],
     );
     await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded });
+    await addCoins(profileId, xpAwarded);
   }
 
   // Update daily missions via the shared metric hook. This replaces the old
