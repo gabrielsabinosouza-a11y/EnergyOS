@@ -526,8 +526,8 @@ function StreakBadge({
   const iconSrc = state === "lost"
     ? "/energies/flame/flame_die.png"
     : state === "protected"
-      ? "/streak/image-removebg-preview(1).png"
-      : "/streak/image-removebg-preview.png";
+      ? "/streak/streak_protected.png"
+      : "/streak/streak_alive.png";
 
   const statusLabel = state === "protected"
     ? shieldCount > 0
