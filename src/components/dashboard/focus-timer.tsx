@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Timer, Bell } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
-import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
+import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 
@@ -528,93 +528,16 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             />
           )}
 
-          {/* Energy image - positioned in center with constrained click area */}
-          <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 2, pointerEvents: "none" }}>
-            <div style={{
-              position: "absolute",
-              width: imageSize * 0.9, height: imageSize * 0.9,
-              borderRadius: "50%",
-              background: `radial-gradient(circle, ${cfg.glow} 0%, transparent 72%)`,
-              filter: "blur(2px)",
-              pointerEvents: "none",
-            }} />
-
-            <div style={{ position: "relative", zIndex: 1, width: imageSize * 0.9, height: imageSize * 0.9 }}>
-              <AnimatePresence mode="wait">
-                {showComplete && rewardCount > 1 ? (
-                  <motion.div
-                    key="cluster"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{ position: "relative", width: imageSize, height: imageSize, pointerEvents: "none" }}
-                  >
-                    {Array.from({ length: rewardCount }).map((_, i) => {
-                      const angle = (i / rewardCount) * 2 * Math.PI - Math.PI / 2;
-                      const r = imageSize * 0.28;
-                      const sz = Math.round(imageSize * 0.42);
-                      return (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, scale: 0.4 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: i * 0.12, type: "spring", stiffness: 320, damping: 18 }}
-                          style={{
-                            position: "absolute", left: "50%", top: "50%",
-                            transform: `translate(calc(-50% + ${Math.cos(angle) * r}px), calc(-50% + ${Math.sin(angle) * r}px))`,
-                            filter: `drop-shadow(0 0 8px ${cfg.accent})`,
-                          }}
-                        >
-                          <Image src={cfg.assets.full} alt={selectedEnergy} width={sz} height={sz} style={{ objectFit: "contain" }} unoptimized />
-                        </motion.div>
-                      );
-                    })}
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key={`${selectedEnergy}-${stage}`}
-                    initial={{ opacity: 0, scale: 0.88, filter: "blur(6px)" }}
-                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, scale: 0.92, filter: "blur(4px)" }}
-                    transition={{ duration: 0.5, ease: "easeInOut" }}
-                    style={{ pointerEvents: "none" }}
-                  >
-                    <Image
-                      src={cfg.assets[stage]}
-                      alt={`${selectedEnergy} ${stage}`}
-                      width={imageSize} height={imageSize}
-                      style={{ objectFit: "contain", display: "block" }}
-                      unoptimized priority
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {state === "idle" && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowPicker(true);
-                  }}
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                    width: imageSize * 0.5,
-                    height: imageSize * 0.5,
-                    cursor: "pointer",
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    borderRadius: "50%",
-                    pointerEvents: "auto",
-                  }}
-                  aria-label="Escolher energia"
-                />
-              )}
-            </div>
-          </div>
+          {/* Center energy image with smooth crossfade animations */}
+          <EnergyRingCenter
+            energyType={selectedEnergy}
+            ringSize={RING_SIZE}
+            stage={stage}
+            dimmed={isExtinguished}
+            showCluster={showComplete && rewardCount > 1}
+            clusterCount={rewardCount}
+            onPick={state === "idle" ? () => setShowPicker(true) : undefined}
+          />
         </div>
 
         {/* "toque para trocar" hint — sits below the ring, never overlaps the image */}
