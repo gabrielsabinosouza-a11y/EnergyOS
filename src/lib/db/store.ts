@@ -68,7 +68,9 @@ export async function purchaseDecoration(
   if (alreadyOwned.rows[0]) throw new ConflictError("Você já possui esta decoração.");
 
   const balance = await getCoinBalance(profileId);
+  console.log(`[loja/deco] purchase attempt profile=${profileId} deco=${decorationId} price=${decoration.rows[0].price} balance=${balance}`);
   if (balance < decoration.rows[0].price) {
+    console.log(`[loja/deco] REJECTED insufficient profile=${profileId} deco=${decorationId} price=${decoration.rows[0].price} balance=${balance}`);
     throw new ForbiddenError("Moedas insuficientes.");
   }
 
@@ -152,7 +154,11 @@ export async function unlockBanner(profileId: string): Promise<{ balance: number
   }
 
   const balance = await getCoinBalance(profileId);
-  if (balance < BANNER_COST) throw new ForbiddenError("Moedas insuficientes.");
+  console.log(`[loja/banner] purchase attempt profile=${profileId} price=${BANNER_COST} balance=${balance}`);
+  if (balance < BANNER_COST) {
+    console.log(`[loja/banner] REJECTED insufficient profile=${profileId} price=${BANNER_COST} balance=${balance}`);
+    throw new ForbiddenError("Moedas insuficientes.");
+  }
 
   const client = await pool.connect();
   try {
@@ -214,7 +220,11 @@ export async function purchaseShield(profileId: string): Promise<{ balance: numb
   }
 
   const balance = await getCoinBalance(profileId);
-  if (balance < SHIELD_COST) throw new ForbiddenError("Moedas insuficientes.");
+  console.log(`[loja/shield] purchase attempt profile=${profileId} price=${SHIELD_COST} balance=${balance}`);
+  if (balance < SHIELD_COST) {
+    console.log(`[loja/shield] REJECTED insufficient profile=${profileId} price=${SHIELD_COST} balance=${balance}`);
+    throw new ForbiddenError("Moedas insuficientes.");
+  }
 
   const client = await pool.connect();
   try {
@@ -445,7 +455,11 @@ export async function purchaseAura(
   if (already.rows[0]) throw new ConflictError("Você já possui esta energia.");
 
   const balance = await getCoinBalance(profileId);
-  if (balance < price) throw new ForbiddenError("Moedas insuficientes.");
+  console.log(`[loja/aura] purchase attempt profile=${profileId} aura=${auraType} price=${price} balance=${balance}`);
+  if (balance < price) {
+    console.log(`[loja/aura] REJECTED insufficient profile=${profileId} aura=${auraType} price=${price} balance=${balance}`);
+    throw new ForbiddenError("Moedas insuficientes.");
+  }
 
   const client = await pool.connect();
   try {

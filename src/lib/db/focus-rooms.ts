@@ -425,6 +425,40 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
   return completedRoom!;
 }
 
+// Stop a focus room early (host only, verified by the route). Unlike
+// endFocusRoom (which marks a naturally finished session as SUCCESSFUL),
+// stopping early ends the session for EVERYONE but marks participants who were
+// still focusing as given up ("desistiu") — they did not complete the full
+// duration, so they get no completion rewards. Idempotent: only transitions
+// rooms currently in ACTIVE or PAUSED state.
+export async function stopFocusRoom(roomId: number): Promise<FocusRoom> {
+  const now = new Date().toISOString();
+
+  await pool.query(
+    `update focus_rooms set status = 'completed', ended_at = coalesce(ended_at, $1)
+     where id = $2 and status in ('active', 'paused')`,
+    [now, roomId],
+  );
+
+  // Everyone still focusing is treated as a give-up (they didn't finish the
+  // full duration), so no completion reward is distributed to them.
+  await pool.query(
+    `update room_participants
+     set session_status = 'left', gave_up_at = coalesce(gave_up_at, $1)
+     where room_id = $2 and session_status = 'focusing'`,
+    [now, roomId],
+  );
+
+  const room = await pool.query<{ id: string | number; host_profile_id: string }>(
+    `select id, host_profile_id from focus_rooms where id = $1`,
+    [roomId],
+  );
+  if (!room.rows[0]) throw new Error("Room not found");
+
+  const updatedRoom = await getFocusRoomById(room.rows[0].host_profile_id, roomId);
+  return updatedRoom!;
+}
+
 // Mark a participant as having given up
 export async function participantGaveUp(roomId: number, profileId: string): Promise<void> {
   const now = new Date().toISOString();

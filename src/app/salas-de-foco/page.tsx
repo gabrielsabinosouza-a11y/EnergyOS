@@ -19,6 +19,7 @@ import {
   Sparkles,
   Trash2,
   UserPlus,
+  Square,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -244,6 +245,7 @@ export default function FocusRoomsPage() {
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState<FocusRoom | null>(null);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showShare, setShowShare] = useState(false);
 
   // Countdown clock
@@ -451,6 +453,27 @@ export default function FocusRoomsPage() {
     }
   }, [isRunningRoom, sharedRemainingMs, currentRoom, finalizeSession]);
 
+  // When the room becomes COMPLETED server-side while my own session is still
+  // unfinalized — another participant's timer hit zero first, or the host
+  // stopped the room early — finalize here. This guarantees every participant
+  // present for the full session gets paid (equal payout) instead of being
+  // skipped because their local countdown never reached zero, and that a
+  // stopped-early participant is recorded as a give-up rather than a win.
+  useEffect(() => {
+    if (!user || !currentRoom) return;
+    if (pageState !== "room" || currentRoom.status !== "completed") return;
+    const sess = roomSessionRef.current;
+    if (!sess || sess.finalized) return;
+    const mine = currentRoom.participants.find((p) => p.profileId === user.uid);
+    if (!mine) return;
+    if (mine.sessionStatus === "completed") {
+      finalizeSession(currentRoom, currentRoom.durationMinutes * 60, true);
+    } else if (mine.sessionStatus === "left") {
+      finalizeSession(currentRoom, 0, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageState, currentRoom?.id, currentRoom?.status, user, finalizeSession]);
+
   // Keep selected energy in a ref so completion closure reads latest
   const selectEnergyRef = useRef<string>(selectedEnergyType);
 
@@ -621,6 +644,24 @@ export default function FocusRoomsPage() {
       setLoadingAction(null);
     }
   }, [roomToDelete, currentRoom]);
+
+  const handleStopRoom = useCallback(async () => {
+    if (!currentRoom) return;
+    setLoadingAction("stopping");
+    setError(null);
+    try {
+      const result = await api.stopFocusRoom(currentRoom.id);
+      setCurrentRoom(result.room);
+      setNowMs(Date.now());
+      setShowStopConfirm(false);
+      setSuccessMessage("Sessão encerrada para todos na sala.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao encerrar a sessão");
+      setShowStopConfirm(false);
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom]);
 
   // ═══════════════════════ VIEWS ═══════════════════════
   const renderListView = () => (
@@ -1073,42 +1114,40 @@ export default function FocusRoomsPage() {
               </>
             )}
 
-            {/* Host-only Play/Pause — non-hosts see the disabled control */}
-            {(room.status === "active" || room.status === "paused") && (
+            {/* Host-only Play/Pause + Stop — non-hosts see no room controls here;
+                they get the passive status indicator up top and their own synced
+                countdown. */}
+            {(room.status === "active" || room.status === "paused") && isHost && (
               <div className="space-y-2">
-                {isHost ? (
-                  <motion.button
-                    onClick={handleTogglePause}
-                    disabled={loadingAction === "pausing" || loadingAction === "resuming"}
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                    style={{
-                      background: paused ? "linear-gradient(180deg, var(--accent), var(--orange))" : "var(--bg-surface-hover)",
-                      color: paused ? "#fff" : "var(--text)",
-                      border: paused ? "none" : "1px solid var(--border-subtle)",
-                    }}
-                  >
-                    {(loadingAction === "pausing" || loadingAction === "resuming") ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : paused ? (
-                      <><Play size={15} /> Retomar sessão</>
-                    ) : (
-                      <><Pause size={15} /> Pausar sessão</>
-                    )}
-                  </motion.button>
-                ) : (
-                  <button
-                    disabled
-                    title="Apenas o anfitrião pode controlar a sessão"
-                    className="w-full rounded-xl px-4 py-3 text-sm text-[var(--text-faint)] bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] opacity-60 cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {paused ? <><Play size={15} /> Retomar sessão</> : <><Pause size={15} /> Pausar sessão</>}
-                  </button>
-                )}
+                <motion.button
+                  onClick={handleTogglePause}
+                  disabled={loadingAction === "pausing" || loadingAction === "resuming"}
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                  style={{
+                    background: paused ? "linear-gradient(180deg, var(--accent), var(--orange))" : "var(--bg-surface-hover)",
+                    color: paused ? "#fff" : "var(--text)",
+                    border: paused ? "none" : "1px solid var(--border-subtle)",
+                  }}
+                >
+                  {(loadingAction === "pausing" || loadingAction === "resuming") ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : paused ? (
+                    <><Play size={15} /> Retomar sessão</>
+                  ) : (
+                    <><Pause size={15} /> Pausar sessão</>
+                  )}
+                </motion.button>
+                <button
+                  type="button"
+                  onClick={() => setShowStopConfirm(true)}
+                  disabled={loadingAction !== null}
+                  className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingAction === "stopping" ? <Loader2 size={15} className="animate-spin" /> : <><Square size={14} /> Parar sessão</>}
+                </button>
                 <p className="text-center text-[10px] text-[var(--text-faint)]">
-                  {isHost
-                    ? "Você é o anfitrião. Somente você pode pausar/retomar a sessão."
-                    : "Apenas o anfitrião pode pausar/retomar a sessão."}
+                  Você é o anfitrião. Pausar/retomar afeta todos; parar encerra a sessão para todos sem recompensa.
                 </p>
               </div>
             )}
@@ -1187,6 +1226,27 @@ export default function FocusRoomsPage() {
                 <button onClick={handleDeleteRoom} disabled={loadingAction === "deleting"}
                   className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
                   {loadingAction === "deleting" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Excluir"}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {showStopConfirm && currentRoom && (
+          <Modal onClose={() => setShowStopConfirm(false)}>
+            <div className="glass-card w-full max-w-sm p-6">
+              <h3 className="font-display text-lg mb-2">Parar sessão?</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-6">
+                Se você parar agora, a sessão termina para todos na sala e ninguém recebe a recompensa de conclusão (as energias ficam apagadas). Tem certeza?
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setShowStopConfirm(false)}
+                  className="flex-1 rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleStopRoom} disabled={loadingAction === "stopping"}
+                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                  {loadingAction === "stopping" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Parar"}
                 </button>
               </div>
             </div>

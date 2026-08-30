@@ -719,10 +719,11 @@ export default function PerfilPage() {
                     src={FRAME_ASSETS[equippedDecorationId].imageUrl}
                     alt=""
                     draggable={false}
-                    className="pointer-events-none absolute inset-0 z-[1] h-full w-full select-none"
+                    className="pointer-events-none absolute z-[1] select-none"
+                    style={{ width: 92, height: 92, left: -6, top: -6 }}
                   />
                 )}
-                <span className="pointer-events-none absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
+                <span className="pointer-events-none absolute -bottom-1 -right-1 z-[2] flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
                   {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
                 </span>
               </div>

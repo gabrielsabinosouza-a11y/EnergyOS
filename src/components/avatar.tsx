@@ -9,9 +9,9 @@ import type { DecorationRarity } from "@/types";
 export interface FrameAsset {
   imageUrl: string;
   rarity: DecorationRarity;
-  /** Fraction (0-1) of the avatar container the profile photo should fill.
-   *  Frames with a large transparent center (like the flame PNG) need a small
-   *  photo so it sits inside the ring; thin ring frames fill most of it. */
+  /** Fraction (0-1) of the frame canvas the profile photo should fill in the
+   *  store preview modal (frame_fire's flame PNG has a large transparent
+   *  center, so its photo is sized down to sit inside the ring). */
   photoScale?: number;
 }
 
@@ -75,9 +75,18 @@ export function Avatar({
   const frame = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
   const [frameErrored, setFrameErrored] = useState(false);
 
-  // Photo inset: frames with a large transparent center (e.g. flame PNG) size
-  // the photo down so it fits inside the ring; thin ring frames use 4px inset.
-  const photoInset = frame?.photoScale ? (1 - frame.photoScale) * size * 0.5 : frame ? 4 : 0;
+  // Photo inset: the profile photo fills the avatar box (tiny 2% inset) so the
+  // decoration ring — which sits near the frame canvas's outer edge — wraps
+  // tightly around the photo at any avatar size.
+  const photoInset = frame ? Math.max(1, Math.round(size * 0.02)) : 0;
+
+  // The frame canvas is drawn ~15% larger than the photo and centered on top,
+  // so the ring hugs the photo edge and extends slightly past it — keeping the
+  // same relative ring thickness/prominence as the store preview, scaled to
+  // whatever size this avatar instance renders at.
+  const frameOverscale = 1.15;
+  const frameSize = Math.round(size * frameOverscale);
+  const frameOffset = Math.round((frameSize - size) / 2);
 
   return (
     <div
@@ -100,7 +109,7 @@ export function Avatar({
         )}
       </div>
 
-      {/* Equipped frame overlay */}
+      {/* Equipped frame overlay — sized larger than the photo, centered on top */}
       {frame && !frameErrored && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -108,7 +117,8 @@ export function Avatar({
           alt=""
           draggable={false}
           onError={() => setFrameErrored(true)}
-          className="pointer-events-none absolute inset-0 h-full w-full select-none"
+          className="pointer-events-none absolute select-none"
+          style={{ width: frameSize, height: frameSize, left: -frameOffset, top: -frameOffset }}
         />
       )}
       {frame && frameErrored && <DecorationRing rarity={frame.rarity} size={size} />}

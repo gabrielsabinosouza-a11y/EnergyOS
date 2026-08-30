@@ -201,6 +201,8 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/pause`, { method: "POST" }),
   resumeFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/resume`, { method: "POST" }),
+  stopFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/stop`, { method: "POST" }),
   endFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
   leaveFocusRoom: (roomId: number) =>

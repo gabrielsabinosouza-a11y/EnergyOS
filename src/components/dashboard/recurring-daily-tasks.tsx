@@ -6,6 +6,7 @@ import { Check, Plus, X, Loader2, Trash2, Zap, Repeat } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
+import { CoinIcon } from "@/components/coin-icon";
 import { RewardToast } from "@/components/reward-toast";
 import {
   DAILY_TASK_LIMIT,
@@ -112,6 +113,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   }
 
   return (
+    <>
     <div className="panel p-6">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -233,5 +235,6 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
         onDone={() => setRewardToast(null)}
       />
     </div>
+    </>
   );
 }

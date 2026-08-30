@@ -49,13 +49,15 @@ export function RewardToast({ toast, onDone }: {
   const amount = toast?.amount ?? 0;
   const targetBalance = toast?.balance ?? 0;
   const shownBalance = useAnimatedNumber(amount > 0 && toast ? targetBalance : 0);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   // Auto-limpa depois de alguns segundos.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(onDone, 2500);
+    const t = setTimeout(() => onDoneRef.current(), 2500);
     return () => clearTimeout(t);
-  }, [toast, onDone]);
+  }, [toast]);
 
   return (
     <AnimatePresence>

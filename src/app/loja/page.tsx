@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  useReducedMotion,
+  AnimatePresence,
+} from "framer-motion";
 import {
   Image as ImageIcon,
   Frame,
@@ -11,6 +18,8 @@ import {
   Loader2,
   Upload,
   Check,
+  Lock,
+  AlertCircle,
 } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
 import { AppShell } from "@/components/app-shell";
@@ -19,7 +28,6 @@ import { Modal } from "@/components/modal";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import Image from "next/image";
-import { Lock } from "lucide-react";
 import {
   AURA_DEFS,
   AURA_RARITY_COLORS,
@@ -32,66 +40,135 @@ import type { StoreItem, DecorationRarity } from "@/types";
 import { FRAME_ASSETS } from "@/components/avatar";
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                         */
+/*  Rarity colour system (unified)                                     */
 /* ------------------------------------------------------------------ */
 
+type StoreRarity = DecorationRarity | "uncommon";
+
 const RARITY_COLORS: Record<
-  DecorationRarity,
+  StoreRarity,
   { border: string; bg: string; label: string; glow: string }
 > = {
   common: {
     border: "#71d4ff",
     bg: "rgba(113,212,255,0.08)",
     label: "Comum",
-    glow: "rgba(113,212,255,0.3)",
+    glow: "rgba(113,212,255,0.32)",
+  },
+  uncommon: {
+    border: "#4ade80",
+    bg: "rgba(74,222,128,0.08)",
+    label: "Incomum",
+    glow: "rgba(74,222,128,0.32)",
   },
   rare: {
     border: "#b69cff",
     bg: "rgba(182,156,255,0.08)",
     label: "Rara",
-    glow: "rgba(182,156,255,0.3)",
+    glow: "rgba(182,156,255,0.32)",
   },
   epic: {
     border: "#ffb86b",
     bg: "rgba(255,184,107,0.08)",
     label: "Épica",
-    glow: "rgba(255,184,107,0.3)",
+    glow: "rgba(255,184,107,0.34)",
   },
   legendary: {
     border: "#ffd76b",
     bg: "rgba(255,215,107,0.08)",
     label: "Lendária",
-    glow: "rgba(255,215,107,0.3)",
+    glow: "rgba(255,215,107,0.4)",
   },
 };
 
+const rarityOf = (rarity: string): StoreRarity =>
+  (Object.keys(RARITY_COLORS) as StoreRarity[]).includes(rarity as StoreRarity)
+    ? (rarity as StoreRarity)
+    : "common";
+
 /* ------------------------------------------------------------------ */
-/*  Animation variants                                                */
+/*  Animation variants                                                 */
 /* ------------------------------------------------------------------ */
 
 const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.05 } },
+  visible: { transition: { staggerChildren: 0.055 } },
 };
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
+  hidden: { opacity: 0, y: 14 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.35, ease: "easeOut" as const },
+    transition: { duration: 0.4, ease: "easeOut" as const },
   },
 };
 
 /* ------------------------------------------------------------------ */
-/*  Decoration Ring Preview                                           */
+/*  3D tilt-on-hover card (disabled on touch / reduced motion)         */
+/* ------------------------------------------------------------------ */
+
+function TiltCard({
+  children,
+  reduced,
+  className = "",
+}: {
+  children: React.ReactNode;
+  reduced: boolean;
+  className?: string;
+}) {
+  const [hoverCapable, setHoverCapable] = useState(false);
+
+  useEffect(() => {
+    setHoverCapable(
+      typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches,
+    );
+  }, []);
+
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
+  const srx = useSpring(rx, { stiffness: 260, damping: 22 });
+  const sry = useSpring(ry, { stiffness: 260, damping: 22 });
+
+  const rotateX = useTransform(srx, [-0.5, 0.5], [5, -5]);
+  const rotateY = useTransform(sry, [-0.5, 0.5], [-5, 5]);
+
+  const enabled = !reduced && hoverCapable;
+
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!enabled) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    rx.set((e.clientY - rect.top) / rect.height - 0.5);
+    ry.set((e.clientX - rect.left) / rect.width - 0.5);
+  };
+
+  const onLeave = () => {
+    rx.set(0);
+    ry.set(0);
+  };
+
+  return (
+    <motion.div
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      whileTap={enabled ? undefined : { scale: 0.97 }}
+      style={{ transformStyle: "preserve-3d", rotateX: enabled ? rotateX : 0, rotateY: enabled ? rotateY : 0, perspective: 900 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Decoration Ring Preview (fallback)                                 */
 /* ------------------------------------------------------------------ */
 
 function DecorationRing({
   rarity,
   size = 80,
 }: {
-  rarity: DecorationRarity;
+  rarity: StoreRarity;
   size?: number;
 }) {
   const c = RARITY_COLORS[rarity];
@@ -99,75 +176,22 @@ function DecorationRing({
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {rarity === "common" && (
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={c.border}
-          strokeWidth={2}
-          opacity={0.7}
-        />
-      )}
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={c.border} strokeWidth={2} opacity={0.7} />
       {rarity === "rare" && (
-        <>
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke={c.border}
-            strokeWidth={2}
-            opacity={0.6}
-          />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r - 5}
-            fill="none"
-            stroke={c.border}
-            strokeWidth={1}
-            opacity={0.35}
-          />
-        </>
+        <circle cx={size / 2} cy={size / 2} r={r - 5} fill="none" stroke={c.border} strokeWidth={1} opacity={0.35} />
       )}
       {rarity === "epic" && (
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={c.border}
-          strokeWidth={4}
-          opacity={0.8}
-          filter="url(#epic-glow)"
-        />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={c.border} strokeWidth={4} opacity={0.8} filter="url(#epic-glow)" />
       )}
       {rarity === "legendary" && (
         <>
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke={c.border}
-            strokeWidth={3}
-            opacity={0.9}
-          />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={c.border} strokeWidth={3} opacity={0.9} />
           {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
             const rad = (deg * Math.PI) / 180;
             const px = size / 2 + (r + 2) * Math.cos(rad);
             const py = size / 2 + (r + 2) * Math.sin(rad);
             return (
-              <circle
-                key={deg}
-                cx={px}
-                cy={py}
-                r={1.5}
-                fill={c.border}
-                opacity={0.85}
-              />
+              <circle key={deg} cx={px} cy={py} r={1.5} fill={c.border} opacity={0.85} />
             );
           })}
         </>
@@ -196,7 +220,7 @@ function FramePreview({
   className = "",
 }: {
   imageUrl: string;
-  rarity: DecorationRarity;
+  rarity: StoreRarity;
   size?: number;
   className?: string;
 }) {
@@ -219,7 +243,57 @@ function FramePreview({
 }
 
 /* ------------------------------------------------------------------ */
-/*  StoreItem Card                                                    */
+/*  Breathing glow backdrop                                            */
+/* ------------------------------------------------------------------ */
+
+function BreathingGlow({ color, size = 96 }: { color: string; size?: number }) {
+  return (
+    <motion.div
+      aria-hidden
+      className="absolute rounded-full"
+      style={{
+        width: size,
+        height: size,
+        background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+        filter: "blur(18px)",
+      }}
+      animate={{ scale: [1, 1.05, 1], opacity: [0.35, 0.55, 0.35] }}
+      transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Coint count down display (for the header balance)                  */
+/* ------------------------------------------------------------------ */
+
+function useAnimatedNumber(value: number) {
+  const [display, setDisplay] = useState(value);
+  const prev = useRef(value);
+
+  useEffect(() => {
+    const from = prev.current;
+    const to = value;
+    if (from === to) return;
+    prev.current = value;
+    const duration = 450;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+
+  return display;
+}
+
+/* ------------------------------------------------------------------ */
+/*  StoreItem Card                                                     */
 /* ------------------------------------------------------------------ */
 
 function StoreItemCard({
@@ -229,6 +303,8 @@ function StoreItemCard({
   onUnequip,
   onSelect,
   processing,
+  error,
+  justPurchased,
   reduced,
 }: {
   item: StoreItem;
@@ -237,109 +313,138 @@ function StoreItemCard({
   onUnequip: () => void;
   onSelect: () => void;
   processing: string | null;
+  error: string | null;
+  justPurchased: boolean;
   reduced: boolean;
 }) {
-  const c = RARITY_COLORS[item.rarity];
+  const c = RARITY_COLORS[rarityOf(item.rarity)];
   const isProcessing = processing === item.id;
 
   return (
-    <motion.div
-      variants={reduced ? {} : fadeUp}
-      whileHover={reduced ? undefined : { y: -3 }}
-      whileTap={reduced ? undefined : { scale: 0.97 }}
-      onClick={onSelect}
-      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-center transition-colors hover:border-white/[0.12]"
-    >
+    <motion.div variants={reduced ? {} : fadeUp} className="relative">
+      {/* ambient rarity glow */}
       <div
-        className="relative flex items-center justify-center rounded-full"
-        style={{ width: 80, height: 80, background: c.bg }}
-      >
-        <div
-          className="absolute rounded-full bg-white/10 ring-1 ring-white/10"
-          style={{ width: 62, height: 62 }}
-        />
-        <FramePreview imageUrl={item.imageUrl} rarity={item.rarity} size={80} className="relative" />
-      </div>
+        aria-hidden
+        className="pointer-events-none absolute -inset-1 rounded-2xl opacity-60"
+        style={{ background: `radial-gradient(ellipse at 50% 0%, ${c.glow}, transparent 70%)`, transition: "opacity .3s" }}
+      />
 
-      <span className="text-xs text-[var(--text-secondary)]">{item.name}</span>
-
-      <span
-        className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium"
-        style={{
-          background: c.bg,
-          color: c.border,
-          border: `1px solid ${c.border}33`,
-        }}
-      >
-        {c.label}
-      </span>
-
-      {item.equipped ? (
-        <span className="mt-1 flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
-          <Check size={10} />
-          Equipado
-        </span>
-      ) : item.owned ? (
-        <span className="mt-1 flex items-center gap-1 rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-medium text-[var(--text-muted)]">
-          Possuído
-        </span>
-      ) : (
-        <span className="mt-1 flex items-center gap-1 text-[10px] text-yellow-400">
-          <CoinIcon size={11} />
-          {item.price}
-        </span>
-      )}
-
-      <div className="mt-1 w-full" onClick={(e) => e.stopPropagation()}>
-        {item.equipped ? (
-          <button
-            onClick={onUnequip}
-            disabled={isProcessing}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-1.5 text-[10px] text-[var(--text-muted)] transition hover:bg-white/[0.06]"
+      {/* glass card */}
+      <TiltCard reduced={reduced}>
+        <motion.div
+          whileHover={reduced ? undefined : { boxShadow: `0 14px 40px -12px ${c.glow}` }}
+          onClick={onSelect}
+          animate={
+            justPurchased
+              ? { boxShadow: [`0 0 0px ${c.glow}`, `0 0 30px ${c.glow}`, `0 14px 40px -12px ${c.glow}`], opacity: [1, 1, 1] }
+              : undefined
+          }
+          transition={justPurchased ? { duration: 0.9, times: [0, 0.4, 1] } : undefined}
+          className="relative flex cursor-pointer flex-col items-center gap-2 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-center backdrop-blur-md transition-colors hover:border-white/[0.14]"
+        >
+          {/* icon bubble */}
+          <div
+            className="relative flex h-[86px] w-[86px] items-center justify-center rounded-full"
+            style={{ background: c.bg, boxShadow: `0 0 24px -8px ${c.glow}` }}
           >
-            {isProcessing ? (
-              <Loader2 size={11} className="animate-spin" />
-            ) : (
-              "Desquipar"
+            <BreathingGlow color={c.glow} size={96} />
+            <div className="relative z-10 flex items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10" style={{ width: 64, height: 64 }}>
+              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} className="relative" />
+            </div>
+            {justPurchased && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="absolute -right-1 -top-1 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--green)]"
+              >
+                <Check size={13} className="text-black" strokeWidth={3} />
+              </motion.div>
             )}
-          </button>
-        ) : item.owned ? (
-          <button
-            onClick={onEquip}
-            disabled={isProcessing}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-semibold transition"
-            style={{
-              background: c.bg,
-              color: c.border,
-              border: `1px solid ${c.border}33`,
-            }}
+          </div>
+
+          <span className="relative text-xs text-[var(--text-secondary)]">{item.name}</span>
+
+          <span
+            className="relative rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
           >
-            {isProcessing ? (
-              <Loader2 size={11} className="animate-spin" />
+            {c.label}
+          </span>
+
+          {item.equipped ? (
+            <span className="relative mt-1 flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
+              <Check size={10} /> Equipado
+            </span>
+          ) : item.owned ? (
+            <span className="relative mt-1 flex items-center gap-1 rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+              Possuído
+            </span>
+          ) : (
+            <span className="relative mt-1 flex items-center gap-1.5 text-[11px] text-yellow-400">
+              <CoinIcon size={17} />
+              {item.price}
+            </span>
+          )}
+
+          {error && (
+            <motion.span
+              initial={{ opacity: 0, y: -4, x: 0 }}
+              animate={{ opacity: 1, y: 0, x: [0, -5, 5, -5, 5, 0] }}
+              transition={{ duration: 0.45 }}
+              className="relative flex w-full items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-center text-[9px] text-red-300"
+            >
+              <AlertCircle size={9} /> {error}
+            </motion.span>
+          )}
+
+          <div className="relative mt-1 w-full" onClick={(e) => e.stopPropagation()}>
+            {item.equipped ? (
+              <button
+                onClick={onUnequip}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 text-[10px] text-[var(--text-muted)] transition hover:bg-white/[0.06]"
+              >
+                {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Desquipar"}
+              </button>
+            ) : item.owned ? (
+              <button
+                onClick={onEquip}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[10px] font-semibold transition"
+                style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+              >
+                {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Equipar"}
+              </button>
             ) : (
-              "Equipar"
+              <button
+                onClick={onBuy}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-yellow-500/10 py-2 text-[10px] font-semibold text-yellow-400 transition hover:bg-yellow-500/20 disabled:opacity-40"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin" /> Comprando...
+                  </>
+                ) : justPurchased ? (
+                  <>
+                    <Check size={11} strokeWidth={3} /> Adquirido!
+                  </>
+                ) : (
+                  <>
+                    <CoinIcon size={15} /> Comprar · {item.price}
+                  </>
+                )}
+              </button>
             )}
-          </button>
-        ) : (
-          <button
-            onClick={onBuy}
-            disabled={isProcessing}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-yellow-500/10 py-1.5 text-[10px] font-semibold text-yellow-400 transition hover:bg-yellow-500/20 disabled:opacity-40"
-          >
-            {isProcessing ? (
-              <Loader2 size={11} className="animate-spin" />
-            ) : (
-              "Comprar"
-            )}
-          </button>
-        )}
-      </div>
+          </div>
+        </motion.div>
+      </TiltCard>
     </motion.div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Decoration Preview Modal                                          */
+/*  Decoration Preview Modal                                           */
 /* ------------------------------------------------------------------ */
 
 function DecorationModal({
@@ -350,6 +455,7 @@ function DecorationModal({
   onEquip,
   onUnequip,
   processing,
+  error,
 }: {
   item: StoreItem;
   user: { photoURL: string | null; displayName: string | null };
@@ -358,13 +464,12 @@ function DecorationModal({
   onEquip: () => void;
   onUnequip: () => void;
   processing: string | null;
+  error: string | null;
 }) {
-  const c = RARITY_COLORS[item.rarity];
+  const c = RARITY_COLORS[rarityOf(item.rarity)];
   const isProcessing = processing === item.id;
   const avatarSize = 96;
   const ringSize = 120;
-  // Frames with a large transparent center (flame PNG) need the photo to fit
-  // inside the ring, so size it down to a fraction of the frame.
   const frameAsset = FRAME_ASSETS[item.id];
   const fittedPhotoSize = frameAsset?.photoScale ? ringSize * frameAsset.photoScale : avatarSize;
 
@@ -385,7 +490,7 @@ function DecorationModal({
           <div className="relative mb-4 flex items-center justify-center">
             <FramePreview
               imageUrl={item.imageUrl}
-              rarity={item.rarity}
+              rarity={rarityOf(item.rarity)}
               size={ringSize}
               className="relative"
             />
@@ -414,12 +519,8 @@ function DecorationModal({
             </div>
           </div>
 
-          <h3 className="font-display text-lg text-[var(--text)]">
-            {item.name}
-          </h3>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">
-            {item.description}
-          </p>
+          <h3 className="font-display text-lg text-[var(--text)]">{item.name}</h3>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">{item.description}</p>
           <div className="mt-2 flex items-center gap-2">
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-medium"
@@ -428,13 +529,22 @@ function DecorationModal({
               {c.label}
             </span>
             {!item.owned && (
-              <span className="flex items-center gap-1 text-[11px] text-yellow-400">
-                <CoinIcon size={11} />
-                {item.price}
+              <span className="flex items-center gap-1.5 text-[11px] text-yellow-400">
+                <CoinIcon size={16} /> {item.price}
               </span>
             )}
           </div>
         </div>
+
+        {error && (
+          <motion.p
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-3 flex items-center justify-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs text-red-300"
+          >
+            <AlertCircle size={12} /> {error}
+          </motion.p>
+        )}
 
         <div className="flex gap-2">
           {item.equipped ? (
@@ -443,11 +553,7 @@ function DecorationModal({
               disabled={isProcessing}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-xs text-[var(--text-muted)] transition hover:bg-white/[0.06]"
             >
-              {isProcessing ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                "Desquipar"
-              )}
+              {isProcessing ? <Loader2 size={13} className="animate-spin" /> : "Desquipar"}
             </button>
           ) : item.owned ? (
             <button
@@ -456,11 +562,7 @@ function DecorationModal({
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold transition"
               style={{ background: c.bg, color: c.border }}
             >
-              {isProcessing ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                "Equipar"
-              )}
+              {isProcessing ? <Loader2 size={13} className="animate-spin" /> : "Equipar"}
             </button>
           ) : (
             <button
@@ -472,8 +574,7 @@ function DecorationModal({
                 <Loader2 size={13} className="animate-spin" />
               ) : (
                 <>
-                  <CoinIcon size={13} />
-                  Comprar por {item.price}
+                  <CoinIcon size={16} /> Comprar por {item.price}
                 </>
               )}
             </button>
@@ -491,7 +592,46 @@ function DecorationModal({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Page                                                              */
+/*  Section header                                                     */
+/* ------------------------------------------------------------------ */
+
+function SectionHeader({
+  icon,
+  color,
+  title,
+  delay = 0,
+}: {
+  icon: React.ReactNode;
+  color: string;
+  title: string;
+  delay?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay }}
+      className="mb-5 flex items-center gap-2"
+    >
+      <span
+        className="flex h-7 w-7 items-center justify-center rounded-lg"
+        style={{ background: `${color}1a`, color, boxShadow: `0 0 18px -4px ${color}` }}
+      >
+        {icon}
+      </span>
+      <span
+        className="text-xs font-semibold uppercase tracking-[0.18em]"
+        style={{ color }}
+      >
+        {title}
+      </span>
+      <span className="ml-1 h-px flex-1" style={{ background: `linear-gradient(90deg, ${color}66, transparent)` }} />
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
 /* ------------------------------------------------------------------ */
 
 export default function LojaPage() {
@@ -499,11 +639,7 @@ export default function LojaPage() {
   const [store, setStore] = useState<{
     items: StoreItem[];
     balance: number;
-    banner: {
-      hasCustomBanner: boolean;
-      bannerImageUrl: string | null;
-      unlocked: boolean;
-    };
+    banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
     shieldCount: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -511,13 +647,27 @@ export default function LojaPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [cardError, setCardError] = useState<{ id: string; message: string } | null>(null);
+  const [justPurchased, setJustPurchased] = useState<string | null>(null);
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
 
+  // Animated header balance
+  const animatedBalance = useAnimatedNumber(store?.balance ?? 0);
+
   function flash(msg: string) {
     setFeedback(msg);
     setTimeout(() => setFeedback(""), 2000);
+  }
+
+  function clearCardError() {
+    setCardError(null);
+  }
+
+  function markJustPurchased(id: string) {
+    setJustPurchased(id);
+    setTimeout(() => setJustPurchased((cur) => (cur === id ? null : cur)), 1400);
   }
 
   async function fetchStore() {
@@ -552,22 +702,14 @@ export default function LojaPage() {
 
   async function handleBuyDecoration(id: string) {
     setProcessing(id);
+    setCardError(null);
     try {
       const { balance } = await api.purchaseDecoration(id);
-      setStore((s) =>
-        s
-          ? {
-              ...s,
-              balance,
-              items: s.items.map((it) =>
-                it.id === id ? { ...it, owned: true } : it,
-              ),
-            }
-          : s,
-      );
+      setStore((s) => (s ? { ...s, balance, items: s.items.map((it) => (it.id === id ? { ...it, owned: true } : it)) } : s));
+      markJustPurchased(id);
       flash("Compra realizada!");
-    } catch {
-      setError("Erro ao comprar decoração.");
+    } catch (e) {
+      setCardError({ id, message: e instanceof Error ? e.message : "Erro ao comprar decoração." });
     } finally {
       setProcessing(null);
     }
@@ -575,22 +717,15 @@ export default function LojaPage() {
 
   async function handleEquipDecoration(id: string) {
     setProcessing(id);
+    setCardError(null);
     try {
       await api.equipDecoration(id);
       setStore((s) =>
-        s
-          ? {
-              ...s,
-              items: s.items.map((it) => ({
-                ...it,
-                equipped: it.id === id ? true : false,
-              })),
-            }
-          : s,
+        s ? { ...s, items: s.items.map((it) => ({ ...it, equipped: it.id === id ? true : false })) } : s,
       );
       flash("Equipado!");
-    } catch {
-      setError("Erro ao equipar decoração.");
+    } catch (e) {
+      setCardError({ id, message: e instanceof Error ? e.message : "Erro ao equipar decoração." });
     } finally {
       setProcessing(null);
     }
@@ -601,19 +736,13 @@ export default function LojaPage() {
     const equipped = store.items.find((it) => it.equipped);
     if (!equipped) return;
     setProcessing(equipped.id);
+    setCardError(null);
     try {
       await api.equipDecoration(null);
-      setStore((s) =>
-        s
-          ? {
-              ...s,
-              items: s.items.map((it) => ({ ...it, equipped: false })),
-            }
-          : s,
-      );
+      setStore((s) => (s ? { ...s, items: s.items.map((it) => ({ ...it, equipped: false })) } : s));
       flash("Desquipado!");
-    } catch {
-      setError("Erro ao desquipar decoração.");
+    } catch (e) {
+      setCardError({ id: equipped.id, message: e instanceof Error ? e.message : "Erro ao desquipar decoração." });
     } finally {
       setProcessing(null);
     }
@@ -621,16 +750,13 @@ export default function LojaPage() {
 
   async function handleUnlockBanner() {
     setProcessing("banner-unlock");
+    setCardError(null);
     try {
       const { balance } = await api.unlockBanner();
-      setStore((s) =>
-        s
-          ? { ...s, balance, banner: { ...s.banner, unlocked: true } }
-          : s,
-      );
+      setStore((s) => (s ? { ...s, balance, banner: { ...s.banner, unlocked: true } } : s));
       flash("Banner desbloqueado!");
-    } catch {
-      setError("Erro ao desbloquear banner.");
+    } catch (e) {
+      setCardError({ id: "banner", message: e instanceof Error ? e.message : "Erro ao desbloquear banner." });
     } finally {
       setProcessing(null);
     }
@@ -640,10 +766,11 @@ export default function LojaPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
-      setError("Escolha uma imagem de até 5 MB.");
+      setCardError({ id: "banner", message: "Escolha uma imagem de até 5 MB." });
       return;
     }
     setProcessing("banner-upload");
+    setCardError(null);
     try {
       const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
       const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
@@ -653,24 +780,14 @@ export default function LojaPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", uploadPreset);
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-        { method: "POST", body: formData },
-      );
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: "POST", body: formData });
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
       await api.updateBannerImage(data.secure_url);
-      setStore((s) =>
-        s
-          ? {
-              ...s,
-              banner: { ...s.banner, bannerImageUrl: data.secure_url, hasCustomBanner: true },
-            }
-          : s,
-      );
+      setStore((s) => (s ? { ...s, banner: { ...s.banner, bannerImageUrl: data.secure_url, hasCustomBanner: true } } : s));
       flash("Banner atualizado!");
     } catch {
-      setError("Erro ao enviar banner.");
+      setCardError({ id: "banner", message: "Erro ao enviar banner." });
     } finally {
       setProcessing(null);
       if (bannerFileRef.current) bannerFileRef.current.value = "";
@@ -679,13 +796,15 @@ export default function LojaPage() {
 
   async function handleBuyAura(type: string) {
     setProcessing(`aura-${type}`);
+    setCardError(null);
     try {
       const { balance } = await api.purchaseAura(type);
       setStore((s) => (s ? { ...s, balance } : s));
       setOwnedAuras((prev) => [...prev, type]);
+      markJustPurchased(type);
       flash(`${ENERGY_CONFIGS[type as EnergyType]?.label ?? type} comprado!`);
-    } catch {
-      setError("Moedas insuficientes ou energia já possuída.");
+    } catch (e) {
+      setCardError({ id: `aura-${type}`, message: e instanceof Error ? e.message : "Erro ao comprar energia." });
     } finally {
       setProcessing(null);
     }
@@ -693,20 +812,19 @@ export default function LojaPage() {
 
   async function handleBuyShield() {
     setProcessing("shield-buy");
+    setCardError(null);
     try {
       const { balance, shieldCount } = await api.purchaseShield();
-      setStore((s) =>
-        s ? { ...s, balance, shieldCount } : s,
-      );
+      setStore((s) => (s ? { ...s, balance, shieldCount } : s));
       flash("Escudo comprado!");
-    } catch {
-      setError("Erro ao comprar escudo.");
+    } catch (e) {
+      setCardError({ id: "shield", message: e instanceof Error ? e.message : "Erro ao comprar escudo." });
     } finally {
       setProcessing(null);
     }
   }
 
-  /* ─── Derived state ───────────────────────────────────────── */
+  /* ─── Derived ─────────────────────────────────────────────── */
 
   const equippedItem = store.items.find((it) => it.equipped);
 
@@ -719,16 +837,17 @@ export default function LojaPage() {
           <Header eyebrow="PERSONALIZAÇÃO" title="Loja" />
 
           {/* ─── Coin Balance ────────────────────────────────── */}
-          <div className="mb-8 flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-500/20">
-              <CoinIcon size={20} />
+          <div className="mb-7 flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 ring-1 ring-yellow-500/30">
+              <CoinIcon size={24} />
             </div>
-            <span className="font-display text-2xl text-yellow-400">
-              {store.balance.toLocaleString("pt-BR")}
+            <span className="font-display text-3xl text-yellow-400">
+              {animatedBalance.toLocaleString("pt-BR")}
             </span>
             <span className="text-sm text-[var(--text-muted)]">moedas</span>
             {feedback && (
               <motion.span
+                key={feedback}
                 initial={{ opacity: 0, x: 8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0 }}
@@ -746,11 +865,7 @@ export default function LojaPage() {
               animate={{ opacity: 1, y: 0 }}
               className="mb-6 flex items-center gap-2 rounded-xl border border-[var(--red)]/20 bg-[var(--red-bg)] px-4 py-3 text-sm text-[var(--red)]"
             >
-              <X
-                size={14}
-                className="cursor-pointer"
-                onClick={() => setError("")}
-              />
+              <X size={14} className="cursor-pointer" onClick={() => setError("")} />
               {error}
             </motion.div>
           )}
@@ -760,31 +875,24 @@ export default function LojaPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="glass-card mb-8 p-6 sm:p-8"
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
           >
-            <div className="mb-5 flex items-center gap-2">
-              <ImageIcon size={16} className="text-[var(--accent)]" />
-              <span className="text-xs uppercase tracking-[0.15em] text-[var(--accent)]">
-                Banners de Perfil
-              </span>
-            </div>
-
-            <input
-              ref={bannerFileRef}
-              type="file"
-              accept="image/*"
-              onChange={handleBannerUpload}
-              className="sr-only"
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+              style={{ background: "radial-gradient(ellipse, rgba(113,212,255,.25), transparent 70%)", filter: "blur(20px)" }}
             />
+            <SectionHeader icon={<ImageIcon size={14} />} color="#71d4ff" title="Banners de Perfil" delay={0.05} />
+
+            <input ref={bannerFileRef} type="file" accept="image/*" onChange={handleBannerUpload} className="sr-only" />
 
             {!store.banner.unlocked ? (
               <>
-                <div className="mb-4 aspect-[3/1] w-full overflow-hidden rounded-xl">
+                <div className="relative mb-4 aspect-[3/1] w-full overflow-hidden rounded-xl">
                   <div
                     className="flex h-full w-full items-center justify-center"
                     style={{
-                      background:
-                        "linear-gradient(135deg, rgba(113,212,255,0.1), rgba(182,156,255,0.1), rgba(255,184,107,0.1))",
+                      background: "linear-gradient(135deg, rgba(113,212,255,0.1), rgba(182,156,255,0.1), rgba(255,184,107,0.1))",
                       filter: "blur(8px)",
                     }}
                   >
@@ -794,19 +902,27 @@ export default function LojaPage() {
                 <p className="mb-4 text-sm text-[var(--text-muted)]">
                   Desbloqueie um banner personalizado para seu perfil
                 </p>
+
+                {cardError?.id === "banner" && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                  >
+                    <AlertCircle size={12} /> {cardError.message}
+                  </motion.p>
+                )}
+
                 <button
                   onClick={handleUnlockBanner}
-                  disabled={
-                    processing === "banner-unlock" || store.balance < 1500
-                  }
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-bg)] py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                  disabled={processing === "banner-unlock" || store.balance < 1500}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-bg)] py-3 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)]/15 disabled:opacity-40"
                 >
                   {processing === "banner-unlock" ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : (
                     <>
-                      <CoinIcon size={14} />
-                      Desbloquear por 1500 moedas
+                      <CoinIcon size={16} /> Desbloquear por 1500 moedas
                     </>
                   )}
                 </button>
@@ -815,56 +931,29 @@ export default function LojaPage() {
               <>
                 <div className="mb-4 aspect-[3/1] w-full overflow-hidden rounded-xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={store.banner.bannerImageUrl}
-                    alt="Banner do perfil"
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={store.banner.bannerImageUrl} alt="Banner do perfil" className="h-full w-full object-cover" />
                 </div>
                 <button
                   onClick={() => bannerFileRef.current?.click()}
                   disabled={processing === "banner-upload"}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-xs text-[var(--text-muted)] transition hover:bg-white/[0.06]"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-3 text-xs text-[var(--text-muted)] transition hover:bg-white/[0.06]"
                 >
-                  {processing === "banner-upload" ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Upload size={13} />
-                      Trocar banner
-                    </>
-                  )}
+                  {processing === "banner-upload" ? <Loader2 size={13} className="animate-spin" /> : <><Upload size={13} /> Trocar banner</>}
                 </button>
               </>
             ) : (
               <>
                 <div className="mb-4 aspect-[3/1] w-full overflow-hidden rounded-xl">
-                  <div
-                    className="flex h-full w-full items-center justify-center"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(113,212,255,0.06), rgba(182,156,255,0.06))",
-                    }}
-                  >
-                    <ImageIcon
-                      size={24}
-                      className="text-white/10"
-                    />
+                  <div className="flex h-full w-full items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(113,212,255,0.06), rgba(182,156,255,0.06))" }}>
+                    <ImageIcon size={24} className="text-white/10" />
                   </div>
                 </div>
                 <button
                   onClick={() => bannerFileRef.current?.click()}
                   disabled={processing === "banner-upload"}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-xs text-[var(--text-muted)] transition hover:bg-white/[0.06]"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-3 text-xs text-[var(--text-muted)] transition hover:bg-white/[0.06]"
                 >
-                  {processing === "banner-upload" ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Upload size={13} />
-                      Enviar banner
-                    </>
-                  )}
+                  {processing === "banner-upload" ? <Loader2 size={13} className="animate-spin" /> : <><Upload size={13} /> Enviar banner</>}
                 </button>
               </>
             )}
@@ -875,14 +964,9 @@ export default function LojaPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
-            className="glass-card mb-8 p-6 sm:p-8"
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
           >
-            <div className="mb-5 flex items-center gap-2">
-              <Frame size={16} className="text-[var(--purple)]" />
-              <span className="text-xs uppercase tracking-[0.15em] text-[var(--purple)]">
-                Molduras de Avatar
-              </span>
-            </div>
+            <SectionHeader icon={<Frame size={14} />} color="#b69cff" title="Molduras de Avatar" delay={0.1} />
 
             {store.items.length === 0 ? (
               <p className="py-6 text-center text-sm text-[var(--text-muted)]">
@@ -893,18 +977,20 @@ export default function LojaPage() {
                 variants={reduced ? {} : stagger}
                 initial="hidden"
                 animate="visible"
-                className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+                className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
               >
                 {store.items.map((item) => (
                   <StoreItemCard
                     key={item.id}
                     item={item}
                     processing={processing}
+                    error={cardError?.id === item.id ? cardError.message : null}
+                    justPurchased={justPurchased === item.id}
                     reduced={!!reduced}
                     onBuy={() => handleBuyDecoration(item.id)}
                     onEquip={() => handleEquipDecoration(item.id)}
                     onUnequip={handleUnequipDecoration}
-                    onSelect={() => setSelectedItem(item)}
+                    onSelect={() => { setSelectedItem(item); clearCardError(); }}
                   />
                 ))}
               </motion.div>
@@ -916,18 +1002,17 @@ export default function LojaPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            className="glass-card mb-8 p-6 sm:p-8"
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
           >
-            <div className="mb-5 flex items-center gap-2">
-              <Shield size={16} className="text-[var(--green)]" />
-              <span className="text-xs uppercase tracking-[0.15em] text-[var(--green)]">
-                Escudo de Streak
-              </span>
-            </div>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+              style={{ background: "radial-gradient(ellipse, rgba(74,222,128,.2), transparent 70%)", filter: "blur(20px)" }}
+            />
+            <SectionHeader icon={<Shield size={14} />} color="#4ade80" title="Proteção de Streak" delay={0.2} />
 
             <p className="mb-5 text-sm text-[var(--text-muted)]">
-              Proteja sua sequência! Se você esquecer de completar tarefas em um
-              dia, o escudo mantém sua streak automaticamente.
+              Proteja sua sequência! Se você esquecer de completar tarefas em um dia, o escudo mantém sua streak automaticamente.
             </p>
 
             <div className="mb-4 flex items-center gap-3">
@@ -937,58 +1022,44 @@ export default function LojaPage() {
                     key={i}
                     className="flex h-8 w-8 items-center justify-center rounded-lg"
                     style={{
-                      background:
-                        i < store.shieldCount
-                          ? "rgba(74,222,128,0.15)"
-                          : "rgba(255,255,255,0.04)",
-                      border:
-                        i < store.shieldCount
-                          ? "1px solid rgba(74,222,128,0.3)"
-                          : "1px dashed rgba(255,255,255,0.1)",
+                      background: i < store.shieldCount ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.04)",
+                      border: i < store.shieldCount ? "1px solid rgba(74,222,128,0.3)" : "1px dashed rgba(255,255,255,0.1)",
                     }}
                   >
                     <Shield
                       size={14}
                       style={{
-                        color:
-                          i < store.shieldCount
-                            ? "var(--green)"
-                            : "var(--text-faint)",
-                        fill:
-                          i < store.shieldCount
-                            ? "var(--green)"
-                            : "transparent",
+                        color: i < store.shieldCount ? "var(--green)" : "var(--text-faint)",
+                        fill: i < store.shieldCount ? "var(--green)" : "transparent",
                       }}
                     />
                   </div>
                 ))}
               </div>
-              <span className="text-xs text-[var(--text-muted)]">
-                {store.shieldCount} de 3 escudos
-              </span>
+              <span className="text-xs text-[var(--text-muted)]">{store.shieldCount} de 3 escudos</span>
             </div>
 
-            <p className="mb-4 flex items-center gap-1.5 text-xs text-[var(--text-faint)]">
-              <CoinIcon size={11} />
-              200 moedas cada
-            </p>
+            <p className="mb-4 text-xs text-[var(--text-faint)]">200 moedas cada</p>
+
+            {cardError?.id === "shield" && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+              >
+                <AlertCircle size={12} /> {cardError.message}
+              </motion.p>
+            )}
 
             <button
               onClick={handleBuyShield}
-              disabled={
-                processing === "shield-buy" ||
-                store.balance < 200 ||
-                store.shieldCount >= 3
-              }
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--green-bg)] py-2.5 text-xs font-semibold text-[var(--green)] transition hover:bg-[var(--green)]/15 disabled:opacity-40"
+              disabled={processing === "shield-buy" || store.balance < 200 || store.shieldCount >= 3}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--green-bg)] py-3 text-xs font-semibold text-[var(--green)] transition hover:bg-[var(--green)]/15 disabled:opacity-40"
             >
               {processing === "shield-buy" ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : (
-                <>
-                  <CoinIcon size={14} />
-                  Comprar escudo
-                </>
+                <><CoinIcon size={16} /> Comprar escudo · 200</>
               )}
             </button>
           </motion.section>
@@ -998,82 +1069,119 @@ export default function LojaPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.3 }}
-            className="glass-card mb-8 p-6 sm:p-8"
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
           >
-            <div className="mb-5 flex items-center gap-2">
-              <Sparkles size={16} className="text-[#ffd76b]" />
-              <span className="text-xs uppercase tracking-[0.15em] text-[#ffd76b]">
-                Auras
-              </span>
-            </div>
+            <SectionHeader icon={<Sparkles size={14} />} color="#ffd76b" title="Auras" delay={0.3} />
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {ENERGY_TYPES.map((type) => {
                 const info = AURA_DEFS[type];
                 const rc = AURA_RARITY_COLORS[info.rarity];
+                const rarity = rarityOf(info.rarity);
+                const storedRarity = RARITY_COLORS[rarity];
                 const isOwned = ownedAuras.includes(type);
                 const isProcessing = processing === `aura-${type}`;
-                const balance = store.balance;
+                const err = cardError?.id === `aura-${type}` ? cardError.message : null;
+                const purchased = justPurchased === type;
                 return (
-                  <div
+                  <motion.div
                     key={type}
-                    className="flex flex-col items-center gap-2 rounded-xl border p-4 text-center"
-                    style={{
-                      borderColor: isOwned
-                        ? `${rc.border}33`
-                        : "var(--border-subtle)",
-                      background: isOwned ? rc.bg : "var(--bg-tertiary)",
-                    }}
+                    variants={reduced ? {} : fadeUp}
+                    className="relative"
                   >
-                    <div className="relative flex h-16 w-16 items-center justify-center">
-                      <Image
-                        src={ENERGY_CONFIGS[type].assets.full}
-                        alt={info.label}
-                        width={60}
-                        height={60}
-                        style={{ objectFit: "contain", opacity: isOwned ? 1 : 0.35 }}
-                        unoptimized
-                      />
-                      {!isOwned && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <Lock size={18} className="text-[var(--text-faint)]" />
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-xs font-medium text-[var(--text-secondary)]">{info.label}</span>
-                    <span
-                      className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium"
-                      style={{
-                        background: rc.bg,
-                        color: rc.border,
-                        border: `1px solid ${rc.border}33`,
-                      }}
-                    >
-                      {AURA_RARITY_LABELS[info.rarity]}
-                    </span>
-
-                    {isOwned ? (
-                      <span className="flex w-full items-center justify-center gap-1 rounded-lg bg-white/[0.05] py-1.5 text-[10px] font-medium text-[var(--text-muted)]">
-                        Possuída
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => handleBuyAura(type)}
-                        disabled={isProcessing || balance < info.price}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[10px] font-semibold transition disabled:opacity-40"
-                        style={{ background: rc.bg, color: rc.border }}
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute -inset-1 rounded-2xl opacity-60"
+                      style={{ background: `radial-gradient(ellipse at 50% 0%, ${storedRarity.glow}, transparent 70%)` }}
+                    />
+                    <TiltCard reduced={!!reduced}>
+                      <motion.div
+                        whileHover={reduced ? undefined : { boxShadow: `0 14px 40px -12px ${storedRarity.glow}` }}
+                        animate={
+                          purchased
+                            ? { boxShadow: [`0 0 0px ${storedRarity.glow}`, `0 0 30px ${storedRarity.glow}`, `0 14px 40px -12px ${storedRarity.glow}`], opacity: [1, 1, 1] }
+                            : undefined
+                        }
+                        transition={purchased ? { duration: 0.9, times: [0, 0.4, 1] } : undefined}
+                        className="relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border p-4 text-center backdrop-blur-md"
+                        style={{
+                          borderColor: isOwned ? `${storedRarity.border}33` : "var(--border-subtle)",
+                          background: isOwned ? storedRarity.bg : "rgba(255,255,255,0.03)",
+                        }}
                       >
-                        {isProcessing ? (
-                          <Loader2 size={11} className="animate-spin" />
-                        ) : (
-                          <>
-                            <CoinIcon size={11} />
-                            {info.price}
-                          </>
+                        <div className="relative flex h-16 w-16 items-center justify-center">
+                          <BreathingGlow color={storedRarity.glow} size={72} />
+                          <Image
+                            src={ENERGY_CONFIGS[type].assets.full}
+                            alt={info.label}
+                            width={60}
+                            height={60}
+                            style={{ objectFit: "contain", opacity: isOwned ? 1 : 0.35, position: "relative" }}
+                            unoptimized
+                          />
+                          {!isOwned && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Lock size={18} className="text-[var(--text-faint)]" />
+                            </div>
+                          )}
+                          {purchased && (
+                            <motion.div
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              className="absolute -right-1 -top-1 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--green)]"
+                            >
+                              <Check size={12} className="text-black" strokeWidth={3} />
+                            </motion.div>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-[var(--text-secondary)]">{info.label}</span>
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{ background: storedRarity.bg, color: storedRarity.border, border: `1px solid ${storedRarity.border}33` }}
+                        >
+                          {AURA_RARITY_LABELS[info.rarity]}
+                        </span>
+
+                        {err && (
+                          <motion.span
+                            initial={{ opacity: 0, y: -4, x: 0 }}
+                            animate={{ opacity: 1, y: 0, x: [0, -5, 5, -5, 5, 0] }}
+                            transition={{ duration: 0.45 }}
+                            className="flex w-full items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-center text-[9px] text-red-300"
+                          >
+                            <AlertCircle size={9} /> {err}
+                          </motion.span>
                         )}
-                      </button>
-                    )}
-                  </div>
+
+                        {isOwned ? (
+                          <span className="flex w-full items-center justify-center gap-1 rounded-lg bg-white/[0.05] py-1.5 text-[10px] font-medium text-[var(--text-muted)]">
+                            Possuída
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleBuyAura(type)}
+                            disabled={!!processing || store.balance < info.price}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[10px] font-semibold transition disabled:opacity-40"
+                            style={{ background: storedRarity.bg, color: storedRarity.border }}
+                          >
+                            {isProcessing ? (
+                              <>
+                                <Loader2 size={11} className="animate-spin" /> Comprando...
+                              </>
+                            ) : purchased ? (
+                              <>
+                                <Check size={11} strokeWidth={3} /> Adquirida!
+                              </>
+                            ) : (
+                              <>
+                                <CoinIcon size={15} /> {info.price}
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </motion.div>
+                    </TiltCard>
+                  </motion.div>
                 );
               })}
             </div>
@@ -1091,11 +1199,9 @@ export default function LojaPage() {
       {selectedItem && user && (
         <DecorationModal
           item={selectedItem}
-          user={{
-            photoURL: user.photoURL,
-            displayName: user.displayName,
-          }}
+          user={{ photoURL: user.photoURL, displayName: user.displayName }}
           onClose={() => setSelectedItem(null)}
+          error={cardError?.id === selectedItem.id ? cardError.message : null}
           onBuy={() => {
             handleBuyDecoration(selectedItem.id);
             setSelectedItem(null);

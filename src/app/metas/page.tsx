@@ -29,10 +29,6 @@ import { CategoryForm } from "@/components/category-form";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 
-const FREQ_LABELS: Record<Goal["frequency"], string> = {
-  daily: "Diária", weekly: "Semanal", monthly: "Mensal",
-};
-
 const HABIT_FREQ_LABELS: Record<Habit["frequency"], string> = {
   daily: "Diário", weekly: "Semanal",
 };
@@ -286,27 +282,13 @@ export default function MetasPage() {
                   )}
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Quantidade</label>
-                    <input
-                      type="number" min={1} value={draft.targetValue}
-                      onChange={(e) => setDraftField("targetValue", Number(e.target.value))}
-                      className="auth-input"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</label>
-                    <select
-                      value={draft.frequency}
-                      onChange={(e) => setDraftField("frequency", e.target.value as Goal["frequency"])}
-                      className="auth-input"
-                    >
-                      <option value="daily">Diária</option>
-                      <option value="weekly">Semanal</option>
-                      <option value="monthly">Mensal</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Quantidade</label>
+                  <input
+                    type="number" min={1} value={draft.targetValue}
+                    onChange={(e) => setDraftField("targetValue", Number(e.target.value))}
+                    className="auth-input"
+                  />
                 </div>
 
                 <button onClick={saveGoal} disabled={!draft.title.trim() || saving} className="primary-button w-full justify-center">
@@ -373,7 +355,7 @@ export default function MetasPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-[var(--text-muted)]">{goal.category.name} · {FREQ_LABELS[goal.frequency]}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{goal.category.name}</span>
                         </div>
                         <div className="mt-3 flex items-center gap-3">
                           <ProgressBar value={pct} color={color} glowColor={`${color}60`} />
