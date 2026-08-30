@@ -254,16 +254,20 @@ export default function FocusRoomsPage() {
   const [lastCoins, setLastCoins] = useState(0);
   const [showEnergyPicker, setShowEnergyPicker] = useState(false);
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+  // The user's app-level profile id (Firebase UID hashed the same way the
+  // server derives profile ids). Server comparisons such as hostProfileId are
+  // done against THIS value, never against the raw Firebase user.uid.
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
 
   const ownedAurasSet = useMemo(() => new Set(ownedAuras), [ownedAuras]);
   const selectedEnergyCfg = ENERGY_CONFIGS[selectedEnergyType as EnergyType] || ENERGY_CONFIGS.flame;
   const energyPickerCurrent = useMemo(() => {
-    if (pageState === "room" && currentRoom && user) {
-      const mine = currentRoom.participants.find((p) => p.profileId === user.uid);
+    if (pageState === "room" && currentRoom && myProfileId) {
+      const mine = currentRoom.participants.find((p) => p.profileId === myProfileId);
       return mine?.selectedEnergyType || selectedEnergyType;
     }
     return selectedEnergyType;
-  }, [pageState, currentRoom, user, selectedEnergyType]);
+  }, [pageState, currentRoom, myProfileId, selectedEnergyType]);
 
   const roomSessionRef = useRef<PersistedRoomSession | null>(null);
 
@@ -315,6 +319,18 @@ export default function FocusRoomsPage() {
       .catch(() => { /* default flame+water */ });
   }, [loading, user]);
 
+  // Resolve this user's profile id (the hashed form the server stores in
+  // host_profile_id / participant profileId). Every ownership comparison in
+  // this page must use this value, not the raw Firebase uid.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api.getProfile()
+      .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
+      .catch(() => { /* room view is gated on myProfileId, so it just keeps loading */ });
+    return () => { active = false; };
+  }, [user]);
+
   // ── Room detail polling ────────────────────────────────────────────────────
   const pollRoom = useCallback(async () => {
     if (!currentRoom) return;
@@ -358,7 +374,7 @@ export default function FocusRoomsPage() {
     if (currentRoom.status !== "active" && currentRoom.status !== "paused") return;
 
     const persisted = loadRoomSession(currentRoom.id);
-    const myParticipant = currentRoom.participants.find((p) => p.profileId === user.uid);
+    const myParticipant = currentRoom.participants.find((p) => p.profileId === myProfileId);
 
     // If I already gave up, don't create a new session
     if (myParticipant && myParticipant.sessionStatus === "left") return;
@@ -386,7 +402,7 @@ export default function FocusRoomsPage() {
       .finally(() => { sessionCreatingRef.current = false; });
 
     return () => { cancelled = true; };
-  }, [user, pageState, currentRoom?.id, currentRoom?.status, currentRoom?.durationMinutes]);
+  }, [user, myProfileId, pageState, currentRoom?.id, currentRoom?.status, currentRoom?.durationMinutes]);
 
   // ── Shared countdown derivation ────────────────────────────────────────────
   const isRunningRoom = currentRoom?.status === "active" || currentRoom?.status === "paused";
@@ -464,7 +480,7 @@ export default function FocusRoomsPage() {
     if (pageState !== "room" || currentRoom.status !== "completed") return;
     const sess = roomSessionRef.current;
     if (!sess || sess.finalized) return;
-    const mine = currentRoom.participants.find((p) => p.profileId === user.uid);
+    const mine = currentRoom.participants.find((p) => p.profileId === myProfileId);
     if (!mine) return;
     if (mine.sessionStatus === "completed") {
       finalizeSession(currentRoom, currentRoom.durationMinutes * 60, true);
@@ -472,7 +488,7 @@ export default function FocusRoomsPage() {
       finalizeSession(currentRoom, 0, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageState, currentRoom?.id, currentRoom?.status, user, finalizeSession]);
+  }, [pageState, currentRoom?.id, currentRoom?.status, user, myProfileId, finalizeSession]);
 
   // Keep selected energy in a ref so completion closure reads latest
   const selectEnergyRef = useRef<string>(selectedEnergyType);
@@ -577,14 +593,14 @@ export default function FocusRoomsPage() {
       // Mark locally as left in the room view
       setCurrentRoom((prev) => prev ? {
         ...prev,
-        participants: prev.participants.map((p) => p.profileId === user?.uid ? { ...p, sessionStatus: "left" } : p),
+        participants: prev.participants.map((p) => p.profileId === myProfileId ? { ...p, sessionStatus: "left" } : p),
       } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao desistir");
     } finally {
       setLoadingAction(null);
     }
-  }, [currentRoom, user, finalizeSession]);
+  }, [currentRoom, myProfileId, finalizeSession]);
 
   const handleUpdateDuration = useCallback(async (minutes: number) => {
     if (!currentRoom) return;
@@ -654,14 +670,18 @@ export default function FocusRoomsPage() {
       setCurrentRoom(result.room);
       setNowMs(Date.now());
       setShowStopConfirm(false);
-      setSuccessMessage("Sessão encerrada para todos na sala.");
+      // "Parar" is scoped to the host's own outcome: finalize ONLY the host's
+      // session as a give-up (no energy planted, no completion reward). The
+      // shared room timer keeps running for everyone else.
+      await finalizeSession(currentRoom, 0, false);
+      setSuccessMessage("Você parou sua sessão. A sala continua para os outros participantes.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao encerrar a sessão");
       setShowStopConfirm(false);
     } finally {
       setLoadingAction(null);
     }
-  }, [currentRoom]);
+  }, [currentRoom, finalizeSession]);
 
   // ═══════════════════════ VIEWS ═══════════════════════
   const renderListView = () => (
@@ -686,7 +706,7 @@ export default function FocusRoomsPage() {
       <div className="grid gap-4">
         {rooms.length > 0 ? (
           rooms.map((room) => {
-            const isMyRoomHost = room.hostProfileId === user?.uid;
+            const isMyRoomHost = room.hostProfileId === myProfileId;
             return (
               <motion.div
                 key={room.id}
@@ -867,9 +887,16 @@ export default function FocusRoomsPage() {
 
   const renderRoomView = () => {
     if (!currentRoom || !user) return null;
+    if (!myProfileId) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 size={20} className="animate-spin text-[var(--accent)]" />
+        </div>
+      );
+    }
     const room = currentRoom;
-    const isHost = room.hostProfileId === user.uid;
-    const myParticipant = room.participants.find((p) => p.profileId === user.uid);
+    const isHost = room.hostProfileId === myProfileId;
+    const myParticipant = room.participants.find((p) => p.profileId === myProfileId);
     const myEnergy = myParticipant?.selectedEnergyType || selectedEnergyType;
     const myProgress = sharedRemainingMs != null
       ? Math.max(0, Math.min(100, ((totalMs - sharedRemainingMs) / totalMs) * 100))
@@ -1018,7 +1045,7 @@ export default function FocusRoomsPage() {
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Progresso da sala</span>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {room.participants.map((p) => {
-                  const isMe = p.profileId === user.uid;
+                  const isMe = p.profileId === myProfileId;
                   const prog = p.sessionStatus === "left" ? 0 : p.sessionStatus === "completed" ? 100 : myProgress;
                   const size = 48;
                   const r = (size - 8) / 2;
@@ -1080,10 +1107,17 @@ export default function FocusRoomsPage() {
 
           {/* Controls */}
           <div className="mt-8 space-y-3">
+            {/* Host while waiting: primary "Iniciar sessão para todos" + a
+                secondary Sair so the host can back out before starting. */}
             {room.status === "waiting" && isHost && (
-              <motion.button onClick={handleStartRoom} disabled={loadingAction === "starting"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
-                {loadingAction === "starting" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Iniciar sessão para todos</>}
-              </motion.button>
+              <div className="space-y-2">
+                <motion.button onClick={handleStartRoom} disabled={loadingAction === "starting"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
+                  {loadingAction === "starting" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Iniciar sessão para todos</>}
+                </motion.button>
+                <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                  {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
+                </button>
+              </div>
             )}
             {room.status === "waiting" && !isHost && myParticipant && (
               <div className="flex flex-col items-center gap-2 py-3">
@@ -1114,40 +1148,43 @@ export default function FocusRoomsPage() {
               </>
             )}
 
-            {/* Host-only Play/Pause + Stop — non-hosts see no room controls here;
-                they get the passive status indicator up top and their own synced
-                countdown. */}
+            {/* Host-only room controls — Pausar/Retomar (shared countdown) and Parar
+                (host's OWN give-up; the room keeps running for everyone else).
+                Non-hosts see no room controls here; they get the passive status
+                indicator up top and their own synced countdown. */}
             {(room.status === "active" || room.status === "paused") && isHost && (
               <div className="space-y-2">
-                <motion.button
-                  onClick={handleTogglePause}
-                  disabled={loadingAction === "pausing" || loadingAction === "resuming"}
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                  style={{
-                    background: paused ? "linear-gradient(180deg, var(--accent), var(--orange))" : "var(--bg-surface-hover)",
-                    color: paused ? "#fff" : "var(--text)",
-                    border: paused ? "none" : "1px solid var(--border-subtle)",
-                  }}
-                >
-                  {(loadingAction === "pausing" || loadingAction === "resuming") ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : paused ? (
-                    <><Play size={15} /> Retomar sessão</>
-                  ) : (
-                    <><Pause size={15} /> Pausar sessão</>
-                  )}
-                </motion.button>
-                <button
-                  type="button"
-                  onClick={() => setShowStopConfirm(true)}
-                  disabled={loadingAction !== null}
-                  className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loadingAction === "stopping" ? <Loader2 size={15} className="animate-spin" /> : <><Square size={14} /> Parar sessão</>}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <motion.button
+                    onClick={handleTogglePause}
+                    disabled={loadingAction === "pausing" || loadingAction === "resuming"}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                    style={{
+                      background: paused ? "linear-gradient(180deg, var(--accent), var(--orange))" : "var(--bg-surface-hover)",
+                      color: paused ? "#fff" : "var(--text)",
+                      border: paused ? "none" : "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    {(loadingAction === "pausing" || loadingAction === "resuming") ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : paused ? (
+                      <><Play size={15} /> Retomar sessão</>
+                    ) : (
+                      <><Pause size={15} /> Pausar sessão</>
+                    )}
+                  </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => setShowStopConfirm(true)}
+                    disabled={loadingAction !== null}
+                    className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loadingAction === "stopping" ? <Loader2 size={15} className="animate-spin" /> : <><Square size={14} /> Parar sessão</>}
+                  </button>
+                </div>
                 <p className="text-center text-[10px] text-[var(--text-faint)]">
-                  Você é o anfitrião. Pausar/retomar afeta todos; parar encerra a sessão para todos sem recompensa.
+                  Você é o anfitrião. Pausar/retomar afeta todos na sala; parar encerra apenas a sua própria sessão — a sala continua para os outros participantes.
                 </p>
               </div>
             )}
@@ -1237,7 +1274,7 @@ export default function FocusRoomsPage() {
             <div className="glass-card w-full max-w-sm p-6">
               <h3 className="font-display text-lg mb-2">Parar sessão?</h3>
               <p className="text-sm text-[var(--text-muted)] mb-6">
-                Se você parar agora, a sessão termina para todos na sala e ninguém recebe a recompensa de conclusão (as energias ficam apagadas). Tem certeza?
+                Se você parar agora, sua energia será perdida, mas a sessão continua para os outros participantes. Tem certeza?
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setShowStopConfirm(false)}

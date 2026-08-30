@@ -10,18 +10,16 @@ export interface FrameAsset {
   imageUrl: string;
   rarity: DecorationRarity;
   /** Fraction (0-1) of the frame canvas the profile photo should fill in the
-   *  store preview modal (frame_fire's flame PNG has a large transparent
-   *  center, so its photo is sized down to sit inside the ring). */
+   *  store preview modal. Only needed for frames whose ring leaves a large
+   *  transparent center. */
   photoScale?: number;
   /** Overscale of the frame canvas relative to the avatar box when composited
-   *  around a real avatar photo. Defaults to 1.15; the flame PNG's ring band
-   *  starts at ~0.66 of its canvas radius, so it needs a bigger canvas (1.5x)
-   *  for the flame ring to wrap exactly around the profile photo circle. */
+   *  around a real avatar photo. Defaults to 1.15. */
   overscale?: number;
 }
 
 export const FRAME_ASSETS: Record<string, FrameAsset> = {
-  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common", photoScale: 0.4, overscale: 1.5 },
+  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common" },
   frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare" },
   frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic" },
   frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary" },

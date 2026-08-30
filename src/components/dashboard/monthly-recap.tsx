@@ -461,26 +461,28 @@ export function MonthlyRecap({
     <>
       {/* Trigger button */}
       <motion.button
-        whileHover={reduced ? undefined : { scale: 1.03 }}
-        whileTap={reduced ? undefined : { scale: 0.97 }}
+        whileHover={reduced ? undefined : { scale: 1.01 }}
+        whileTap={reduced ? undefined : { scale: 0.98 }}
         onClick={() => setOpen(true)}
-        className="panel flex w-full cursor-pointer items-center gap-3 p-4 text-left"
+        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3.5 text-left transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--bg-surface-hover)]"
       >
         <div
-          className="grid h-10 w-10 place-items-center rounded-xl"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
           style={{ background: "rgba(255,255,255,.05)" }}
         >
           <Trophy size={18} style={{ color: tierColor }} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[var(--text)]">
+          <p className="truncate text-sm font-semibold text-[var(--text)]">
             Ver recap de {formatMonth(recap.recapMonth)}
           </p>
-          <p className="text-xs text-[var(--text-muted)]">
+          <p className="truncate text-xs text-[var(--text-muted)]">
             {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} dias de sequência
           </p>
         </div>
-        <span className="eyebrow muted">NEW</span>
+        <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+          New
+        </span>
       </motion.button>
 
       {/* Overlay */}

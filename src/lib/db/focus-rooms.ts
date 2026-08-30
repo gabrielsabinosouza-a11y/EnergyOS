@@ -425,28 +425,22 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
   return completedRoom!;
 }
 
-// Stop a focus room early (host only, verified by the route). Unlike
-// endFocusRoom (which marks a naturally finished session as SUCCESSFUL),
-// stopping early ends the session for EVERYONE but marks participants who were
-// still focusing as given up ("desistiu") — they did not complete the full
-// duration, so they get no completion rewards. Idempotent: only transitions
-// rooms currently in ACTIVE or PAUSED state.
-export async function stopFocusRoom(roomId: number): Promise<FocusRoom> {
+// "Parar" (host only, verified by the route). This is a GIVE-UP action scoped
+// to the HOST'S OWN energy/session outcome: it marks only the host as having
+// left ("desistiu") so their energy becomes extinguished and they get no
+// completion reward. It does NOT end the room for everyone — the shared room
+// timer continues running for every other participant, who can therefore still
+// complete the full duration and collect the reward.
+export async function stopFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   const now = new Date().toISOString();
 
-  await pool.query(
-    `update focus_rooms set status = 'completed', ended_at = coalesce(ended_at, $1)
-     where id = $2 and status in ('active', 'paused')`,
-    [now, roomId],
-  );
-
-  // Everyone still focusing is treated as a give-up (they didn't finish the
-  // full duration), so no completion reward is distributed to them.
+  // Only the host's own session ends. The room status is left untouched so the
+  // shared countdown keeps running for everyone else who is still focusing.
   await pool.query(
     `update room_participants
      set session_status = 'left', gave_up_at = coalesce(gave_up_at, $1)
-     where room_id = $2 and session_status = 'focusing'`,
-    [now, roomId],
+     where room_id = $2 and profile_id = $3`,
+    [now, roomId, hostProfileId],
   );
 
   const room = await pool.query<{ id: string | number; host_profile_id: string }>(
