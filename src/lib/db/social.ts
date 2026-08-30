@@ -215,8 +215,8 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
   const otherId = parseProfileId(targetId);
   if (viewerId === otherId) return getPublicProfile(viewerId, otherId);
 
-  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null }>(
-    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null; has_custom_banner: boolean | null; banner_image_url: string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id, has_custom_banner, banner_image_url
      from profiles where id = $1`,
     [otherId],
   );
@@ -244,6 +244,8 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
     longestStreak: row.longest_streak ?? 0,
     weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
     equippedDecorationId: row.equipped_decoration_id ?? undefined,
+    hasCustomBanner: row.has_custom_banner ?? false,
+    bannerImageUrl: row.banner_image_url ?? undefined,
     achievements: [],
     featuredAchievements: featured,
     isFriend: false,
@@ -257,8 +259,8 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const isOwner = viewerId === otherId;
   if (!isOwner) await assertFriends(viewerId, otherId);
 
-  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null }>(
-    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id
+  const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null; has_custom_banner: boolean | null; banner_image_url: string | null }>(
+    `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id, has_custom_banner, banner_image_url
      from profiles where id = $1`,
     [otherId],
   );
@@ -288,6 +290,8 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
     longestStreak: Math.max(streak.longestStreak, row.longest_streak ?? 0),
     weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
     equippedDecorationId: row.equipped_decoration_id ?? undefined,
+    hasCustomBanner: row.has_custom_banner ?? false,
+    bannerImageUrl: row.banner_image_url ?? undefined,
     achievements,
     featuredAchievements: featured,
     isFriend,

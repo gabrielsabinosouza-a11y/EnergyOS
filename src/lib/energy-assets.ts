@@ -1,7 +1,8 @@
 export type EnergyStage = "spark" | "forming" | "full" | "extinguished";
 export type EnergyType =
   | "flame" | "water" | "earth" | "wind" | "thunder" | "ice"
-  | "shadow" | "light" | "crystal" | "nature" | "cosmic" | "solar";
+  | "shadow" | "light" | "crystal" | "nature" | "cosmic" | "solar"
+  | "metal" | "poison";
 
 export type AuraRarity = "common" | "uncommon" | "rare" | "epic";
 
@@ -30,6 +31,8 @@ export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
   water:   { rarity: "common",   price: 0,    label: "Water" },
   ice:     { rarity: "uncommon", price: 500,   label: "Ice" },
   wind:    { rarity: "uncommon", price: 500,   label: "Wind" },
+  metal:   { rarity: "uncommon", price: 500,   label: "Metal" },
+  poison:  { rarity: "uncommon", price: 500,   label: "Poison" },
   earth:   { rarity: "rare",     price: 750,   label: "Earth" },
   thunder: { rarity: "rare",     price: 750,   label: "Thunder" },
   cosmic:  { rarity: "rare",     price: 750,   label: "Cosmic" },
@@ -48,6 +51,8 @@ export const ENERGY_THEME_COLORS: Record<EnergyType, string> = {
   thunder: "#A855F7",
   ice:     "#22D3EE",
   wind:    "#6EE7B7",
+  metal:   "#9CA3AF",
+  poison:  "#84CC16",
   earth:   "#84A98C",
   light:   "#FACC15",
   shadow:  "#6B21A8",
@@ -80,7 +85,9 @@ export const ENERGY_CONFIGS: Record<EnergyType, EnergyConfig> = {
   water:   { ...AURA_DEFS.water,   locked: false, accent: ENERGY_THEME_COLORS.water,   glow: glowOf("water"),   assets: { spark: "/energies/water/water_start.png",   forming: "/energies/water/water_mid.png",   full: "/energies/water/water_full.png",   extinguished: "/energies/water/water_give_up.png"   } },
   thunder: { ...AURA_DEFS.thunder, locked: true,  accent: ENERGY_THEME_COLORS.thunder, glow: glowOf("thunder"), assets: { spark: "/energies/thunder/thunder_begin.png", forming: "/energies/thunder/thunder_mid.png", full: "/energies/thunder/thunder_full.png", extinguished: "/energies/thunder/thunder_die.png" } },
   ice:     { ...AURA_DEFS.ice,     locked: true,  accent: ENERGY_THEME_COLORS.ice,     glow: glowOf("ice"),     assets: { spark: "/energies/ice/ice_begin.png",    forming: "/energies/ice/ice_mid.png",    full: "/energies/ice/ice_full.png",    extinguished: "/energies/ice/ice_gave_up.png"    } },
-  wind:    { ...AURA_DEFS.wind,    locked: true,  accent: ENERGY_THEME_COLORS.wind,    glow: glowOf("wind"),    assets: { spark: "/energies/wind/wind_begin.png",    forming: "/energies/wind/wind_full.png",    full: "/energies/wind/wind_full.png",   extinguished: "/energies/wind/wind_die.png"    } },
+  wind:    { ...AURA_DEFS.wind,    locked: true,  accent: ENERGY_THEME_COLORS.wind,    glow: glowOf("wind"),    assets: { spark: "/energies/wind/wind_begin.png",    forming: "/energies/wind/wind_mid.png",     full: "/energies/wind/wind_full.png",   extinguished: "/energies/wind/wind_die.png"    } },
+  metal:   { ...AURA_DEFS.metal,   locked: true,  accent: ENERGY_THEME_COLORS.metal,   glow: glowOf("metal"),   assets: { spark: "/energies/metal/metal_begin.png",   forming: "/energies/metal/metal_mid.png",    full: "/energies/metal/metal_full.png",   extinguished: "/energies/metal/metal_die.png"    } },
+  poison:  { ...AURA_DEFS.poison,  locked: true,  accent: ENERGY_THEME_COLORS.poison,  glow: glowOf("poison"),  assets: { spark: "/energies/poison/poison_begin.png",  forming: "/energies/poison/poison_mid.png",   full: "/energies/poison/poison_full.png",  extinguished: "/energies/poison/poison_die.png"   } },
   earth:   { ...AURA_DEFS.earth,   locked: true,  accent: ENERGY_THEME_COLORS.earth,   glow: glowOf("earth"),   assets: { spark: "/energies/earth/earth_begin.png",   forming: "/energies/earth/earth_mid.png",   full: "/energies/earth/earth_full.png",   extinguished: "/energies/earth/earth_die.png"   } },
   light:   { ...AURA_DEFS.light,   locked: true,  accent: ENERGY_THEME_COLORS.light,   glow: glowOf("light"),   assets: { spark: "/energies/light/light_begin.png",   forming: "/energies/light/light_mid.png",   full: "/energies/light/light_full.png",   extinguished: "/energies/light/light_die.png"   } },
   shadow:  { ...AURA_DEFS.shadow,  locked: true,  accent: ENERGY_THEME_COLORS.shadow,  glow: glowOf("shadow"),  assets: { spark: "/energies/shadow/shadow_begin.png", forming: "/energies/shadow/shadow_mid.png", full: "/energies/shadow/shadow_full.png", extinguished: "/energies/shadow/shadow_die.png" } },
@@ -99,11 +106,8 @@ export function getEnergyReward(durationMinutes: number): number {
   return 0;
 }
 
-/** Picks the user's equipped aura when owned, else flame, else first owned. */
-export function resolveEquippedEnergy(ownedAuras: string[], equippedEnergyId?: string | null): EnergyType {
-  if (equippedEnergyId && ownedAuras.includes(equippedEnergyId)) {
-    return equippedEnergyId as EnergyType;
-  }
+/** Picks a sensible default energy for a focus session: flame when owned, else the first owned aura. */
+export function resolveDefaultEnergy(ownedAuras: string[]): EnergyType {
   if (ownedAuras.includes("flame")) return "flame";
   if (ownedAuras.length > 0) return ownedAuras[0] as EnergyType;
   return "flame";

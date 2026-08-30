@@ -303,8 +303,8 @@ function DashboardContent() {
     }
   }
 
-  async function startFocus(targetDurationMinutes: number, taskId?: number) {
-    const result = await api.startFocus(targetDurationMinutes, taskId);
+  async function startFocus(targetDurationMinutes: number, taskId?: number, energyType?: string) {
+    const result = await api.startFocus(targetDurationMinutes, taskId, energyType);
     return result;
   }
 
@@ -524,7 +524,7 @@ function StreakBadge({
   const state: StreakBadgeState = protectedNow ? "protected" : streak > 0 ? "saved" : "lost";
 
   const iconSrc = state === "lost"
-    ? "/energies/flame/flame_die.png"
+    ? "/streak/streak_lost.png"
     : state === "protected"
       ? "/streak/streak_protected.png"
       : "/streak/streak_alive.png";

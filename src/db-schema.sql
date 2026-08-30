@@ -245,12 +245,34 @@ create table if not exists focus_sessions (
   xp_earned integer not null default 0
 );
 
+alter table focus_sessions add column if not exists energy_type text;
+
 create index if not exists focus_sessions_profile_idx on focus_sessions(profile_id, started_at desc);
+
+-- ── Garden (Meu Jardim) ─────────────────────────────────────────────────────
+-- Each row is one "planted energy" earned by a completed focus session. A single
+-- session plants `reward` rows (the reward-tier multiplier: 10-50min → 1,
+-- 60-80min → 2, 90+min → 4). Focus minutes are split evenly across the plants so
+-- that the SUM of duration_minutes equals the session's real focused minutes.
+create table if not exists garden_entries (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  session_id bigint references focus_sessions(id) on delete cascade,
+  energy_type text not null,
+  duration_minutes numeric(8,2) not null default 0,
+  reward integer not null default 1,
+  planted_at timestamptz not null default now(),
+  legacy_key text
+);
+
+create unique index if not exists garden_entries_legacy_key_idx on garden_entries(profile_id, legacy_key) where legacy_key is not null;
+
+create index if not exists garden_entries_profile_planted_idx on garden_entries(profile_id, planted_at desc);
 
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task')),
+  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','goal')),
   source_id bigint,
   xp_amount integer not null,
   created_at timestamptz not null default now()
@@ -523,7 +545,7 @@ create table if not exists daily_task_log (
 alter table profiles add column if not exists has_custom_banner boolean not null default false;
 alter table profiles add column if not exists banner_image_url text;
 alter table profiles add column if not exists equipped_decoration_id text;
-alter table profiles add column if not exists equipped_energy_id text;
+alter table profiles drop column if exists equipped_energy_id;
 alter table profiles add column if not exists streak_shield_count integer not null default 0;
 
 create table if not exists avatar_decorations (

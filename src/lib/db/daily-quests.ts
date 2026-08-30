@@ -4,6 +4,7 @@ import type { DailyQuest, UserQuestProgress, QuestProgressWithQuest, QuestType, 
 import { parseProfileId } from "./validation";
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso } from "./dates";
+import { addLeagueXP } from "./league-new";
 import { ConflictError, NotFoundError } from "../errors";
 import { DAILY_MISSION_LIMIT } from "../daily-limits";
 
@@ -580,8 +581,9 @@ export async function claimQuestReward(
     await client.query("commit");
 
     // Claiming also awards XP (recorded in the ledger), which feeds the
-    // "Earn N XP today" mission.
+    // "Earn N XP today" mission and the weekly league board.
     await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: row.q_coin_reward });
+    await addLeagueXP(profileId, row.q_coin_reward);
 
     const quest: DailyQuest = {
       id: Number(row.uqp_quest_id),

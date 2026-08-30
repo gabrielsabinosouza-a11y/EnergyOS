@@ -6,6 +6,7 @@ import { todayIso, APP_TIMEZONE } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
 import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
+import { creditXP } from "./xp";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
@@ -13,6 +14,115 @@ function calculateCoins(durationMinutes: number): number {
     return Math.round(9 + 16 * ((durationMinutes - 10) / 50));
   }
   return Math.round(25 + 25 * ((Math.min(durationMinutes, 120) - 60) / 60));
+}
+
+export const GARDEN_ENERGY_TYPES = [
+  "flame", "water", "earth", "wind", "thunder", "ice",
+  "shadow", "light", "crystal", "nature", "cosmic", "solar",
+  "metal", "poison",
+] as const;
+export type GardenEnergyType = (typeof GARDEN_ENERGY_TYPES)[number];
+
+/** Recompensa (nº de plantas no jardim) por sessão, conforme o tier. */
+export function getEnergyReward(durationMinutes: number): number {
+  if (durationMinutes >= 90) return 4;
+  if (durationMinutes >= 60) return 2;
+  if (durationMinutes >= 10) return 1;
+  return 0;
+}
+
+export interface GardenEntry {
+  id: number;
+  energyType: GardenEnergyType;
+  durationMinutes: number;
+  reward: number;
+  plantedAt: string;
+}
+
+interface GardenRow {
+  id: string | number;
+  profile_id: string;
+  session_id: string | number;
+  energy_type: string;
+  duration_minutes: string | number;
+  reward: string | number;
+  planted_at: Date | string;
+}
+
+function mapGardenRow(row: GardenRow): GardenEntry {
+  return {
+    id: Number(row.id),
+    energyType: row.energy_type as GardenEnergyType,
+    durationMinutes: Number(row.duration_minutes),
+    reward: Number(row.reward),
+    plantedAt: typeof row.planted_at === "string" ? row.planted_at : row.planted_at.toISOString(),
+  };
+}
+
+/** Busca as energias plantadas pelo usuário, da mais recente para a mais antiga. */
+export async function getGardenEntries(profileId: string): Promise<GardenEntry[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<GardenRow>(
+    `select id, profile_id, session_id, energy_type, duration_minutes, reward, planted_at
+     from garden_entries where profile_id = $1 order by planted_at desc, id desc`,
+    [profileId],
+  );
+  return result.rows.map(mapGardenRow);
+}
+
+export interface ImportGardenEntry {
+  legacyKey: string;
+  energyType: string;
+  durationMinutes: number;
+  reward: number;
+  plantedAt: string;
+}
+
+interface ImportRow {
+  id: string | number;
+}
+
+/**
+ * Importa energias legadas (arquivo localStorage antigo) para o banco, de forma
+ * idempotente via legacy_key. Retorna quantas foram inseridas (0 se já havia).
+ */
+export async function importGardenEntries(profileId: string, entries: ImportGardenEntry[]): Promise<number> {
+  parseProfileId(profileId);
+  if (!Array.isArray(entries) || entries.length === 0) return 0;
+  let inserted = 0;
+  for (const e of entries) {
+    if (!e || typeof e.legacyKey !== "string") continue;
+    const energy = e.energyType && (GARDEN_ENERGY_TYPES as readonly string[]).includes(e.energyType) ? e.energyType : "flame";
+    const minutes = Number.isFinite(Number(e.durationMinutes)) ? Math.max(0, Number(e.durationMinutes)) : 0;
+    const reward = Number.isFinite(Number(e.reward)) ? Math.max(1, Number(e.reward)) : 1;
+    const planted = e.plantedAt ? new Date(e.plantedAt) : new Date();
+    const stamped = isNaN(planted.getTime()) ? new Date() : planted;
+    const result = await pool.query<ImportRow>(
+      `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward, planted_at, legacy_key)
+       values ($1, null, $2, $3, $4, $5, $6)
+       on conflict (profile_id, legacy_key) where legacy_key is not null do nothing
+       returning id`,
+      [profileId, energy, minutes, reward, stamped, e.legacyKey],
+    );
+    if (result.rowCount && result.rowCount > 0) inserted += 1;
+  }
+  return inserted;
+}
+
+async function plantGardenEntries(profileId: string, sessionId: number, energyType: string, durationMinutes: number): Promise<void> {
+  const reward = getEnergyReward(durationMinutes);
+  if (reward <= 0 || durationMinutes <= 0) return;
+  const perEnergy = Math.round((durationMinutes / reward) * 100) / 100;
+  const values: unknown[] = [];
+  const placeholders: string[] = [];
+  for (let i = 0; i < reward; i++) {
+    placeholders.push(`($${values.length + 1}, $${values.length + 2}, $${values.length + 3}, $${values.length + 4}, $${values.length + 5})`);
+    values.push(profileId, sessionId, energyType, perEnergy, reward);
+  }
+  await pool.query(
+    `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward) values ${placeholders.join(", ")}`,
+    values,
+  );
 }
 
 interface FocusRow {
@@ -24,6 +134,7 @@ interface FocusRow {
   ended_at: Date | string | null;
   task_id: string | number | null;
   xp_earned: number;
+  energy_type?: string | null;
 }
 
 function mapFocus(row: FocusRow): FocusSession {
@@ -39,15 +150,21 @@ function mapFocus(row: FocusRow): FocusSession {
   };
 }
 
-export async function startFocusSession(profileId: string, targetDurationMinutes: number, taskId?: number): Promise<FocusSession> {
+export async function startFocusSession(
+  profileId: string,
+  targetDurationMinutes: number,
+  taskId?: number,
+  energyType?: string,
+): Promise<FocusSession> {
   parseProfileId(profileId);
   if (!Number.isInteger(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > 240) {
     throw new ValidationError("Duração inválida.");
   }
+  const energy = energyType && (GARDEN_ENERGY_TYPES as readonly string[]).includes(energyType) ? energyType : null;
   const result = await pool.query<FocusRow>(
-    `insert into focus_sessions (profile_id, task_id, duration_minutes, target_duration_minutes) values ($1, $2, 0, $3)
+    `insert into focus_sessions (profile_id, task_id, duration_minutes, target_duration_minutes, energy_type) values ($1, $2, 0, $3, $4)
      returning id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, taskId ?? null, targetDurationMinutes],
+    [profileId, taskId ?? null, targetDurationMinutes, energy],
   );
   return mapFocus(result.rows[0]);
 }
@@ -63,7 +180,7 @@ export async function endFocusSession(
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
 
   const session = await pool.query<FocusRow>(
-    `select id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+    `select id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type
      from focus_sessions where profile_id = $1 and id = $2`,
     [profileId, sessionId],
   );
@@ -81,17 +198,7 @@ export async function endFocusSession(
   );
 
   if (xpAwarded > 0) {
-    await pool.query(
-      `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, 'focus', $2, $3)`,
-      [profileId, sessionId, xpAwarded],
-    );
-    await pool.query(
-      `insert into user_xp (profile_id, total_xp, level, updated_at)
-       values ($1, $3, 1, now())
-       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
-      [profileId, xpAwarded],
-    );
-    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded });
+    await creditXP(profileId, "focus", sessionId, xpAwarded);
     await addCoins(profileId, xpAwarded);
   }
 
@@ -127,6 +234,14 @@ export async function endFocusSession(
   // minutes than the target) and abandoned ones do not affect the streak.
   if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
     await onFocusSessionCompleted(profileId);
+  }
+
+  // Garden: plant the energy(ies) earned by a fully completed session. Only
+  // sessions that reached their target duration (i.e. the timer ran to 0, not a
+  // give-up/abandon) add plants — mirroring the streak qualification rule.
+  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+    const energyType = session.rows[0].energy_type ?? "flame";
+    await plantGardenEntries(profileId, sessionId, energyType, durationMinutes);
   }
 
   const questsUpdated = 1;

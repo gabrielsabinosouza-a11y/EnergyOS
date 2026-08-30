@@ -7,9 +7,8 @@ import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
-import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
-import { addGardenEntriesForSession } from "@/lib/garden-store";
 
 // ─── Session Persistence Types ───────────────────────────────────────────────
 
@@ -107,7 +106,7 @@ function sendNotification(title: string, body: string) {
 interface FocusTimerProps {
   todayStats: { minutesFocused: number; coinsEarned: number };
   history: FocusSession[];
-  onStart: (targetDurationMinutes: number, taskId?: number) => Promise<{ session: FocusSession }>;
+  onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
   onEnd: (sessionId: number, focusedSeconds: number) => Promise<{ session: FocusSession; xpAwarded: number }>;
 }
 
@@ -259,7 +258,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       } else {
         // Session completed while tab was closed - trigger completion
         // Use a temporary function to handle this case
-        const handleCompletedWhileClosed = async (sessionId: number, durationMinutes: number, energyType: EnergyType) => {
+        const handleCompletedWhileClosed = async (sessionId: number, durationMinutes: number) => {
           try {
             const focusedSeconds = durationMinutes * 60;
             const result = await onEnd(sessionId, focusedSeconds);
@@ -268,13 +267,6 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             const reward = getEnergyReward(durationMinutes);
             setRewardCount(reward);
             setShowComplete(true);
-
-            if (reward > 0) {
-              addGardenEntriesForSession({
-                energyType,
-                focusedMinutes: durationMinutes,
-              });
-            }
 
             // Reset state
             sessionRef.current = null;
@@ -301,7 +293,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           }
         };
 
-        handleCompletedWhileClosed(persisted.sessionId, persisted.durationMinutes, persisted.selectedEnergy);
+        handleCompletedWhileClosed(persisted.sessionId, persisted.durationMinutes);
       }
     } else if (persisted.status === "completed") {
       // Clear completed session state so it doesn't persist indefinitely
@@ -346,7 +338,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           persisted.sessionId;
 
         if (!hasActiveSession) {
-          const def = resolveEquippedEnergy(owned, data.equippedEnergyId);
+          const def = resolveDefaultEnergy(owned);
           setSelectedEnergy(def);
           selectedEnergyRef.current = def;
         }
@@ -405,13 +397,6 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setRewardCount(reward);
       setShowComplete(true);
 
-      if (reward > 0) {
-        addGardenEntriesForSession({
-          energyType: selectedEnergyRef.current,
-          focusedMinutes,
-        });
-      }
-
       // Browser notification
       sendNotification(
         "⚡ Sessão concluída!",
@@ -433,7 +418,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setNotifPermission(Notification.permission);
     }
     try {
-      const result = await onStart(duration);
+      const result = await onStart(duration, undefined, selectedEnergyRef.current);
       const startedAt = new Date(result.session.startedAt).getTime();
       sessionRef.current = { id: result.session.id, startedAt };
 

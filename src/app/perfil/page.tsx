@@ -373,6 +373,10 @@ export default function PerfilPage() {
   const [photoError, setPhotoError] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [equippedDecorationId, setEquippedDecorationId] = useState<string | undefined>();
+  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
+  const [hasCustomBanner, setHasCustomBanner] = useState(false);
+  const [bannerSaving, setBannerSaving] = useState(false);
+  const [bannerError, setBannerError] = useState("");
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
@@ -383,6 +387,7 @@ export default function PerfilPage() {
   const [envStatus, setEnvStatus] = useState<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean } | null>(null);
   const [showEnv, setShowEnv] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
 
   useEffect(() => {
@@ -401,6 +406,8 @@ export default function PerfilPage() {
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
       if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
       if (profileResult?.user?.equippedDecorationId) setEquippedDecorationId(profileResult.user.equippedDecorationId);
+      if (profileResult?.user?.bannerImageUrl) setBannerImageUrl(profileResult.user.bannerImageUrl);
+      if (profileResult?.user?.hasCustomBanner) setHasCustomBanner(profileResult.user.hasCustomBanner);
       if (env) setEnvStatus(env);
     });
     return () => { active = false; };
@@ -480,6 +487,43 @@ export default function PerfilPage() {
       setPhotoError("Não foi possível enviar a foto.");
     } finally {
       setPhotoSaving(false);
+      event.target.value = "";
+    }
+  }
+
+  async function uploadBanner(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      setBannerError("Escolha uma imagem de até 5 MB.");
+      return;
+    }
+    setBannerSaving(true);
+    setBannerError("");
+    try {
+      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+      if (!cloudName || !uploadPreset) {
+        throw new Error("Cloudinary is not configured");
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        { method: "POST", body: formData },
+      );
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      await api.updateBannerImage(data.secure_url);
+      setBannerImageUrl(data.secure_url);
+      setHasCustomBanner(true);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setBannerError("Não foi possível enviar o banner.");
+    } finally {
+      setBannerSaving(false);
       event.target.value = "";
     }
   }
@@ -600,14 +644,48 @@ export default function PerfilPage() {
             disabled={photoSaving}
           />
 
+          <input
+            ref={bannerFileRef}
+            type="file"
+            accept="image/*"
+            onChange={uploadBanner}
+            className="sr-only"
+            disabled={bannerSaving}
+          />
+
           {/* ─── Avatar + Name ─────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="glass-card mb-6 p-6 sm:p-8"
+            className={`glass-card relative mb-6 ${hasCustomBanner && bannerImageUrl ? "overflow-hidden" : ""}`}
           >
-            <div className="flex items-center gap-5 mb-6">
+            {hasCustomBanner && bannerImageUrl && (
+              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={bannerImageUrl}
+                  alt="Banner do perfil"
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => bannerFileRef.current?.click()}
+                  disabled={bannerSaving}
+                  className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur transition hover:bg-black/75 disabled:opacity-60"
+                >
+                  {bannerSaving ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
+                  {bannerSaving ? "Enviando..." : "Trocar banner"}
+                </button>
+                {bannerError && (
+                  <p className="absolute left-3 top-3 max-w-[70%] truncate rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] text-[var(--red)] backdrop-blur">
+                    {bannerError}
+                  </p>
+                )}
+              </div>
+            )}
+            <div className={`p-6 sm:p-8 ${hasCustomBanner && bannerImageUrl ? "pt-0" : ""}`}>
+            <div className={`flex items-center gap-5 ${hasCustomBanner && bannerImageUrl ? "-mt-10" : ""} mb-6`}>
               <div className="relative shrink-0">
                 <button
                   type="button"
@@ -720,6 +798,7 @@ export default function PerfilPage() {
                   <span className="font-display text-base">{longestStreak} dias</span>
                 </div>
               </motion.div>
+            </div>
             </div>
           </motion.div>
 

@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
-import { useAuthRedirect } from "@/lib/auth-context";
-import { getGardenEntries, type GardenEntry } from "@/lib/garden-store";
+import { useAuthRedirect, useAuth } from "@/lib/auth-context";
+import { getGardenEntries } from "@/lib/garden-store";
+import { api } from "@/lib/api-client";
 import { ENERGY_CONFIGS } from "@/lib/energy-assets";
+import type { GardenEntry } from "@/lib/db/focus";
 
 type Period = "day" | "week" | "month" | "year";
 
@@ -210,9 +212,45 @@ function DistributionChart({ data, labelStep, height = 168 }: { data: BarDatum[]
 
 export default function JardimPage() {
   const { loading } = useAuthRedirect({ ifGuest: "/" });
-  const [entries] = useState<GardenEntry[]>(() => getGardenEntries());
+  const { user } = useAuth();
+  const [entries, setEntries] = useState<GardenEntry[]>([]);
+  const [gardenLoading, setGardenLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("week");
   const [anchor, setAnchor] = useState(() => new Date());
+
+  // Load garden entries from the DB (authoritative). Also migrates any legacy
+  // localStorage garden entries into the DB once (idempotent via legacy_key).
+  useEffect(() => {
+    if (loading || !user) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const legacy = getGardenEntries();
+        if (legacy.length > 0) {
+          await api.importGarden(
+            legacy.map((e) => ({
+              legacyKey: e.id,
+              energyType: e.energyType as string,
+              durationMinutes: e.durationMinutes,
+              reward: e.reward,
+              plantedAt: e.plantedAt,
+            })),
+          );
+        }
+        const { entries: dbEntries } = await api.getGarden();
+        if (!cancelled) setEntries(dbEntries);
+      } catch {
+        if (!cancelled) setEntries([]);
+      } finally {
+        if (!cancelled) setGardenLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [loading, user]);
+
 
   const range = useMemo(() => getPeriodRange(period, anchor), [period, anchor]);
 
@@ -243,6 +281,15 @@ export default function JardimPage() {
         <div className="mx-auto max-w-3xl">
           <Header eyebrow="JARDIM" title="Meu jardim" />
 
+          {gardenLoading && (
+            <div className="panel p-12 flex flex-col items-center gap-3 text-center">
+              <Leaf size={32} className="text-[var(--text-faint)] animate-pulse" />
+              <p className="text-sm text-[var(--text-muted)]">Carregando seu jardim…</p>
+            </div>
+          )}
+
+          {!gardenLoading && (
+            <>
           {/* Period tabs */}
           <div className="mb-3 flex w-fit items-center gap-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-1">
             {PERIOD_TABS.map((t) => (
@@ -396,6 +443,8 @@ export default function JardimPage() {
               </p>
             </div>
           </motion.section>
+            </>
+          )}
         </div>
       </main>
     </AppShell>

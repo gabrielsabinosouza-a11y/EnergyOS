@@ -1,6 +1,7 @@
 import pool from "../db";
 import type { NewLeagueTier, LeagueGroup, LeagueGroupMember, CohortMember } from "@/types";
 import { addCoins } from "./settings";
+import { addDaysIso, todayIso, weekStartIso } from "./dates";
 
 // Configuration
 const PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
@@ -68,16 +69,26 @@ function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: strin
 }
 
 function getCurrentWeekDates(): { start: string; end: string } {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMonday);
-  monday.setHours(0, 0, 0, 0);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
+  const start = weekStartIso(todayIso());
+  return { start, end: addDaysIso(start, 6) };
+}
+
+type Queryable = { query: typeof pool.query };
+
+/** Recompute a group's weekly_xp from the XP ledger for that week (São Paulo). */
+async function syncGroupWeeklyXPFromLedger(db: Queryable, groupId: number, weekStart: string): Promise<void> {
+  await db.query(
+    `update league_group_members lgm
+     set weekly_xp = coalesce((
+       select sum(xl.xp_amount)::int
+       from xp_ledger xl
+       where xl.profile_id = lgm.profile_id
+         and xl.created_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+         and xl.created_at < (($2::date + 7))::timestamp at time zone 'America/Sao_Paulo'
+     ), 0)
+     where lgm.league_group_id = $1`,
+    [groupId, weekStart],
+  );
 }
 
 function getNextWeekStart(): string {
@@ -131,6 +142,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
 
     for (const groupRow of oldGroups.rows) {
       const group = mapLeagueGroup(groupRow);
+      await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
       const members = await client.query<LeagueGroupMemberRow>(
         `select * from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at`,
         [group.id]
@@ -308,23 +320,22 @@ export async function getLeagueGroupByTierAndWeek(tier: NewLeagueTier, weekStart
 }
 
 export async function addMemberToGroup(groupId: number, profileId: string): Promise<LeagueGroupMember> {
-  const existing = await pool.query<{ id: string | number }>(
-    `select id from league_group_members where league_group_id = $1 and profile_id = $2`,
+  const existing = await pool.query<LeagueGroupMemberRow>(
+    `select * from league_group_members where league_group_id = $1 and profile_id = $2`,
     [groupId, profileId]
   );
-  
+
   if (existing.rows[0]) {
-    const result = await pool.query<LeagueGroupMemberRow>(
-      `update league_group_members set weekly_xp = 0, rank = null where id = $1 returning *`,
-      [existing.rows[0].id]
-    );
-    return mapLeagueGroupMember({ ...result.rows[0], display_name: undefined, photo_url: undefined, username: undefined });
+    return mapLeagueGroupMember({ ...existing.rows[0], display_name: undefined, photo_url: undefined, username: undefined });
   }
-  
+
+  const weeklyXP = await getUserWeeklyXP(profileId);
   const result = await pool.query<LeagueGroupMemberRow>(
     `insert into league_group_members (league_group_id, profile_id, weekly_xp, rank)
-     values ($1, $2, 0, null) returning *`,
-    [groupId, profileId]
+     values ($1, $2, $3, null)
+     on conflict (league_group_id, profile_id) do update set weekly_xp = greatest(league_group_members.weekly_xp, excluded.weekly_xp)
+     returning *`,
+    [groupId, profileId, weeklyXP]
   );
   return mapLeagueGroupMember({ ...result.rows[0], display_name: undefined, photo_url: undefined, username: undefined });
 }
@@ -384,10 +395,10 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
   const { start, end } = getCurrentWeekDates();
   await initializeLeagueGroups(start);
   
-  const { group, member } = await getOrCreateUserLeagueGroup(profileId);
-  const members = await getLeagueGroupMembers(group.id);
+  const { group } = await getOrCreateUserLeagueGroup(profileId);
+  await syncGroupWeeklyXPFromLedger(pool, group.id, start);
   await calculateGroupRanks(group.id);
-  
+  const members = await getLeagueGroupMembers(group.id);
   const updatedMember = await getLeagueGroupMember(group.id, profileId);
   
   return {
@@ -403,10 +414,14 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
   };
 }
 
-export async function getUserWeeklyXP(profileId: string): Promise<number> {
-  const { start } = getCurrentWeekDates();
+export async function getUserWeeklyXP(profileId: string, weekStart?: string): Promise<number> {
+  const start = weekStart ?? getCurrentWeekDates().start;
   const result = await pool.query<{ total_xp: string }>(
-    `select coalesce(sum(xp_amount), 0)::int as total_xp from xp_ledger where profile_id = $1 and created_at >= $2`,
+    `select coalesce(sum(xp_amount), 0)::int as total_xp
+     from xp_ledger
+     where profile_id = $1
+       and created_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+       and created_at < (($2::date + 7))::timestamp at time zone 'America/Sao_Paulo'`,
     [profileId, start]
   );
   return Number(result.rows[0]?.total_xp ?? 0);
@@ -446,7 +461,11 @@ export async function getLiveCohort(profileId: string): Promise<CohortMember[]> 
 }
 
 export async function addLeagueXP(profileId: string, xp: number): Promise<void> {
-  const { start } = getCurrentWeekDates();
+  if (!Number.isFinite(xp) || xp <= 0) return;
   const { group } = await getOrCreateUserLeagueGroup(profileId);
-  await updateMemberWeeklyXP(group.id, profileId, xp);
+  const weeklyXP = await getUserWeeklyXP(profileId);
+  await pool.query(
+    `update league_group_members set weekly_xp = $1 where league_group_id = $2 and profile_id = $3`,
+    [weeklyXP, group.id, profileId],
+  );
 }

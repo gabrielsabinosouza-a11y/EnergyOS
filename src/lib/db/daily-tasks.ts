@@ -4,6 +4,7 @@ import { parseProfileId, ValidationError } from "./validation";
 import { todayIso } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
+import { creditXP } from "./xp";
 
 import {
   DAILY_TASK_LIMIT,
@@ -204,18 +205,7 @@ export async function toggleDailyTask(
     xpAwarded = DAILY_TASK_XP;
     coinsAwarded = DAILY_TASK_COINS;
 
-    await pool.query(
-      `insert into xp_ledger (profile_id, source, source_id, xp_amount)
-       values ($1, 'daily_task', $2, $3)`,
-      [profileId, taskId, xpAwarded],
-    );
-    await pool.query(
-      `insert into user_xp (profile_id, total_xp, level, updated_at)
-       values ($1, $2, 1, now())
-       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
-      [profileId, xpAwarded],
-    );
-    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xpAwarded, questDate: date });
+    await creditXP(profileId, "daily_task", taskId, xpAwarded, { questDate: date });
     await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1, questDate: date });
     await addCoins(profileId, coinsAwarded);
 

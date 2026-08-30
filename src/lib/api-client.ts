@@ -161,10 +161,15 @@ export const api = {
 
   // Focus
   getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP }>("/api/focus"),
-  startFocus: (targetDurationMinutes: number, taskId?: number) =>
-    request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId }) }),
+  startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string) =>
+    request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType }) }),
   endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false) =>
     request<{ session: FocusSession; xpAwarded: number; questsUpdated: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession }) }),
+
+  // Garden (Meu Jardim)
+  getGarden: () => request<{ entries: import("@/lib/db/focus").GardenEntry[] }>("/api/garden"),
+  importGarden: (entries: import("@/lib/db/focus").ImportGardenEntry[]) =>
+    request<{ imported: number }>("/api/garden", { method: "POST", body: JSON.stringify({ entries }) }),
 
   // Daily Quests
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
@@ -266,15 +271,13 @@ export const api = {
     request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
 
   // Store
-  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[]; equippedEnergyId: string | null }>("/api/store"),
+  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[] }>("/api/store"),
   purchaseDecoration: (decorationId: string) =>
     request<{ balance: number }>("/api/store/decorations", { method: "POST", body: JSON.stringify({ decorationId }) }),
   equipDecoration: (decorationId: string | null) =>
     request<{ ok: true }>("/api/store/decorations", { method: "PATCH", body: JSON.stringify({ decorationId }) }),
   purchaseAura: (auraType: string) =>
     request<{ balance: number }>("/api/store/auras", { method: "POST", body: JSON.stringify({ auraType }) }),
-  equipAura: (auraType: string | null) =>
-    request<{ ok: true }>("/api/store/auras", { method: "PATCH", body: JSON.stringify({ auraType }) }),
   unlockBanner: () =>
     request<{ balance: number }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "unlock" }) }),
   updateBannerImage: (imageUrl: string) =>

@@ -325,7 +325,7 @@ export async function logStreakDay(
 
 const AURA_PRICES: Record<string, number> = {
   flame: 0, water: 0,
-  ice: 500, wind: 500,
+  ice: 500, wind: 500, metal: 500, poison: 500,
   earth: 750, thunder: 750, cosmic: 750,
   light: 1000, shadow: 1000, crystal: 1000, nature: 1000, solar: 1000,
 };
@@ -347,19 +347,6 @@ export async function ensureDefaultAuras(profileId: string): Promise<void> {
     `insert into user_auras (profile_id, aura_type) values ($1, 'flame'), ($1, 'water') on conflict do nothing`,
     [profileId],
   );
-  await pool.query(
-    `update profiles set equipped_energy_id = 'flame' where id = $1 and equipped_energy_id is null`,
-    [profileId],
-  );
-}
-
-export async function getEquippedEnergyId(profileId: string): Promise<string | null> {
-  parseProfileId(profileId);
-  const result = await pool.query<{ equipped_energy_id: string | null }>(
-    `select equipped_energy_id from profiles where id = $1`,
-    [profileId],
-  );
-  return result.rows[0]?.equipped_energy_id ?? null;
 }
 
 export interface StoreState {
@@ -368,7 +355,6 @@ export interface StoreState {
   banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
   shieldCount: number;
   ownedAuras: string[];
-  equippedEnergyId: string | null;
 }
 
 /**
@@ -383,12 +369,11 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
   const [profiles, decs, ownedDecs, coins, auras] = await Promise.all([
     pool.query<{
       equipped_decoration_id: string | null;
-      equipped_energy_id: string | null;
       has_custom_banner: boolean;
       banner_image_url: string | null;
       streak_shield_count: number;
     }>(
-      `select equipped_decoration_id, equipped_energy_id, has_custom_banner, banner_image_url, streak_shield_count
+      `select equipped_decoration_id, has_custom_banner, banner_image_url, streak_shield_count
        from profiles where id = $1`,
       [profileId],
     ),
@@ -439,30 +424,7 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     },
     shieldCount: Number(profile?.streak_shield_count ?? 0),
     ownedAuras: auras.rows.map((row) => row.aura_type),
-    equippedEnergyId: profile?.equipped_energy_id ?? null,
   };
-}
-
-export async function equipAura(
-  profileId: string,
-  auraType: string | null,
-): Promise<void> {
-  parseProfileId(profileId);
-  if (auraType) {
-    if (!AURA_TYPES.includes(auraType)) {
-      throw new NotFoundError("Energia não encontrada.");
-    }
-    const owned = await pool.query(
-      `select 1 from user_auras where profile_id = $1 and aura_type = $2`,
-      [profileId, auraType],
-    );
-    if (!owned.rows[0]) throw new ForbiddenError("Você não possui esta energia.");
-  }
-  const result = await pool.query(
-    `update profiles set equipped_energy_id = $2 where id = $1`,
-    [profileId, auraType],
-  );
-  if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Perfil não encontrado.");
 }
 
 export async function purchaseAura(

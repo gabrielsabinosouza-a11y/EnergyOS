@@ -7,7 +7,7 @@ import type { DecorationRarity } from "@/types";
 // Used to resolve an equipped frame id into its asset + rarity for rendering;
 // the persisted value on profiles is the decoration id, not the asset.
 export const FRAME_ASSETS: Record<string, { imageUrl: string; rarity: DecorationRarity }> = {
-  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common" },
+  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common" },
   frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare" },
   frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic" },
   frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary" },

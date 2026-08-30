@@ -313,9 +313,20 @@ export default function FriendProfilePage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="glass-card mb-6 p-6 sm:p-8"
+            className={`glass-card relative mb-6 ${profile.hasCustomBanner && profile.bannerImageUrl ? "overflow-hidden" : ""}`}
           >
-            <div className="flex items-center gap-5 mb-6">
+            {profile.hasCustomBanner && profile.bannerImageUrl && (
+              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={profile.bannerImageUrl}
+                  alt={`Banner de ${displayName}`}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
+            <div className={`p-6 sm:p-8 ${profile.hasCustomBanner && profile.bannerImageUrl ? "pt-0" : ""}`}>
+            <div className={`flex items-center gap-5 ${profile.hasCustomBanner && profile.bannerImageUrl ? "-mt-10" : ""} mb-6`}>
               <div className="shrink-0" style={{ boxShadow: avatarGlow, borderRadius: "9999px" }}>
                 <Avatar
                   photoUrl={profile.photoUrl}
@@ -378,6 +389,7 @@ export default function FriendProfilePage() {
                   <span className="font-display text-base">{profile.weeklyFocusMinutes}min</span>
                 </div>
               </motion.div>
+            </div>
             </div>
           </motion.div>
 

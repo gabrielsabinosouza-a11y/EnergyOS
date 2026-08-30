@@ -3,6 +3,7 @@ import type { UserXP } from "@/types";
 import { parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
+import { addLeagueXP } from "./league-new";
 
 interface XPRow {
   profile_id: string;
@@ -28,6 +29,40 @@ export async function getUserXP(profileId: string): Promise<UserXP> {
   return mapXP(result.rows[0]);
 }
 
+/**
+ * Single write path for XP: ledger + lifetime total + weekly league board.
+ * Callers that already wrote the ledger (e.g. inside a transaction) should
+ * only call `addLeagueXP` after commit.
+ */
+export async function creditXP(
+  profileId: string,
+  source: string,
+  sourceId: number | string,
+  xp: number,
+  options?: { recordMission?: boolean; questDate?: string },
+): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isFinite(xp) || xp <= 0) return;
+
+  await pool.query(
+    `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, $2, $3, $4)`,
+    [profileId, source, sourceId, xp],
+  );
+  await pool.query(
+    `insert into user_xp (profile_id, total_xp, level, updated_at)
+     values ($1, $2, 1, now())
+     on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
+    [profileId, xp],
+  );
+  if (options?.recordMission !== false) {
+    await recordMissionProgress(profileId, "XP_EARNED", {
+      incrementBy: xp,
+      questDate: options?.questDate,
+    });
+  }
+  await addLeagueXP(profileId, xp);
+}
+
 /** Acredita XP (leaderboard/level + ledger) e moedas de uma só vez, seguindo o padrão das tarefas diárias. */
 export async function awardXPAndCoins(
   profileId: string,
@@ -40,17 +75,7 @@ export async function awardXPAndCoins(
   if (xp <= 0 && coins <= 0) return;
 
   if (xp > 0) {
-    await pool.query(
-      `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, $2, $3, $4)`,
-      [profileId, source, sourceId, xp],
-    );
-    await pool.query(
-      `insert into user_xp (profile_id, total_xp, level, updated_at)
-       values ($1, $2, 1, now())
-       on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
-      [profileId, xp],
-    );
-    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xp });
+    await creditXP(profileId, source, sourceId, xp);
   }
   if (coins > 0) {
     await addCoins(profileId, coins);
@@ -58,19 +83,7 @@ export async function awardXPAndCoins(
 }
 
 export async function awardTaskXP(profileId: string, taskId: number, xp: number): Promise<void> {
-  parseProfileId(profileId);
-  if (xp <= 0) return;
-  await pool.query(
-    `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, 'task', $2, $3)`,
-    [profileId, taskId, xp],
-  );
-  await pool.query(
-    `insert into user_xp (profile_id, total_xp, level, updated_at)
-     values ($1, $3, 1, now())
-     on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
-    [profileId, xp],
-  );
-  await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: xp });
+  await creditXP(profileId, "task", taskId, xp);
 }
 
 export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Promise<number> {
@@ -82,16 +95,7 @@ export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Pr
   if (existing.rows[0]) return 0;
 
   const xp = 15;
-  await pool.query(
-    `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, 'kanban', $2, $3)`,
-    [profileId, kanbanTaskId, xp],
-  );
-  await pool.query(
-    `insert into user_xp (profile_id, total_xp, level, updated_at)
-     values ($1, $3, 1, now())
-     on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
-    [profileId, xp],
-  );
+  await creditXP(profileId, "kanban", kanbanTaskId, xp);
   return xp;
 }
 
@@ -106,15 +110,6 @@ export async function awardStreakBonus(profileId: string, streakDays: number): P
   if (existing.rows[0]) return 0;
 
   const xp = 10;
-  await pool.query(
-    `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, 'streak_bonus', $2, $3)`,
-    [profileId, streakDays, xp],
-  );
-  await pool.query(
-    `insert into user_xp (profile_id, total_xp, level, updated_at)
-     values ($1, $3, 1, now())
-     on conflict (profile_id) do update set total_xp = user_xp.total_xp + $3, updated_at = now()`,
-    [profileId, xp],
-  );
+  await creditXP(profileId, "streak_bonus", streakDays, xp);
   return xp;
 }

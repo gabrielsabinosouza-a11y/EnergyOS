@@ -106,6 +106,8 @@ export interface PublicProfile {
   longestStreak: number;
   weeklyFocusMinutes: number;
   equippedDecorationId?: string;
+  hasCustomBanner?: boolean;
+  bannerImageUrl?: string;
   achievements: AchievementProgress[];
   featuredAchievements: AchievementProgress[];
   isFriend?: boolean;

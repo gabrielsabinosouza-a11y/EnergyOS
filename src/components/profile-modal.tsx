@@ -30,10 +30,10 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
 
   return (
     <Modal onClose={onClose}>
-      <div className="glass-card w-full max-w-sm overflow-hidden p-6">
+      <div className="glass-card relative w-full max-w-sm overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] transition"
+          className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:text-[var(--text)]"
         >
           <X size={16} />
         </button>
@@ -46,8 +46,19 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
           <p className="py-8 text-center text-sm text-[var(--text-muted)]">Perfil não encontrado.</p>
         ) : (
           <>
+            {profile.hasCustomBanner && profile.bannerImageUrl && (
+              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={profile.bannerImageUrl}
+                  alt={`Banner de ${profile.displayName}`}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
+            <div className={`p-6 ${profile.hasCustomBanner && profile.bannerImageUrl ? "pt-0" : ""}`}>
             {/* Avatar + name */}
-            <div className="flex items-center gap-4 mb-6">
+            <div className={`flex items-center gap-4 ${profile.hasCustomBanner && profile.bannerImageUrl ? "-mt-6" : ""} mb-6`}>
               <Avatar
                 photoUrl={profile.photoUrl}
                 name={profile.displayName}
@@ -118,6 +129,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
               Ver perfil completo
               <span aria-hidden>→</span>
             </Link>
+            </div>
           </>
         )}
       </div>

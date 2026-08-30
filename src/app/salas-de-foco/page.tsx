@@ -30,9 +30,8 @@ import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, resolveEquippedEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
-import { addGardenEntriesForSession } from "@/lib/garden-store";
 
 type PageState = "list" | "create" | "join" | "room";
 
@@ -304,7 +303,7 @@ export default function FocusRoomsPage() {
       .then((data) => {
         const owned = data.ownedAuras?.length ? data.ownedAuras : ["flame", "water"];
         setOwnedAuras(owned);
-        const def = resolveEquippedEnergy(owned, data.equippedEnergyId);
+        const def = resolveDefaultEnergy(owned);
         setSelectedEnergyType((prev) => {
           const next = owned.includes(prev) ? prev : def;
           selectEnergyRef.current = next;
@@ -372,7 +371,7 @@ export default function FocusRoomsPage() {
     // Create my session for XP/quest crediting, driven by the room startedAt
     sessionCreatingRef.current = true;
     let cancelled = false;
-    api.startFocus(currentRoom.durationMinutes)
+    api.startFocus(currentRoom.durationMinutes, undefined, selectEnergyRef.current)
       .then(({ session }) => {
         if (cancelled) return;
         const created = new Date().toISOString();
@@ -423,10 +422,6 @@ export default function FocusRoomsPage() {
       setLastCoins(end.xpAwarded);
 
       if (addGarden) {
-        addGardenEntriesForSession({
-          energyType: (selectEnergyRef.current || "flame") as EnergyType,
-          focusedMinutes: focusedSeconds / 60,
-        });
         setShowCompletion(true);
         // Mark room completed (idempotent — first finisher wins)
         await api.completeFocusRoom(room.id).catch(() => {});
