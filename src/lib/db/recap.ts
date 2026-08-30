@@ -1,0 +1,130 @@
+import pool from "../db";
+import { ENERGYOS_LAUNCH_MONTH } from "@/types";
+import type { MonthlyRecap } from "@/types";
+import { BadRequestError } from "../errors";
+import { parseProfileId } from "./validation";
+
+// ─── Row mapping ─────────────────────────────────────────────────────────────
+
+interface RecapRow {
+  id: number;
+  recap_month: Date | string;
+  total_focus_minutes: number;
+  longest_streak: number;
+  league_tier: string | null;
+  league_promoted: boolean | null;
+  productivity_tag: string | null;
+  generated_at: Date | string;
+}
+
+function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
+  return {
+    id: row.id,
+    profileId,
+    recapMonth: typeof row.recap_month === "string" ? row.recap_month : row.recap_month.toISOString().slice(0, 10),
+    totalFocusMinutes: row.total_focus_minutes,
+    longestStreak: row.longest_streak,
+    leagueTier: row.league_tier ?? undefined,
+    leaguePromoted: row.league_promoted ?? undefined,
+    productivityTag: row.productivity_tag ?? undefined,
+    generatedAt: new Date(row.generated_at).toISOString(),
+  };
+}
+
+// ─── Month helpers ────────────────────────────────────────────────────────────
+
+function resolveMonthStart(monthDate: string): string {
+  if (!/^\d{4}-\d{2}/.test(monthDate)) {
+    throw new BadRequestError("Mês inválido.");
+  }
+  const monthStart = monthDate.slice(0, 7) + "-01";
+  if (monthStart < ENERGYOS_LAUNCH_MONTH) {
+    throw new BadRequestError("O energyOS ainda não existia neste mês.");
+  }
+  return monthStart;
+}
+
+function getMonthEnd(monthStart: string): string {
+  const next = new Date(`${monthStart}T12:00:00Z`);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
+function resolveTag(totalMinutes: number): string {
+  if (totalMinutes > 1000) return "Mestre do Foco";
+  if (totalMinutes > 500) return "Guerreiro da Energia";
+  if (totalMinutes > 200) return "Aprendiz Dedicado";
+  return "Explorador";
+}
+
+// ─── Queries ─────────────────────────────────────────────────────────────────
+
+export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<RecapRow>(
+    `select id, recap_month, total_focus_minutes, longest_streak, league_tier,
+            league_promoted, productivity_tag, generated_at
+     from monthly_recaps
+     where profile_id = $1 and recap_month >= $2::date
+     order by recap_month desc`,
+    [profileId, ENERGYOS_LAUNCH_MONTH],
+  );
+  return result.rows.map((row) => mapRecap(profileId, row));
+}
+
+export async function generateRecap(
+  profileId: string,
+  monthDate: string,
+): Promise<MonthlyRecap> {
+  parseProfileId(profileId);
+  const monthStart = resolveMonthStart(monthDate);
+  const monthEnd = getMonthEnd(monthStart);
+
+  const [focusRow, streakRow, leagueRow] = await Promise.all([
+    pool.query<{ minutes: string | number }>(
+      `select coalesce(sum(duration_minutes), 0) as minutes
+       from focus_sessions
+       where profile_id = $1 and ended_at is not null
+         and started_at >= $2::date and started_at < $3::date`,
+      [profileId, monthStart, monthEnd],
+    ),
+    pool.query<{ max_streak: string | number }>(
+      `select coalesce(max(streak_value_at_use), 0) as max_streak
+       from streak_shield_usage
+       where profile_id = $1
+         and used_on_date >= $2::date and used_on_date < $3::date`,
+      [profileId, monthStart, monthEnd],
+    ),
+    pool.query<{ tier: string | null; result: string | null }>(
+      `select le.tier, ls.last_week_result as result
+       from league_entries le
+       left join league_standings ls on ls.profile_id = le.profile_id
+       where le.profile_id = $1
+         and le.week_start >= $2::date and le.week_start < $3::date
+       order by le.xp desc limit 1`,
+      [profileId, monthStart, monthEnd],
+    ),
+  ]);
+
+  const totalMinutes = Number(focusRow.rows[0]?.minutes ?? 0);
+  const longestStreak = Number(streakRow.rows[0]?.max_streak ?? 0);
+  const tier = leagueRow.rows[0]?.tier ?? undefined;
+  const promoted = leagueRow.rows[0]?.result === "promoted";
+
+  const result = await pool.query<RecapRow>(
+    `insert into monthly_recaps
+       (profile_id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (profile_id, recap_month) do update set
+       total_focus_minutes = excluded.total_focus_minutes,
+       longest_streak = excluded.longest_streak,
+       league_tier = excluded.league_tier,
+       league_promoted = excluded.league_promoted,
+       productivity_tag = excluded.productivity_tag,
+       generated_at = now()
+     returning id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, generated_at`,
+    [profileId, monthStart, totalMinutes, longestStreak, tier ?? null, promoted, resolveTag(totalMinutes)],
+  );
+
+  return mapRecap(profileId, result.rows[0]);
+}

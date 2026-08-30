@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { X, Timer } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,6 +9,7 @@ import { api } from "@/lib/api-client";
 import type { PublicProfile } from "@/types";
 import { Modal } from "@/components/modal";
 import { Avatar } from "@/components/avatar";
+import { ProfileBanner } from "@/components/profile-banner";
 import { AchievementBadge } from "@/lib/achievement-ui";
 
 interface ProfileModalProps {
@@ -18,6 +20,20 @@ interface ProfileModalProps {
 export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const reduced = useReducedMotion();
+
+  const containerV: Variants = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.07, delayChildren: 0.06 } },
+  };
+  const bannerV: Variants = {
+    hidden: { opacity: 0, scale: reduced ? 1 : 1.04 },
+    show: { opacity: 1, scale: 1, transition: { duration: 0.4, ease: "easeOut" } },
+  };
+  const fadeUp: Variants = {
+    hidden: { opacity: 0, y: reduced ? 0 : 10 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
+  };
 
   useEffect(() => {
     let active = true;
@@ -28,12 +44,18 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
     return () => { active = false; };
   }, [profileId]);
 
+  const hasBanner = profile?.hasCustomBanner === true;
+
   return (
     <Modal onClose={onClose}>
       <div className="glass-card relative w-full max-w-sm overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:text-[var(--text)]"
+          className={`absolute right-3 top-3 z-10 rounded-lg p-1.5 transition ${
+            hasBanner
+              ? "bg-black/30 text-white backdrop-blur-sm hover:bg-black/50 hover:text-white"
+              : "text-[var(--text-muted)] hover:text-[var(--text)]"
+          }`}
         >
           <X size={16} />
         </button>
@@ -45,92 +67,97 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
         ) : !profile ? (
           <p className="py-8 text-center text-sm text-[var(--text-muted)]">Perfil não encontrado.</p>
         ) : (
-          <>
-            {profile.hasCustomBanner && profile.bannerImageUrl && (
-              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={profile.bannerImageUrl}
+          <motion.div initial="hidden" animate="show" variants={containerV}>
+            {hasBanner && (
+              <motion.div variants={bannerV} className="relative z-0">
+                <ProfileBanner
+                  imageUrl={profile.bannerImageUrl}
                   alt={`Banner de ${profile.displayName}`}
-                  className="h-full w-full object-cover"
                 />
-              </div>
+              </motion.div>
             )}
-            <div className={`p-6 ${profile.hasCustomBanner && profile.bannerImageUrl ? "pt-0" : ""}`}>
-            {/* Avatar + name */}
-            <div className={`flex items-center gap-4 ${profile.hasCustomBanner && profile.bannerImageUrl ? "-mt-6" : ""} mb-6`}>
-              <Avatar
-                photoUrl={profile.photoUrl}
-                name={profile.displayName}
-                size={56}
-                equippedDecorationId={profile.equippedDecorationId}
-              />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
-                  {profile.role === "admin" && (
-                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
-                      Admin
-                    </span>
+            <div className={`relative z-[1] p-6 ${hasBanner ? "pt-0" : ""}`}>
+              {/* Avatar + name */}
+              <motion.div
+                variants={fadeUp}
+                className={`flex items-center gap-4 ${hasBanner ? "-mt-6" : ""} mb-6`}
+              >
+                <div className="shrink-0 rounded-full bg-[var(--bg-primary)] p-[3px] shadow-lg ring-1 ring-[var(--border-subtle)]">
+                  <Avatar
+                    photoUrl={profile.photoUrl}
+                    name={profile.displayName}
+                    size={56}
+                    equippedDecorationId={profile.equippedDecorationId}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
+                    {profile.role === "admin" && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                  {profile.username && (
+                    <p className="text-xs text-[var(--text-faint)]">@{profile.username}</p>
                   )}
                 </div>
-                {profile.username && (
-                  <p className="text-xs text-[var(--text-faint)]">@{profile.username}</p>
-                )}
-              </div>
-            </div>
+              </motion.div>
 
-            {/* Stats row */}
-            <div className="grid grid-cols-3 gap-2 mb-6">
-              <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
-                <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
-                  <span className="font-mono font-bold text-sm">{profile.currentStreak}</span>
+              {/* Stats row */}
+              <motion.div variants={fadeUp} className="grid grid-cols-3 gap-2 mb-6">
+                <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
+                    <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
+                    <span className="font-mono font-bold text-sm">{profile.currentStreak}</span>
+                  </div>
+                  <p className="text-[9px] text-[var(--text-faint)] mt-0.5">streak</p>
                 </div>
-                <p className="text-[9px] text-[var(--text-faint)] mt-0.5">streak</p>
-              </div>
-              <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
-                <div className="flex items-center justify-center gap-1 text-[var(--accent)]">
-                  <Timer size={13} />
-                  <span className="font-mono font-bold text-sm">{profile.weeklyFocusMinutes}</span>
+                <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-[var(--accent)]">
+                    <Timer size={13} />
+                    <span className="font-mono font-bold text-sm">{profile.weeklyFocusMinutes}</span>
+                  </div>
+                  <p className="text-[9px] text-[var(--text-faint)] mt-0.5">min/sem</p>
                 </div>
-                <p className="text-[9px] text-[var(--text-faint)] mt-0.5">min/sem</p>
-              </div>
-              <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
-                <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
-                  <span className="font-mono font-bold text-sm">{profile.longestStreak}</span>
+                <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
+                    <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
+                    <span className="font-mono font-bold text-sm">{profile.longestStreak}</span>
+                  </div>
+                  <p className="text-[9px] text-[var(--text-faint)] mt-0.5">recorde</p>
                 </div>
-                <p className="text-[9px] text-[var(--text-faint)] mt-0.5">recorde</p>
-              </div>
-            </div>
+              </motion.div>
 
-            {/* Featured achievements */}
-            {profile.featuredAchievements.length > 0 && (
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-[var(--text-faint)] mb-3">Conquistas em destaque</p>
-                <div className="flex gap-3 flex-wrap">
-                  {profile.featuredAchievements.map((ach) => (
-                    <div key={ach.id} className="flex flex-col items-center gap-1">
-                      <AchievementBadge achievement={ach} size={40} iconSize={18} />
-                      <span className="text-[9px] text-[var(--text-faint)] max-w-[48px] text-center leading-tight">{ach.title}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              {/* Featured achievements */}
+              {profile.featuredAchievements.length > 0 && (
+                <motion.div variants={fadeUp}>
+                  <p className="text-[10px] uppercase tracking-widest text-[var(--text-faint)] mb-3">Conquistas em destaque</p>
+                  <div className="flex gap-3 flex-wrap">
+                    {profile.featuredAchievements.map((ach) => (
+                      <div key={ach.id} className="flex flex-col items-center gap-1">
+                        <AchievementBadge achievement={ach} size={40} iconSize={18} />
+                        <span className="text-[9px] text-[var(--text-faint)] max-w-[48px] text-center leading-tight">{ach.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
 
-            {/* View full profile */}
-            <Link
-              href={`/perfil/${profile.id}`}
-              onClick={onClose}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-bg)] px-4 py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-bg)]/70"
-            >
-              Ver perfil completo
-              <span aria-hidden>→</span>
-            </Link>
+              {/* View full profile */}
+              <motion.div variants={fadeUp}>
+                <Link
+                  href={`/perfil/${profile.id}`}
+                  onClick={onClose}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-bg)] px-4 py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-bg)]/70"
+                >
+                  Ver perfil completo
+                  <span aria-hidden>→</span>
+                </Link>
+              </motion.div>
             </div>
-          </>
+          </motion.div>
         )}
       </div>
     </Modal>

@@ -473,6 +473,9 @@ export interface StreakDayLog {
   status: StreakDayStatus;
 }
 
+// First month the platform existed (recaps for earlier months are invalid).
+export const ENERGYOS_LAUNCH_MONTH = "2026-08-01";
+
 export interface MonthlyRecap {
   id: number;
   profileId: string;

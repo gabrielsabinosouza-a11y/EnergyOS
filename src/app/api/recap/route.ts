@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
-import { getRecaps, generateRecap } from "@/lib/db/store";
+import { getRecaps, generateRecap } from "@/lib/db/recap";
 
 export async function GET(request: NextRequest) {
   try {

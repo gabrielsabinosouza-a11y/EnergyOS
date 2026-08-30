@@ -606,9 +606,12 @@ create table if not exists monthly_recaps (
   unique (profile_id, recap_month)
 );
 
+-- Purge recaps from months before the platform existed
+delete from monthly_recaps where recap_month < '2026-08-01';
+
 -- ── Seed avatar decorations ─────────────────────────────────────────────────
 insert into avatar_decorations (id, name, description, image_url, price, rarity, sort_order) values
-  ('frame_fire',     'Anel de Fogo',     'Um anel flamejante que envolve seu avatar',      '/decorations/frame_fire.svg',     500,  'common',    1),
+  ('frame_fire',     'Anel de Fogo',     'Um anel flamejante que envolve seu avatar',      '/avatar_frame/flame_avatar.png',  500,  'common',    1),
   ('frame_crystal',  'Cristal Brilhante', 'Fragmentos de cristal com brilho etéreo',       '/decorations/frame_crystal.svg',  800,  'rare',      2),
   ('frame_aura',     'Aura Dourada',      'Uma aura dourada que pulsa com energia',        '/decorations/frame_aura.svg',     1200, 'epic',      3),
   ('frame_nucleo',   'Núcleo Cósmico',    'Um portal cósmico de poder absoluto',           '/decorations/frame_nucleo.svg',   2000, 'legendary', 4),

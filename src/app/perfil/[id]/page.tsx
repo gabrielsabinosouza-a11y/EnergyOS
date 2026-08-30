@@ -8,6 +8,7 @@ import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
 import { Avatar } from "@/components/avatar";
+import { ProfileBanner } from "@/components/profile-banner";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { PublicProfile, AchievementProgress } from "@/types";
@@ -313,21 +314,17 @@ export default function FriendProfilePage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className={`glass-card relative mb-6 ${profile.hasCustomBanner && profile.bannerImageUrl ? "overflow-hidden" : ""}`}
+            className={`glass-card relative mb-6 ${profile.hasCustomBanner ? "overflow-hidden" : ""}`}
           >
-            {profile.hasCustomBanner && profile.bannerImageUrl && (
-              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={profile.bannerImageUrl}
-                  alt={`Banner de ${displayName}`}
-                  className="h-full w-full object-cover"
-                />
-              </div>
+            {profile.hasCustomBanner && (
+              <ProfileBanner
+                imageUrl={profile.bannerImageUrl}
+                alt={`Banner de ${displayName}`}
+              />
             )}
-            <div className={`p-6 sm:p-8 ${profile.hasCustomBanner && profile.bannerImageUrl ? "pt-0" : ""}`}>
-            <div className={`flex items-center gap-5 ${profile.hasCustomBanner && profile.bannerImageUrl ? "-mt-10" : ""} mb-6`}>
-              <div className="shrink-0" style={{ boxShadow: avatarGlow, borderRadius: "9999px" }}>
+            <div className={`relative z-[1] p-6 sm:p-8 ${profile.hasCustomBanner ? "pt-0" : ""}`}>
+            <div className={`flex items-center gap-5 ${profile.hasCustomBanner ? "-mt-10" : ""} mb-6`}>
+              <div className="relative z-10 shrink-0 rounded-full bg-[var(--bg-primary)] p-1.5" style={{ boxShadow: avatarGlow }}>
                 <Avatar
                   photoUrl={profile.photoUrl}
                   name={displayName}
