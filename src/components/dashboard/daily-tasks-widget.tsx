@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, ListTodo, Zap, Plus, Trash2, Coins } from "lucide-react";
+import { Check, Loader2, ListTodo, Zap, Plus, Trash2 } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
+import { CoinIcon } from "@/components/coin-icon";
+import { RewardToast } from "@/components/reward-toast";
 import {
   DAILY_TASK_LIMIT,
   DAILY_TASK_XP,
@@ -21,6 +23,7 @@ export function DailyTasksWidget() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [rewardFlash, setRewardFlash] = useState<{ id: number; xp: number; coins: number } | null>(null);
+  const [rewardToast, setRewardToast] = useState<{ amount: number } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -65,6 +68,9 @@ export function DailyTasksWidget() {
         setRewardFlash({ id: task.id, xp: result.xpAwarded, coins: result.coinsAwarded });
         setTimeout(() => setRewardFlash(null), 1800);
       }
+      if (result.coinsAwarded > 0) {
+        setRewardToast({ amount: result.coinsAwarded });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível atualizar a tarefa.");
     } finally {
@@ -92,6 +98,7 @@ export function DailyTasksWidget() {
   const canAddMore = tasks.length < DAILY_TASK_LIMIT;
 
   return (
+    <>
     <div className="panel p-6">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -102,7 +109,7 @@ export function DailyTasksWidget() {
       </div>
 
       <p className="mb-4 text-[11px] text-[var(--text-muted)]">
-        Escreva até {DAILY_TASK_LIMIT} tarefas para hoje · +{DAILY_TASK_XP} XP e +{DAILY_TASK_COINS} moedas cada · bônus +{DAILY_TASK_ALL_BONUS_COINS} ao completar todas
+        Escreva até {DAILY_TASK_LIMIT} tarefas para hoje · +{DAILY_TASK_XP} XP e <span className="inline-flex items-baseline gap-0.5 align-baseline"><CoinIcon size={10} />+{DAILY_TASK_COINS} moedas</span> cada · bônus +{DAILY_TASK_ALL_BONUS_COINS} ao completar todas
       </p>
 
       {total > 0 && (
@@ -188,9 +195,9 @@ export function DailyTasksWidget() {
                         <Zap size={10} fill="currentColor" />+{rewardFlash.xp}
                       </span>
                     )}
-                    {rewardFlash.coins > 0 && (
+{rewardFlash.coins > 0 && (
                       <span className="flex items-center gap-0.5 text-amber-400">
-                        <Coins size={10} />+{rewardFlash.coins}
+                        <CoinIcon size={11} />+{rewardFlash.coins}
                       </span>
                     )}
                   </motion.span>
@@ -211,5 +218,8 @@ export function DailyTasksWidget() {
         </AnimatePresence>
       )}
     </div>
+
+    <RewardToast toast={rewardToast} onDone={() => setRewardToast(null)} />
+    </>
   );
 }

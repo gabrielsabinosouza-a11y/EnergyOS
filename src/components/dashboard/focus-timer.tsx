@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Square, Timer, Zap, Bell } from "lucide-react";
+import { Play, Pause, Square, Timer, Bell } from "lucide-react";
+import { CoinIcon } from "@/components/coin-icon";
 import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
@@ -160,7 +161,7 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, onClai
     >
       <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Sessão concluída!</span>
       <div className="flex items-center gap-2">
-        <Zap size={16} className="text-[#ffb86b]" />
+        <CoinIcon size={18} />
         <span className="font-mono font-bold text-[#ffb86b] text-lg">+{coins} moedas</span>
         {rewardCount > 1 && (
           <span className="text-xs text-[var(--text-muted)]">· {rewardCount}× {energyLabel}</span>
@@ -641,7 +642,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
         {/* Coins preview */}
         {!isActive && !showComplete && (
           <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
-            <Zap size={11} className="text-[#ffb86b]" />
+            <CoinIcon size={12} />
             <span>{calculateCoins(duration)} moedas se completar</span>
           </div>
         )}
@@ -708,7 +709,10 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           <div className="text-[10px] text-[var(--text-faint)]">foco hoje</div>
         </div>
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
-          <div className="text-lg font-mono font-bold text-[#ffb86b]">{todayStats.coinsEarned}</div>
+          <div className="flex items-center justify-center gap-1.5 text-lg font-mono font-bold text-[#ffb86b]">
+            <CoinIcon size={15} />
+            {todayStats.coinsEarned}
+          </div>
           <div className="text-[10px] text-[var(--text-faint)]">moedas hoje</div>
         </div>
       </div>

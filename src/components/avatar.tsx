@@ -6,8 +6,17 @@ import type { DecorationRarity } from "@/types";
 // Known frame decorations (mirrors avatar_decorations seed in db-schema.sql).
 // Used to resolve an equipped frame id into its asset + rarity for rendering;
 // the persisted value on profiles is the decoration id, not the asset.
-export const FRAME_ASSETS: Record<string, { imageUrl: string; rarity: DecorationRarity }> = {
-  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common" },
+export interface FrameAsset {
+  imageUrl: string;
+  rarity: DecorationRarity;
+  /** Fraction (0-1) of the avatar container the profile photo should fill.
+   *  Frames with a large transparent center (like the flame PNG) need a small
+   *  photo so it sits inside the ring; thin ring frames fill most of it. */
+  photoScale?: number;
+}
+
+export const FRAME_ASSETS: Record<string, FrameAsset> = {
+  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common", photoScale: 0.4 },
   frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare" },
   frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic" },
   frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary" },
@@ -66,6 +75,10 @@ export function Avatar({
   const frame = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
   const [frameErrored, setFrameErrored] = useState(false);
 
+  // Photo inset: frames with a large transparent center (e.g. flame PNG) size
+  // the photo down so it fits inside the ring; thin ring frames use 4px inset.
+  const photoInset = frame?.photoScale ? (1 - frame.photoScale) * size * 0.5 : frame ? 4 : 0;
+
   return (
     <div
       className={`relative shrink-0 ${className}`}
@@ -75,8 +88,8 @@ export function Avatar({
       <div
         className="absolute rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-bg)] font-bold text-[var(--accent)]"
         style={{
-          inset: frame ? 4 : 0,
-          fontSize: (frame ? size - 8 : size) * 0.38,
+          inset: photoInset,
+          fontSize: (frame ? size - photoInset * 2 : size) * 0.38,
         }}
       >
         {photoUrl ? (

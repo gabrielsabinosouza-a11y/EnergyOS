@@ -10,9 +10,9 @@ import {
   X,
   Loader2,
   Upload,
-  Coins,
   Check,
 } from "lucide-react";
+import { CoinIcon } from "@/components/coin-icon";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
@@ -29,6 +29,7 @@ import {
   type EnergyType,
 } from "@/lib/energy-assets";
 import type { StoreItem, DecorationRarity } from "@/types";
+import { FRAME_ASSETS } from "@/components/avatar";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -284,7 +285,7 @@ function StoreItemCard({
         </span>
       ) : (
         <span className="mt-1 flex items-center gap-1 text-[10px] text-yellow-400">
-          <Coins size={10} />
+          <CoinIcon size={11} />
           {item.price}
         </span>
       )}
@@ -362,6 +363,10 @@ function DecorationModal({
   const isProcessing = processing === item.id;
   const avatarSize = 96;
   const ringSize = 120;
+  // Frames with a large transparent center (flame PNG) need the photo to fit
+  // inside the ring, so size it down to a fraction of the frame.
+  const frameAsset = FRAME_ASSETS[item.id];
+  const fittedPhotoSize = frameAsset?.photoScale ? ringSize * frameAsset.photoScale : avatarSize;
 
   return (
     <Modal onClose={onClose}>
@@ -391,12 +396,12 @@ function DecorationModal({
                   src={user.photoURL}
                   alt="Avatar"
                   className="rounded-full object-cover"
-                  style={{ width: avatarSize, height: avatarSize }}
+                  style={{ width: fittedPhotoSize, height: fittedPhotoSize }}
                 />
               ) : (
                 <div
                   className="flex items-center justify-center rounded-full bg-white/10 font-display text-2xl text-white/60"
-                  style={{ width: avatarSize, height: avatarSize }}
+                  style={{ width: fittedPhotoSize, height: fittedPhotoSize }}
                 >
                   {(user.displayName ?? "U")
                     .split(" ")
@@ -424,7 +429,7 @@ function DecorationModal({
             </span>
             {!item.owned && (
               <span className="flex items-center gap-1 text-[11px] text-yellow-400">
-                <Coins size={10} />
+                <CoinIcon size={11} />
                 {item.price}
               </span>
             )}
@@ -467,7 +472,7 @@ function DecorationModal({
                 <Loader2 size={13} className="animate-spin" />
               ) : (
                 <>
-                  <Coins size={12} />
+                  <CoinIcon size={13} />
                   Comprar por {item.price}
                 </>
               )}
@@ -716,7 +721,7 @@ export default function LojaPage() {
           {/* ─── Coin Balance ────────────────────────────────── */}
           <div className="mb-8 flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-500/20">
-              <span className="text-sm font-bold text-yellow-400">$</span>
+              <CoinIcon size={20} />
             </div>
             <span className="font-display text-2xl text-yellow-400">
               {store.balance.toLocaleString("pt-BR")}
@@ -800,7 +805,7 @@ export default function LojaPage() {
                     <Loader2 size={13} className="animate-spin" />
                   ) : (
                     <>
-                      <Coins size={13} />
+                      <CoinIcon size={14} />
                       Desbloquear por 1500 moedas
                     </>
                   )}
@@ -963,7 +968,8 @@ export default function LojaPage() {
               </span>
             </div>
 
-            <p className="mb-4 text-xs text-[var(--text-faint)]">
+            <p className="mb-4 flex items-center gap-1.5 text-xs text-[var(--text-faint)]">
+              <CoinIcon size={11} />
               200 moedas cada
             </p>
 
@@ -980,7 +986,7 @@ export default function LojaPage() {
                 <Loader2 size={13} className="animate-spin" />
               ) : (
                 <>
-                  <Coins size={13} />
+                  <CoinIcon size={14} />
                   Comprar escudo
                 </>
               )}
@@ -1061,7 +1067,7 @@ export default function LojaPage() {
                           <Loader2 size={11} className="animate-spin" />
                         ) : (
                           <>
-                            <Coins size={11} />
+                            <CoinIcon size={11} />
                             {info.price}
                           </>
                         )}

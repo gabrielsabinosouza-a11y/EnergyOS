@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { CoinIcon } from "@/components/coin-icon";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
@@ -427,19 +428,19 @@ export default function LigaPage() {
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/first_place.png" alt="1º" width={16} height={16} unoptimized draggable={false} /> 1º lugar
                 </span>
-                <span className="font-mono font-bold text-[var(--accent)]">150 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />150 moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/second_place.png" alt="2º" width={16} height={16} unoptimized draggable={false} /> 2º lugar
                 </span>
-                <span className="font-mono font-bold text-[var(--accent)]">100 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />100 moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/third_place.png" alt="3º" width={16} height={16} unoptimized draggable={false} /> 3º lugar
                 </span>
-                <span className="font-mono font-bold text-[var(--accent)]">75 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />75 moedas</span>
               </div>
             </div>
             {nextTier && (() => {

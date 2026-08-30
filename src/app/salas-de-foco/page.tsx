@@ -17,13 +17,13 @@ import {
   Loader2,
   ChevronLeft,
   Sparkles,
-  Zap,
   Trash2,
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
+import { CoinIcon } from "@/components/coin-icon";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { Modal } from "@/components/modal";
@@ -1025,7 +1025,7 @@ export default function FocusRoomsPage() {
               >
                 <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Sessão concluída!</span>
                 <div className="flex items-center gap-2">
-                  <Zap size={16} className="text-[#ffb86b]" />
+                  <CoinIcon size={18} />
                   <span className="font-mono font-bold text-[#ffb86b] text-lg">+{lastCoins} moedas</span>
                 </div>
                 <p className="text-[10px] text-[var(--text-muted)]">Sua energia foi plantada no seu Meu Jardim e conta para seus objetivos e quests diárias.</p>

@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Sparkles, CircleDollarSign, Package, Loader2, AlertTriangle } from "lucide-react";
+import { Check, Sparkles, Loader2, AlertTriangle } from "lucide-react";
 import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
 import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
+import { RewardToast } from "@/components/reward-toast";
+import { CoinIcon } from "@/components/coin-icon";
 
 const QUEST_TITLES: Record<string, string> = {
   SESSIONS_COUNT: "Complete 2 sessões hoje",
@@ -31,7 +33,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   // updates this widget instantly — no refetch needed.
   const { quests, ready, markClaimed, refresh } = useDailyQuests();
   const [claimingId, setClaimingId] = useState<number | null>(null);
-  const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; x: number; y: number } | null>(null);
+  const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; balance: number } | null>(null);
   const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
 
   useEffect(() => {
@@ -58,8 +60,8 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
         onCoinsChange(newCoins);
       }
 
-      // Trigger claim animation
-      setShowClaimAnimation({ coins: result.coinsAwarded, x: 100, y: 50 });
+      // Trigger premium reward animation
+      setShowClaimAnimation({ coins: result.coinsAwarded, balance: newCoins });
 
       // Reconcile with server truth
       void refresh();
@@ -196,12 +198,12 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
                           animate={{ scale: [1, 1.05, 1] }}
                           transition={{ duration: 1.5, repeat: Infinity }}
                         >
-                          <Package size={20} className="text-amber-400" />
+                          <CoinIcon size={20} />
                           <span className="text-[10px] font-bold text-amber-400">+{quest.quest.coinReward}</span>
                         </motion.div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[var(--text-faint)]">
-                          <Package size={20} />
+                          <CoinIcon size={20} />
                           <span className="text-[10px]">+{quest.quest.coinReward}</span>
                         </div>
                       )}
@@ -232,32 +234,10 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
         )}
       </div>
 
-      <AnimatePresence>
-        {showClaimAnimation && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.5, y: -20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.5, y: -20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50"
-          >
-            <div className="flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-[var(--bg-surface)] px-6 py-4 shadow-2xl">
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 0.3, repeat: 2 }}
-              >
-                <CircleDollarSign size={24} className="text-amber-400" />
-              </motion.div>
-              <motion.span
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="font-display text-xl text-amber-400"
-              >
-                +{showClaimAnimation.coins} moedas
-              </motion.span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <RewardToast
+        toast={showClaimAnimation ? { amount: showClaimAnimation.coins, balance: showClaimAnimation.balance } : null}
+        onDone={() => setShowClaimAnimation(null)}
+      />
 
       <AnimatePresence>
         {claimError && (

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, X, Loader2, Trash2, Zap, Repeat, Coins } from "lucide-react";
+import { Check, Plus, X, Loader2, Trash2, Zap, Repeat } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
+import { RewardToast } from "@/components/reward-toast";
 import {
   DAILY_TASK_LIMIT,
   DAILY_TASK_XP,
@@ -27,6 +28,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const [newTitle, setNewTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ id: number; xp: number; coins: number } | null>(null);
+  const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
 
   const completed = tasks.filter((t) => t.isCompleted).length;
   const total = tasks.length;
@@ -81,7 +83,11 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     try {
       const data = await api.toggleDailyTask(task.id, completing);
       setTasks((ts) => ts.map((t) => (t.id === task.id ? data.task : t)));
-      if (data.coinsAwarded > 0) onCoinsChange(coins + data.coinsAwarded);
+      if (data.coinsAwarded > 0) {
+        const newCoins = coins + data.coinsAwarded;
+        onCoinsChange(newCoins);
+        setRewardToast({ amount: data.coinsAwarded, balance: newCoins });
+      }
       if (data.xpAwarded > 0) onXpGain?.(data.xpAwarded);
       if (data.xpAwarded > 0 || data.coinsAwarded > 0) {
         setFeedback({ id: task.id, xp: data.xpAwarded, coins: data.coinsAwarded });
@@ -121,8 +127,8 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
       <p className="mb-4 text-xs leading-relaxed text-[var(--text-muted)]">
         Cada tarefa criada aqui é sua todo dia, resetando ao amanhecer.
         Complete cada uma para ganhar <b className="text-[var(--green)] font-mono">+{DAILY_TASK_XP} XP</b> e{" "}
-        <b className="text-[var(--green)] font-mono">+{DAILY_TASK_COINS} moedas</b>
-        {DAILY_TASK_ALL_BONUS_COINS > 0 && <> — e{" "}<b className="text-[var(--green)] font-mono">+{DAILY_TASK_ALL_BONUS_COINS} moedas</b> de bônus ao completar todas</>}.
+        <span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{DAILY_TASK_COINS} moedas</b></span>
+        {DAILY_TASK_ALL_BONUS_COINS > 0 && <> — e{" "}<span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{DAILY_TASK_ALL_BONUS_COINS} moedas</b></span> de bônus ao completar todas</>}.
       </p>
 
       {/* Progress bar */}
@@ -197,18 +203,17 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
               {task.title}
             </span>
             <AnimatePresence>
-              {feedback?.id === task.id && (
-                <motion.span
-                  key={`fb-${task.id}`}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="flex items-center gap-1 font-mono text-[10px] text-[#ffb86b]"
-                >
-                  <Zap size={10} fill="currentColor" />+{feedback.xp} XP
-                  <span className="flex items-center text-[var(--green)]"><Coins size={10} /> +{feedback.coins}</span>
-                </motion.span>
-              )}
+                {feedback?.id === task.id && (
+                  <motion.span
+                    key={`fb-${task.id}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="flex items-center gap-1 font-mono text-[10px] text-[#ffb86b]"
+                  >
+                    <Zap size={10} fill="currentColor" />+{feedback.xp} XP
+                  </motion.span>
+                )}
             </AnimatePresence>
             <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
               <button
@@ -222,6 +227,11 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
           </motion.div>
         ))}
       </AnimatePresence>
+
+      <RewardToast
+        toast={rewardToast ? { amount: rewardToast.amount, balance: rewardToast.balance } : null}
+        onDone={() => setRewardToast(null)}
+      />
     </div>
   );
 }
