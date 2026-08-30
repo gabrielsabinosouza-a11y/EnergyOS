@@ -7,6 +7,7 @@ import { recordMissionProgress } from "./daily-quests";
 import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
+import { recordGroupContribution } from "./group-leaderboard";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
@@ -242,6 +243,18 @@ export async function endFocusSession(
   if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
     const energyType = session.rows[0].energy_type ?? "flame";
     await plantGardenEntries(profileId, sessionId, energyType, durationMinutes);
+  }
+
+  // Record group focus contributions for leaderboard
+  // Only record contributions for completed sessions that reached target duration
+  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+    const endedAt = updated.rows[0].ended_at;
+    if (endedAt) {
+      const completedAt = typeof endedAt === "string" 
+        ? endedAt 
+        : endedAt.toISOString();
+      await recordGroupContribution(profileId, sessionId, durationMinutes, completedAt);
+    }
   }
 
   const questsUpdated = 1;

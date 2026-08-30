@@ -237,7 +237,8 @@ function FramePreview({
       alt=""
       draggable={false}
       onError={() => setErrored(true)}
-      className={`select-none ${className}`}
+      className={`select-none max-w-none ${className}`}
+      style={{ width: size, height: size }}
     />
   );
 }
@@ -468,10 +469,10 @@ function DecorationModal({
 }) {
   const c = RARITY_COLORS[rarityOf(item.rarity)];
   const isProcessing = processing === item.id;
-  const avatarSize = 96;
-  const ringSize = 120;
+  const avatarSize = 88;
   const frameAsset = FRAME_ASSETS[item.id];
-  const fittedPhotoSize = frameAsset?.photoScale ? ringSize * frameAsset.photoScale : avatarSize;
+  const overscale = frameAsset?.overscale ?? 1.38;
+  const ringSize = Math.round(avatarSize * overscale);
 
   return (
     <Modal onClose={onClose}>
@@ -487,26 +488,26 @@ function DecorationModal({
         </button>
 
         <div className="mb-5 flex flex-col items-center text-center">
-          <div className="relative mb-4 flex items-center justify-center">
+          <div className="relative mb-4 flex items-center justify-center" style={{ width: ringSize, height: ringSize }}>
             <FramePreview
               imageUrl={item.imageUrl}
               rarity={rarityOf(item.rarity)}
               size={ringSize}
-              className="relative"
+              className="pointer-events-none absolute select-none z-0"
             />
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative z-10 flex items-center justify-center">
               {user.photoURL ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={user.photoURL}
                   alt="Avatar"
                   className="rounded-full object-cover"
-                  style={{ width: fittedPhotoSize, height: fittedPhotoSize }}
+                  style={{ width: avatarSize, height: avatarSize }}
                 />
               ) : (
                 <div
                   className="flex items-center justify-center rounded-full bg-white/10 font-display text-2xl text-white/60"
-                  style={{ width: fittedPhotoSize, height: fittedPhotoSize }}
+                  style={{ width: avatarSize, height: avatarSize }}
                 >
                   {(user.displayName ?? "U")
                     .split(" ")

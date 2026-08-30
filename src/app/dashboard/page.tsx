@@ -351,6 +351,19 @@ function DashboardContent() {
     });
   }
 
+  /** Exclusão otimista de meta diretamente pelo card do dashboard. */
+  async function deleteGoal(goalId: number) {
+    const prev = goals;
+    setGoals((gs) => gs.filter((g) => g.id !== goalId));
+    try {
+      await api.deleteGoal(goalId);
+      showSuccess("Meta excluída com sucesso.");
+    } catch (error) {
+      setGoals(prev);
+      showError(error instanceof Error ? error.message : "Não foi possível excluir a meta.");
+    }
+  }
+
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
 
   if (loading || !user) {
@@ -501,7 +514,7 @@ function DashboardContent() {
             onStart={startFocus}
             onEnd={endFocus}
           />
-          <GoalsCard goals={goals} onAdjust={adjustGoalProgress} />
+          <GoalsCard goals={goals} onAdjust={adjustGoalProgress} onDelete={deleteGoal} />
         </section>
       </main>
 

@@ -19,14 +19,14 @@ export interface FrameAsset {
 }
 
 export const FRAME_ASSETS: Record<string, FrameAsset> = {
-  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common" },
-  frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare" },
-  frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic" },
-  frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary" },
-  frame_nature: { imageUrl: "/decorations/frame_nature.svg", rarity: "common" },
-  frame_electric: { imageUrl: "/decorations/frame_electric.svg", rarity: "common" },
-  frame_cosmic: { imageUrl: "/decorations/frame_cosmic.svg", rarity: "epic" },
-  frame_diamond: { imageUrl: "/decorations/frame_diamond.svg", rarity: "legendary" },
+  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common", photoScale: 0.90, overscale: 1.18 },
+  frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare", photoScale: 0.90, overscale: 1.18 },
+  frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic", photoScale: 0.90, overscale: 1.1 },
+  frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.12 },
+  frame_nature: { imageUrl: "/decorations/frame_nature.svg", rarity: "common", photoScale:  0.90, overscale: 1.18 },
+  frame_electric: { imageUrl: "/decorations/frame_electric.svg", rarity: "common", photoScale:  0.90, overscale: 1.18 },
+  frame_cosmic: { imageUrl: "/decorations/frame_cosmic.svg", rarity: "epic", photoScale:  0.90, overscale: 1.1 },
+  frame_diamond: { imageUrl: "/decorations/frame_diamond.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.18 },
 };
 
 const RARITY_BORDER: Record<DecorationRarity, string> = {
@@ -58,20 +58,19 @@ interface AvatarProps {
 
 /**
  * Size/centering for the frame canvas given an avatar box size. The frame is
- * drawn `overscale` (default 1.15x) larger than the avatar box, centered on
- * top, so the ring sits exactly around the profile photo circle and extends
- * slightly past it.
+ * drawn `overscale` (default 1.38x) larger than the avatar box, centered
+ * behind the photo, so the decorative borders extend around the profile photo.
  */
 export function frameOverscan(size: number, frame?: FrameAsset) {
-  const overscale = frame?.overscale ?? 1.15;
+  const overscale = frame?.overscale ?? 1.38;
   const frameSize = Math.round(size * overscale);
   return { size: frameSize, offset: Math.round((frameSize - size) / 2) };
 }
 
 /**
  * Shared avatar: circular photo (or initials) with an optional equipped
- * decoration frame overlaid on top. The frame asset wraps the photo — the
- * photo sits slightly inset and the frame extends a few px past it.
+ * decoration frame positioned behind it. The frame asset wraps the photo — the
+ * photo sits in the center and the frame extends outward around it.
  */
 export function Avatar({
   photoUrl,
@@ -90,15 +89,9 @@ export function Avatar({
   const frame = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
   const [frameErrored, setFrameErrored] = useState(false);
 
-  // Photo inset: the profile photo fills the avatar box (tiny 2% inset) so the
-  // decoration ring — which sits near the frame canvas's outer edge — wraps
-  // tightly around the photo at any avatar size.
-  const photoInset = frame ? Math.max(1, Math.round(size * 0.02)) : 0;
-
-  // The frame canvas is drawn larger than the photo and centered on top, so
-  // the ring wraps exactly around the photo edge and extends slightly past it
-  // — keeping the same relative prominence as the store preview, scaled to
-  // whatever size this avatar instance renders at.
+  // The frame canvas is drawn larger than the photo and centered behind it,
+  // so the decorative borders extend around the photo while the photo
+  // sits centered on top of it.
   const { size: frameSize, offset: frameOffset } = frameOverscan(size, frame);
 
   return (
@@ -106,12 +99,26 @@ export function Avatar({
       className={`relative shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
-      {/* Circular photo/initials, slightly inset so the frame reads around it */}
+      {/* Equipped frame background — sized larger than the photo, centered behind */}
+      {frame && !frameErrored && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={frame.imageUrl}
+          alt=""
+          draggable={false}
+          onError={() => setFrameErrored(true)}
+          className="pointer-events-none absolute select-none z-0 max-w-none"
+          style={{ width: frameSize, height: frameSize, left: -frameOffset, top: -frameOffset }}
+        />
+      )}
+
+      {/* Circular photo/initials, on top of the frame */}
       <div
-        className="absolute rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-bg)] font-bold text-[var(--accent)]"
+        className="relative rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-bg)] font-bold text-[var(--accent)] z-10"
         style={{
-          inset: photoInset,
-          fontSize: (frame ? size - photoInset * 2 : size) * 0.38,
+          width: size,
+          height: size,
+          fontSize: size * 0.38,
         }}
       >
         {photoUrl ? (
@@ -122,18 +129,6 @@ export function Avatar({
         )}
       </div>
 
-      {/* Equipped frame overlay — sized larger than the photo, centered on top */}
-      {frame && !frameErrored && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={frame.imageUrl}
-          alt=""
-          draggable={false}
-          onError={() => setFrameErrored(true)}
-          className="pointer-events-none absolute select-none"
-          style={{ width: frameSize, height: frameSize, left: -frameOffset, top: -frameOffset }}
-        />
-      )}
       {frame && frameErrored && <DecorationRing rarity={frame.rarity} size={size} />}
     </div>
   );

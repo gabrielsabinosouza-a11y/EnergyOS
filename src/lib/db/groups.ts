@@ -6,6 +6,7 @@ import { areFriends } from "./social";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
 import { sundayWeekStartIso, todayIso } from "./dates";
 import { xpFromMinutes } from "./league";
+import { getGroupTotalMinutes, getGroupMemberContributions, getGroupGlobalRank, getPeriodRange, type Period } from "./group-leaderboard";
 
 const GROUP_EMOJIS = new Set(["⚡", "🔥", "✨", "💎", "🌙", "☀️", "🌊", "🌿", "🎯", "💜", "🌀", "⭐", "🚀", "🧠"]);
 
@@ -16,6 +17,8 @@ interface GroupRow {
   avatar_url: string | null;
   created_by: string;
   created_at: Date | string;
+  description: string | null;
+  is_public: boolean;
 }
 
 async function assertMember(groupId: number, profileId: string): Promise<void> {
@@ -82,12 +85,15 @@ export async function listGroups(profileId: string): Promise<GroupSummary[]> {
 
 export async function createGroup(
   profileId: string,
-  input: { name: string; avatarEmoji?: string; inviteIds?: string[] },
+  input: { name: string; avatarEmoji?: string; description?: string; isPublic?: boolean; inviteIds?: string[] },
 ): Promise<GroupDetail> {
   parseProfileId(profileId);
   const name = parseTitle(input.name, "Nome do grupo");
   const emoji = input.avatarEmoji?.trim() || "⚡";
   if (!GROUP_EMOJIS.has(emoji)) throw new ValidationError("Escolha um emoji da lista.");
+  
+  const description = input.description?.trim() || null;
+  const isPublic = input.isPublic ?? false;
 
   const inviteIds = [...new Set((input.inviteIds ?? []).map((id) => parseProfileId(id)))].filter((id) => id !== profileId);
   for (const id of inviteIds) {
@@ -100,10 +106,10 @@ export async function createGroup(
   try {
     await client.query("begin");
     const created = await client.query<GroupRow>(
-      `insert into groups (name, avatar_emoji, created_by)
-       values ($1, $2, $3)
-       returning id, name, avatar_emoji, avatar_url, created_by, created_at`,
-      [name, emoji, profileId],
+      `insert into groups (name, avatar_emoji, description, is_public, created_by)
+       values ($1, $2, $3, $4, $5)
+       returning id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public`,
+      [name, emoji, description, isPublic, profileId],
     );
     const group = created.rows[0];
     await client.query(
@@ -127,13 +133,13 @@ export async function createGroup(
   }
 }
 
-export async function getGroupDetail(profileId: string, groupId: number): Promise<GroupDetail> {
+export async function getGroupDetail(profileId: string, groupId: number, period: Period = "WEEK"): Promise<GroupDetail> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
 
   const group = await pool.query<GroupRow>(
-    `select id, name, avatar_emoji, avatar_url, created_by, created_at from groups where id = $1`,
+    `select id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public from groups where id = $1`,
     [groupId],
   );
   if (!group.rows[0]) throw new NotFoundError("Grupo não encontrado.");
@@ -156,11 +162,8 @@ export async function getGroupDetail(profileId: string, groupId: number): Promis
     [groupId],
   );
 
-  const weekStart = sundayWeekStartIso(todayIso());
-  const minutes = await getWeeklyFocusMinutesForProfiles(
-    members.rows.map((row) => row.id),
-    weekStart,
-  );
+  // Get period-scoped focus minutes using the new leaderboard system
+  const periodMinutes = await getGroupTotalMinutes(groupId, period);
 
   const mapped: GroupMember[] = members.rows.map((row) => ({
     id: row.id,
@@ -180,7 +183,9 @@ export async function getGroupDetail(profileId: string, groupId: number): Promis
     createdBy: row.created_by,
     createdAt: new Date(row.created_at).toISOString(),
     members: mapped,
-    weeklyFocusMinutes: mapped.reduce((sum, member) => sum + (minutes.get(member.id) ?? 0), 0),
+    weeklyFocusMinutes: periodMinutes, // Using period-scoped minutes
+    description: row.description ?? undefined,
+    isPublic: row.is_public,
   };
 }
 
@@ -323,6 +328,100 @@ export async function updateGroupAvatar(profileId: string, groupId: number, avat
   const result = await pool.query(`update groups set avatar_url = $2 where id = $1`, [groupId, avatarUrl]);
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Grupo não encontrado.");
 }
+
+export async function updateGroupDetails(
+  profileId: string,
+  groupId: number,
+  updates: { name?: string; description?: string; isPublic?: boolean }
+): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+  
+  const owner = await pool.query(
+    `select 1 from group_members where group_id = $1 and profile_id = $2 and role = 'owner'`,
+    [groupId, profileId],
+  );
+  if (!owner.rows[0]) throw new ForbiddenError("Só o dono do grupo pode alterar os detalhes.");
+
+  const setClauses: string[] = [];
+  const params: unknown[] = [groupId];
+  let paramIndex = 2;
+
+  if (updates.name !== undefined) {
+    const name = parseTitle(updates.name, "Nome do grupo");
+    setClauses.push(`name = $${paramIndex}`);
+    params.push(name);
+    paramIndex++;
+  }
+
+  if (updates.description !== undefined) {
+    const description = updates.description?.trim() || null;
+    setClauses.push(`description = $${paramIndex}`);
+    params.push(description);
+    paramIndex++;
+  }
+
+  if (updates.isPublic !== undefined) {
+    setClauses.push(`is_public = $${paramIndex}`);
+    params.push(updates.isPublic);
+    paramIndex++;
+  }
+
+  if (setClauses.length === 0) return;
+
+  const query = `update groups set ${setClauses.join(", ")} where id = $1`;
+  const result = await pool.query(query, params);
+  if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Grupo não encontrado.");
+}
+
+export async function inviteToGroup(profileId: string, groupId: number, inviteIds: string[]): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+  
+  const owner = await pool.query(
+    `select 1 from group_members where group_id = $1 and profile_id = $2 and role = 'owner'`,
+    [groupId, profileId],
+  );
+  if (!owner.rows[0]) throw new ForbiddenError("Só o dono do grupo pode convidar membros.");
+
+  const uniqueIds = [...new Set(inviteIds.map((id) => parseProfileId(id)))].filter((id) => id !== profileId);
+  
+  for (const id of uniqueIds) {
+    if (!(await areFriends(profileId, id))) {
+      throw new ForbiddenError("Você só pode convidar amigos para o grupo.");
+    }
+  }
+
+  for (const id of uniqueIds) {
+    await pool.query(
+      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'member')
+       on conflict do nothing`,
+      [groupId, id],
+    );
+  }
+}
+
+export async function leaveGroup(profileId: string, groupId: number): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+  
+  const member = await pool.query<{ role: string }>(
+    `select role from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, profileId],
+  );
+  if (!member.rows[0]) throw new NotFoundError("Você não faz parte deste grupo.");
+  
+  if (member.rows[0].role === 'owner') {
+    throw new ValidationError("O dono do grupo não pode sair. Transfira a propriedade primeiro.");
+  }
+
+  await pool.query(
+    `delete from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, profileId],
+  );
+}
+
+
 
 export function parseGroupId(value: unknown): number {
   return parseNumber(value, "Grupo", { integer: true, min: 1 });

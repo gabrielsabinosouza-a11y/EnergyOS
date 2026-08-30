@@ -326,8 +326,16 @@ create table if not exists groups (
   avatar_emoji text not null default '⚡',
   avatar_url text,
   created_by text not null references profiles(id) on delete cascade,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  description text,
+  is_public boolean not null default false
 );
+
+-- Add missing columns if they don't exist (for existing databases)
+do $$ begin
+  alter table groups add column if not exists description text;
+  alter table groups add column if not exists is_public boolean not null default false;
+exception when duplicate_column then null; end $$;
 
 create table if not exists group_members (
   group_id bigint not null references groups(id) on delete cascade,
@@ -338,6 +346,22 @@ create table if not exists group_members (
 );
 
 create index if not exists group_members_profile_idx on group_members(profile_id);
+
+-- ── Group Focus Contributions ───────────────────────────────────────────────
+-- Tracks focus session contributions to groups for leaderboard calculations
+create table if not exists group_focus_contributions (
+  id bigserial primary key,
+  group_id bigint not null references groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  focus_session_id bigint not null references focus_sessions(id) on delete cascade,
+  minutes integer not null,
+  contributed_at timestamptz not null default now(),
+  unique (group_id, profile_id, focus_session_id)
+);
+
+create index if not exists group_focus_contributions_group_idx on group_focus_contributions(group_id, contributed_at desc);
+create index if not exists group_focus_contributions_profile_idx on group_focus_contributions(profile_id, contributed_at desc);
+create index if not exists group_focus_contributions_session_idx on group_focus_contributions(focus_session_id);
 
 create table if not exists group_messages (
   id bigserial primary key,

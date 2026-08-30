@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
     const group = await createGroup(profileId, {
       name: body.name,
       avatarEmoji: body.avatarEmoji,
+      description: body.description,
+      isPublic: body.isPublic,
       inviteIds: body.inviteIds,
     });
     return NextResponse.json({ group });

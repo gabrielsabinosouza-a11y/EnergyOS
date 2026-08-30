@@ -4,19 +4,12 @@
       <stop offset="0%" stop-color="#db2777"/><stop offset="35%" stop-color="#f472b6"/>
       <stop offset="65%" stop-color="#e879f9"/><stop offset="100%" stop-color="#a78bfa"/>
     </linearGradient>
-    <radialGradient id="nbg" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0.55" stop-color="#e879f9" stop-opacity="0"/>
-      <stop offset="0.8" stop-color="#f472b6" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#db2777" stop-opacity="0"/>
-    </radialGradient>
     <filter id="nblur" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="12"/></filter>
     <filter id="ngl" x="-80%" y="-80%" width="260%" height="260%">
       <feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <path id="sp" d="M 256 -8 L 259 -2 L 265 0 L 259 2 L 256 8 L 253 2 L 247 0 L 253 -2 Z" fill="#ffe4e6"/>
   </defs>
-  <circle cx="256" cy="256" r="232" fill="#000" opacity="0"/>
-  <circle cx="256" cy="256" r="252" fill="url(#nbg)"/>
   <ellipse cx="483" cy="300" rx="70" ry="40" fill="#e879f9" opacity="0.5" filter="url(#nblur)"/>
   <ellipse cx="211" cy="484" rx="80" ry="40" fill="#f472b6" opacity="0.5" filter="url(#nblur)"/>
   <ellipse cx="28" cy="212" rx="70" ry="40" fill="#e879f9" opacity="0.5" filter="url(#nblur)"/>
@@ -48,6 +41,5 @@
   <circle cx="339" cy="50" r="2" fill="#ffe4e6" opacity="0.5"/>
   <circle cx="425" cy="104" r="1.2" fill="#ffe4e6" opacity="0.65"/>
   <circle cx="482" cy="204" r="1.2" fill="#ffe4e6" opacity="0.8"/>
-  <circle cx="256" cy="256" r="216" fill="none" stroke="#fda4af" stroke-width="1.5" opacity="0.5"/>
   <circle cx="256" cy="256" r="248" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="2 8" opacity="0.65"/>
 </svg>

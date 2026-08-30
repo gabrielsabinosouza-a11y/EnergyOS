@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
-import { getGroupDetail } from "@/lib/db/groups";
+import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
 
 type Period = "WEEK" | "MONTH" | "YEAR" | "ALL_TIME";
 
@@ -20,8 +20,8 @@ export async function GET(
       return NextResponse.json({ error: "Período inválido." }, { status: 400 });
     }
 
-    const group = await getGroupDetail(profileId, Number(id), period);
-    return NextResponse.json({ group });
+    const result = await getGroupMemberContributions(profileId, Number(id), period);
+    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

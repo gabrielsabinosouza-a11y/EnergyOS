@@ -1,11 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <radialGradient id="band" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0.55" stop-color="#ffd76b" stop-opacity="0"/>
-      <stop offset="0.74" stop-color="#ffcf5e" stop-opacity="0.55"/>
-      <stop offset="0.86" stop-color="#ffe9b3" stop-opacity="0.5"/>
-      <stop offset="1" stop-color="#ffd76b" stop-opacity="0"/>
-    </radialGradient>
     <linearGradient id="ray" x1="0" y1="1" x2="0" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffd76b" stop-opacity="0.95"/>
       <stop offset="1" stop-color="#ffe9b3" stop-opacity="0.15"/>
@@ -18,8 +12,6 @@
     <path id="rayS" d="M 255 36 L 253 54 L 259 54 L 257 36 Z" fill="url(#ray)" opacity="0.7"/>
     <path id="sp" d="M 256 -8 L 259 -2 L 265 0 L 259 2 L 256 8 L 253 2 L 247 0 L 253 -2 Z" fill="#fff7dd"/>
   </defs>
-  <circle cx="256" cy="256" r="232" fill="#000" opacity="0"/>
-  <circle cx="256" cy="256" r="252" fill="url(#band)"/>
   <use href="#rayL" transform="rotate(0 256 256)"/>
   <use href="#rayL" transform="rotate(30 256 256)"/>
   <use href="#rayL" transform="rotate(60 256 256)"/>
@@ -56,7 +48,5 @@
   <use href="#sp" transform="rotate(252 256 256)"/>
   <use href="#sp" transform="rotate(288 256 256)"/>
   <use href="#sp" transform="rotate(324 256 256)"/>
-  <circle cx="256" cy="256" r="206" fill="none" stroke="#ffe9b3" stroke-width="1.5" opacity="0.7"/>
-  <circle cx="256" cy="256" r="216" fill="none" stroke="#ffd76b" stroke-width="2.5" opacity="0.9"/>
   <circle cx="256" cy="256" r="256" fill="none" stroke="#ffd76b" stroke-width="2" opacity="0.18" filter="url(#asoft)"/>
 </svg>

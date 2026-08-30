@@ -3,11 +3,6 @@
     <linearGradient id="vg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#059669"/><stop offset="55%" stop-color="#10b981"/><stop offset="100%" stop-color="#34d399"/>
     </linearGradient>
-    <radialGradient id="vg2" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0.6" stop-color="#34d399" stop-opacity="0"/>
-      <stop offset="0.84" stop-color="#2dd4bf" stop-opacity="0.4"/>
-      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
-    </radialGradient>
     <filter id="vgl" x="-80%" y="-80%" width="260%" height="260%">
       <feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
@@ -17,8 +12,6 @@
     <circle id="bl" cx="256" cy="-32" r="6" fill="#fb923c"/>
     <circle id="blc" cx="256" cy="-32" r="2.5" fill="#ffedd5"/>
   </defs>
-  <circle cx="256" cy="256" r="232" fill="#000" opacity="0"/>
-  <circle cx="256" cy="256" r="252" fill="url(#vg2)"/>
   <circle cx="256" cy="256" r="238" fill="none" stroke="url(#vg)" stroke-width="14" opacity="0.95"/>
   <circle cx="256" cy="256" r="238" fill="none" stroke="#10b981" stroke-width="7" opacity="0.3" filter="url(#vsoft)"/>
   <use href="#lf" transform="rotate(0 256 256)"/>
@@ -57,6 +50,5 @@
   <use href="#blc" transform="rotate(255 256 256)"/>
   <use href="#bl" transform="rotate(315 256 256)" filter="url(#vgl)"/>
   <use href="#blc" transform="rotate(315 256 256)"/>
-  <circle cx="256" cy="256" r="206" fill="none" stroke="#2dd4bf" stroke-width="1.5" opacity="0.45"/>
   <circle cx="256" cy="256" r="256" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="3 7" opacity="0.55"/>
 </svg>

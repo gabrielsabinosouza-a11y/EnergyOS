@@ -181,6 +181,8 @@ export interface GroupDetail {
   createdAt: string;
   members: GroupMember[];
   weeklyFocusMinutes: number;
+  description?: string;
+  isPublic: boolean;
 }
 
 export interface GroupMessage {

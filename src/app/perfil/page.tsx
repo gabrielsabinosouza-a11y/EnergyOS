@@ -689,11 +689,26 @@ export default function PerfilPage() {
             <div className={`relative z-[1] p-6 sm:p-8 ${hasCustomBanner ? "pt-0" : ""}`}>
             <div className={`flex items-center gap-5 ${hasCustomBanner ? "-mt-10" : ""} mb-6`}>
               <div className="relative z-10 shrink-0">
+                {headerDecoration && headerFrameGeom && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={headerDecoration.imageUrl}
+                    alt=""
+                    draggable={false}
+                    className="pointer-events-none absolute z-0 select-none max-w-none"
+                    style={{
+                      width: headerFrameGeom.size,
+                      height: headerFrameGeom.size,
+                      left: -headerFrameGeom.offset,
+                      top: -headerFrameGeom.offset,
+                    }}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={photoSaving}
-                  className="group avatar relative overflow-hidden rounded-full ring-2 ring-[var(--bg-primary)]"
+                  className="group avatar relative z-10 overflow-hidden rounded-full ring-2 ring-[var(--bg-primary)]"
                   style={{
                     width: 80,
                     height: 80,
@@ -715,22 +730,7 @@ export default function PerfilPage() {
                       : <Camera size={20} className="text-white" />}
                   </span>
                 </button>
-                {headerDecoration && headerFrameGeom && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={headerDecoration.imageUrl}
-                    alt=""
-                    draggable={false}
-                    className="pointer-events-none absolute z-[1] select-none"
-                    style={{
-                      width: headerFrameGeom.size,
-                      height: headerFrameGeom.size,
-                      left: -headerFrameGeom.offset,
-                      top: -headerFrameGeom.offset,
-                    }}
-                  />
-                )}
-                <span className="pointer-events-none absolute -bottom-1 -right-1 z-[2] flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
+                <span className="pointer-events-none absolute -bottom-1 -right-1 z-20 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
                   {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
                 </span>
               </div>
