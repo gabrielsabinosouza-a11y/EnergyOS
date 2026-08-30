@@ -327,7 +327,7 @@ const AURA_PRICES: Record<string, number> = {
   flame: 0, water: 0,
   ice: 500, wind: 500, metal: 500, poison: 500,
   earth: 750, thunder: 750, cosmic: 750,
-  light: 1000, shadow: 1000, crystal: 1000, nature: 1000, solar: 1000,
+  light: 1000, shadow: 1000, crystal: 1000,
 };
 
 const AURA_TYPES = Object.keys(AURA_PRICES);

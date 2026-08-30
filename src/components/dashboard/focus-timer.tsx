@@ -7,7 +7,7 @@ import Image from "next/image";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
-import { ENERGY_CONFIGS, ENERGY_TYPES, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 
 // ─── Session Persistence Types ───────────────────────────────────────────────
@@ -700,35 +700,6 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           )}
         </div>
       </div>
-
-      {/* Owned aura quick picker strip */}
-      {state === "idle" && ownedAuras.length > 1 && (
-        <div className="mt-4">
-          <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "thin" }}>
-            {ENERGY_TYPES
-              .filter((t) => ownedAuras.includes(t))
-              .map((t) => {
-                const acfg = ENERGY_CONFIGS[t];
-                const isSel = t === selectedEnergy;
-                return (
-                  <button
-                    key={t}
-                    onClick={() => setSelectedEnergy(t)}
-                    title={acfg.label}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border transition"
-                    style={{
-                      borderColor: isSel ? `${acfg.accent}66` : "var(--border-subtle)",
-                      background: isSel ? acfg.glow : "transparent",
-                      boxShadow: isSel ? `0 0 12px ${acfg.glow}` : "none",
-                    }}
-                  >
-                    <Image src={acfg.assets.full} alt={acfg.label} width={30} height={30} style={{ objectFit: "contain" }} unoptimized />
-                  </button>
-                );
-              })}
-          </div>
-        </div>
-      )}
 
       {/* Today stats */}
       <div className="grid grid-cols-2 gap-2 mt-6">

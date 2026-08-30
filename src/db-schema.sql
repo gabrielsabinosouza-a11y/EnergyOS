@@ -269,6 +269,8 @@ create unique index if not exists garden_entries_legacy_key_idx on garden_entrie
 
 create index if not exists garden_entries_profile_planted_idx on garden_entries(profile_id, planted_at desc);
 
+delete from garden_entries where energy_type in ('nature','solar');
+
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
@@ -754,10 +756,14 @@ alter table weekly_plans drop column if exists category;
 -- ── User Auras (energia ownership) ────────────────────────────────────────
 create table if not exists user_auras (
   profile_id text not null references profiles(id) on delete cascade,
-  aura_type text not null check (aura_type in ('flame','water','thunder','ice','wind','earth','light','shadow','cosmic','crystal','nature','solar')),
+  aura_type text not null check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal')),
   unlocked_at timestamptz not null default now(),
   primary key (profile_id, aura_type)
 );
+
+delete from user_auras where aura_type in ('nature','solar');
+alter table user_auras drop constraint if exists user_auras_aura_type_check;
+alter table user_auras add constraint user_auras_aura_type_check check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal'));
 
 insert into user_auras (profile_id, aura_type)
 select p.id, 'flame' from profiles p

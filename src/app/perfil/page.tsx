@@ -658,16 +658,18 @@ export default function PerfilPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className={`glass-card relative mb-6 ${hasCustomBanner && bannerImageUrl ? "overflow-hidden" : ""}`}
+            className={`glass-card relative mb-6 ${hasCustomBanner ? "overflow-hidden" : ""}`}
           >
-            {hasCustomBanner && bannerImageUrl && (
-              <div className="relative aspect-[3/1] w-full overflow-hidden bg-black/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={bannerImageUrl}
-                  alt="Banner do perfil"
-                  className="h-full w-full object-cover"
-                />
+            {hasCustomBanner && (
+              <div className="relative aspect-[3/1] w-full overflow-hidden bg-gradient-to-br from-[#24344a] to-[#0e151f]">
+                {bannerImageUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={bannerImageUrl}
+                    alt="Banner do perfil"
+                    className="h-full w-full object-cover"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => bannerFileRef.current?.click()}
@@ -675,7 +677,7 @@ export default function PerfilPage() {
                   className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur transition hover:bg-black/75 disabled:opacity-60"
                 >
                   {bannerSaving ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
-                  {bannerSaving ? "Enviando..." : "Trocar banner"}
+                  {bannerSaving ? "Enviando..." : bannerImageUrl ? "Trocar banner" : "Enviar banner"}
                 </button>
                 {bannerError && (
                   <p className="absolute left-3 top-3 max-w-[70%] truncate rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] text-[var(--red)] backdrop-blur">
@@ -684,8 +686,8 @@ export default function PerfilPage() {
                 )}
               </div>
             )}
-            <div className={`p-6 sm:p-8 ${hasCustomBanner && bannerImageUrl ? "pt-0" : ""}`}>
-            <div className={`flex items-center gap-5 ${hasCustomBanner && bannerImageUrl ? "-mt-10" : ""} mb-6`}>
+            <div className={`p-6 sm:p-8 ${hasCustomBanner ? "pt-0" : ""}`}>
+            <div className={`flex items-center gap-5 ${hasCustomBanner ? "-mt-10" : ""} mb-6`}>
               <div className="relative shrink-0">
                 <button
                   type="button"

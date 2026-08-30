@@ -18,7 +18,7 @@ function calculateCoins(durationMinutes: number): number {
 
 export const GARDEN_ENERGY_TYPES = [
   "flame", "water", "earth", "wind", "thunder", "ice",
-  "shadow", "light", "crystal", "nature", "cosmic", "solar",
+  "shadow", "light", "crystal", "cosmic",
   "metal", "poison",
 ] as const;
 export type GardenEnergyType = (typeof GARDEN_ENERGY_TYPES)[number];

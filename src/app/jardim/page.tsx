@@ -373,7 +373,7 @@ export default function JardimPage() {
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 {periodEntries.map((entry) => {
-                  const cfg = ENERGY_CONFIGS[entry.energyType];
+                  const cfg = ENERGY_CONFIGS[entry.energyType] ?? ENERGY_CONFIGS.flame;
                   const planted = new Date(entry.plantedAt);
                   const date = planted.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
                   const datetime = planted.toLocaleDateString("pt-BR", {

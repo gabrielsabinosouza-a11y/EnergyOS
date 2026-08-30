@@ -33,6 +33,14 @@ interface LogRow {
   completed_at: Date | string | null;
 }
 
+interface ListDailyRow {
+  "t.id": string | number;
+  "t.title": string;
+  "l.log_date": Date | string | null;
+  "l.is_completed": boolean | null;
+  "l.completed_at": Date | string | null;
+}
+
 /**
  * Ensures the recurring daily task tables exist.
  */
@@ -83,7 +91,7 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
   parseProfileId(profileId);
   await ensureDailyTasksSchema();
 
-  const result = await pool.query<{ t: TemplateRow; l: LogRow | null }>(
+  const result = await pool.query<ListDailyRow>(
     `select
         t.id as "t.id", t.title as "t.title",
         l.log_date as "l.log_date", l.is_completed as "l.is_completed", l.completed_at as "l.completed_at"
@@ -96,11 +104,11 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
   );
 
   return result.rows.map((r) => ({
-    id: Number(r.t.id),
-    title: r.t.title,
+    id: Number(r["t.id"]),
+    title: r["t.title"],
     taskDate,
-    isCompleted: Boolean(r.l && r.l.is_completed),
-    completedAt: r.l && r.l.completed_at ? new Date(r.l.completed_at).toISOString() : undefined,
+    isCompleted: Boolean(r["l.is_completed"]),
+    completedAt: r["l.completed_at"] ? new Date(r["l.completed_at"] as string).toISOString() : undefined,
   }));
 }
 

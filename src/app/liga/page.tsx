@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
-  Trophy, ChevronLeft, Clock, ArrowUp, ArrowDown,
+  Trophy, ChevronLeft, Clock, ArrowUp, ArrowDown, Minus,
   Sparkles, Users, Loader2, TrendingUp, Crown, Star, Medal,
 } from "lucide-react";
 import Image from "next/image";
@@ -150,8 +150,24 @@ export default function LigaPage() {
   const isDiamante = snapshot.currentTier === "DIAMANTE";
   const userMember = snapshot.members.find((m) => m.profileId === user.uid);
   const displayRank = snapshot.userRank > 0 ? snapshot.userRank : null;
-  const isInPromo = displayRank !== null && displayRank <= snapshot.promotionZoneEnd;
-  const isInDemo = displayRank !== null && displayRank >= snapshot.demotionZoneStart && snapshot.currentTier !== "BRONZE";
+
+  // Zone logic shared by every row + the user's own position card.
+  // Bronze is the floor tier — no demotion is possible there.
+  // Lendas has no tier above it — no promotion zone (`promotionZoneEnd` = 0).
+  // When promotion and demotion cutoffs overlap (small groups), promotion wins,
+  // matching the weekly-reset job which checks promotion before demotion.
+  const canDemote = snapshot.currentTier !== "BRONZE";
+  const promoEnd = snapshot.promotionZoneEnd;
+  const demoteStart = canDemote ? snapshot.demotionZoneStart : Number.POSITIVE_INFINITY;
+  const zoneForRank = (rank: number): "promo" | "demote" | "middle" => {
+    if (promoEnd > 0 && rank <= promoEnd) return "promo";
+    if (canDemote && rank >= demoteStart) return "demote";
+    return "middle";
+  };
+
+  const userZone = displayRank !== null ? zoneForRank(displayRank) : null;
+  const isInPromo = userZone === "promo";
+  const isInDemo = userZone === "demote";
 
   return (
     <AppShell>
@@ -309,10 +325,18 @@ export default function LigaPage() {
                 // rank from DB is 1-indexed (calculateGroupRanks uses i+1)
                 // but guard against legacy 0 values
                 const displayMemberRank = member.rank > 0 ? member.rank : index + 1;
-                const inPromo = displayMemberRank <= snapshot.promotionZoneEnd;
-                const inDemo = displayMemberRank >= snapshot.demotionZoneStart;
+                const zone = zoneForRank(displayMemberRank);
                 const photoUrl = member.profile?.photoUrl;
                 const name = member.profile?.displayName ?? member.displayName ?? "Anônimo";
+
+                const zoneClass =
+                  zone === "promo"
+                    ? "bg-green-500/5 shadow-[inset_3px_0_0_0_rgba(74,222,128,0.45)]"
+                    : zone === "demote"
+                      ? "bg-red-500/5 shadow-[inset_3px_0_0_0_rgba(248,113,113,0.45)]"
+                      : isMe
+                        ? "bg-[var(--bg-surface-hover)]"
+                        : "";
 
                 return (
                   <motion.button
@@ -320,9 +344,7 @@ export default function LigaPage() {
                     initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.02 }}
                     onClick={() => setSelectedProfileId(member.profileId)}
-                    className={`grid w-full grid-cols-[40px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${
-                      isMe ? "bg-[var(--bg-surface-hover)]" : inPromo && !inDemo ? "bg-green-500/5" : inDemo ? "bg-red-500/5" : ""
-                    }`}
+                    className={`grid w-full grid-cols-[40px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${zoneClass}`}
                   >
                     {/* Rank */}
                     <div className="flex items-center justify-center">
@@ -346,15 +368,18 @@ export default function LigaPage() {
 
                     {/* Zone indicator */}
                     <div className="flex items-center justify-center">
-                      {inPromo && !inDemo && (
+                      {zone === "promo" && (
                         <motion.div animate={{ y: [-2, 0, -2] }} transition={{ duration: 1.5, repeat: Infinity }}>
                           <ArrowUp size={13} className="text-green-400" />
                         </motion.div>
                       )}
-                      {inDemo && (
+                      {zone === "demote" && (
                         <motion.div animate={{ y: [2, 0, 2] }} transition={{ duration: 1.5, repeat: Infinity }}>
                           <ArrowDown size={13} className="text-red-400" />
                         </motion.div>
+                      )}
+                      {zone === "middle" && (
+                        <Minus size={13} className="text-[var(--text-faint)]" />
                       )}
                     </div>
                   </motion.button>
@@ -365,14 +390,22 @@ export default function LigaPage() {
 
           {/* Zone legend */}
           <div className="mt-3 space-y-1.5 px-1">
-            <div className="flex items-center gap-2">
-              <div className="h-px flex-1 bg-green-400/30" />
-              <span className="text-[10px] text-green-400 whitespace-nowrap">Promoção (Top {snapshot.promotionZoneEnd})</span>
-            </div>
-            {snapshot.currentTier !== "BRONZE" && (
+            {promoEnd > 0 && (
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-red-400 whitespace-nowrap">Rebaixamento (#{snapshot.demotionZoneStart}+)</span>
+                <div className="h-px flex-1 bg-green-400/30" />
+                <span className="text-[10px] text-green-400 whitespace-nowrap">Promoção (Top {promoEnd})</span>
+              </div>
+            )}
+            {canDemote && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-red-400 whitespace-nowrap">Rebaixamento (#{demoteStart}+)</span>
                 <div className="h-px flex-1 bg-red-400/30" />
+              </div>
+            )}
+            {isLendas && (
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-amber-400/30" />
+                <span className="text-[10px] text-amber-400 whitespace-nowrap">Sem promoção — Lendas é o topo</span>
               </div>
             )}
           </div>

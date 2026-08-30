@@ -1,7 +1,7 @@
 export type EnergyStage = "spark" | "forming" | "full" | "extinguished";
 export type EnergyType =
   | "flame" | "water" | "earth" | "wind" | "thunder" | "ice"
-  | "shadow" | "light" | "crystal" | "nature" | "cosmic" | "solar"
+  | "shadow" | "light" | "crystal" | "cosmic"
   | "metal" | "poison";
 
 export type AuraRarity = "common" | "uncommon" | "rare" | "epic";
@@ -40,8 +40,6 @@ export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
   light:   { rarity: "epic",     price: 1000,  label: "Light" },
   shadow:  { rarity: "epic",     price: 1000,  label: "Shadow" },
   crystal: { rarity: "epic",     price: 1000,  label: "Crystal" },
-  nature:  { rarity: "epic",     price: 1000,  label: "Nature" },
-  solar:   { rarity: "epic",     price: 1000,  label: "Solar" },
 };
 
 /** Paleta de tema por energia — usada em anel, botões, glow e acentos. */
@@ -58,8 +56,6 @@ export const ENERGY_THEME_COLORS: Record<EnergyType, string> = {
   shadow:  "#6B21A8",
   cosmic:  "#818CF8",
   crystal: "#C084FC",
-  nature:  "#4ADE80",
-  solar:   "#F87171",
 };
 
 function rgba(hex: string, alpha: number): string {
@@ -93,8 +89,6 @@ export const ENERGY_CONFIGS: Record<EnergyType, EnergyConfig> = {
   shadow:  { ...AURA_DEFS.shadow,  locked: true,  accent: ENERGY_THEME_COLORS.shadow,  glow: glowOf("shadow"),  assets: { spark: "/energies/shadow/shadow_begin.png", forming: "/energies/shadow/shadow_mid.png", full: "/energies/shadow/shadow_full.png", extinguished: "/energies/shadow/shadow_die.png" } },
   cosmic:  { ...AURA_DEFS.cosmic,  locked: true,  accent: ENERGY_THEME_COLORS.cosmic,  glow: glowOf("cosmic"),  assets: { spark: "/energies/cosmic/cosmic_begin.png", forming: "/energies/cosmic/cosmic_mid.png", full: "/energies/cosmic/cosmic_full.png", extinguished: "/energies/cosmic/cosmic_die.png" } },
   crystal: { ...AURA_DEFS.crystal, locked: true,  accent: ENERGY_THEME_COLORS.crystal, glow: glowOf("crystal"), assets: { spark: "/energies/crystal/crystal_begin.png", forming: "/energies/crystal/crystal_mid.png", full: "/energies/crystal/crystal_full.png", extinguished: "/energies/crystal/crystal_die.png" } },
-  nature:  { ...AURA_DEFS.nature,  locked: true,  accent: ENERGY_THEME_COLORS.nature,  glow: glowOf("nature"),  assets: { spark: "/energies/flame/flame_start.png",  forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"  } },
-  solar:   { ...AURA_DEFS.solar,   locked: true,  accent: ENERGY_THEME_COLORS.solar,   glow: glowOf("solar"),   assets: { spark: "/energies/flame/flame_start.png",   forming: "/energies/flame/flame_mid.png",  full: "/energies/flame/flame_full.png",  extinguished: "/energies/flame/flame_die.png"   } },
 };
 
 export const ENERGY_TYPES = Object.keys(ENERGY_CONFIGS) as EnergyType[];

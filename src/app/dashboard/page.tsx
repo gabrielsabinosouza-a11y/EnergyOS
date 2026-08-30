@@ -333,6 +333,24 @@ function DashboardContent() {
     }
   }
 
+  /** Otimista: atualiza o progresso local e persiste no servidor. */
+  function adjustGoalProgress(goalId: number, delta: number) {
+    setGoals((gs) =>
+      gs.map((g) => {
+        if (g.id !== goalId) return g;
+        const next = Math.max(0, Math.min(g.targetValue, Number((g.currentValue + delta).toFixed(2))));
+        return { ...g, currentValue: next };
+      }),
+    );
+    const target = goals.find((g) => g.id === goalId);
+    if (!target) return;
+    const next = Math.max(0, Math.min(target.targetValue, Number((target.currentValue + delta).toFixed(2))));
+    api.updateGoal(goalId, { currentValue: next }).catch(() => {
+      // Roll back to server truth on failure.
+      api.getGoals().then((bundles) => setGoals(bundles.map((b) => b.goal))).catch(() => {});
+    });
+  }
+
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
 
   if (loading || !user) {
@@ -483,7 +501,7 @@ function DashboardContent() {
             onStart={startFocus}
             onEnd={endFocus}
           />
-          <GoalsCard goals={goals} />
+          <GoalsCard goals={goals} onAdjust={adjustGoalProgress} />
         </section>
       </main>
 
