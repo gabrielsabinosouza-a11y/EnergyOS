@@ -13,10 +13,15 @@ export interface FrameAsset {
    *  store preview modal (frame_fire's flame PNG has a large transparent
    *  center, so its photo is sized down to sit inside the ring). */
   photoScale?: number;
+  /** Overscale of the frame canvas relative to the avatar box when composited
+   *  around a real avatar photo. Defaults to 1.15; the flame PNG's ring band
+   *  starts at ~0.66 of its canvas radius, so it needs a bigger canvas (1.5x)
+   *  for the flame ring to wrap exactly around the profile photo circle. */
+  overscale?: number;
 }
 
 export const FRAME_ASSETS: Record<string, FrameAsset> = {
-  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common", photoScale: 0.4 },
+  frame_fire: { imageUrl: "/avatar_frame/flame_avatar.png", rarity: "common", photoScale: 0.4, overscale: 1.5 },
   frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare" },
   frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic" },
   frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary" },
@@ -54,6 +59,18 @@ interface AvatarProps {
 }
 
 /**
+ * Size/centering for the frame canvas given an avatar box size. The frame is
+ * drawn `overscale` (default 1.15x) larger than the avatar box, centered on
+ * top, so the ring sits exactly around the profile photo circle and extends
+ * slightly past it.
+ */
+export function frameOverscan(size: number, frame?: FrameAsset) {
+  const overscale = frame?.overscale ?? 1.15;
+  const frameSize = Math.round(size * overscale);
+  return { size: frameSize, offset: Math.round((frameSize - size) / 2) };
+}
+
+/**
  * Shared avatar: circular photo (or initials) with an optional equipped
  * decoration frame overlaid on top. The frame asset wraps the photo — the
  * photo sits slightly inset and the frame extends a few px past it.
@@ -80,13 +97,11 @@ export function Avatar({
   // tightly around the photo at any avatar size.
   const photoInset = frame ? Math.max(1, Math.round(size * 0.02)) : 0;
 
-  // The frame canvas is drawn ~15% larger than the photo and centered on top,
-  // so the ring hugs the photo edge and extends slightly past it — keeping the
-  // same relative ring thickness/prominence as the store preview, scaled to
+  // The frame canvas is drawn larger than the photo and centered on top, so
+  // the ring wraps exactly around the photo edge and extends slightly past it
+  // — keeping the same relative prominence as the store preview, scaled to
   // whatever size this avatar instance renders at.
-  const frameOverscale = 1.15;
-  const frameSize = Math.round(size * frameOverscale);
-  const frameOffset = Math.round((frameSize - size) / 2);
+  const { size: frameSize, offset: frameOffset } = frameOverscan(size, frame);
 
   return (
     <div

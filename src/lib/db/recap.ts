@@ -3,6 +3,7 @@ import { ENERGYOS_LAUNCH_MONTH } from "@/types";
 import type { MonthlyRecap } from "@/types";
 import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
+import { NEW_TIER_ORDER } from "@/lib/league-new-meta";
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
@@ -95,21 +96,42 @@ export async function generateRecap(
          and used_on_date >= $2::date and used_on_date < $3::date`,
       [profileId, monthStart, monthEnd],
     ),
-    pool.query<{ tier: string | null; result: string | null }>(
-      `select le.tier, ls.last_week_result as result
-       from league_entries le
-       left join league_standings ls on ls.profile_id = le.profile_id
-       where le.profile_id = $1
-         and le.week_start >= $2::date and le.week_start < $3::date
-       order by le.xp desc limit 1`,
+    // Tier do mês: usamos o sistema ATUAL (league_groups / league_group_members),
+    // não o legado league_entries. Primeiro tentamos o grupo histórico daquele
+    // mês; se não houver (sem histórico semanal), caímos no grupo mais recente.
+    pool.query<{ tier: string | null }>(
+      `select lg.tier
+       from league_group_members lgm
+       join league_groups lg on lg.id = lgm.league_group_id
+       where lgm.profile_id = $1
+         and lg.week_start_date >= $2::date
+         and lg.week_start_date < $3::date
+       order by lg.week_start_date desc
+       limit 1`,
       [profileId, monthStart, monthEnd],
-    ),
+    ).then(async (hist) => {
+      if (hist.rows[0]?.tier) return hist;
+      const latest = await pool.query<{ tier: string | null }>(
+        `select lg.tier
+         from league_group_members lgm
+         join league_groups lg on lg.id = lgm.league_group_id
+         where lgm.profile_id = $1
+         order by lg.week_start_date desc
+         limit 1`,
+        [profileId],
+      );
+      return latest;
+    }),
   ]);
 
   const totalMinutes = Number(focusRow.rows[0]?.minutes ?? 0);
   const longestStreak = Number(streakRow.rows[0]?.max_streak ?? 0);
-  const tier = leagueRow.rows[0]?.tier ?? undefined;
-  const promoted = leagueRow.rows[0]?.result === "promoted";
+  // Normaliza para o sistema atual; se o valor não for um tier válido, descarta.
+  const rawTier = leagueRow.rows[0]?.tier ?? undefined;
+  const tier = rawTier && NEW_TIER_ORDER.includes(rawTier.toUpperCase() as typeof NEW_TIER_ORDER[number])
+    ? rawTier.toUpperCase()
+    : undefined;
+  const promoted = false;
 
   const result = await pool.query<RecapRow>(
     `insert into monthly_recaps

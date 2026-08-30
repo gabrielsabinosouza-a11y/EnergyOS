@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
   Trophy, ChevronLeft, Clock, ArrowUp, ArrowDown, Minus,
-  Sparkles, Users, Loader2, TrendingUp, Crown, Star, Medal,
+  Sparkles, Users, Loader2, TrendingUp, Crown,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,23 +15,14 @@ import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
 import { Avatar as SharedAvatar } from "@/components/avatar";
 import type { NewLeagueTier } from "@/types";
+import type { NewTierMeta } from "@/lib/league-new-meta";
+import { NEW_TIER_META, NEW_TIER_ORDER } from "@/lib/league-new-meta";
 import type { LeagueNewSnapshot } from "@/lib/db/league-new";
 
-// ── Tier config ───────────────────────────────────────────────────────────────
+// ── Tier config (fonte única compartilhada com o recap mensal) ───────────────
 
-const TIER_CONFIG: Record<NewLeagueTier, {
-  label: string; color: string; glow: string;
-  icon: React.ElementType; description: string; shortLabel: string;
-  iconPath: string;
-}> = {
-  BRONZE:   { label: "Bronze",   color: "#cd7f32", glow: "rgba(205,127,50,0.4)",  icon: Medal,  description: "O início da jornada",           shortLabel: "BR", iconPath: "/leaderboard/bronze.png"   },
-  PRATA:    { label: "Prata",    color: "#c0c0c0", glow: "rgba(192,192,192,0.4)", icon: Medal,  description: "Consistência crescendo",         shortLabel: "PR", iconPath: "/leaderboard/prata.png"    },
-  OURO:     { label: "Ouro",     color: "#ffd700", glow: "rgba(255,215,0,0.4)",   icon: Trophy, description: "Domínio do foco",               shortLabel: "OU", iconPath: "/leaderboard/ouro.png"     },
-  DIAMANTE: { label: "Diamante", color: "#00bfff", glow: "rgba(0,191,255,0.4)",   icon: Crown,  description: "Elite do foco",                 shortLabel: "DI", iconPath: "/leaderboard/diamante.png" },
-  LENDAS:   { label: "Lendas",   color: "#ff69b4", glow: "rgba(255,105,180,0.4)", icon: Star,   description: "Os melhores entre os melhores", shortLabel: "LE", iconPath: "/leaderboard/lendas.png"   },
-};
-
-const TIER_ORDER: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
+const TIER_CONFIG: Record<NewLeagueTier, NewTierMeta> = NEW_TIER_META;
+const TIER_ORDER: NewLeagueTier[] = NEW_TIER_ORDER;
 
 const PROMOTION_TEXT: Record<NewLeagueTier, string> = {
   BRONZE:   "Fique no Top 10 para ser promovido para Prata.",

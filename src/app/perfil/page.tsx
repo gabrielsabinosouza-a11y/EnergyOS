@@ -11,7 +11,7 @@ import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
 import type { AchievementProgress } from "@/types";
-import { FRAME_ASSETS } from "@/components/avatar";
+import { FRAME_ASSETS, frameOverscan } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
 import React from "react";
 import Image from "next/image";
@@ -375,6 +375,8 @@ export default function PerfilPage() {
   const [photoError, setPhotoError] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [equippedDecorationId, setEquippedDecorationId] = useState<string | undefined>();
+  const headerDecoration = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
+  const headerFrameGeom = headerDecoration ? frameOverscan(80, headerDecoration) : null;
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
   const [hasCustomBanner, setHasCustomBanner] = useState(false);
   const [bannerSaving, setBannerSaving] = useState(false);
@@ -713,14 +715,19 @@ export default function PerfilPage() {
                       : <Camera size={20} className="text-white" />}
                   </span>
                 </button>
-                {equippedDecorationId && FRAME_ASSETS[equippedDecorationId] && (
+                {headerDecoration && headerFrameGeom && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={FRAME_ASSETS[equippedDecorationId].imageUrl}
+                    src={headerDecoration.imageUrl}
                     alt=""
                     draggable={false}
                     className="pointer-events-none absolute z-[1] select-none"
-                    style={{ width: 92, height: 92, left: -6, top: -6 }}
+                    style={{
+                      width: headerFrameGeom.size,
+                      height: headerFrameGeom.size,
+                      left: -headerFrameGeom.offset,
+                      top: -headerFrameGeom.offset,
+                    }}
                   />
                 )}
                 <span className="pointer-events-none absolute -bottom-1 -right-1 z-[2] flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
