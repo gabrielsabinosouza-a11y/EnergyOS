@@ -20,8 +20,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (body.completed === false) {
       plan = await setWeeklyPlanCompleted(profileId, planId, false);
     } else {
-      plan = await completeWeeklyPlan(profileId, planId);
-      await awardTaskXP(profileId, plan.id, 10);
+      plan = await setWeeklyPlanCompleted(profileId, planId, true);
+      await awardTaskXP(profileId, plan.id, 10).catch(() => {});
     }
     return jsonOk({ plan });
   });

@@ -267,11 +267,21 @@ function DashboardContent() {
   }
 
   async function togglePlanCompleted(id: number, completed: boolean) {
+    const prev = weeklyPlans;
+    // Optimistic UI update
+    setWeeklyPlans((ps) =>
+      ps.map((p) => (p.id === id ? { ...p, completedAt: completed ? new Date().toISOString() : null } : p))
+    );
+    if (completed) applyMetric("WEEKLY_PLAN_COMPLETED", { incrementBy: 1 });
     try {
       const result = await api.setWeeklyPlanCompleted(id, completed);
-      setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
+      setWeeklyPlans((ps) => ps.map((p) => (p.id === id ? result.plan : p)));
+      if (completed) void refreshQuests();
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o plano.");
+      setWeeklyPlans(prev);
+      if (completed) void refreshQuests();
+      showError(error instanceof Error ? error.message : "Não foi possível atualizar o plano.");
+      throw error;
     }
   }
 

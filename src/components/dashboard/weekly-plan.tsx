@@ -51,6 +51,42 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
     setSaving(false);
   }
 
+  const [toggling, setToggling] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const currentCategory = editingPlan
+    ? sortedCategories.find((c) => c.id === editCategoryId) || editingPlan.category
+    : undefined;
+
+  async function handleToggleComplete() {
+    if (!editingPlan) return;
+    const nextCompleted = !editingPlan.completedAt;
+    setEditingPlan((prev) =>
+      prev ? { ...prev, completedAt: nextCompleted ? new Date().toISOString() : null } : null
+    );
+    setToggling(true);
+    try {
+      await onToggleCompleted(editingPlan.id, nextCompleted);
+    } catch {
+      setEditingPlan((prev) =>
+        prev ? { ...prev, completedAt: editingPlan.completedAt } : null
+      );
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!editingPlan || !editTitle.trim()) return;
+    setSavingEdit(true);
+    try {
+      await onUpdate(editingPlan.id, editTitle.trim(), editCategoryId, editingPlan.planDate);
+      setEditingPlan(null);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   return (
     <div className="panel p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -129,74 +165,87 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
       {editingPlan && (
         <Modal onClose={() => setEditingPlan(null)}>
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ background: editingPlan.category.color, boxShadow: `0 0 6px ${editingPlan.category.color}40` }}
-                  />
-                  <span className="text-sm font-medium text-[var(--text)]">
-                    {editingPlan.completedAt ? "Plano concluído" : "Detalhes do plano"}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{
+                    background: currentCategory?.color || editingPlan.category.color,
+                    boxShadow: `0 0 6px ${currentCategory?.color || editingPlan.category.color}40`,
+                  }}
+                />
+                <span className="text-sm font-medium text-[var(--text)]">
+                  {editingPlan.completedAt ? "Plano concluído" : "Detalhes do plano"}
+                </span>
+                {editingPlan.completedAt && (
+                  <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">
+                    Concluído
                   </span>
-                </div>
-                <button onClick={() => setEditingPlan(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
-                  <X size={18} />
-                </button>
+                )}
+              </div>
+              <button onClick={() => setEditingPlan(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Título</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="auth-input w-full text-sm"
+                />
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Título</label>
-                  <input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="auth-input w-full text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
-                  <CategoryChips
-                    categories={sortedCategories}
-                    selectedId={editCategoryId}
-                    onSelect={setEditCategoryId}
-                    compact
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
+                <CategoryChips
+                  categories={sortedCategories}
+                  selectedId={editCategoryId}
+                  onSelect={setEditCategoryId}
+                  compact
+                />
               </div>
+            </div>
 
-              <div className="mt-6 flex gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    onToggleCompleted(editingPlan.id, !editingPlan.completedAt);
-                    setEditingPlan(null);
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-[var(--green-bg)] text-[var(--green)] rounded-lg hover:bg-[var(--green-bg)]/70 transition-colors"
-                >
-                  <Check size={14} />
-                  {editingPlan.completedAt ? "Reabrir" : "Concluir"}
-                </button>
-                <button
-                  onClick={() => {
-                    onDelete(editingPlan.id);
-                    setEditingPlan(null);
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                >
-                  <X size={14} /> Excluir
-                </button>
-                <button
-                  onClick={() => {
-                    onUpdate(editingPlan.id, editTitle.trim(), editCategoryId, editingPlan.planDate);
-                    setEditingPlan(null);
-                  }}
-                  disabled={!editTitle.trim()}
-                  className="flex items-center gap-1 px-4 py-1.5 text-sm bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent)]/90 transition-colors disabled:opacity-50"
-                >
-                  <Check size={14} /> Salvar
-                </button>
-              </div>
-        </div>
+            <div className="mt-6 flex gap-2 justify-end items-center">
+              <button
+                type="button"
+                onClick={handleToggleComplete}
+                disabled={toggling}
+                className="mr-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                style={{
+                  color: editingPlan.completedAt ? "#ffb86b" : "var(--green)",
+                  background: editingPlan.completedAt ? "rgba(255,184,107,.1)" : "var(--green-bg)",
+                }}
+              >
+                {toggling ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {editingPlan.completedAt ? "Reabrir" : "Concluir"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onDelete(editingPlan.id);
+                  setEditingPlan(null);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={13} /> Excluir
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={savingEdit || !editTitle.trim()}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent)]/90 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                Salvar
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
