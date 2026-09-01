@@ -27,6 +27,7 @@ import {
   Trash2,
   Edit2,
   Clock,
+  ChevronDown,
 } from "lucide-react";
 import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
@@ -189,7 +190,7 @@ function SortableCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex flex-col gap-1 opacity-40 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -262,6 +263,9 @@ function Column({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
+  // On mobile the three columns stack vertically — allow collapsing each one
+  // so users don't face one endless scroll. Desktop (md+) always shows both.
+  const [collapsed, setCollapsed] = useState(false);
 
   const selectedCategoryId = newCategoryId || firstCategoryId;
 
@@ -340,9 +344,10 @@ function Column({
         <span className="ml-auto flex items-center gap-1">
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
+            aria-label={`Adicionar tarefa em ${label}`}
+            className="tap flex h-7 w-7 items-center justify-center text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
           >
-            <Plus size={12} />
+            <Plus size={14} />
           </button>
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full ${
@@ -351,9 +356,20 @@ function Column({
           >
             {tasks.length}
           </span>
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? `Expandir coluna ${label}` : `Recolher coluna ${label}`}
+            className="tap flex h-7 w-7 items-center justify-center text-[var(--text-faint)] hover:text-[var(--text)] transition-colors md:hidden"
+          >
+            <ChevronDown size={14} className={`transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
+          </button>
         </span>
       </div>
 
+      {/* Collapsible body — hidden on mobile when collapsed, always shown on md+ */}
+      <div className={collapsed ? "hidden md:block" : ""}>
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -568,6 +584,7 @@ function Column({
           )}
         </div>
       </SortableContext>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, notFound, badRequest } from "@/lib/http";
+import { ForbiddenError } from "@/lib/errors";
 import { getFocusRoomById, stopFocusRoom } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/stop — host "Parar". Marks ONLY the host's own
@@ -19,7 +20,7 @@ export async function POST(
     if (!room) return notFound("Room not found");
 
     if (room.hostProfileId !== profileId) {
-      return badRequest("Only the host can stop the room");
+      throw new ForbiddenError("Only the host can stop the room");
     }
 
     if (room.status !== "active" && room.status !== "paused") {

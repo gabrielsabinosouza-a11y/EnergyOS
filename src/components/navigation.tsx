@@ -73,27 +73,7 @@ function useUnreadCount() {
 
 export function Sidebar({ pathname }: { pathname: string }) {
   const reduced = useReducedMotion();
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    async function fetchUnread() {
-      try {
-        const { auth } = await import("@/lib/firebase");
-        const token = await auth?.currentUser?.getIdToken();
-        if (!token || !active) return;
-        const res = await fetch("/api/social/unread", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok || !active) return;
-        const data = await res.json();
-        if (active) setUnreadCount(data.dmUnread + data.groupUnread);
-      } catch { /* silent */ }
-    }
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 30_000);
-    return () => { active = false; clearInterval(interval); };
-  }, []);
+  const unreadCount = useUnreadCount();
 
   return (
     <aside className="hidden w-[252px] shrink-0 flex-col border-r border-[var(--border-subtle)] px-6 py-8 lg:fixed lg:inset-y-0 lg:flex">
@@ -145,6 +125,108 @@ export function Sidebar({ pathname }: { pathname: string }) {
         })}
       </nav>
     </aside>
+  );
+}
+
+/* ═══════════════════════ MOBILE NAVIGATION (<lg) ═══════════════════════
+   Compact sticky brand bar on top + fixed bottom tab bar with a "Mais"
+   bottom sheet. Bottom tabs beat hamburger-only patterns for apps opened
+   many times a day (check-ins, timers): primary destinations are one
+   thumb-tap away. */
+export function MobileNav({ pathname }: { pathname: string }) {
+  const unreadCount = useUnreadCount();
+  const [showMore, setShowMore] = useState(false);
+
+  // Close the "Mais" sheet whenever the route changes.
+  useEffect(() => { setShowMore(false); }, [pathname]);
+
+  const moreActive = MORE_TABS.some(({ href }) => isActivePath(pathname, href));
+
+  return (
+    <>
+      {/* Compact brand top bar */}
+      <div className="mobile-topbar lg:hidden">
+        <Link href="/" className="flex items-center gap-2.5" aria-label="energyOS — início">
+          <Image src="/icons_8bits/logo.png" alt="" width={24} height={24} className="pixelated" />
+          <span className="font-display text-lg font-semibold tracking-[-0.04em]">
+            energy<span className="text-[#71d4ff]">OS</span>
+          </span>
+        </Link>
+      </div>
+
+      {/* Bottom tab bar */}
+      <nav className="bottom-tabbar lg:hidden" aria-label="Navegação principal">
+        <div className="flex items-stretch">
+          {PRIMARY_TABS.map(({ href, label, icon: Icon, ...rest }) => {
+            const badge = "badge" in rest ? rest.badge : undefined;
+            const active = isActivePath(pathname, href);
+            const showDot = badge === "social" && unreadCount > 0;
+            return (
+              <Link key={href} href={href} className={`tab-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
+                <span className="tab-icon">
+                  <Icon size={21} strokeWidth={active ? 2.3 : 2} />
+                  {showDot && <span className="tab-dot" aria-label="Mensagens não lidas" />}
+                </span>
+                <span className="tab-label">{label}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setShowMore(true)}
+            className={`tab-item ${moreActive ? "active" : ""}`}
+            aria-expanded={showMore}
+          >
+            <span className="tab-icon">
+              <MoreHorizontal size={21} strokeWidth={moreActive ? 2.3 : 2} />
+            </span>
+            <span className="tab-label">Mais</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* "Mais" — bottom sheet with the remaining sections */}
+      {showMore && (
+        <Modal open={showMore} onClose={() => setShowMore(false)} variant="bottom-sheet">
+          <div className="glass-card w-full max-w-md overflow-hidden rounded-b-none! p-2 sm:rounded-b-[14px]!" role="menu" aria-label="Mais seções">
+            <div className="flex items-center justify-between px-4 pb-1 pt-3">
+              <span className="eyebrow muted"><Library size={12} /> MAIS SEÇÕES</span>
+              <button
+                type="button"
+                onClick={() => setShowMore(false)}
+                aria-label="Fechar"
+                className="tap flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-faint)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-2">
+              {MORE_TABS.map(({ href, label, icon: Icon, ...rest }) => {
+                const badge = "badge" in rest ? rest.badge : undefined;
+                const active = isActivePath(pathname, href);
+                const showDot = badge === "social" && unreadCount > 0;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    role="menuitem"
+                    className={`relative flex min-h-[56px] items-center gap-3 rounded-xl border px-3.5 py-3 text-[13px] font-medium transition ${
+                      active
+                        ? "border-[var(--accent)]/40 bg-[var(--accent-bg)] text-[var(--accent)]"
+                        : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text)]"
+                    }`}
+                  >
+                    <Icon size={18} className="shrink-0" />
+                    <span className="truncate">{label}</span>
+                    {showDot && <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-[var(--orange)] shadow-[0_0_8px_rgba(255,184,107,.6)]" aria-label="Mensagens não lidas" />}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 

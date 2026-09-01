@@ -189,7 +189,7 @@ export function GoalsCard({
                       }}
                       aria-label={`Opções da meta ${goal.title}`}
                       title="Opções"
-                      className={`flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-faint)] transition-all hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus:opacity-100 cursor-pointer ${
+                      className={`tap flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-faint)] transition-all hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus:opacity-100 cursor-pointer ${
                         isMenuOpen
                           ? "opacity-100 bg-[var(--bg-surface-active)] text-[var(--text)]"
                           : "opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100"
@@ -333,7 +333,7 @@ export function GoalsCard({
                         onClick={handleTap}
                         aria-label={goal.targetValue <= 1 ? `Concluir ${goal.title}` : `Adicionar progresso a ${goal.title}`}
                         title={goal.targetValue <= 1 ? "Marcar como concluída" : "Adicionar +1"}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
+                        className="tap flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
                         style={{
                           borderColor: `${color}55`,
                           background: `${color}14`,

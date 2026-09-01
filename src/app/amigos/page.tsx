@@ -651,7 +651,7 @@ function ChatPanel({
           <button
             onClick={handleSend}
             disabled={!input.trim() || sending}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30"
           >
             {sending ? (
               <Loader2 size={14} className="animate-spin" />

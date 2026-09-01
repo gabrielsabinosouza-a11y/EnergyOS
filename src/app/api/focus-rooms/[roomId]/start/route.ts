@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, notFound, badRequest } from "@/lib/http";
+import { ForbiddenError } from "@/lib/errors";
 import { startFocusRoom, getFocusRoomById } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/start - Start a focus room (host only)
@@ -18,7 +19,7 @@ export async function POST(
     }
 
     if (room.hostProfileId !== profileId) {
-      return badRequest("Only the host can start the room");
+      throw new ForbiddenError("Only the host can start the room");
     }
 
     if (room.status !== "waiting") {

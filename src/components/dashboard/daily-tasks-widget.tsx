@@ -207,7 +207,7 @@ export function DailyTasksWidget() {
                 <button
                   onClick={() => removeTask(task.id)}
                   disabled={deletingId !== null}
-                  className="rounded-lg p-1 text-[var(--text-faint)] opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+                  className="tap rounded-lg p-1 text-[var(--text-faint)] opacity-40 transition sm:opacity-0 sm:group-hover:opacity-100 hover:text-red-400"
                   title="Remover"
                 >
                   {deletingId === task.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}

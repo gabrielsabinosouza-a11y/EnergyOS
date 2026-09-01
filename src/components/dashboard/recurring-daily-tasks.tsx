@@ -217,7 +217,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
                   </motion.span>
                 )}
             </AnimatePresence>
-            <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex gap-0.5 opacity-40 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
               <button
                 onClick={() => handleDelete(task.id)}
                 className="icon-button small !h-6 !w-6 text-red-400/60 hover:text-red-400"

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest, jsonError } from "@/lib/http";
+import { ForbiddenError } from "@/lib/errors";
 import { updateParticipantEnergyType, getFocusRoomById } from "@/lib/db/focus-rooms";
 import { getOwnedAuras } from "@/lib/db/store";
 import { ENERGY_TYPES } from "@/lib/energy-assets";
@@ -38,7 +39,7 @@ export async function POST(
     // Check if participant is in the room
     const participant = room.participants.find(p => p.profileId === profileId);
     if (!participant) {
-      return badRequest("You are not a participant in this room");
+      throw new ForbiddenError("You are not a participant in this room");
     }
 
     // Update participant's energy type

@@ -70,7 +70,7 @@ export async function PATCH(
 
     const room = await getFocusRoomById(profileId, Number(roomId));
     if (!room) return notFound("Room not found");
-    if (room.hostProfileId !== profileId) return badRequest("Only the host can end the room");
+    if (room.hostProfileId !== profileId) throw new ForbiddenError("Only the host can end the room");
 
     const ended = await endFocusRoom(Number(roomId));
     return jsonOk({ room: ended, message: "Room ended successfully" });
@@ -94,10 +94,10 @@ export async function DELETE(
     if (!room) return notFound("Room not found");
 
     if (room.hostProfileId !== profileId && role !== "admin") {
-      return badRequest("Only the host can delete this room");
+      throw new ForbiddenError("Only the host can delete this room");
     }
 
-    await deleteFocusRoom(Number(roomId));
+    await deleteFocusRoom(Number(roomId), profileId, role);
     return jsonOk({ ok: true, message: "Sala excluída com sucesso." });
   });
 }

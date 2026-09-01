@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Plus, Check, X, Loader2 } from "lucide-react";
 import type { Category, WeeklyPlan } from "@/types";
@@ -58,6 +58,20 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
     ? sortedCategories.find((c) => c.id === editCategoryId) || editingPlan.category
     : undefined;
 
+  // Mobile: the 7-day strip becomes a horizontal snap scroller; on load the
+  // current day is auto-scrolled into view (horizontally only — never scrolls
+  // the page itself).
+  const weekScrollerRef = useRef<HTMLDivElement>(null);
+  const todayCellRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scroller = weekScrollerRef.current;
+    const cell = todayCellRef.current;
+    if (!scroller || !cell) return;
+    scroller.scrollTo({
+      left: Math.max(0, cell.offsetLeft - (scroller.clientWidth - cell.offsetWidth) / 2),
+    });
+  }, []);
+
   async function handleToggleComplete() {
     if (!editingPlan) return;
     const nextCompleted = !editingPlan.completedAt;
@@ -112,7 +126,7 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
               </div>
               <div className="flex gap-1 flex-wrap">
                 {days.map((d) => (
-                  <button key={d.date} onClick={() => setSelectedDay(d.date)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-all ${selectedDay === d.date ? "bg-[var(--accent)] text-[var(--bg-primary)]" : "text-[var(--text-faint)] hover:text-[var(--text-muted)]"}`}>{d.dayName}</button>
+                  <button key={d.date} onClick={() => setSelectedDay(d.date)} className={`min-h-[34px] rounded-full px-3 py-1 text-[11px] font-medium transition-all ${selectedDay === d.date ? "bg-[var(--accent)] text-[var(--bg-primary)]" : "text-[var(--text-faint)] hover:text-[var(--text-muted)]"}`}>{d.dayName}</button>
                 ))}
               </div>
               <CategoryChips
@@ -126,40 +140,51 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
         )}
       </AnimatePresence>
 
-      {/* Week grid */}
-      <div className="grid grid-cols-7 gap-1.5">
-        {days.map((day) => (
-          <div key={day.date} className={`rounded-xl p-2 min-h-[80px] border transition-colors ${day.isToday ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]"}`}>
-            <div className={`text-center text-[10px] font-medium mb-1.5 ${day.isToday ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}`}>
-              {day.dayName} <span className="block text-[9px]">{day.date.slice(8, 10)}</span>
-            </div>
-            <div className="space-y-1">
-              {day.plans.map((plan) => (
-                <motion.div
-                  key={plan.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className={`group relative rounded-lg p-1.5 text-[9px] leading-tight cursor-pointer ${plan.completedAt ? "line-through opacity-50" : ""}`}
-                  style={{ borderLeft: `2px solid ${plan.category.color}` }}
-                  onClick={() => {
-                    setEditingPlan(plan);
-                    setEditTitle(plan.title);
-                    setEditCategoryId(plan.categoryId);
-                  }}
-                  title={`${plan.title} · ${plan.category.name}`}
-                >
-                  <span className="text-[var(--text)] block truncate">{plan.title}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(plan.id); }}
-                    className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500/80 text-white"
+      {/* Week strip — horizontal snap scroller on mobile (today auto-scrolled
+          into view), full 7-column grid from `sm:` up. */}
+      <div
+        ref={weekScrollerRef}
+        className="-mx-5 overflow-x-auto px-5 pb-1 pt-1 scrollbar-hide sm:mx-0 sm:overflow-visible sm:px-0 sm:pt-0"
+      >
+        <div className="flex w-max gap-1.5 sm:grid sm:w-auto sm:grid-cols-7">
+          {days.map((day) => (
+            <div
+              key={day.date}
+              ref={day.isToday ? todayCellRef : undefined}
+              className={`w-[124px] shrink-0 snap-start rounded-xl p-2 min-h-[88px] border transition-colors sm:w-auto sm:min-h-[80px] ${day.isToday ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]"}`}
+            >
+              <div className={`text-center text-[10px] font-medium mb-1.5 ${day.isToday ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}`}>
+                {day.dayName} <span className="block text-[9px]">{day.date.slice(8, 10)}</span>
+              </div>
+              <div className="space-y-1">
+                {day.plans.map((plan) => (
+                  <motion.div
+                    key={plan.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className={`group relative rounded-lg p-1.5 text-[10px] leading-tight cursor-pointer ${plan.completedAt ? "line-through opacity-50" : ""}`}
+                    style={{ borderLeft: `2px solid ${plan.category.color}` }}
+                    onClick={() => {
+                      setEditingPlan(plan);
+                      setEditTitle(plan.title);
+                      setEditCategoryId(plan.categoryId);
+                    }}
+                    title={`${plan.title} · ${plan.category.name}`}
                   >
-                    <X size={8} />
-                  </button>
-                </motion.div>
-              ))}
+                    <span className="text-[var(--text)] block truncate">{plan.title}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDelete(plan.id); }}
+                      aria-label={`Excluir plano ${plan.title}`}
+                      className="tap absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500/80 text-white"
+                    >
+                      <X size={8} />
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {editingPlan && (

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
+import { ForbiddenError } from "@/lib/errors";
 import { updateRoomDuration, getFocusRoomById } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/update-duration - Update room duration (host only)
@@ -26,7 +27,7 @@ export async function POST(
 
     // Only host can update duration
     if (room.hostProfileId !== profileId) {
-      return badRequest("Only the host can update the room duration");
+      throw new ForbiddenError("Only the host can update the room duration");
     }
 
     // Room must be in waiting state

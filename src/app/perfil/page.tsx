@@ -180,7 +180,7 @@ function AchievementBadge({
           type="button"
           aria-label="Remover destaque"
           onClick={onRemove}
-          className="absolute -right-1 -top-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-[var(--red)] text-black opacity-0 shadow-md transition group-hover:opacity-100"
+          className="tap absolute -right-1 -top-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-[var(--red)] text-black opacity-90 shadow-md transition sm:opacity-0 sm:group-hover:opacity-100"
         >
           <X size={11} />
         </button>
@@ -822,7 +822,9 @@ export default function PerfilPage() {
               <span className="text-xs uppercase tracking-[0.15em] text-[var(--orange)]">Destaques</span>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            {/* Wrap instead of a fixed 4-col grid: 88px slots would overflow
+                a 375px viewport with grid-cols-4. */}
+            <div className="flex flex-wrap justify-center gap-4 sm:justify-start">
               {[0, 1, 2, 3].map((slot) => (
                 <FeaturedSlot
                   key={slot}

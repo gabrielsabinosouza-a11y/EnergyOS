@@ -611,13 +611,20 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
 
 // Permanently delete a focus room and its participants (cascade).
 // If the room is ACTIVE or PAUSED, it will be ended (completed) first.
-export async function deleteFocusRoom(roomId: number): Promise<void> {
-  const result = await pool.query<{ id: string | number; status: string }>(
-    `select id, status from focus_rooms where id = $1`,
+export async function deleteFocusRoom(roomId: number, requesterProfileId: string, requesterRole?: string): Promise<void> {
+  parseProfileId(requesterProfileId);
+  
+  const result = await pool.query<{ id: string | number; status: string; host_profile_id: string }>(
+    `select id, status, host_profile_id from focus_rooms where id = $1`,
     [roomId],
   );
   if (!result.rows[0]) {
     throw new NotFoundError("Sala não encontrada.");
+  }
+  
+  // Authorization check: only the host or an admin can delete the room
+  if (result.rows[0].host_profile_id !== requesterProfileId && requesterRole !== "admin") {
+    throw new ForbiddenError("Only the host or an admin can delete this room");
   }
   
   // If room is active or paused, end it first

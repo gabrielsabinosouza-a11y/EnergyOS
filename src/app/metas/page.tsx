@@ -405,7 +405,7 @@ export default function MetasPage() {
                               whileTap={{ scale: 0.85 }}
                               whileHover={{ scale: 1.1 }}
                               onClick={() => adjustProgress(goal, 1)}
-                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] hover:bg-[var(--bg-surface-active)]"
+                              className="tap flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] hover:bg-[var(--bg-surface-active)]"
                               aria-label="Aumentar 1"
                             >
                               <ChevronRight size={14} />
@@ -414,7 +414,7 @@ export default function MetasPage() {
                               whileTap={{ scale: 0.85 }}
                               whileHover={{ scale: 1.1 }}
                               onClick={() => adjustProgress(goal, 5)}
-                              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-faint)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
+                              className="tap flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-faint)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface-active)]"
                               aria-label="Aumentar 5"
                             >
                               <ChevronsRight size={14} />
@@ -471,12 +471,12 @@ export default function MetasPage() {
                               </div>
                             ))}
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <input
                               value={habitInput}
                               onChange={(e) => setHabitInput(e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && void addHabit(goal.id)}
-                              className="auth-input py-1.5! text-xs! flex-1"
+                              className="auth-input min-w-[120px] flex-1 py-1.5! text-xs!"
                               placeholder="Novo hábito..."
                             />
                             <select

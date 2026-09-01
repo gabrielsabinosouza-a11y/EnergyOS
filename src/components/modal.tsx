@@ -36,17 +36,21 @@ export function Modal({
     ? "fixed inset-0 flex justify-end"
     : isBottom
       ? "fixed inset-0 flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
-      : "fixed inset-0 flex items-center justify-center px-4";
+      // Center modals become full-width bottom sheets on <sm viewports
+      // (native mobile pattern), centered dialogs from `sm:` up.
+      : "fixed inset-0 flex items-end justify-center sm:items-center sm:px-4";
 
   const panelStart = isSide
     ? { opacity: 0, x: "100%" }
-    : { opacity: 0, scale: reduced ? 1 : 0.95, y: isBottom ? 24 : 0 };
+    : { opacity: 0, scale: reduced ? 1 : 0.95, y: reduced ? 0 : 24 };
 
   const panelDefaultClass = isSide
     ? "h-full w-full max-w-md sm:max-w-lg"
     : isBottom
       ? "w-full max-w-md"
-      : "";
+      // Mobile sheet: full-width, height-capped and scrollable; desktop keeps
+      // the caller's own sizing untouched.
+      : "max-sm:w-full max-sm:max-h-[92dvh] max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:rounded-b-none!";
 
   useEffect(() => {
     if (!open) return;

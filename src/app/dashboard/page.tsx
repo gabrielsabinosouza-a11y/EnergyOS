@@ -436,7 +436,8 @@ function DashboardContent() {
 
             <h2 className="font-display text-lg sm:text-xl text-[var(--text-secondary)] mb-4">Como voce dormiu na noite passada?</h2>
 
-            <div className="grid gap-2 sm:grid-cols-4 mb-5">
+            {/* 2×2 on phones (4-across gets too cramped at 375px), 4-up from lg */}
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 mb-5">
               {SLEEP_OPTIONS.map((opt) => {
                 const Icon = opt.icon;
                 const isSelected = sleepAnswer === opt.label;

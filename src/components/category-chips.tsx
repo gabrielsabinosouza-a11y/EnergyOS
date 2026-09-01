@@ -42,7 +42,7 @@ export function CategoryChips({ categories, selectedId, onSelect, onAdd, addActi
             animate={{ scale: selected ? 1.05 : 1 }}
             transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className={`flex items-center rounded-full border font-medium transition-all duration-150 cursor-pointer ${
-              compact ? "gap-1 px-2 py-1 text-[10px]" : "gap-1.5 px-3 py-1.5 text-xs"
+              compact ? "min-h-[34px] gap-1 px-2.5 py-1 text-[11px]" : "min-h-[40px] gap-1.5 px-3.5 py-2 text-xs"
             } ${
               selected
                 ? ""
@@ -73,7 +73,7 @@ export function CategoryChips({ categories, selectedId, onSelect, onAdd, addActi
           whileTap={{ scale: 0.92 }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={`flex items-center rounded-full border border-dashed border-[var(--border-strong)] gap-1 font-medium text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all duration-150 cursor-pointer ${
-            compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
+            compact ? "min-h-[34px] px-2.5 py-1 text-[11px]" : "min-h-[40px] px-3.5 py-2 text-xs"
           } ${addActive ? "border-[var(--accent)] text-[var(--accent)]" : ""}`}
         >
           {addActive ? <X size={compact ? 11 : 12} /> : <Plus size={compact ? 11 : 12} />}

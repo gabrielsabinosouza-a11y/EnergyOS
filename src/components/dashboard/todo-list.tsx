@@ -171,7 +171,7 @@ export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUp
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: task.category.color }} />
                   {task.category.name}
                 </span>
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-0.5 opacity-40 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                   <button onClick={() => { setEditingId(task.id); setEditTitle(task.title); setEditCategoryId(task.categoryId); }} className="icon-button small !w-6 !h-6"><Pencil size={10} /></button>
                   {onPromote && (
                     <button onClick={() => onPromote(task.id)} className="icon-button small !w-6 !h-6 text-[#ffb86b]/60 hover:text-[#ffb86b]" title="Promover para Kanban">
