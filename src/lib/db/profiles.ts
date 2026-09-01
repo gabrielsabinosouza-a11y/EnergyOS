@@ -182,8 +182,8 @@ export async function getUserRole(profileId: string): Promise<"user" | "admin"> 
     `select role from profiles where id = $1`,
     [profileId],
   );
-  if (!result.rows[0]) {
-    throw new NotFoundError("Perfil não encontrado.");
-  }
-  return (result.rows[0].role as "user" | "admin") ?? "user";
+  // A missing row defaults to "user" instead of failing auth, so the profile
+  // can be provisioned on the first request (e.g. /api/dashboard, /api/profile)
+  // instead of being permanently unreachable.
+  return (result.rows[0]?.role as "user" | "admin") ?? "user";
 }
