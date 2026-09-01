@@ -78,8 +78,12 @@ create table if not exists user_settings (
   preferred_theme text not null default 'dark' check (preferred_theme in ('system','light','dark')),
   sleep_time time,
   focus_time time,
-  coins integer not null default 0
+  coins integer not null default 0,
+  sound_notifications_enabled boolean not null default true
 );
+
+-- Upgrade existing installs (idempotent; new installs already have the column)
+alter table user_settings add column if not exists sound_notifications_enabled boolean not null default true;
 
 create index if not exists goals_profile_idx on goals(profile_id);
 create index if not exists habits_goal_idx on habits(goal_id);

@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
-import { LayoutDashboard, ListTodo, Settings, TrendingUp, UserPlus, Users, Trophy, Leaf, ShoppingBag, DoorOpen } from "lucide-react";
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import {
+  LayoutDashboard, ListTodo, Settings, TrendingUp, UserPlus, Users, Trophy,
+  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library,
+} from "lucide-react";
+import { Modal } from "./modal";
 
 export const navigationItems = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard },
@@ -18,6 +22,54 @@ export const navigationItems = [
   { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
+
+/* Bottom tab bar: the 4 most frequently used sections get permanent,
+   thumb-reachable tabs; everything else lives behind "Mais". */
+const PRIMARY_TABS = [
+  { href: "/dashboard",     label: "Início", icon: LayoutDashboard },
+  { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen },
+  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "social" as const },
+  { href: "/liga",          label: "Liga",   icon: Trophy },
+] as const;
+
+const MORE_TABS = [
+  { href: "/metas",         label: "Metas e hábitos", icon: ListTodo },
+  { href: "/grupos",        label: "Grupos",          icon: Users,      badge: "social" as const },
+  { href: "/loja",          label: "Loja",            icon: ShoppingBag },
+  { href: "/jardim",        label: "Meu jardim",      icon: Leaf },
+  { href: "/perfil",        label: "Meu perfil",      icon: TrendingUp },
+  { href: "/configuracoes", label: "Configurações",   icon: Settings },
+] as const;
+
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Unread social count — one poller shared by the desktop sidebar and the
+ *  mobile tab bar so we never double-poll `/api/social/unread`. */
+function useUnreadCount() {
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    async function fetchUnread() {
+      try {
+        const { auth } = await import("@/lib/firebase");
+        const token = await auth?.currentUser?.getIdToken();
+        if (!token || !active) return;
+        const res = await fetch("/api/social/unread", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        if (active) setUnreadCount(data.dmUnread + data.groupUnread);
+      } catch { /* silent */ }
+    }
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30_000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
+  return unreadCount;
+}
 
 export function Sidebar({ pathname }: { pathname: string }) {
   const reduced = useReducedMotion();

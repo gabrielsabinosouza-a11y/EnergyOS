@@ -10,6 +10,14 @@ import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
+import {
+  playCompletionSound,
+  primeCompletionSound,
+  restoreTabTitle,
+  sendSystemCompletionNotification,
+  startCompletionTitleFlash,
+  updateCountdownTabTitle,
+} from "@/lib/session-alerts";
 
 // ─── Session Persistence Types ───────────────────────────────────────────────
 
@@ -20,6 +28,8 @@ interface PersistedSession {
   selectedEnergy: EnergyType;
   durationMinutes: number;
   sessionStartedAt: number | null; // timestamp in ms
+  remainingMs: number | null; // remaining ms as of the start of the current run segment (frozen while paused)
+  runningSince: number | null; // timestamp in ms when the current running segment began (null while paused)
   status: PersistedSessionState;
   lastUpdatedAt: number; // timestamp in ms
 }
@@ -87,19 +97,6 @@ function resolveStage(progress: number, isActive: boolean, isExtinguished: boole
   if (progress < 25) return "spark";
   if (progress < 70) return "forming";
   return "full";
-}
-
-function requestNotificationPermission() {
-  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-    void Notification.requestPermission();
-  }
-}
-
-function sendNotification(title: string, body: string) {
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission === "granted") {
-    new Notification(title, { body, icon: "/icons_8bits/logo.png" });
-  }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -194,21 +191,31 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
   const [mounted, setMounted] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [promptDismissed, setPromptDismissed] = useState(false);
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
   const remainingRef = useRef(25 * 60);
+  const remainingMsRef = useRef(25 * 60 * 1000);
+  const runningSinceRef = useRef<number | null>(null);
   const stateRef = useRef<TimerState>("idle");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedEnergyRef = useRef<EnergyType>("flame");
   const durationRef = useRef(25);
+  const completedRef = useRef(false);
+  const soundEnabledRef = useRef(true);
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { selectedEnergyRef.current = selectedEnergy; }, [selectedEnergy]);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
   useEffect(() => {
     durationRef.current = duration;
     if (state === "idle") {
+      const totalMs = duration * 60 * 1000;
+      remainingMsRef.current = totalMs;
+      runningSinceRef.current = null;
       remainingRef.current = duration * 60;
       setRemaining(duration * 60);
     }
@@ -233,16 +240,28 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     }
 
     // Handle running/paused sessions
-    if ((persisted.status === "running" || persisted.status === "paused") && persisted.sessionId && persisted.sessionStartedAt) {
+    if ((persisted.status === "running" || persisted.status === "paused") && persisted.sessionId) {
       const now = Date.now();
-      const elapsedMs = now - persisted.sessionStartedAt;
-      const totalDurationMs = persisted.durationMinutes * 60 * 1000;
-      const remainingMs = totalDurationMs - elapsedMs;
+      let remainingMs: number;
+      if (typeof persisted.remainingMs === "number" && persisted.remainingMs > 0) {
+        remainingMs = persisted.remainingMs;
+        if (persisted.status === "running" && typeof persisted.runningSince === "number") {
+          remainingMs = Math.max(0, remainingMs - (now - persisted.runningSince));
+        }
+      } else {
+        // Legacy persisted state (before the pause-aware fields existed): fall
+        // back to the wall clock of the original session start.
+        const elapsedMs = now - (persisted.sessionStartedAt ?? now);
+        const totalDurationMs = persisted.durationMinutes * 60 * 1000;
+        remainingMs = totalDurationMs - elapsedMs;
+      }
 
       if (remainingMs > 0) {
         // Session still in progress - restore it
-        sessionRef.current = { id: persisted.sessionId, startedAt: persisted.sessionStartedAt };
-        const remainingSec = Math.max(0, Math.round(remainingMs / 1000));
+        sessionRef.current = { id: persisted.sessionId, startedAt: persisted.sessionStartedAt ?? now };
+        remainingMsRef.current = remainingMs;
+        runningSinceRef.current = persisted.status === "running" ? now : null;
+        const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
         remainingRef.current = remainingSec;
         setRemaining(remainingSec);
         setState(persisted.status as TimerState);
@@ -269,8 +288,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             setRewardCount(reward);
             setShowComplete(true);
 
+            // Multi-layered alerting for a session that ended out of view
+            completedRef.current = true;
+            if (soundEnabledRef.current) playCompletionSound();
+            if (typeof document !== "undefined" && document.hidden) {
+              sendSystemCompletionNotification(result.xpAwarded);
+              startCompletionTitleFlash();
+            }
+
             // Reset state
             sessionRef.current = null;
+            runningSinceRef.current = null;
             setState("idle");
             stateRef.current = "idle";
             remainingRef.current = durationMinutes * 60;
@@ -278,16 +306,11 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             
             // Clear persistence
             clearSessionState();
-
-            // Notify user
-            sendNotification(
-              "⚡ Sessão concluída!",
-              `Você ganhou ${result.xpAwarded} moedas enquanto estava ausente.`
-            );
           } catch (error) {
             console.error("Failed to handle completed session:", error);
             // On error, reset to idle state but don't show completion
             sessionRef.current = null;
+            runningSinceRef.current = null;
             setState("idle");
             stateRef.current = "idle";
             clearSessionState();
@@ -311,6 +334,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       selectedEnergy: selectedEnergyRef.current,
       durationMinutes: durationRef.current,
       sessionStartedAt: sessionRef.current?.startedAt ?? null,
+      remainingMs: remainingMsRef.current,
+      runningSince: runningSinceRef.current,
       status: stateRef.current as PersistedSessionState,
       lastUpdatedAt: Date.now(),
     };
@@ -354,6 +379,21 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     }
   }, []);
 
+  // Load sound preference (defaults to on when it can't be resolved)
+  useEffect(() => {
+    api.getSettings()
+      .then((s) => setSoundEnabled(s.soundNotificationsEnabled))
+      .catch(() => { /* keep default: on */ });
+  }, []);
+
+  async function activateNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    try {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm);
+    } catch { /* keep current state */ }
+  }
+
   const totalDurationSec = duration * 60;
   const countdownProgress = Math.min(((totalDurationSec - remaining) / totalDurationSec) * 100, 100);
   const isActive = state !== "idle";
@@ -362,19 +402,68 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
   const cfg = ENERGY_CONFIGS[selectedEnergy];
   const imageSize = Math.round(RING_SIZE * 0.58);
 
+  // Wall-clock derived remaining time. The interval is only a render clock —
+  // it never decrements a counter, so background-tab throttling/suspension of
+  // timers can't make the countdown drift or freeze.
+  function computeRemainingMs(): number {
+    if (stateRef.current === "running" && runningSinceRef.current != null) {
+      return Math.max(0, remainingMsRef.current - (Date.now() - runningSinceRef.current));
+    }
+    return remainingMsRef.current;
+  }
+
+  function sessionExpired(): boolean {
+    if (stateRef.current !== "running" || runningSinceRef.current == null) return false;
+    return remainingMsRef.current - (Date.now() - runningSinceRef.current) <= 0;
+  }
+
+  function syncRemaining(): number {
+    const ms = computeRemainingMs();
+    remainingRef.current = Math.max(0, Math.ceil(ms / 1000));
+    setRemaining(remainingRef.current);
+    return ms;
+  }
+
   function startInterval() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
       if (stateRef.current !== "running") return;
-      remainingRef.current -= 1;
-      setRemaining(remainingRef.current);
-
-      if (remainingRef.current <= 0) {
+      if (sessionExpired()) {
         clearInterval(intervalRef.current!);
         void completeSession();
+        return;
       }
+      syncRemaining();
+      updateCountdownTabTitle(formatTime(remainingRef.current));
     }, 1000);
   }
+
+  // Re-sync the countdown the instant the tab regains focus. Even if the
+  // interval was throttled/suspended while backgrounded, the displayed value is
+  // recomputed from real wall-clock time (and completion fires) immediately.
+  useEffect(() => {
+    function resync() {
+      if (document.visibilityState !== "visible") return;
+      // Restore the tab title the instant the user comes back, even if the
+      // completion already fired while hidden (flash is managed internally too).
+      restoreTabTitle();
+      if (stateRef.current !== "running") return;
+      if (sessionExpired()) {
+        stopInterval();
+        void completeSession();
+        return;
+      }
+      syncRemaining();
+      updateCountdownTabTitle(formatTime(remainingRef.current));
+    }
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- helpers use stable refs; listeners must be bound only once
+  }, []);
 
   function stopInterval() {
     if (intervalRef.current) {
@@ -385,7 +474,9 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
 
   async function completeSession() {
     const sess = sessionRef.current;
-    if (!sess) return;
+    if (!sess || completedRef.current) return;
+    completedRef.current = true;
+    stopInterval();
 
     const focusedSeconds = durationRef.current * 60;
     const focusedMinutes = durationRef.current;
@@ -398,14 +489,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
       setRewardCount(reward);
       setShowComplete(true);
 
-      // Browser notification
-      sendNotification(
-        "⚡ Sessão concluída!",
-        `Você ganhou ${result.xpAwarded} moedas. Resgate agora no energyOS.`
-      );
+      // Multi-layered alerting — the chime plays regardless of tab focus; the
+      // native notification + tab-title flash only apply to out-of-view ends.
+      if (soundEnabledRef.current) playCompletionSound();
+      if (typeof document !== "undefined" && document.hidden) {
+        sendSystemCompletionNotification(result.xpAwarded);
+        startCompletionTitleFlash();
+      }
     } catch { /* handled by parent */ }
 
     sessionRef.current = null;
+    runningSinceRef.current = null;
     setState("idle");
     stateRef.current = "idle";
     
@@ -414,21 +508,29 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
   }
 
   async function handleStart() {
-    requestNotificationPermission();
+    // Refresh permission state, but NEVER solicit it here — the contextual
+    // in-app prompt (shown while the session runs) drives the actual request.
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotifPermission(Notification.permission);
     }
+    // Unlock the audio context inside this user gesture so the completion
+    // chime is allowed to play when the session ends later in a background tab.
+    primeCompletionSound();
     try {
       const result = await onStart(duration, undefined, selectedEnergyRef.current);
       const startedAt = new Date(result.session.startedAt).getTime();
       sessionRef.current = { id: result.session.id, startedAt };
 
       const totalSec = duration * 60;
+      completedRef.current = false;
+      remainingMsRef.current = totalSec * 1000;
+      runningSinceRef.current = Date.now();
       remainingRef.current = totalSec;
       setRemaining(totalSec);
       setLastCoins(0);
       setShowComplete(false);
       setIsExtinguished(false);
+      setPromptDismissed(false);
 
       setState("running");
       stateRef.current = "running";
@@ -440,13 +542,17 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
 
   function handlePause() {
     if (state !== "running") return;
+    // Freeze the remaining time at this instant; the run segment is over.
+    remainingMsRef.current = computeRemainingMs();
+    runningSinceRef.current = null;
     setState("paused");
     stateRef.current = "paused";
-    // interval keeps running but tick is gated by stateRef check
   }
 
   function handleResume() {
     if (state !== "paused") return;
+    // Start a fresh run segment; remaining continues from the frozen value.
+    runningSinceRef.current = Date.now();
     setState("running");
     stateRef.current = "running";
   }
@@ -456,9 +562,15 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     if (giveUp) setIsExtinguished(true);
 
     const sess = sessionRef.current;
+    completedRef.current = false;
+    restoreTabTitle();
     if (!sess) { setState("idle"); return; }
 
-    const focusedSeconds = Math.max(0, durationRef.current * 60 - remainingRef.current);
+    // Capture the remaining time BEFORE clearing the run-segment timestamp so
+    // the currently-running segment's elapsed seconds aren't lost.
+    const focusedMs = durationRef.current * 60 * 1000 - computeRemainingMs();
+    const focusedSeconds = Math.max(0, Math.ceil(focusedMs / 1000));
+    runningSinceRef.current = null;
 
     try {
       const result = await onEnd(sess.id, focusedSeconds);
@@ -489,15 +601,10 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
           <Timer size={16} className="text-[var(--accent)]" />
           <span className="eyebrow muted">FOCO</span>
         </div>
-        {/* Notification permission prompt */}
+        {/* Notification permission — manual opt-in, never requested on load */}
         {notifPermission === "default" && (
           <button
-            onClick={() => {
-              requestNotificationPermission();
-              setTimeout(() => {
-                if ("Notification" in window) setNotifPermission(Notification.permission);
-              }, 500);
-            }}
+            onClick={() => void activateNotifications()}
             className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)] transition"
           >
             <Bell size={10} /> Ativar notificações
@@ -561,6 +668,36 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
             {state === "running" ? "em andamento" : state === "paused" ? "pausado" : "duração"}
           </span>
         </div>
+
+        {/* Contextual notification prompt — only after a session starts, with an
+            in-app explanation BEFORE the actual browser permission request */}
+        {state === "running" && notifPermission === "default" && !promptDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.25 }}
+            className="mt-3 flex w-full max-w-sm items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2.5"
+          >
+            <Bell size={14} className="shrink-0 text-[var(--accent)]" />
+            <p className="flex-1 text-[10px] leading-snug text-[var(--text-muted)]">
+              Quer receber uma notificação quando sua sessão de foco terminar?
+            </p>
+            <button
+              onClick={() => void activateNotifications()}
+              className="shrink-0 rounded-full px-3 py-1 text-[10px] font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+              style={{ background: cfg.accent }}
+            >
+              Ativar
+            </button>
+            <button
+              onClick={() => setPromptDismissed(true)}
+              className="shrink-0 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
+            >
+              Agora não
+            </button>
+          </motion.div>
+        )}
 
         {/* Coins preview */}
         {!isActive && !showComplete && (

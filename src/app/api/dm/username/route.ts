@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/server-auth";
+import { AppError } from "@/lib/errors";
+import { startDirectChatByUsername, sendDirectMessageByUsername } from "@/lib/db/messages";
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ username: string }> }
+) {
+  try {
+    const { profileId } = await requireAuth(request);
+    const { username } = await params;
+    
+    // Remove @ prefix if present
+    const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+    
+    const result = await startDirectChatByUsername(profileId, cleanUsername);
+    
+    return NextResponse.json(result);
+  } catch (error) {
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Erro interno." }, { status: 500 });
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ username: string }> }
+) {
+  try {
+    const { profileId } = await requireAuth(request);
+    const { username } = await params;
+    const body = await request.json();
+    
+    // Remove @ prefix if present
+    const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+    
+    const message = await sendDirectMessageByUsername(profileId, cleanUsername, body.body);
+    
+    return NextResponse.json({ message });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Erro interno." }, { status: 500 });
+  }
+}

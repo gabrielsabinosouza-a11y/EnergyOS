@@ -44,7 +44,7 @@ export async function buildDashboardSnapshot(
 
   // Override role from auth to ensure it's current
   if (role) {
-    (user as any).role = role;
+    user.role = role;
   }
 
   const metrics: Metric[] = [

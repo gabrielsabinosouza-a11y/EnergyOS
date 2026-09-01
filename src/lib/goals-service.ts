@@ -231,6 +231,7 @@ export interface SaveUserSettingsInput {
   preferredTheme: UserSettings["preferredTheme"];
   sleepTime?: string;
   focusTime?: string;
+  soundNotificationsEnabled?: boolean;
 }
 
 export async function saveUserSettings(profileId: string, input: SaveUserSettingsInput): Promise<UserSettings> {
@@ -242,20 +243,22 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
   if (input.focusTime && !timePattern.test(input.focusTime)) throw new Error("Horário de foco inválido.");
 
   const result = await pool.query(
-    `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time)
-     values ($1, $2, $3, $4, $5)
+    `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time, sound_notifications_enabled)
+     values ($1, $2, $3, $4, $5, $6)
      on conflict (profile_id) do update set
        notifications_enabled = excluded.notifications_enabled,
        preferred_theme = excluded.preferred_theme,
        sleep_time = excluded.sleep_time,
-       focus_time = excluded.focus_time
-     returning notifications_enabled, preferred_theme, sleep_time, focus_time`,
+       focus_time = excluded.focus_time,
+       sound_notifications_enabled = excluded.sound_notifications_enabled
+     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled`,
     [
       dbProfileId,
       input.notificationsEnabled,
       input.preferredTheme,
       input.sleepTime ?? null,
       input.focusTime ?? null,
+      input.soundNotificationsEnabled ?? true,
     ],
   );
 
@@ -264,6 +267,8 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
     preferred_theme: UserSettings["preferredTheme"];
     sleep_time: string | null;
     focus_time: string | null;
+    coins: number;
+    sound_notifications_enabled: boolean;
   };
   return {
     profileId,
@@ -271,14 +276,15 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
     preferredTheme: row.preferred_theme,
     sleepTime: row.sleep_time ? row.sleep_time.slice(0, 5) : undefined,
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
-    coins: 0,
+    coins: row.coins ?? 0,
+    soundNotificationsEnabled: row.sound_notifications_enabled,
   };
 }
 
 export async function getUserSettings(profileId: string): Promise<UserSettings | null> {
   const dbProfileId = requireProfileId(profileId);
   const result = await pool.query(
-    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins
+    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled
      from user_settings where profile_id = $1`,
     [dbProfileId],
   );
@@ -289,6 +295,7 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
         sleep_time: string | null;
         focus_time: string | null;
         coins: number;
+        sound_notifications_enabled: boolean;
       }
     | undefined;
   if (!row) return null;
@@ -299,5 +306,6 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
     sleepTime: row.sleep_time ? row.sleep_time.slice(0, 5) : undefined,
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
     coins: row.coins ?? 0,
+    soundNotificationsEnabled: row.sound_notifications_enabled,
   };
 }

@@ -145,6 +145,19 @@ export interface UserSearchResult {
   relation: "none" | "pending_outgoing" | "pending_incoming" | "friends";
 }
 
+export interface UserProfileForChat {
+  id: string;
+  displayName: string;
+  username: string;
+  photoUrl?: string;
+}
+
+export interface StartChatResult {
+  conversationWith: UserProfileForChat;
+  isFriend: boolean;
+  friendRequestSent: boolean;
+}
+
 export interface DirectMessage {
   id: number;
   senderId: string;
@@ -288,6 +301,7 @@ export interface UserSettings {
   sleepTime?: string;
   focusTime?: string;
   coins: number;
+  soundNotificationsEnabled: boolean;
 }
 
 export interface Metric {

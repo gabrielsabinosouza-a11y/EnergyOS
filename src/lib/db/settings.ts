@@ -12,6 +12,7 @@ interface SettingsRow {
   sleep_time: string | null;
   focus_time: string | null;
   coins: number;
+  sound_notifications_enabled: boolean;
 }
 
 function toSettings(profileId: string, row: SettingsRow): UserSettings {
@@ -22,18 +23,19 @@ function toSettings(profileId: string, row: SettingsRow): UserSettings {
     sleepTime: row.sleep_time ? row.sleep_time.slice(0, 5) : undefined,
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
     coins: row.coins ?? 0,
+    soundNotificationsEnabled: row.sound_notifications_enabled,
   };
 }
 
 export async function getSettings(profileId: string): Promise<UserSettings> {
   parseProfileId(profileId);
   const result = await pool.query<SettingsRow>(
-    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins
+    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled
      from user_settings where profile_id = $1`,
     [profileId],
   );
   if (!result.rows[0]) {
-    return { profileId, notificationsEnabled: true, preferredTheme: "dark", coins: 0 };
+    return { profileId, notificationsEnabled: true, preferredTheme: "dark", coins: 0, soundNotificationsEnabled: true };
   }
   return toSettings(profileId, result.rows[0]);
 }
@@ -43,6 +45,7 @@ export interface SaveSettingsInput {
   preferredTheme?: UserSettings["preferredTheme"];
   sleepTime?: string | null;
   focusTime?: string | null;
+  soundNotificationsEnabled?: boolean;
 }
 
 export async function saveSettings(profileId: string, input: SaveSettingsInput): Promise<UserSettings> {
@@ -53,17 +56,19 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
   const preferredTheme = parseEnum(input.preferredTheme ?? "dark", THEMES, "Tema");
   const sleepTime = input.sleepTime === undefined ? null : parseOptionalTime(input.sleepTime, "Horário de sono");
   const focusTime = input.focusTime === undefined ? null : parseOptionalTime(input.focusTime, "Horário de foco");
+  const soundNotificationsEnabled = parseBoolean(input.soundNotificationsEnabled ?? true, "Sons de notificação", true);
 
   const result = await pool.query<SettingsRow>(
-    `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time)
-     values ($1, $2, $3, $4, $5)
+    `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time, sound_notifications_enabled)
+     values ($1, $2, $3, $4, $5, $6)
      on conflict (profile_id) do update set
        notifications_enabled = excluded.notifications_enabled,
        preferred_theme = excluded.preferred_theme,
        sleep_time = excluded.sleep_time,
-       focus_time = excluded.focus_time
-     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins`,
-    [profileId, notificationsEnabled, preferredTheme, sleepTime, focusTime],
+       focus_time = excluded.focus_time,
+       sound_notifications_enabled = excluded.sound_notifications_enabled
+     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled`,
+    [profileId, notificationsEnabled, preferredTheme, sleepTime, focusTime, soundNotificationsEnabled],
   );
   return toSettings(profileId, result.rows[0]);
 }
@@ -76,7 +81,7 @@ export async function addCoins(profileId: string, amount: number, db: Pool | Poo
     `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time, coins)
      values ($1, true, 'dark', null, null, $2)
      on conflict (profile_id) do update set coins = user_settings.coins + excluded.coins
-     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins`,
+     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled`,
     [profileId, amount],
   );
   return toSettings(profileId, result.rows[0]);

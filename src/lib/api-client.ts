@@ -25,6 +25,15 @@ async function authToken(): Promise<string | null> {
   return auth?.currentUser?.getIdToken() ?? null;
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const token = await authToken();
   const response = await fetch(input, {
@@ -37,7 +46,7 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiError;
-    throw new Error(body.error || "Não foi possível concluir a solicitação.");
+    throw new ApiRequestError(body.error || "Não foi possível concluir a solicitação.", response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -224,6 +233,7 @@ export const api = {
   getUnreadCounts: () => request<{ hasUnread: boolean; dmUnread: number; groupUnread: number }>("/api/social/unread"),
   searchUsers: (q: string) => request<{ results: UserSearchResult[] }>(`/api/social/search?q=${encodeURIComponent(q)}`),
   getPublicProfile: (id: string) => request<{ profile: PublicProfile }>(`/api/social/profile/${id}`),
+  getUserByUsername: (username: string) => request<{ user: import("@/types").UserProfileForChat }>(`/api/social/username/${username}`),
 
   // Friends
   getFriends: () => request<{ friends: FriendSummary[] }>("/api/friends"),
@@ -244,11 +254,17 @@ export const api = {
     request<{ message: DirectMessage }>(`/api/dm/${friendId}`, { method: "POST", body: JSON.stringify({ body }) }),
   markDmRead: (friendId: string) =>
     request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
+  startChatByUsername: (username: string) =>
+    request<import("@/types").StartChatResult>(`/api/dm/username/${username}`),
+  sendMessageByUsername: (username: string, body: string) =>
+    request<{ message: DirectMessage }>(`/api/dm/username/${username}`, { method: "POST", body: JSON.stringify({ body }) }),
 
   // Groups
   getGroups: () => request<{ groups: GroupSummary[] }>("/api/groups"),
   createGroup: (input: { name: string; avatarEmoji?: string; inviteIds?: string[] }) =>
     request<{ group: GroupDetail }>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
+  createGroupWithUsernames: (input: { name: string; avatarEmoji?: string; description?: string; isPublic?: boolean; memberUsernames?: string[] }) =>
+    request<{ group: GroupDetail }>("/api/groups/create-with-usernames", { method: "POST", body: JSON.stringify(input) }),
   getGroup: (id: number) => request<{ group: GroupDetail }>(`/api/groups/${id}`),
   getGroupMessages: (id: number, afterId?: number) => {
     const query = afterId ? `?after=${afterId}` : "";

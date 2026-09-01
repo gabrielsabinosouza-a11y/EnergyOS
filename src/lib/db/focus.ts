@@ -110,7 +110,7 @@ export async function importGardenEntries(profileId: string, entries: ImportGard
   return inserted;
 }
 
-async function plantGardenEntries(profileId: string, sessionId: number, energyType: string, durationMinutes: number): Promise<void> {
+export async function plantGardenEntries(profileId: string, sessionId: number | null, energyType: string, durationMinutes: number): Promise<void> {
   const reward = getEnergyReward(durationMinutes);
   if (reward <= 0 || durationMinutes <= 0) return;
   const perEnergy = Math.round((durationMinutes / reward) * 100) / 100;

@@ -18,6 +18,7 @@ type SettingsForm = Omit<UserSettings, "profileId">;
 
 const defaultSettings: SettingsForm = {
   notificationsEnabled: true,
+  soundNotificationsEnabled: true,
   preferredTheme: "dark",
   sleepTime: "23:00",
   focusTime: "08:00",
@@ -51,6 +52,7 @@ export default function ConfiguracoesPage() {
       if (!active) return;
       const loaded: SettingsForm = {
         notificationsEnabled: s.notificationsEnabled,
+        soundNotificationsEnabled: s.soundNotificationsEnabled ?? true,
         preferredTheme: s.preferredTheme,
         sleepTime: s.sleepTime ?? defaultSettings.sleepTime,
         focusTime: s.focusTime ?? defaultSettings.focusTime,
@@ -83,6 +85,7 @@ export default function ConfiguracoesPage() {
     try {
       await api.saveSettings({
         notificationsEnabled: form.notificationsEnabled,
+        soundNotificationsEnabled: form.soundNotificationsEnabled,
         preferredTheme: form.preferredTheme,
         sleepTime: form.sleepTime,
         focusTime: form.focusTime,
@@ -163,6 +166,12 @@ export default function ConfiguracoesPage() {
                 description="Receber lembretes de check-in e metas"
                 checked={form.notificationsEnabled}
                 onChange={(v) => setField("notificationsEnabled", v)}
+              />
+              <ToggleRow
+                label="Sons de notificação"
+                description="Tocar um som suave quando sua sessão de foco terminar"
+                checked={form.soundNotificationsEnabled}
+                onChange={(v) => setField("soundNotificationsEnabled", v)}
               />
               <div>
                 <div className="text-sm font-medium mb-2">Tema da interface</div>

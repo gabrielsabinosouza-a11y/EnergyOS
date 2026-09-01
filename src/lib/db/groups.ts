@@ -133,6 +133,85 @@ export async function createGroup(
   }
 }
 
+/**
+ * Create a group chat with users identified by their usernames (@ handles)
+ * This allows creating groups without requiring prior friendship
+ * Users who are not friends will be added as members but won't have full access
+ * until they accept or until friendship is established
+ */
+export async function createGroupWithUsernames(
+  profileId: string,
+  input: { 
+    name: string; 
+    avatarEmoji?: string; 
+    description?: string; 
+    isPublic?: boolean; 
+    memberUsernames?: string[] 
+  },
+): Promise<GroupDetail> {
+  parseProfileId(profileId);
+  const name = parseTitle(input.name, "Nome do grupo");
+  const emoji = input.avatarEmoji?.trim() || "⚡";
+  if (!GROUP_EMOJIS.has(emoji)) throw new ValidationError("Escolha um emoji da lista.");
+  
+  const description = input.description?.trim() || null;
+  const isPublic = input.isPublic ?? false;
+
+  // Resolve usernames to profile IDs
+  const usernames = [...new Set((input.memberUsernames ?? []))].filter((u) => u && u !== profileId);
+  const userIdMap = new Map<string, string>();
+  
+  if (usernames.length > 0) {
+    const result = await pool.query<{ id: string; username: string }>(
+      `select id, username from profiles where lower(username) = any(lower($1::text[]))`,
+      [usernames],
+    );
+    
+    for (const row of result.rows) {
+      userIdMap.set(row.username.toLowerCase(), row.id);
+    }
+    
+    // Check if all usernames were found
+    for (const username of usernames) {
+      if (!userIdMap.has(username.toLowerCase())) {
+        throw new NotFoundError(`Usuário @${username} não encontrado.`);
+      }
+    }
+  }
+
+  const inviteIds = Array.from(userIdMap.values()).filter((id) => id !== profileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const created = await client.query<GroupRow>(
+      `insert into groups (name, avatar_emoji, description, is_public, created_by)
+       values ($1, $2, $3, $4, $5)
+       returning id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public`,
+      [name, emoji, description, isPublic, profileId],
+    );
+    const group = created.rows[0];
+    await client.query(
+      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'owner')`,
+      [group.id, profileId],
+    );
+    for (const id of inviteIds) {
+      await client.query(
+        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'member')
+         on conflict do nothing`,
+        [group.id, id],
+      );
+    }
+    await client.query("commit");
+    return getGroupDetail(profileId, Number(group.id));
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getGroupDetail(profileId: string, groupId: number, period: Period = "WEEK"): Promise<GroupDetail> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");

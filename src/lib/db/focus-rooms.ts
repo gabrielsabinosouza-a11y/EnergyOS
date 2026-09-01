@@ -1,7 +1,9 @@
 import pool from "../db";
-import { NotFoundError, ConflictError } from "../errors";
+import { NotFoundError, ConflictError, ForbiddenError } from "../errors";
+import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
+import { plantGardenEntries, getEnergyReward } from "./focus";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired";
@@ -115,8 +117,9 @@ export async function createFocusRoom(
   durationMinutes: number,
   energyType?: string
 ): Promise<FocusRoom> {
-  if (!hostProfileId) throw new Error("Host profile ID is required");
-  if (durationMinutes <= 0) throw new Error("Duration must be positive");
+  parseProfileId(hostProfileId);
+  if (!hostProfileId) throw new ValidationError("Host profile ID is required");
+  if (durationMinutes <= 0) throw new ValidationError("Duration must be positive");
 
   // Generate a unique code
   let code = generateRoomCode();
@@ -129,30 +132,43 @@ export async function createFocusRoom(
   }
 
   if (attempts >= maxAttempts) {
-    throw new Error("Failed to generate a unique room code");
+    throw new ConflictError("Failed to generate a unique room code");
   }
 
-  const result = await pool.query<FocusRoomRow>(
-    `insert into focus_rooms (code, host_profile_id, status, duration_minutes, energy_type)
-     values ($1, $2, $3, $4, $5)
-     returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at`,
-    [code, hostProfileId, "waiting", durationMinutes, energyType ?? null]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query<FocusRoomRow>(
+      `insert into focus_rooms (code, host_profile_id, status, duration_minutes, energy_type)
+       values ($1, $2, $3, $4, $5)
+       returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at`,
+      [code, hostProfileId, "waiting", durationMinutes, energyType ?? null]
+    );
 
-  // Add host as first participant
-  await pool.query<RoomParticipantRow>(
-    `insert into room_participants (room_id, profile_id, session_status, selected_energy_type)
-     values ($1, $2, $3, $4)`,
-    [result.rows[0].id, hostProfileId, "waiting", energyType ?? null]
-  );
+    // Add host as first participant
+    await client.query<RoomParticipantRow>(
+      `insert into room_participants (room_id, profile_id, session_status, selected_energy_type)
+       values ($1, $2, $3, $4)`,
+      [result.rows[0].id, hostProfileId, "waiting", energyType ?? null]
+    );
 
-  // Fetch the created room with participants
-  const room = await getFocusRoomById(hostProfileId, Number(result.rows[0].id));
-  return room!;
+    await client.query("commit");
+
+    // Fetch the created room with participants
+    const room = await getFocusRoomById(hostProfileId, Number(result.rows[0].id));
+    return room!;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Get a focus room by ID
 export async function getFocusRoomById(profileId: string, roomId: number): Promise<FocusRoom | null> {
+  const parsedProfileId = parseProfileId(profileId);
+  
   const result = await pool.query<FocusRoomRow>(
     `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
      from focus_rooms where id = $1`,
@@ -161,12 +177,25 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
 
   if (!result.rows[0]) return null;
 
+  const row = result.rows[0];
+  
+  // Authorization check: user must be the host or a participant
+  if (row.host_profile_id !== parsedProfileId) {
+    const participants = await getRoomParticipants(roomId);
+    const isParticipant = participants.some((p) => p.profileId === parsedProfileId);
+    if (!isParticipant) {
+      throw new ForbiddenError("Você não tem permissão para acessar esta sala.");
+    }
+  }
+
   const participants = await getRoomParticipants(roomId);
-  return mapFocusRoom(result.rows[0], participants);
+  return mapFocusRoom(row, participants);
 }
 
 // Get a focus room by code
-export async function getFocusRoomByCode(code: string): Promise<FocusRoom | null> {
+export async function getFocusRoomByCode(profileId: string, code: string): Promise<FocusRoom | null> {
+  const parsedProfileId = parseProfileId(profileId);
+  
   const result = await pool.query<FocusRoomRow>(
     `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
      from focus_rooms where code = $1`,
@@ -175,8 +204,19 @@ export async function getFocusRoomByCode(code: string): Promise<FocusRoom | null
 
   if (!result.rows[0]) return null;
 
-  const participants = await getRoomParticipants(Number(result.rows[0].id));
-  return mapFocusRoom(result.rows[0], participants);
+  const row = result.rows[0];
+  
+  // Authorization check: user must be the host or a participant
+  if (row.host_profile_id !== parsedProfileId) {
+    const participants = await getRoomParticipants(Number(row.id));
+    const isParticipant = participants.some((p) => p.profileId === parsedProfileId);
+    if (!isParticipant) {
+      throw new ForbiddenError("Você não tem permissão para acessar esta sala.");
+    }
+  }
+
+  const participants = await getRoomParticipants(Number(row.id));
+  return mapFocusRoom(row, participants);
 }
 
 // Get all room participants
@@ -199,6 +239,8 @@ export async function getRoomParticipants(roomId: number): Promise<RoomParticipa
 
 // Update a participant's selected energy type
 export async function updateParticipantEnergyType(roomId: number, profileId: string, energyType: string): Promise<RoomParticipant> {
+  parseProfileId(profileId);
+  
   const result = await pool.query<RoomParticipantRow>(
     `update room_participants 
      set selected_energy_type = $1 
@@ -208,7 +250,7 @@ export async function updateParticipantEnergyType(roomId: number, profileId: str
   );
 
   if (!result.rows[0]) {
-    throw new Error("Participant not found");
+    throw new NotFoundError("Participant not found");
   }
 
   return mapRoomParticipant(result.rows[0]);
@@ -216,7 +258,8 @@ export async function updateParticipantEnergyType(roomId: number, profileId: str
 
 // Update the room's duration (host only)
 export async function updateRoomDuration(roomId: number, hostProfileId: string, durationMinutes: number): Promise<FocusRoom> {
-  if (durationMinutes <= 0) throw new Error("Duration must be positive");
+  parseProfileId(hostProfileId);
+  if (durationMinutes <= 0) throw new ValidationError("Duration must be positive");
 
   // Verify host
   const room = await pool.query<{ host_profile_id: string }>(
@@ -225,11 +268,11 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new Error("Only the host can update the room duration");
+    throw new ForbiddenError("Only the host can update the room duration");
   }
 
   const result = await pool.query<FocusRoomRow>(
@@ -246,6 +289,8 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
 // join) returns the existing participant instead of throwing, and refreshes
 // their selected energy type if one was provided.
 export async function addParticipantToRoom(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomParticipant> {
+  parseProfileId(profileId);
+  
   // Check room status
   const room = await pool.query<{ status: string }>(
     `select status from focus_rooms where id = $1`,
@@ -277,6 +322,8 @@ export async function addParticipantToRoom(roomId: number, profileId: string, se
 
 // Remove a participant from a room
 export async function removeParticipantFromRoom(roomId: number, profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  
   await pool.query(
     `delete from room_participants where room_id = $1 and profile_id = $2`,
     [roomId, profileId]
@@ -285,6 +332,8 @@ export async function removeParticipantFromRoom(roomId: number, profileId: strin
 
 // Start a focus room (host only)
 export async function startFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+  
   // Verify host
   const room = await pool.query<{ host_profile_id: string; status: string }>(
     `select host_profile_id, status from focus_rooms where id = $1`,
@@ -292,15 +341,15 @@ export async function startFocusRoom(roomId: number, hostProfileId: string): Pro
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new Error("Only the host can start the room");
+    throw new ForbiddenError("Only the host can start the room");
   }
 
   if (room.rows[0].status !== "waiting") {
-    throw new Error("Room is not in waiting state");
+    throw new ConflictError("Room is not in waiting state");
   }
 
   const now = new Date().toISOString();
@@ -323,21 +372,23 @@ export async function startFocusRoom(roomId: number, hostProfileId: string): Pro
 
 // Pause an active focus room (host only)
 export async function pauseFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+  
   const room = await pool.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null }>(
     `select host_profile_id, status, last_resumed_at from focus_rooms where id = $1`,
     [roomId]
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new Error("Only the host can pause the room");
+    throw new ForbiddenError("Only the host can pause the room");
   }
 
   if (room.rows[0].status !== "active") {
-    throw new Error("Room is not in an active state");
+    throw new ConflictError("Room is not in an active state");
   }
 
   const now = Date.now();
@@ -366,21 +417,23 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
 
 // Resume a paused focus room (host only)
 export async function resumeFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+  
   const room = await pool.query<{ host_profile_id: string; status: string }>(
     `select host_profile_id, status from focus_rooms where id = $1`,
     [roomId]
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new Error("Only the host can resume the room");
+    throw new ForbiddenError("Only the host can resume the room");
   }
 
   if (room.rows[0].status !== "paused") {
-    throw new Error("Room is not paused");
+    throw new ConflictError("Room is not paused");
   }
 
   const now = new Date().toISOString();
@@ -418,7 +471,7 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
   );
 
   if (!room.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Room not found");
   }
 
   const completedRoom = await getFocusRoomById(room.rows[0].host_profile_id, roomId);
@@ -432,6 +485,8 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
 // timer continues running for every other participant, who can therefore still
 // complete the full duration and collect the reward.
 export async function stopFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+  
   const now = new Date().toISOString();
 
   // Only the host's own session ends. The room status is left untouched so the
@@ -447,7 +502,7 @@ export async function stopFocusRoom(roomId: number, hostProfileId: string): Prom
     `select id, host_profile_id from focus_rooms where id = $1`,
     [roomId],
   );
-  if (!room.rows[0]) throw new Error("Room not found");
+  if (!room.rows[0]) throw new NotFoundError("Room not found");
 
   const updatedRoom = await getFocusRoomById(room.rows[0].host_profile_id, roomId);
   return updatedRoom!;
@@ -455,6 +510,8 @@ export async function stopFocusRoom(roomId: number, hostProfileId: string): Prom
 
 // Mark a participant as having given up
 export async function participantGaveUp(roomId: number, profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  
   const now = new Date().toISOString();
 
   await pool.query(
@@ -467,6 +524,8 @@ export async function participantGaveUp(roomId: number, profileId: string): Prom
 
 // Mark a participant as having completed their session
 export async function participantCompleted(roomId: number, profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  
   const now = new Date().toISOString();
 
   await pool.query(
@@ -487,6 +546,8 @@ export async function getUserFocusRooms(
   forList: boolean = true,
   completedRetentionMs = 24 * 60 * 60 * 1000,
 ): Promise<FocusRoom[]> {
+  parseProfileId(profileId);
+  
   const ret = await pool.query<{ room_id: string | number }>(
     `select room_id from room_participants where profile_id = $1 order by joined_at desc`,
     [profileId],
@@ -530,6 +591,8 @@ export async function getUserFocusRooms(
 
 // Get active rooms (for real-time display)
 export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoom[]> {
+  parseProfileId(profileId);
+  
   const result = await pool.query<{ room_id: string | number }>(
     `select room_id from room_participants 
      where profile_id = $1 and session_status in ('waiting', 'focusing')
@@ -547,17 +610,19 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
 }
 
 // Permanently delete a focus room and its participants (cascade).
-// Refuses to delete a room that is currently ACTIVE or PAUSED (a live session).
+// If the room is ACTIVE or PAUSED, it will be ended (completed) first.
 export async function deleteFocusRoom(roomId: number): Promise<void> {
   const result = await pool.query<{ id: string | number; status: string }>(
     `select id, status from focus_rooms where id = $1`,
     [roomId],
   );
   if (!result.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Sala não encontrada.");
   }
+  
+  // If room is active or paused, end it first
   if (result.rows[0].status === "active" || result.rows[0].status === "paused") {
-    throw new Error("Cannot delete a room that is currently in progress");
+    await endFocusRoom(roomId);
   }
 
   const deleted = await pool.query<{ id: string | number }>(
@@ -565,7 +630,7 @@ export async function deleteFocusRoom(roomId: number): Promise<void> {
     [roomId],
   );
   if (!deleted.rows[0]) {
-    throw new Error("Room not found");
+    throw new NotFoundError("Sala não encontrada.");
   }
 }
 
@@ -588,6 +653,17 @@ export async function expireFocusRoom(roomId: number): Promise<boolean> {
 export async function completeFocusRoom(roomId: number): Promise<FocusRoom | null> {
   const now = new Date().toISOString();
 
+  // Get room info first to know the duration
+  const roomInfo = await pool.query<{ duration_minutes: number; host_profile_id: string; energy_type: string | null }>(
+    `select duration_minutes, host_profile_id, energy_type from focus_rooms where id = $1`,
+    [roomId],
+  );
+  
+  if (!roomInfo.rows[0]) return null;
+  
+  const durationMinutes = roomInfo.rows[0].duration_minutes;
+  const roomEnergyType = roomInfo.rows[0].energy_type ?? "flame";
+
   await pool.query(
     `update focus_rooms
      set status = 'completed', ended_at = coalesce(ended_at, $1)
@@ -604,20 +680,37 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
 
   // Advance the "participate in N different rooms today" mission (DISTINCT_ROOMS)
   // for every participant who just finished in this room.
-  const participants = await pool.query<{ profile_id: string }>(
-    `select distinct profile_id from room_participants
+  const participants = await pool.query<{ profile_id: string; session_status: string; selected_energy_type: string | null }>(
+    `select profile_id, session_status, selected_energy_type from room_participants
      where room_id = $1 and session_status = 'completed'`,
     [roomId],
   );
   const today = todayIso();
   const dayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
+  
   for (const p of participants.rows) {
+    // Update DISTINCT_ROOMS mission
     const cnt = await pool.query<{ n: string | number }>(
       `select count(distinct room_id) as n from room_participants
        where profile_id = $1 and completed_at is not null and completed_at >= $2`,
       [p.profile_id, dayStart],
     );
     await recordMissionProgress(p.profile_id, "DISTINCT_ROOMS", { setTo: Number(cnt.rows[0]?.n || 0) });
+    
+    // Plant garden entries for participants who completed the room
+    // This ensures all room participants get garden entries even if their
+    // individual endFocus call didn't complete properly
+    if (p.session_status === "completed" && durationMinutes >= 10) {
+      const energyType = p.selected_energy_type || roomEnergyType || "flame";
+      try {
+        // Pass null for sessionId since we don't have individual session IDs here
+        // The entries will still be planted and count towards the garden
+        await plantGardenEntries(p.profile_id, null, energyType, durationMinutes);
+      } catch {
+        // If planting fails, garden entries will be planted via the
+        // normal endFocusSession flow
+      }
+    }
   }
 
   const room = await pool.query<{ id: string | number; host_profile_id: string }>(

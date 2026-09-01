@@ -358,12 +358,25 @@ export default function FocusRoomsPage() {
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
 
-  // 1-second clock for the shared countdown while the session is running
+  // 1-second clock for the shared countdown while the session is running.
+  // The countdown itself is always wall-clock derived (see sharedRemainingMs),
+  // so throttling of this interval in background tabs can't drift it — but we
+  // also re-sync the clock the moment the tab regains focus so the display and
+  // any completion logic update instantly instead of on the next (possibly
+  // suspended) tick.
   useEffect(() => {
     if (pageState !== "room") return;
     if (currentRoom?.status !== "active" && currentRoom?.status !== "paused") return;
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
+    const refresh = () => setNowMs(Date.now());
+    const id = setInterval(refresh, 1000);
+    const resync = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+    };
   }, [pageState, currentRoom?.status, currentRoom?.id]);
 
   // ── Initialize this participant's focus session when the room goes active ──

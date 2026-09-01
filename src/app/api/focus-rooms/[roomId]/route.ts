@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
+import { ForbiddenError } from "@/lib/errors";
 import {
   getFocusRoomById,
   getFocusRoomByCode,
@@ -25,7 +26,7 @@ export async function GET(
 
     const room = isNumeric(roomId)
       ? await getFocusRoomById(profileId, Number(roomId))
-      : await getFocusRoomByCode(roomId);
+      : await getFocusRoomByCode(profileId, roomId);
 
     if (!room) return notFound("Room not found");
     return jsonOk({ room });
@@ -44,7 +45,7 @@ export async function POST(
 
     const room = isNumeric(roomId)
       ? await getFocusRoomById(profileId, Number(roomId))
-      : await getFocusRoomByCode(roomId);
+      : await getFocusRoomByCode(profileId, roomId);
 
     if (!room) return notFound("Room not found");
     if (room.status !== "waiting") return badRequest("Cannot join a room that has already started or completed");
@@ -52,7 +53,7 @@ export async function POST(
     await addParticipantToRoom(room.id, profileId, body.energyType as string | undefined);
     const updated = isNumeric(roomId)
       ? await getFocusRoomById(profileId, Number(roomId))
-      : await getFocusRoomByCode(roomId);
+      : await getFocusRoomByCode(profileId, roomId);
 
     return jsonOk({ room: updated, message: "Joined successfully" });
   });
@@ -77,8 +78,8 @@ export async function PATCH(
 }
 
 // DELETE /api/focus-rooms/[roomId] — permanently delete a room.
-// Only the room's host (or an admin) can delete it. Active rooms cannot be
-// deleted while a session is in progress.
+// Only the room's host (or an admin) can delete it.
+// Active or paused rooms are automatically ended before deletion.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -94,10 +95,6 @@ export async function DELETE(
 
     if (room.hostProfileId !== profileId && role !== "admin") {
       return badRequest("Only the host can delete this room");
-    }
-
-    if (room.status === "active" || room.status === "paused") {
-      return badRequest("Não é possível excluir uma sala em andamento");
     }
 
     await deleteFocusRoom(Number(roomId));

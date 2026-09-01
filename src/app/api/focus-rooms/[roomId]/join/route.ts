@@ -19,7 +19,7 @@ export async function POST(
 
     // Look up room by code (case-insensitive match)
     // Room codes are generated uppercase, but users might enter them in any case
-    const room = await getFocusRoomByCode(roomId.toUpperCase());
+    const room = await getFocusRoomByCode(profileId, roomId.toUpperCase());
     console.log('[focus-rooms/join] Room lookup result:', room ? 'FOUND' : 'NOT FOUND');
 
     if (!room) {

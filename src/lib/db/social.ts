@@ -73,6 +73,70 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
   });
 }
 
+/**
+ * Find a user by their exact username (the @ handle)
+ * Returns null if not found
+ */
+export async function getUserByUsername(username: string): Promise<{
+  id: string;
+  displayName: string;
+  username: string;
+  photoUrl?: string;
+} | null> {
+  if (!username || username.length < 2) return null;
+  
+  const result = await pool.query<{
+    id: string;
+    display_name: string;
+    username: string;
+    photo_url: string | null;
+  }>(
+    `select id, display_name, username, photo_url from profiles where lower(username) = lower($1)`,
+    [username],
+  );
+  
+  if (!result.rows[0]) return null;
+  
+  return {
+    id: result.rows[0].id,
+    displayName: result.rows[0].display_name,
+    username: result.rows[0].username,
+    photoUrl: result.rows[0].photo_url ?? undefined,
+  };
+}
+
+/**
+ * Find users by their exact usernames (multiple)
+ * Useful for creating groups/chats with users by their @ handles
+ */
+export async function getUsersByUsernames(usernames: string[]): Promise<
+  Array<{
+    id: string;
+    displayName: string;
+    username: string;
+    photoUrl?: string;
+  }>
+> {
+  if (usernames.length === 0) return [];
+  
+  const result = await pool.query<{
+    id: string;
+    display_name: string;
+    username: string;
+    photo_url: string | null;
+  }>(
+    `select id, display_name, username, photo_url from profiles where lower(username) = any(lower($1::text[]))`,
+    [usernames],
+  );
+  
+  return result.rows.map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    username: row.username,
+    photoUrl: row.photo_url ?? undefined,
+  }));
+}
+
 export async function listFriends(profileId: string): Promise<FriendSummary[]> {
   parseProfileId(profileId);
   const result = await pool.query<

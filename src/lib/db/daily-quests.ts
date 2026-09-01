@@ -437,7 +437,7 @@ export async function updateQuestProgress(
   }
   
   if (updates.length === 0) {
-    throw new Error("No updates provided");
+    throw new ValidationError("No updates provided");
   }
   
   const result = await pool.query<UserQuestProgressRow>(
@@ -449,7 +449,7 @@ export async function updateQuestProgress(
   );
   
   if (!result.rows[0]) {
-    throw new Error("Quest progress not found");
+    throw new NotFoundError("Quest progress not found");
   }
   
   return mapUserQuestProgress(result.rows[0]);
@@ -463,7 +463,7 @@ export async function incrementQuestProgress(
 ): Promise<UserQuestProgress> {
   parseProfileId(profileId);
   if (!Number.isInteger(amount) || amount < 0) {
-    throw new Error("Invalid increment amount");
+    throw new ValidationError("Invalid increment amount");
   }
 
   // Single atomic UPDATE: increment and evaluate completion against the target
@@ -486,7 +486,7 @@ export async function incrementQuestProgress(
   );
 
   if (!result.rows[0]) {
-    throw new Error("Quest progress not found");
+    throw new NotFoundError("Quest progress not found");
   }
 
   return mapUserQuestProgress(result.rows[0]);

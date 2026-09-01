@@ -19,6 +19,7 @@ export async function PUT(request: NextRequest) {
       preferredTheme: body.preferredTheme as SaveSettingsInput["preferredTheme"],
       sleepTime: body.sleepTime === undefined ? undefined : (body.sleepTime as string | null),
       focusTime: body.focusTime === undefined ? undefined : (body.focusTime as string | null),
+      soundNotificationsEnabled: body.soundNotificationsEnabled === undefined ? undefined : (body.soundNotificationsEnabled as boolean),
     };
     return jsonOk(await saveSettings(profileId, input));
   });
