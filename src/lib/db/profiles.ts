@@ -15,11 +15,12 @@ interface ProfileRow {
   longest_streak: number | null;
   role: string | null;
   equipped_decoration_id: string | null;
+  equipped_shield_design_id: string | null;
   has_custom_banner: boolean | null;
   banner_image_url: string | null;
 }
 
-const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role, equipped_decoration_id, has_custom_banner, banner_image_url`;
+const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role, equipped_decoration_id, equipped_shield_design_id, has_custom_banner, banner_image_url`;
 
 function mapToUser(row: ProfileRow): User {
   return {
@@ -34,6 +35,7 @@ function mapToUser(row: ProfileRow): User {
     longestStreak: row.longest_streak ?? 0,
     role: (row.role as "user" | "admin" | undefined) ?? "user",
     equippedDecorationId: row.equipped_decoration_id ?? undefined,
+    equippedShieldDesignId: row.equipped_shield_design_id ?? undefined,
     hasCustomBanner: row.has_custom_banner ?? false,
     bannerImageUrl: row.banner_image_url ?? undefined,
   };

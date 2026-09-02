@@ -318,6 +318,12 @@ export const api = {
     request<{ ok: true }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "update", imageUrl }) }),
   purchaseShield: () =>
     request<{ balance: number; shieldCount: number }>("/api/store/shields", { method: "POST" }),
+  getStreakShieldDesigns: () =>
+    request<{ designs: import("@/types").StreakShieldDesign[]; owned: string[]; equipped: string | null }>("/api/store/shield-designs"),
+  purchaseStreakShieldDesign: (shieldDesignId: string) =>
+    request<{ success: boolean; balance: number; ownedDesigns: string[] }>("/api/store/shield-designs", { method: "POST", body: JSON.stringify({ shieldDesignId }) }),
+  equipStreakShieldDesign: (shieldDesignId: string) =>
+    request<{ success: boolean }>("/api/store/shield-designs", { method: "PATCH", body: JSON.stringify({ shieldDesignId }) }),
   getXpBoost: () =>
     request<{ quantity: number; itemType: string; boost: import("@/types").ActiveXPBoost | null }>("/api/store/xp-boost"),
   purchaseXpBoost: () =>

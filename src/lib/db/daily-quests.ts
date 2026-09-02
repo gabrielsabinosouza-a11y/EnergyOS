@@ -5,6 +5,7 @@ import { parseProfileId, ValidationError } from "./validation";
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso } from "./dates";
 import { addLeagueXP } from "./league-new";
+import { calculateXPWithBoost } from "./xp-boost";
 import { ConflictError, NotFoundError } from "../errors";
 import { DAILY_MISSION_LIMIT } from "../daily-limits";
 
@@ -550,6 +551,9 @@ export async function claimQuestReward(
       throw new ConflictError("Missão ainda não concluída.");
     }
 
+    // XP may be doubled by an active 2x boost; coins are never doubled.
+    const boostedXp = await calculateXPWithBoost(profileId, row.q_coin_reward);
+
     // Mark as claimed + ensure completed in the same step
     await client.query(
       `update user_quest_progress 
@@ -563,11 +567,11 @@ export async function claimQuestReward(
     // Award coins to user using the helper function (upserts settings row)
     await addCoins(profileId, row.q_coin_reward, client);
 
-    // Add to XP ledger for tracking
+    // Add to XP ledger for tracking (boost-adjusted)
     await client.query(
       `insert into xp_ledger (profile_id, source, source_id, xp_amount)
        values ($1, 'daily_quest', $2, $3)`,
-      [profileId, questProgressId, row.q_coin_reward],
+      [profileId, questProgressId, boostedXp],
     );
 
     // Credit the same amount to the user's cumulative XP (leaderboard/level).
@@ -575,15 +579,15 @@ export async function claimQuestReward(
       `insert into user_xp (profile_id, total_xp, level, updated_at)
        values ($1, $2, 1, now())
        on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
-      [profileId, row.q_coin_reward],
+      [profileId, boostedXp],
     );
 
     await client.query("commit");
 
     // Claiming also awards XP (recorded in the ledger), which feeds the
     // "Earn N XP today" mission and the weekly league board.
-    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: row.q_coin_reward });
-    await addLeagueXP(profileId, row.q_coin_reward);
+    await recordMissionProgress(profileId, "XP_EARNED", { incrementBy: boostedXp });
+    await addLeagueXP(profileId, boostedXp);
 
     const quest: DailyQuest = {
       id: Number(row.uqp_quest_id),

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Square, Timer, Bell } from "lucide-react";
+import { Play, Pause, Square, Timer, Bell, Zap } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker } from "./circular-duration-picker";
@@ -93,7 +93,7 @@ function formatTime(totalSeconds: number): string {
 
 function resolveStage(progress: number, isActive: boolean, isExtinguished: boolean): EnergyStage {
   if (isExtinguished) return "extinguished";
-  if (!isActive) return "spark";
+  if (!isActive) return "full";   // idle: always preview the final form
   if (progress < 25) return "spark";
   if (progress < 70) return "forming";
   return "full";
@@ -104,6 +104,7 @@ function resolveStage(progress: number, isActive: boolean, isExtinguished: boole
 interface FocusTimerProps {
   todayStats: { minutesFocused: number; coinsEarned: number };
   history: FocusSession[];
+  boostActive: boolean;
   onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
   onEnd: (sessionId: number, focusedSeconds: number) => Promise<{ session: FocusSession; xpAwarded: number }>;
 }
@@ -144,8 +145,8 @@ function CountdownRing({ progress, size, isPaused, accentColor }: {
 
 // ─── Completion banner ────────────────────────────────────────────────────────
 
-function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, onClaim }: {
-  coins: number; rewardCount: number; energyLabel: string; accentColor: string; onClaim: () => void;
+function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostActive, onClaim }: {
+  coins: number; rewardCount: number; energyLabel: string; accentColor: string; boostActive: boolean; onClaim: () => void;
 }) {
   return (
     <motion.div
@@ -160,6 +161,11 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, onClai
       <div className="flex items-center gap-2">
         <CoinIcon size={18} />
         <span className="font-mono font-bold text-[#ffb86b] text-lg">+{coins} moedas</span>
+        {boostActive && (
+          <span className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-bold text-[#b69cff]">
+            <Zap size={10} fill="currentColor" /> 2x XP
+          </span>
+        )}
         {rewardCount > 1 && (
           <span className="text-xs text-[var(--text-muted)]">· {rewardCount}× {energyLabel}</span>
         )}
@@ -178,7 +184,7 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, onClai
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerProps) {
+export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }: FocusTimerProps) {
   const [duration, setDuration] = useState(25);
   const [state, setState] = useState<TimerState>("idle");
   const [remaining, setRemaining] = useState(25 * 60);
@@ -586,6 +592,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
     stateRef.current = "idle";
     remainingRef.current = durationRef.current * 60;
     setRemaining(durationRef.current * 60);
+    setIsExtinguished(false);   // always clear so idle shows full-stage preview
     
     // Clear persisted session state on stop/cancel
     clearSessionState();
@@ -715,6 +722,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd }: FocusTimerPr
               rewardCount={rewardCount}
               energyLabel={cfg.label}
               accentColor={cfg.accent}
+              boostActive={boostActive}
               onClaim={() => setShowComplete(false)}
             />
           )}

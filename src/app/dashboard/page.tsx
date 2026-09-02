@@ -17,6 +17,7 @@ import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
+import { XpBoostIndicator } from "@/components/xp-boost/xp-boost-indicator";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
 
@@ -86,6 +87,7 @@ function DashboardContent() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [coins, setCoins] = useState(0);
+  const [xpBoostUntil, setXpBoostUntil] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
@@ -158,6 +160,9 @@ function DashboardContent() {
         api.getSettings()
           .then((s) => { if (!cancelled) setCoins(s.coins ?? 0); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
+        api.getXpBoost()
+          .then((b) => { if (!cancelled) setXpBoostUntil(b.boost?.expiresAt ?? null); })
+          .catch(() => {}),
       ]).finally(() => {
         if (!cancelled) setLoadingPage(false);
       });
@@ -407,6 +412,7 @@ function DashboardContent() {
           </motion.div>
           <div className="flex items-center gap-3">
             {focusData?.xp && <XPBadge xp={focusData.xp.totalXP} level={focusData.xp.level} />}
+            {xpBoostUntil && <XpBoostIndicator expiresAt={xpBoostUntil} />}
           </div>
         </header>
 
@@ -430,6 +436,7 @@ function DashboardContent() {
                   yesterdayStatus={snapshot.streak.yesterdayStatus ?? null}
                   shieldCount={snapshot.streak.shieldCount}
                   shouldPop={streakPop}
+                  equippedShieldIconUrl={snapshot.streak.equippedShieldIconUrl}
                 />
               )}
             </div>
@@ -522,6 +529,7 @@ function DashboardContent() {
           <FocusTimer
             todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
             history={focusData?.history ?? []}
+            boostActive={!!xpBoostUntil}
             onStart={startFocus}
             onEnd={endFocus}
           />
@@ -551,12 +559,14 @@ function StreakBadge({
   yesterdayStatus,
   shieldCount,
   shouldPop,
+  equippedShieldIconUrl,
 }: {
   streak: number;
   todayStatus: StreakDayStatus | null;
   yesterdayStatus: StreakDayStatus | null;
   shieldCount: number;
   shouldPop: boolean;
+  equippedShieldIconUrl?: string;
 }) {
   const progress = Math.min(streak / 30, 1);
   const circumference = 2 * Math.PI * 19;
@@ -658,7 +668,11 @@ function StreakBadge({
             <Image src={iconSrc} alt={statusLabel} title={statusLabel} width={30} height={30} style={{ objectFit: "contain" }} unoptimized className="streak-flame" draggable={false} />
             {state === "protected" && (
               <span className="streak-shield-mark" title={statusLabel}>
-                <Shield size={11} strokeWidth={2.5} fill="currentColor" />
+                {equippedShieldIconUrl ? (
+                  <img src={equippedShieldIconUrl} alt="Escudo equipado" className="h-11 w-11 object-contain" draggable={false} />
+                ) : (
+                  <Shield size={11} strokeWidth={2.5} fill="currentColor" />
+                )}
               </span>
             )}
           </div>

@@ -32,8 +32,13 @@ export async function getUserXP(profileId: string): Promise<UserXP> {
 
 /**
  * Single write path for XP: ledger + lifetime total + weekly league board.
+ * Every XP award routes through here, so the 2x boost multiplier is applied
+ * here — guaranteeing the boost applies to ALL XP sources consistently.
+ *
  * Callers that already wrote the ledger (e.g. inside a transaction) should
  * only call `addLeagueXP` after commit.
+ *
+ * Returns the final (boost-adjusted) XP amount actually credited.
  */
 export async function creditXP(
   profileId: string,
@@ -41,27 +46,31 @@ export async function creditXP(
   sourceId: number | string,
   xp: number,
   options?: { recordMission?: boolean; questDate?: string },
-): Promise<void> {
+): Promise<number> {
   parseProfileId(profileId);
-  if (!Number.isFinite(xp) || xp <= 0) return;
+  if (!Number.isFinite(xp) || xp <= 0) return 0;
+
+  const finalXP = await calculateXPWithBoost(profileId, xp);
+  if (!Number.isFinite(finalXP) || finalXP <= 0) return 0;
 
   await pool.query(
     `insert into xp_ledger (profile_id, source, source_id, xp_amount) values ($1, $2, $3, $4)`,
-    [profileId, source, sourceId, xp],
+    [profileId, source, sourceId, finalXP],
   );
   await pool.query(
     `insert into user_xp (profile_id, total_xp, level, updated_at)
      values ($1, $2, 1, now())
      on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
-    [profileId, xp],
+    [profileId, finalXP],
   );
   if (options?.recordMission !== false) {
     await recordMissionProgress(profileId, "XP_EARNED", {
-      incrementBy: xp,
+      incrementBy: finalXP,
       questDate: options?.questDate,
     });
   }
-  await addLeagueXP(profileId, xp);
+  await addLeagueXP(profileId, finalXP);
+  return finalXP;
 }
 
 /** Acredita XP (leaderboard/level + ledger) e moedas de uma só vez, seguindo o padrão das tarefas diárias. */
@@ -96,8 +105,7 @@ export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Pr
   if (existing.rows[0]) return 0;
 
   const xp = 15;
-  await creditXP(profileId, "kanban", kanbanTaskId, xp);
-  return xp;
+  return creditXP(profileId, "kanban", kanbanTaskId, xp);
 }
 
 export async function awardStreakBonus(profileId: string, streakDays: number): Promise<number> {

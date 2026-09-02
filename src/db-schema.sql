@@ -578,6 +578,7 @@ alter table profiles add column if not exists banner_image_url text;
 alter table profiles add column if not exists equipped_decoration_id text;
 alter table profiles drop column if exists equipped_energy_id;
 alter table profiles add column if not exists streak_shield_count integer not null default 0;
+alter table profiles add column if not exists equipped_shield_design_id text references streak_shield_designs(id) on delete set null;
 
 create table if not exists avatar_decorations (
   id text primary key,
@@ -596,6 +597,26 @@ create table if not exists user_decorations (
   decoration_id text not null references avatar_decorations(id) on delete cascade,
   purchased_at timestamptz not null default now(),
   primary key (profile_id, decoration_id)
+);
+
+create table if not exists streak_shield_designs (
+  id text primary key,
+  name text not null,
+  description text not null,
+  image_url text not null,
+  icon_url text not null,
+  price integer not null,
+  rarity text not null default 'common' check (rarity in ('common', 'uncommon', 'rare', 'epic', 'legendary')),
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists user_streak_shield_designs (
+  profile_id text not null references profiles(id) on delete cascade,
+  shield_design_id text not null references streak_shield_designs(id) on delete cascade,
+  purchased_at timestamptz not null default now(),
+  primary key (profile_id, shield_design_id)
 );
 
 create table if not exists streak_shield_usage (
@@ -660,6 +681,23 @@ create table if not exists monthly_recaps (
 
 -- Purge recaps from months before the platform existed
 delete from monthly_recaps where recap_month < '2026-08-01';
+
+-- ── Seed streak shield designs ──────────────────────────────────────────
+insert into streak_shield_designs (id, name, description, image_url, icon_url, price, rarity, sort_order) values
+  ('shield_basic',     'Escudo Básico',          'Proteção simples e eficaz para sua sequência',        '/streak/shield_basic.png',     '/streak/shield_basic_icon.png',     200, 'common',    1),
+  ('shield_energy',    'Escudo de Energia',      'Escudo que brilha com sua energia',              '/streak/shield_energy.png',    '/streak/shield_energy_icon.png',    400, 'uncommon',  2),
+  ('shield_fire',      'Escudo de Fogo',         'Proteção flamejante para guerreiros do foco',     '/streak/shield_fire.png',      '/streak/shield_fire_icon.png',      600, 'rare',      3),
+  ('shield_crystal',   'Escudo de Cristal',      'Defesa transparente com poder arcano',            '/streak/shield_crystal.png',   '/streak/shield_crystal_icon.png',   800, 'rare',      4),
+  ('shield_golden',    'Escudo Dourado',         'O escudo definitivo para campeões',              '/streak/shield_golden.png',    '/streak/shield_golden_icon.png',    1000, 'epic',      5),
+  ('shield_legendary','Escudo Lendário',       'A proteção suprema, digna das lendas',            '/streak/shield_legendary.png', '/streak/shield_legendary_icon.png', 1500, 'legendary', 6)
+on conflict (id) do update set
+  name = excluded.name,
+  description = excluded.description,
+  image_url = excluded.image_url,
+  icon_url = excluded.icon_url,
+  price = excluded.price,
+  rarity = excluded.rarity,
+  sort_order = excluded.sort_order;
 
 -- ── Seed avatar decorations ─────────────────────────────────────────────────
 insert into avatar_decorations (id, name, description, image_url, price, rarity, sort_order) values

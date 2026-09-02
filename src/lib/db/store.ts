@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { AvatarDecoration, DecorationRarity, StoreItem, UserDecoration } from "@/types";
+import type { AvatarDecoration, DecorationRarity, StoreItem, UserDecoration, StreakShieldDesign, UserStreakShieldDesign } from "@/types";
 import { NotFoundError, ConflictError, ForbiddenError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 
@@ -492,4 +492,202 @@ export async function getCoinBalance(profileId: string): Promise<number> {
     [profileId],
   );
   return result.rows[0]?.coins ?? 0;
+}
+
+// ── Streak Shield Designs ─────────────────────────────────────────────────────
+
+interface StreakShieldDesignRow {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string;
+  icon_url: string;
+  price: number;
+  rarity: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: Date | string;
+}
+
+function mapStreakShieldDesign(row: StreakShieldDesignRow): StreakShieldDesign {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    imageUrl: row.image_url,
+    iconUrl: row.icon_url,
+    price: row.price,
+    rarity: row.rarity as DecorationRarity,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+  };
+}
+
+interface UserStreakShieldDesignRow {
+  profile_id: string;
+  shield_design_id: string;
+  purchased_at: Date | string;
+}
+
+function mapUserStreakShieldDesign(row: UserStreakShieldDesignRow): UserStreakShieldDesign {
+  return {
+    profileId: row.profile_id,
+    shieldDesignId: row.shield_design_id,
+    purchasedAt: new Date(row.purchased_at).toISOString(),
+  };
+}
+
+export async function getAllStreakShieldDesigns(): Promise<StreakShieldDesign[]> {
+  const result = await pool.query<StreakShieldDesignRow>(
+    `select id, name, description, image_url, icon_url, price, rarity, sort_order, is_active, created_at
+     from streak_shield_designs
+     where is_active = true
+     order by sort_order`,
+  );
+  return result.rows.map(mapStreakShieldDesign);
+}
+
+export async function getOwnedStreakShieldDesigns(profileId: string): Promise<string[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ shield_design_id: string }>(
+    `select shield_design_id
+     from user_streak_shield_designs
+     where profile_id = $1`,
+    [profileId],
+  );
+  return result.rows.map((row) => row.shield_design_id);
+}
+
+export async function getEquippedShieldDesignId(profileId: string): Promise<string | null> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ equipped_shield_design_id: string | null }>(
+    `select equipped_shield_design_id
+     from profiles
+     where id = $1`,
+    [profileId],
+  );
+  return result.rows[0]?.equipped_shield_design_id ?? null;
+}
+
+export async function purchaseStreakShieldDesign(
+  profileId: string,
+  shieldDesignId: string,
+): Promise<{ balance: number; ownedDesigns: string[] }> {
+  parseProfileId(profileId);
+
+  // Get shield design info
+  const designResult = await pool.query<{ price: number; id: string }>(
+    `select price, id from streak_shield_designs where id = $1 and is_active = true`,
+    [shieldDesignId],
+  );
+
+  if (designResult.rowCount === 0) {
+    throw new NotFoundError("Escudo não encontrado ou não está disponível.");
+  }
+
+  const design = designResult.rows[0];
+  const price = design.price;
+
+  // Check if already owned
+  const existingResult = await pool.query(
+    `select 1 from user_streak_shield_designs where profile_id = $1 and shield_design_id = $2`,
+    [profileId, shieldDesignId],
+  );
+
+  if (existingResult.rowCount > 0) {
+    throw new ConflictError("Você já possui este escudo.");
+  }
+
+  // Check balance
+  const balance = await getCoinBalance(profileId);
+  if (balance < price) {
+    throw new ForbiddenError("Moedas insuficientes.");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    // Deduct coins
+    await client.query(
+      `update user_settings set coins = coins - $1 where profile_id = $2`,
+      [price, profileId],
+    );
+
+    // Purchase the design
+    await client.query(
+      `insert into user_streak_shield_designs (profile_id, shield_design_id) values ($1, $2)`,
+      [profileId, shieldDesignId],
+    );
+
+    // If this is the first shield design, equip it automatically
+    const ownedCount = await client.query(
+      `select count(*)::int as count from user_streak_shield_designs where profile_id = $1`,
+      [profileId],
+    );
+
+    if (ownedCount.rows[0]?.count === 1) {
+      await client.query(
+        `update profiles set equipped_shield_design_id = $1 where id = $2`,
+        [shieldDesignId, profileId],
+      );
+    }
+
+    await client.query("commit");
+
+    // Get updated owned designs
+    const ownedDesigns = await getOwnedStreakShieldDesigns(profileId);
+
+    return { balance: balance - price, ownedDesigns };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function equipStreakShieldDesign(
+  profileId: string,
+  shieldDesignId: string,
+): Promise<{ success: boolean }> {
+  parseProfileId(profileId);
+
+  // Check if user owns this design
+  const ownedResult = await pool.query(
+    `select 1 from user_streak_shield_designs where profile_id = $1 and shield_design_id = $2`,
+    [profileId, shieldDesignId],
+  );
+
+  if (ownedResult.rowCount === 0) {
+    throw new ForbiddenError("Você não possui este escudo.");
+  }
+
+  // Check if design exists
+  const designResult = await pool.query<{ id: string }>(
+    `select id from streak_shield_designs where id = $1 and is_active = true`,
+    [shieldDesignId],
+  );
+
+  if (designResult.rowCount === 0) {
+    throw new NotFoundError("Escudo não encontrado.");
+  }
+
+  await pool.query(
+    `update profiles set equipped_shield_design_id = $1 where id = $2`,
+    [shieldDesignId, profileId],
+  );
+
+  return { success: true };
+}
+
+export async function getStreakShieldDesignById(shieldDesignId: string): Promise<StreakShieldDesign | null> {
+  const result = await pool.query<StreakShieldDesignRow>(
+    `select id, name, description, image_url, icon_url, price, rarity, sort_order, is_active, created_at
+     from streak_shield_designs
+     where id = $1 and is_active = true`,
+    [shieldDesignId],
+  );
+
+  return result.rowCount > 0 ? mapStreakShieldDesign(result.rows[0]) : null;
 }

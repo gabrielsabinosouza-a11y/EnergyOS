@@ -190,7 +190,10 @@ export async function endFocusSession(
   if (session.rows[0].ended_at) throw new ValidationError("Sessão já finalizada.");
 
   const durationMinutes = Math.max(1, Math.round(focusedSeconds / 60));
-  const xpAwarded = calculateCoins(durationMinutes);
+  const baseXP = calculateCoins(durationMinutes);
+  // Coins stay at the base amount; XP may be doubled by an active 2x boost.
+  const coins = baseXP;
+  const xpAwarded = baseXP > 0 ? await creditXP(profileId, "focus", sessionId, baseXP) : 0;
 
   const updated = await pool.query<FocusRow>(
     `update focus_sessions set duration_minutes = $3, ended_at = now(), xp_earned = $4
@@ -199,9 +202,8 @@ export async function endFocusSession(
     [profileId, sessionId, durationMinutes, xpAwarded],
   );
 
-  if (xpAwarded > 0) {
-    await creditXP(profileId, "focus", sessionId, xpAwarded);
-    await addCoins(profileId, xpAwarded);
+  if (coins > 0) {
+    await addCoins(profileId, coins);
   }
 
   // Update daily missions via the shared metric hook. This replaces the old

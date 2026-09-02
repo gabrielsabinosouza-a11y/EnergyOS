@@ -3,7 +3,7 @@ import type { StreakDayStatus, Task } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { APP_TIMEZONE, todayIso } from "./dates";
-import { consumeShield, getShieldCount, logStreakDay } from "./store";
+import { consumeShield, getShieldCount, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { recordMissionProgress } from "./daily-quests";
 
@@ -201,6 +201,7 @@ export interface StreakInfo {
   todayStatus?: StreakDayStatus | null;
   yesterdayStatus?: StreakDayStatus | null;
   shieldCount: number;
+  equippedShieldIconUrl?: string;
 }
 
 /**
@@ -295,6 +296,20 @@ export async function computeStreak(profileId: string, today: string): Promise<S
 
   console.log(`[streak] ${profileId} result -> current=${streak}, longest=${longest}, shieldsUsed=${shieldsUsed}, shieldsLeft=${baseShields - shieldsUsed}`);
 
+  // Get equipped shield design icon URL
+  let equippedShieldIconUrl: string | undefined;
+  try {
+    const equippedShieldId = await getEquippedShieldDesignId(profileId);
+    if (equippedShieldId) {
+      const design = await getStreakShieldDesignById(equippedShieldId);
+      if (design) {
+        equippedShieldIconUrl = design.iconUrl;
+      }
+    }
+  } catch (error) {
+    console.log(`[streak] Could not fetch equipped shield design for ${profileId}:`, error);
+  }
+
   return {
     currentStreak: streak,
     longestStreak: longest,
@@ -303,6 +318,7 @@ export async function computeStreak(profileId: string, today: string): Promise<S
     todayStatus: (logByDate.get(today) as StreakDayStatus | undefined) ?? null,
     yesterdayStatus: (logByDate.get(yesterday) as StreakDayStatus | undefined) ?? null,
     shieldCount: baseShields - shieldsUsed,
+    equippedShieldIconUrl,
   };
 }
 

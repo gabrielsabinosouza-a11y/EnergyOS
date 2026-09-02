@@ -20,6 +20,8 @@ import {
   Check,
   Lock,
   AlertCircle,
+  FlaskConical,
+  Zap,
 } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
 import { AppShell } from "@/components/app-shell";
@@ -36,8 +38,10 @@ import {
   ENERGY_TYPES,
   type EnergyType,
 } from "@/lib/energy-assets";
-import type { StoreItem, DecorationRarity } from "@/types";
+import type { StoreItem, DecorationRarity, ActiveXPBoost, StreakShieldDesign } from "@/types";
 import { FRAME_ASSETS } from "@/components/avatar";
+import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS } from "@/lib/xp-boost";
+import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
 
 /* ------------------------------------------------------------------ */
 /*  Rarity colour system (unified)                                     */
@@ -642,6 +646,8 @@ export default function LojaPage() {
     balance: number;
     banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
     shieldCount: number;
+    xpBoostQuantity: number;
+    xpBoost: ActiveXPBoost | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -650,9 +656,15 @@ export default function LojaPage() {
   const [feedback, setFeedback] = useState("");
   const [cardError, setCardError] = useState<{ id: string; message: string } | null>(null);
   const [justPurchased, setJustPurchased] = useState<string | null>(null);
+  const [xpCelebration, setXpCelebration] = useState<{ expiresAt: string; extended: boolean } | null>(null);
   const bannerFileRef = useRef<HTMLInputElement>(null);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+  const [shieldDesigns, setShieldDesigns] = useState<{
+    designs: StreakShieldDesign[];
+    owned: string[];
+    equipped: string | null;
+  } | null>(null);
 
   // Animated header balance
   const animatedBalance = useAnimatedNumber(store?.balance ?? 0);
@@ -673,9 +685,18 @@ export default function LojaPage() {
 
   async function fetchStore() {
     try {
-      const data = await api.getStore();
-      setStore(data);
+      const [data, boost, shieldData] = await Promise.all([
+        api.getStore(),
+        api.getXpBoost().catch(() => ({ quantity: 0, itemType: "xp_boost_2x", boost: null })),
+        api.getStreakShieldDesigns().catch(() => ({ designs: [], owned: [], equipped: null })),
+      ]);
+      setStore({
+        ...data,
+        xpBoostQuantity: boost.quantity,
+        xpBoost: boost.boost,
+      });
       if (data.ownedAuras) setOwnedAuras(data.ownedAuras);
+      setShieldDesigns(shieldData);
     } catch {
       setError("Não foi possível carregar a loja.");
     } finally {
@@ -820,6 +841,66 @@ export default function LojaPage() {
       flash("Escudo comprado!");
     } catch (e) {
       setCardError({ id: "shield", message: e instanceof Error ? e.message : "Erro ao comprar escudo." });
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleBuyShieldDesign(shieldDesignId: string) {
+    if (!shieldDesigns) return;
+    setProcessing(`shield-design-${shieldDesignId}`);
+    setCardError(null);
+    try {
+      const { balance, ownedDesigns } = await api.purchaseStreakShieldDesign(shieldDesignId);
+      setStore((s) => (s ? { ...s, balance } : s));
+      setShieldDesigns((prev) => prev ? { ...prev, owned: ownedDesigns } : null);
+      flash("Design de escudo comprado!");
+      markJustPurchased(shieldDesignId);
+    } catch (e) {
+      setCardError({ id: "shield-design", message: e instanceof Error ? e.message : "Erro ao comprar design de escudo." });
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleEquipShieldDesign(shieldDesignId: string) {
+    if (!shieldDesigns) return;
+    setProcessing(`shield-equip-${shieldDesignId}`);
+    setCardError(null);
+    try {
+      await api.equipStreakShieldDesign(shieldDesignId);
+      setShieldDesigns((prev) => prev ? { ...prev, equipped: shieldDesignId } : null);
+      flash("Design de escudo equipado!");
+    } catch (e) {
+      setCardError({ id: "shield-equip", message: e instanceof Error ? e.message : "Erro ao equipar design de escudo." });
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleBuyXpBoost() {
+    setProcessing("xp-boost-buy");
+    setCardError(null);
+    try {
+      const { balance, quantity } = await api.purchaseXpBoost();
+      setStore((s) => (s ? { ...s, balance, xpBoostQuantity: quantity } : s));
+      flash("Poção de XP Duplo comprada!");
+    } catch (e) {
+      setCardError({ id: "xp-boost", message: e instanceof Error ? e.message : "Erro ao comprar poção." });
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function handleUseXpBoost() {
+    setProcessing("xp-boost-use");
+    setCardError(null);
+    try {
+      const { boost, extended, quantity } = await api.activateXpBoost();
+      setStore((s) => (s ? { ...s, xpBoostQuantity: quantity, xpBoost: boost } : s));
+      setXpCelebration({ expiresAt: boost.expiresAt, extended });
+    } catch (e) {
+      setCardError({ id: "xp-boost", message: e instanceof Error ? e.message : "Erro ao usar poção." });
     } finally {
       setProcessing(null);
     }
@@ -1065,6 +1146,276 @@ export default function LojaPage() {
             </button>
           </motion.section>
 
+          {/* ─── Section: Designs de Escudos ─────────────── */}
+          {shieldDesigns && (
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+                style={{ background: "radial-gradient(ellipse, rgba(113,212,255,.2), transparent 70%)", filter: "blur(20px)" }}
+              />
+              <SectionHeader icon={<Shield size={14} />} color="#71d4ff" title="Designs de Escudos" delay={0.35} />
+
+              <p className="mb-5 text-sm text-[var(--text-muted)]">
+                Personalize seus escudos de proteção de streak com designs únicos!
+              </p>
+
+              {cardError?.id === "shield-design" && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                >
+                  <AlertCircle size={12} /> {cardError.message}
+                </motion.p>
+              )}
+              {cardError?.id === "shield-equip" && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                >
+                  <AlertCircle size={12} /> {cardError.message}
+                </motion.p>
+              )}
+
+              <motion.div
+                variants={stagger.container}
+                initial="hidden"
+                animate="visible"
+                className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+              >
+                {shieldDesigns.designs.map((design) => {
+                  const owned = shieldDesigns.owned.includes(design.id);
+                  const equipped = shieldDesigns.equipped === design.id;
+                  const rarity = RARITY_COLORS[design.rarity as keyof typeof RARITY_COLORS] || RARITY_COLORS.common;
+                  const isProcessing = processing === `shield-design-${design.id}` || processing === `shield-equip-${design.id}`;
+                  
+                  return (
+                    <motion.div key={design.id} variants={stagger.item} className="relative">
+                      <div
+                        className={`relative h-28 w-full overflow-hidden rounded-xl border transition-all ${equipped ? "ring-2 ring-[var(--accent)]" : ""}`}
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          borderColor: rarity.border + (owned ? "80" : "30"),
+                        }}
+                      >
+                        {/* Glow effect for equipped */}
+                        {equipped && (
+                          <div
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 rounded-xl"
+                            style={{
+                              background: `radial-gradient(circle at center, ${rarity.glow} 0%, transparent 70%)`,
+                              filter: "blur(10px)",
+                            }}
+                          />
+                        )}
+
+                        {/* Shield design image */}
+                        <div className="relative z-10 flex h-full items-center justify-center p-2">
+                          <img
+                            src={design.iconUrl}
+                            alt={design.name}
+                            className="h-16 w-16 object-contain"
+                            draggable={false}
+                          />
+                        </div>
+
+                        {/* Owned indicator */}
+                        {owned && (
+                          <div className="absolute right-1 top-1 z-20 rounded-full bg-[var(--accent)]/20 p-1">
+                            <Check size={10} className="text-[var(--accent)]" />
+                          </div>
+                        )}
+
+                        {/* Just purchased animation */}
+                        {justPurchased === design.id && (
+                          <motion.div
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                            className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-[var(--accent)]/10"
+                          >
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              exit={{ scale: 0 }}
+                              className="rounded-full bg-[var(--accent)] p-2"
+                            >
+                              <Check size={16} className="text-white" />
+                            </motion.div>
+                          </motion.div>
+                        )}
+
+                        {/* Processing overlay */}
+                        {isProcessing && (
+                          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-black/30 backdrop-blur-sm">
+                            <Loader2 size={16} className="animate-spin text-white" />
+                          </div>
+                        )}
+
+                        {/* Rarity indicator */}
+                        <div className="absolute bottom-1 left-1 z-20 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+                             style={{
+                               background: rarity.bg,
+                               color: rarity.border,
+                               border: `1px solid ${rarity.border}`
+                             }}>
+                          {rarity.label}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-medium text-[var(--text)]">{design.name}</span>
+                          <span className="text-[10px] text-[var(--text-muted)] line-clamp-1">{design.description}</span>
+                        </div>
+                        <span className="text-xs font-semibold text-amber-300">{design.price} moedas</span>
+                      </div>
+
+                      {owned ? (
+                        <button
+                          onClick={() => handleEquipShieldDesign(design.id)}
+                          disabled={isProcessing || equipped}
+                          className="mt-2 w-full rounded-lg bg-[var(--bg-surface-hover)] py-2 text-xs font-semibold transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+                          style={{
+                            color: equipped ? "var(--accent)" : "var(--text)",
+                            border: equipped ? "1px solid var(--accent-border)" : "none"
+                          }}
+                        >
+                          {equipped ? "✓ Equipado" : "Equipar"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleBuyShieldDesign(design.id)}
+                          disabled={isProcessing || store!.balance < design.price}
+                          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-surface-hover)] py-2 text-xs font-semibold transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+                        >
+                          {isProcessing ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <>
+                              <CoinIcon size={12} /> Comprar
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            </motion.section>
+          )}
+
+          {/* ─── Section: Poção de XP Duplo ─────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.25 }}
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+              style={{ background: `radial-gradient(ellipse, ${XP_BOOST_ITEM.glow}, transparent 70%)`, filter: "blur(20px)" }}
+            />
+            <SectionHeader icon={<FlaskConical size={14} />} color={XP_BOOST_ITEM.accent} title={XP_BOOST_ITEM.name} delay={0.25} />
+
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              {/* Icon */}
+              <div className="relative flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]"
+                style={{ boxShadow: `0 0 28px -6px ${XP_BOOST_ITEM.glow}` }}>
+                <Image
+                  src={XP_BOOST_ITEM.iconPath}
+                  alt={XP_BOOST_ITEM.name}
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                  unoptimized
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                <FlaskConical size={40} className="absolute text-[var(--text-faint)]" style={{ display: "none" }} />
+                <Zap size={16} className="absolute -right-1 -top-1 text-[#ffb86b]" fill="currentColor" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="mb-2 text-sm text-[var(--text-muted)]">{XP_BOOST_ITEM.description}</p>
+
+                {/* Owned count + active boost */}
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Você possui: <strong className="text-[#b69cff]">{store.xpBoostQuantity} / {XP_BOOST_MAX_HELD}</strong>
+                  </span>
+                  {store.xpBoost && (
+                    <motion.span
+                      animate={{ opacity: [0.7, 1, 0.7] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b69cff]"
+                    >
+                      <Zap size={11} fill="currentColor" /> 2x XP ativo
+                    </motion.span>
+                  )}
+                </div>
+
+                <p className="mb-4 text-xs text-[var(--text-faint)]">
+                  {XP_BOOST_ITEM.price} moedas cada · dura {Math.round(XP_BOOST_DURATION_MS / 60000)} minutos
+                </p>
+
+                {cardError?.id === "xp-boost" && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                  >
+                    <AlertCircle size={12} /> {cardError.message}
+                  </motion.p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {/* Use button */}
+                  <button
+                    onClick={handleUseXpBoost}
+                    disabled={processing === "xp-boost-use" || store.xpBoostQuantity <= 0}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-[#b69cff]/20 px-4 py-2.5 text-xs font-semibold text-[#b69cff] transition hover:bg-[#b69cff]/30 disabled:opacity-40"
+                  >
+                    {processing === "xp-boost-use" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <><Zap size={14} /> Usar poção</>
+                    )}
+                  </button>
+
+                  {/* Buy button — cap-aware */}
+                  {store.xpBoostQuantity >= XP_BOOST_MAX_HELD ? (
+                    <span className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-[var(--text-faint)]">
+                      <Lock size={13} /> Inventário cheio ({XP_BOOST_MAX_HELD}/{XP_BOOST_MAX_HELD})
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleBuyXpBoost}
+                      disabled={processing === "xp-boost-buy" || store.balance < XP_BOOST_ITEM.price}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[var(--green-bg)] px-4 py-2.5 text-xs font-semibold text-[var(--green)] transition hover:bg-[var(--green)]/15 disabled:opacity-40"
+                    >
+                      {processing === "xp-boost-buy" ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <><CoinIcon size={15} /> Comprar · {XP_BOOST_ITEM.price}</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.section>
+
           {/* ─── Section 4: Auras ─────────────── */}
           <motion.section
             initial={{ opacity: 0, y: 12 }}
@@ -1193,8 +1544,124 @@ export default function LojaPage() {
               </p>
             )}
           </motion.section>
+
+          {/* ─── Section 5: Poção de XP Duplo ─────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.35 }}
+            className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+              style={{ background: `radial-gradient(ellipse, ${XP_BOOST_ITEM.glow}, transparent 70%)`, filter: "blur(20px)" }}
+            />
+            <SectionHeader icon={<FlaskConical size={14} />} color={XP_BOOST_ITEM.accent} title="Poção de XP Duplo" delay={0.35} />
+
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+              {/* potion icon */}
+              <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl"
+                style={{ background: `${XP_BOOST_ITEM.accent}18`, boxShadow: `0 0 32px -8px ${XP_BOOST_ITEM.glow}` }}
+              >
+                <BreathingGlow color={XP_BOOST_ITEM.glow} size={88} />
+                <Image
+                  src={XP_BOOST_ITEM.iconPath}
+                  alt={XP_BOOST_ITEM.name}
+                  width={56}
+                  height={56}
+                  className="relative z-10 object-contain"
+                  unoptimized
+                />
+                {justPurchased === "xp-boost" && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="absolute -right-1 -top-1 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--green)]"
+                  >
+                    <Check size={13} className="text-black" strokeWidth={3} />
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="flex-1 text-center sm:text-left">
+                <p className="text-sm text-[var(--text-secondary)]">{XP_BOOST_ITEM.description}</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    <Zap size={13} className="text-[#ffb86b]" /> {XP_BOOST_DURATION_MS / 60000} min de duração
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    Máx. {XP_BOOST_MAX_HELD} poções
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    {store.xpBoostQuantity} de {XP_BOOST_MAX_HELD} na mochila
+                  </span>
+                </div>
+
+                {store.xpBoost && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 rounded-full border border-[#b69cff]/30 bg-[#b69cff]/10 px-2.5 py-1 text-[10px] font-semibold text-[#b69cff]">
+                      <Zap size={11} fill="currentColor" /> XP 2x ativo
+                    </span>
+                  </div>
+                )}
+
+                {cardError?.id === "xp-boost" && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                  >
+                    <AlertCircle size={12} /> {cardError.message}
+                  </motion.p>
+                )}
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    onClick={handleBuyXpBoost}
+                    disabled={processing === "xp-boost-buy" || store.balance < XP_BOOST_ITEM.price || store.xpBoostQuantity >= XP_BOOST_MAX_HELD}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-yellow-500/10 py-2.5 text-xs font-semibold text-yellow-400 transition hover:bg-yellow-500/20 disabled:opacity-40"
+                  >
+                    {processing === "xp-boost-buy" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <>
+                        <CoinIcon size={16} /> Comprar · {XP_BOOST_ITEM.price}
+                      </>
+                    )}
+                  </button>
+
+                  {store.xpBoostQuantity > 0 && (
+                    <button
+                      onClick={handleUseXpBoost}
+                      disabled={processing === "xp-boost-use"}
+                      className="flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold transition"
+                      style={{ background: `${XP_BOOST_ITEM.accent}18`, color: XP_BOOST_ITEM.accent, border: `1px solid ${XP_BOOST_ITEM.accent}33` }}
+                    >
+                      {processing === "xp-boost-use" ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <><Zap size={13} fill="currentColor" /> Usar poção</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.section>
         </div>
       </main>
+
+      {/* ─── XP Boost Celebration ──────────────────────────────── */}
+      {xpCelebration && (
+        <XpBoostCelebration
+          expiresAt={xpCelebration.expiresAt}
+          extended={xpCelebration.extended}
+          onClose={() => setXpCelebration(null)}
+          reduced={!!reduced}
+        />
+      )}
 
       {/* ─── Decoration Preview Modal ────────────────────────────── */}
       {selectedItem && user && (

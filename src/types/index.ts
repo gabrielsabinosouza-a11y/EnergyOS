@@ -30,6 +30,7 @@ export interface User {
   bannerImageUrl?: string;
   equippedDecorationId?: string;
   streakShieldCount?: number;
+  equippedShieldDesignId?: string;
   role?: UserRole;
 }
 
@@ -514,6 +515,24 @@ export interface StoreItem {
   rarity: DecorationRarity;
   owned: boolean;
   equipped: boolean;
+}
+
+export interface StreakShieldDesign {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  iconUrl: string;
+  price: number;
+  rarity: DecorationRarity;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface UserStreakShieldDesign {
+  profileId: string;
+  shieldDesignId: string;
+  purchasedAt: string;
 }
 
 export interface ActiveXPBoost {
