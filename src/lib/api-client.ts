@@ -276,6 +276,22 @@ export const api = {
     request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
   getGroupLeaderboard: (id: number) =>
     request<{ leaderboard: import("@/types").LeagueEntry[] }>(`/api/groups/${id}/leaderboard`),
+  getGlobalGroupsLeaderboard: (period: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME", limit = 50, offset = 0) =>
+    request<{ entries: import("@/lib/db/group-leaderboard").GroupLeaderboardEntry[]; userGroupIds: number[] }>(
+      `/api/groups/leaderboard?period=${period}&limit=${limit}&offset=${offset}`
+    ),
+  getGroupMemberContributions: (id: number, period: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME") =>
+    request<{ members: import("@/lib/db/group-leaderboard").MemberContribution[]; groupTotal: number }>(
+      `/api/groups/${id}/contributions?period=${period}`
+    ),
+  getGroupMilestones: (id: number) =>
+    request<{ milestones: import("@/lib/db/group-milestones").GroupMilestoneStatus[]; totalMinutes: number }>(
+      `/api/groups/${id}/milestones`
+    ),
+  getGroupWeeklyQuest: (id: number) =>
+    request<{ quest: import("@/lib/db/group-milestones").GroupWeeklyQuestStatus }>(`/api/groups/${id}/weekly-quest`),
+  claimGroupWeeklyQuest: (id: number) =>
+    request<{ coinsAwarded: number }>(`/api/groups/${id}/weekly-quest`, { method: "POST" }),
 
   // League
   getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
@@ -302,6 +318,12 @@ export const api = {
     request<{ ok: true }>("/api/store/banner", { method: "POST", body: JSON.stringify({ action: "update", imageUrl }) }),
   purchaseShield: () =>
     request<{ balance: number; shieldCount: number }>("/api/store/shields", { method: "POST" }),
+  getXpBoost: () =>
+    request<{ quantity: number; itemType: string; boost: import("@/types").ActiveXPBoost | null }>("/api/store/xp-boost"),
+  purchaseXpBoost: () =>
+    request<{ balance: number; quantity: number }>("/api/store/xp-boost", { method: "POST" }),
+  activateXpBoost: () =>
+    request<{ boost: import("@/types").ActiveXPBoost; extended: boolean; quantity: number }>("/api/store/xp-boost/activate", { method: "POST" }),
   getRecaps: () => request<{ recaps: import("@/types").MonthlyRecap[] }>("/api/recap"),
   generateRecap: (month: string) =>
     request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month }) }),

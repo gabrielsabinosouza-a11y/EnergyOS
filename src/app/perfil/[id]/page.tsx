@@ -10,6 +10,7 @@ import { Modal } from "@/components/modal";
 import { Avatar } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
 import { useAuthRedirect } from "@/lib/auth-context";
+import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 import type { PublicProfile, AchievementProgress } from "@/types";
 import Image from "next/image";
@@ -356,7 +357,7 @@ export default function FriendProfilePage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Streak atual</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
+                  <Image src={streakIconSource(streak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{streak} dias</span>
                 </div>
               </motion.div>
@@ -369,7 +370,7 @@ export default function FriendProfilePage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Maior sequência</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
+                  <Image src={streakIconSource(longestStreak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{longestStreak} dias</span>
                 </div>
               </motion.div>

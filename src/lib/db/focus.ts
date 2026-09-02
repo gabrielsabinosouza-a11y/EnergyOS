@@ -8,6 +8,7 @@ import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
+import { checkAndUnlockMilestones } from "./group-milestones";
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
@@ -254,6 +255,13 @@ export async function endFocusSession(
         ? endedAt 
         : endedAt.toISOString();
       await recordGroupContribution(profileId, sessionId, durationMinutes, completedAt);
+      // Fire-and-forget: check if any group milestone was crossed
+      const groups = await pool.query<{ group_id: number }>(
+        `select group_id from group_members where profile_id = $1`, [profileId]
+      );
+      for (const { group_id } of groups.rows) {
+        checkAndUnlockMilestones(group_id).catch(() => {});
+      }
     }
   }
 

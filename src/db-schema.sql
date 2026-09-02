@@ -300,6 +300,7 @@ alter table profiles add column if not exists last_active_at timestamptz;
 alter table profiles add column if not exists current_streak integer not null default 0;
 alter table profiles add column if not exists longest_streak integer not null default 0;
 alter table profiles add column if not exists role text not null default 'user' check (role in ('user', 'admin'));
+alter table profiles add column if not exists highest_league_tier league_tier;
 
 create unique index if not exists profiles_username_lower_idx
   on profiles (lower(username)) where username is not null;
@@ -620,6 +621,28 @@ create table if not exists streak_day_log (
   primary key (profile_id, log_date)
 );
 
+-- ── XP Booster (Poção de XP Duplo) ─────────────────────────────────────────
+-- Inventory of consumable potions. quantity is capped by application logic
+-- (see XP_BOOST_MAX), not by a raw counter.
+create table if not exists user_potions (
+  profile_id text not null references profiles(id) on delete cascade,
+  item_type text not null,
+  quantity integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (profile_id, item_type)
+);
+
+-- Single active 2x XP boost per user at a time; `isActive` is implied by
+-- `expires_at > now()`. Activating while one is already running EXTENDS it.
+create table if not exists active_xp_boost (
+  profile_id text primary key references profiles(id) on delete cascade,
+  multiplier integer not null default 2,
+  activated_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists active_xp_boost_expires_idx on active_xp_boost(expires_at);
+
 -- ── Monthly Recaps ──────────────────────────────────────────────────────────
 create table if not exists monthly_recaps (
   id bigserial primary key,
@@ -630,6 +653,7 @@ create table if not exists monthly_recaps (
   league_tier text,
   league_promoted boolean default false,
   productivity_tag text,
+  has_been_shared boolean default false,
   generated_at timestamptz not null default now(),
   unique (profile_id, recap_month)
 );

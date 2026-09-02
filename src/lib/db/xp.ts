@@ -4,6 +4,7 @@ import { parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
+import { calculateXPWithBoost } from "./xp-boost";
 
 interface XPRow {
   profile_id: string;

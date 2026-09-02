@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { updateProfile } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { auth } from "@/lib/firebase";
+import { streakIconSource } from "@/lib/energy-assets";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
@@ -35,6 +36,8 @@ import {
   Sparkles,
   Camera,
 } from "lucide-react";
+import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premium";
+// Keep the old import for fallback if needed
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
 import { ENERGYOS_LAUNCH_MONTH } from "@/types";
@@ -789,7 +792,7 @@ export default function PerfilPage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Streak atual</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
+                  <Image src={streakIconSource(streak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{streak} dias</span>
                 </div>
               </motion.div>
@@ -802,7 +805,7 @@ export default function PerfilPage() {
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Maior sequência</div>
                 <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src="/energies/flame/flame_start.png" alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
+                  <Image src={streakIconSource(longestStreak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
                   <span className="font-display text-base">{longestStreak} dias</span>
                 </div>
               </motion.div>
@@ -882,18 +885,24 @@ export default function PerfilPage() {
             ) : (
               <div className="space-y-3">
                 {recaps.map((recap) => (
-                  <MonthlyRecap
+                  <MonthlyRecapPremium
                     key={recap.id}
                     recap={{
+                      id: recap.id,
                       recapMonth: recap.recapMonth,
                       totalFocusMinutes: recap.totalFocusMinutes,
                       longestStreak: recap.longestStreak,
                       leagueTier: recap.leagueTier,
                       leaguePromoted: recap.leaguePromoted,
                       productivityTag: recap.productivityTag,
+                      hasBeenShared: recap.hasBeenShared,
                     }}
                     userName={displayName}
                     userPhotoUrl={user.photoURL ?? undefined}
+                    onCoinsAwarded={(amount, newBalance) => {
+                      // Update the profile's coin balance if needed
+                      if (setCoins) setCoins(newBalance);
+                    }}
                   />
                 ))}
               </div>

@@ -20,6 +20,50 @@ const LEGENDS_MAX_SIZE = 20;     // target Lendas group size
 export const LEGENDS_LEAGUE_REWARDS: [number, number, number] = [500, 300, 150];
 const TIERS: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
 
+export function tierRank(tier: NewLeagueTier): number {
+  return TIERS.indexOf(tier);
+}
+
+// Never allow a user to fall below the highest tier they have already reached:
+// their earned tier acts as a lifetime floor for promotions/demotions.
+async function readHighestTier(db: Queryable, profileId: string): Promise<NewLeagueTier | null> {
+  const result = await db.query<{ highest_league_tier: NewLeagueTier | null }>(
+    `select highest_league_tier from profiles where id = $1`,
+    [profileId],
+  );
+  const stored = result.rows[0]?.highest_league_tier ?? null;
+  const hist = await db.query<{ tier: NewLeagueTier }>(
+    `select lg.tier
+       from league_group_members lgm
+       join league_groups lg on lg.id = lgm.league_group_id
+      where lgm.profile_id = $1
+      order by array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], lg.tier) desc
+      limit 1`,
+    [profileId],
+  );
+  const histTier = hist.rows[0]?.tier ?? null;
+  const storedRank = stored ? tierRank(stored) : -1;
+  const histRank = histTier ? tierRank(histTier) : -1;
+  return histRank > storedRank ? histTier : stored;
+}
+
+async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeagueTier): Promise<void> {
+  await db.query(
+    `update profiles set highest_league_tier = $2
+     where id = $1
+       and (highest_league_tier is null
+            or array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], highest_league_tier)
+               < array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], $2::league_tier))`,
+    [profileId, tier],
+  );
+}
+
+async function clampToHighestTier(db: Queryable, profileId: string, tier: NewLeagueTier): Promise<NewLeagueTier> {
+  const highest = await readHighestTier(db, profileId);
+  if (highest && tierRank(tier) < tierRank(highest)) return highest;
+  return tier;
+}
+
 interface LeagueGroupRow {
   id: string | number;
   tier: NewLeagueTier;
@@ -193,6 +237,13 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           else if (prevTier && rank > n - DEMOTION_COUNT) targetTier = prevTier;
         }
 
+        // A user can never fall below the highest tier they've already reached.
+        // (Lendas members are placed by the Lendas promotion job below.)
+        if (targetTier !== "LENDAS") {
+          targetTier = await clampToHighestTier(client, member.profile_id, targetTier);
+          await recordHighestTier(client, member.profile_id, targetTier);
+        }
+
         // Ensure member is in the correct group for the new week
         if (targetTier !== "LENDAS") {
           await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
@@ -282,6 +333,10 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   if (userXP >= 5000) tier = "DIAMANTE";
   else if (userXP >= 3000) tier = "OURO";
   else if (userXP >= 1500) tier = "PRATA";
+
+  // Never place a user below the highest tier they've already reached.
+  tier = await clampToHighestTier(pool, profileId, tier);
+  await recordHighestTier(pool, profileId, tier);
 
   const weekEnd = new Date(start);
   weekEnd.setDate(weekEnd.getDate() + 6);

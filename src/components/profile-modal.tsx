@@ -6,6 +6,7 @@ import { X, Timer } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
+import { streakIconSource } from "@/lib/energy-assets";
 import type { PublicProfile } from "@/types";
 import { Modal } from "@/components/modal";
 import { Avatar } from "@/components/avatar";
@@ -109,7 +110,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
               <motion.div variants={fadeUp} className="grid grid-cols-3 gap-2 mb-6">
                 <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                    <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
+                    <Image src={streakIconSource(profile.currentStreak)} alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
                     <span className="font-mono font-bold text-sm">{profile.currentStreak}</span>
                   </div>
                   <p className="text-[9px] text-[var(--text-faint)] mt-0.5">streak</p>
@@ -123,7 +124,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                 </div>
                 <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-[var(--orange)]">
-                    <Image src="/energies/flame/flame_start.png" alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
+                    <Image src={streakIconSource(profile.longestStreak)} alt="streak" width={13} height={13} style={{ objectFit: "contain" }} unoptimized />
                     <span className="font-mono font-bold text-sm">{profile.longestStreak}</span>
                   </div>
                   <p className="text-[9px] text-[var(--text-faint)] mt-0.5">recorde</p>

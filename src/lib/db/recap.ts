@@ -4,6 +4,7 @@ import type { MonthlyRecap } from "@/types";
 import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
 import { NEW_TIER_ORDER } from "@/lib/league-new-meta";
+import { addCoins } from "./settings";
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ interface RecapRow {
   league_tier: string | null;
   league_promoted: boolean | null;
   productivity_tag: string | null;
+  has_been_shared: boolean | null;
   generated_at: Date | string;
 }
 
@@ -28,6 +30,7 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
     leagueTier: row.league_tier ?? undefined,
     leaguePromoted: row.league_promoted ?? undefined,
     productivityTag: row.productivity_tag ?? undefined,
+    hasBeenShared: row.has_been_shared ?? undefined,
     generatedAt: new Date(row.generated_at).toISOString(),
   };
 }
@@ -64,7 +67,7 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   parseProfileId(profileId);
   const result = await pool.query<RecapRow>(
     `select id, recap_month, total_focus_minutes, longest_streak, league_tier,
-            league_promoted, productivity_tag, generated_at
+            league_promoted, productivity_tag, has_been_shared, generated_at
      from monthly_recaps
      where profile_id = $1 and recap_month >= $2::date
      order by recap_month desc`,
@@ -149,4 +152,39 @@ export async function generateRecap(
   );
 
   return mapRecap(profileId, result.rows[0]);
+}
+
+// ── Share tracking & reward ────────────────────────────────────────────────────────
+
+const SHARE_REWARD_COINS = 50;
+
+export async function markRecapShared(profileId: string, recapId: number): Promise<{ newBalance: number; wasFirstShare: boolean }> {
+  parseProfileId(profileId);
+  
+  const result = await pool.query<{ has_been_shared: boolean | null; }>(
+    `update monthly_recaps
+     set has_been_shared = true
+     where id = $1 and profile_id = $2 and has_been_shared = false
+     returning has_been_shared`,
+    [recapId, profileId],
+  );
+  
+  const wasFirstShare = result.rowCount > 0;
+  
+  if (wasFirstShare) {
+    // Award coins for first share
+    const settings = await addCoins(profileId, SHARE_REWARD_COINS);
+    return { newBalance: settings.coins, wasFirstShare: true };
+  }
+  
+  // Return current balance (no change)
+  const currentBalance = await pool.query<{ coins: number }>(
+    `select coins from user_settings where profile_id = $1`,
+    [profileId],
+  );
+  
+  return { 
+    newBalance: currentBalance.rows[0]?.coins ?? 0, 
+    wasFirstShare: false 
+  };
 }

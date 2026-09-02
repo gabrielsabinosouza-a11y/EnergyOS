@@ -106,3 +106,8 @@ export function resolveDefaultEnergy(ownedAuras: string[]): EnergyType {
   if (ownedAuras.length > 0) return ownedAuras[0] as EnergyType;
   return "flame";
 }
+
+/** Streak icon reflecting a user's streak state: alive when > 0, otherwise lost/protected. */
+export function streakIconSource(streak: number): string {
+  return streak > 0 ? "/streak/streak_alive.png" : "/streak/streak_lost.png";
+}

@@ -19,6 +19,7 @@ import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
 import { useAuthRedirect } from "@/lib/auth-context";
+import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 import type {
   FriendSummary,
@@ -441,7 +442,7 @@ export default function AmigosPage() {
                     )}
                     <div className="mt-1 flex items-center gap-3 text-[10px] text-[var(--text-faint)]">
                       <span className="flex items-center gap-1 text-[var(--orange)]">
-                        <Image src="/energies/flame/flame_start.png" alt="streak" width={11} height={11} style={{ objectFit: "contain" }} unoptimized />
+                        <Image src={streakIconSource(f.currentStreak)} alt="streak" width={11} height={11} style={{ objectFit: "contain" }} unoptimized />
                         {f.currentStreak}
                       </span>
                       {f.lastActiveAt && <span>{relativeTime(f.lastActiveAt)} atras</span>}

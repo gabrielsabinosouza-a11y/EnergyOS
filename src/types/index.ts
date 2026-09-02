@@ -501,6 +501,7 @@ export interface MonthlyRecap {
   leagueTier?: string;
   leaguePromoted?: boolean;
   productivityTag?: string;
+  hasBeenShared?: boolean;
   generatedAt: string;
 }
 
@@ -513,6 +514,14 @@ export interface StoreItem {
   rarity: DecorationRarity;
   owned: boolean;
   equipped: boolean;
+}
+
+export interface ActiveXPBoost {
+  userId: string;
+  activatedAt: string;
+  expiresAt: string;
+  multiplier: number;
+  isActive: boolean;
 }
 
 // ── Calendar: external sync types ─────────────────────────────────────────
