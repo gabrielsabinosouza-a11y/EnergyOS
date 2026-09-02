@@ -200,19 +200,22 @@ function DashboardContent() {
 
   async function moveKanbanTask(id: number, newStatus: KanbanStatus, newPosition: number) {
     const prev = kanbanTasks;
-    // Optimistic update: update the moved task
     setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, status: newStatus, position: newPosition } : k));
-    // Optimistic mission bump when a card reaches "Feito" for the first time
-    // (the server records the same metric only on this transition).
     const prevTask = prev.find((k) => k.id === id);
     const enteringDone = newStatus === "done" && prevTask?.status !== "done";
     if (enteringDone) applyMetric("TASKS_COMPLETED", { incrementBy: 1 });
     try {
-      await api.moveKanbanTask(id, newStatus, newPosition);
-      // Re-fetch all tasks to get the updated positions from the server
+      const result = await api.moveKanbanTask(id, newStatus, newPosition);
       const updatedTasks = await api.getKanban();
       setKanbanTasks(updatedTasks.tasks);
-      if (enteringDone) void refreshQuests();
+      if (enteringDone) {
+        void refreshQuests();
+        if (result.coinsAwarded > 0) setCoins((c) => c + result.coinsAwarded);
+        if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
+          showSuccess(`+${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        }
+      }
     } catch {
       setKanbanTasks(prev);
       if (enteringDone) void refreshQuests();
@@ -231,9 +234,19 @@ function DashboardContent() {
   async function updateKanbanTask(id: number, updates: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) {
     const prev = kanbanTasks;
     setKanbanTasks((ks) => ks.map((k) => k.id === id ? { ...k, ...updates } : k));
+    const prevTask = prev.find((k) => k.id === id);
+    const enteringDone = updates.status === "done" && prevTask?.status !== "done";
     try {
       const result = await api.updateKanbanTask(id, updates);
       setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
+      if (enteringDone) {
+        void refreshQuests();
+        if (result.coinsAwarded > 0) setCoins((c) => c + result.coinsAwarded);
+        if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
+          showSuccess(`+${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        }
+      }
     } catch (error) {
       setKanbanTasks(prev);
       showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o card.");

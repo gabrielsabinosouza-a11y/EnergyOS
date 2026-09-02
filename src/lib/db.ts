@@ -22,11 +22,6 @@ const pool =
   new Pool({
     connectionString,
     ssl: /neon\.tech/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
-    // Optimize pool settings to prevent connection exhaustion
-    max: 10, // Reduce max connections to prevent database overload
-    idleTimeoutMillis: 10000, // Close idle clients after 10 seconds
-    connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
-    application_name: 'energyos-app',
   });
 
 pool.on('error', (err) => {

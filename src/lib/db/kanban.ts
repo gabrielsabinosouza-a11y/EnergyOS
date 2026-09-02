@@ -4,6 +4,10 @@ import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { recordMissionProgress } from "./daily-quests";
+import { awardKanbanXP } from "./xp";
+import { addCoins } from "./settings";
+
+export const KANBAN_DONE_COINS = 10;
 
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
@@ -306,17 +310,32 @@ export async function moveKanbanTask(
 
     const result = await client.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
 
-    // A task moved into the "Concluído" (done) column counts toward today's
-    // daily missions ("Complete N tarefas hoje"). Only increment once, i.e.
-    // when it was NOT already done before this move.
-    if (validatedStatus === "done" && oldStatus !== "done") {
+      const becomingDone = validatedStatus === "done" && oldStatus !== "done";
+
+    if (becomingDone) {
       await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1, client });
     }
 
-    return mapKanban(result.rows[0]);
+    const task = mapKanban(result.rows[0]);
+    return task;
   } finally {
     client.release();
   }
+}
+
+/** Awards XP + coins when a kanban task first enters "done". Returns amounts credited (0 if already awarded). */
+export async function awardKanbanCompletion(
+  profileId: string,
+  taskId: number,
+): Promise<{ xpAwarded: number; coinsAwarded: number }> {
+  const xpAwarded = await awardKanbanXP(profileId, taskId);
+  let coinsAwarded = 0;
+  if (xpAwarded > 0) {
+    // Only award coins on the same first-completion that grants XP
+    await addCoins(profileId, KANBAN_DONE_COINS);
+    coinsAwarded = KANBAN_DONE_COINS;
+  }
+  return { xpAwarded, coinsAwarded };
 }
 
 export async function promoteTaskToKanban(profileId: string, taskId: number): Promise<KanbanTask> {

@@ -1,13 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Performance optimizations for network drives
-  experimental: {
-    // Reduce memory usage and improve startup time
-    optimizePackageImports: true,
-    // Enable server actions
-    serverActions: true,
-  },
   // Image optimization
   images: {
     // Disable image optimization for local development on network drives
@@ -16,23 +9,27 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: 'https', hostname: '*' },
     ],
-    // Increase memory limit for image optimization
+    // Device sizes for responsive images
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   // Compilation optimizations
   compiler: {
-    // Reduce bundle size
+    // Reduce bundle size in production
     removeConsole: process.env.NODE_ENV === 'production',
     // Enable styled-components optimization
     styledComponents: true,
   },
-  // Compression
+  // Enable compression
   compress: true,
-  // Enable HTTP/2 server push
+  // HTTP agent options
   httpAgentOptions: {
     keepAlive: true,
   },
+  // Performance: move .next to local drive if on network storage
+  // turbopack: {
+  //   root: process.env.NODE_ENV === 'development' ? './.next' : undefined,
+  // },
 };
 
 export default nextConfig;

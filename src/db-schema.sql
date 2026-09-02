@@ -345,10 +345,27 @@ exception when duplicate_column then null; end $$;
 create table if not exists group_members (
   group_id bigint not null references groups(id) on delete cascade,
   profile_id text not null references profiles(id) on delete cascade,
-  role text not null default 'member' check (role in ('owner', 'member')),
+  role text not null default 'MEMBER' check (role in ('OWNER', 'ADMIN', 'MEMBER')),
   joined_at timestamptz not null default now(),
   primary key (group_id, profile_id)
 );
+
+-- Migrate existing groups role data (lowercase old values -> uppercase new set),
+-- and swap the single-column check constraint.
+do $$ begin
+  update group_members set role = 'OWNER'  where role = 'owner';
+  update group_members set role = 'MEMBER' where role = 'member';
+  update group_members set role = 'ADMIN'  where role = 'admin';
+exception when others then null; end $$;
+
+do $$ begin
+  alter table group_members drop constraint if exists group_members_role_check;
+exception when others then null; end $$;
+
+do $$ begin
+  alter table group_members add constraint group_members_role_check
+    check (role in ('OWNER', 'ADMIN', 'MEMBER'));
+exception when duplicate_object then null; end $$;
 
 create index if not exists group_members_profile_idx on group_members(profile_id);
 

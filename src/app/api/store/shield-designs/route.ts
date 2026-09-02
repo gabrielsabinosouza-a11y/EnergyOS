@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAuth } from "@/lib/server-auth";
 import {
   getAllStreakShieldDesigns,
   getOwnedStreakShieldDesigns,
@@ -11,19 +10,14 @@ import {
 import { NotFoundError, ConflictError, ForbiddenError } from "@/lib/errors";
 
 // GET /api/store/shield-designs - Get all available shield designs
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      // Allow unauthenticated access to view designs, but owned status will be empty
-      const designs = await getAllStreakShieldDesigns();
-      return NextResponse.json({ designs, owned: [], equipped: null });
-    }
-
+    const { profileId } = await requireAuth(request);
+    
     const [designs, owned, equipped] = await Promise.all([
       getAllStreakShieldDesigns(),
-      getOwnedStreakShieldDesigns(session.user.id),
-      getEquippedShieldDesignId(session.user.id),
+      getOwnedStreakShieldDesigns(profileId),
+      getEquippedShieldDesignId(profileId),
     ]);
 
     return NextResponse.json({
@@ -43,11 +37,8 @@ export async function GET() {
 // POST /api/store/shield-designs - Purchase a shield design
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
+    const { profileId } = await requireAuth(request);
+    
     const body = await request.json();
     const { shieldDesignId } = body;
 
@@ -58,7 +49,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await purchaseStreakShieldDesign(session.user.id, shieldDesignId);
+    const result = await purchaseStreakShieldDesign(profileId, shieldDesignId);
 
     return NextResponse.json({
       success: true,
@@ -86,11 +77,8 @@ export async function POST(request: Request) {
 // PATCH /api/store/shield-designs - Equip a shield design
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
+    const { profileId } = await requireAuth(request);
+    
     const body = await request.json();
     const { shieldDesignId } = body;
 
@@ -101,7 +89,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const result = await equipStreakShieldDesign(session.user.id, shieldDesignId);
+    const result = await equipStreakShieldDesign(profileId, shieldDesignId);
 
     return NextResponse.json({
       success: result.success,

@@ -275,6 +275,16 @@ export async function runWeeklyLeagueReset(): Promise<void> {
            values ($1, $2, 0) on conflict (league_group_id, profile_id) do nothing`,
           [legendsGroupId, profileId]
         );
+        // Remove any stale same-week membership so qualifiers aren't listed twice
+        await client.query(
+          `delete from league_group_members
+            where profile_id = $1
+              and league_group_id in (
+                select lg.id from league_groups lg
+                 where lg.week_start_date = $2 and lg.id <> $3
+              )`,
+          [profileId, newWeekStart, legendsGroupId]
+        );
       }
     }
 
@@ -308,6 +318,19 @@ async function ensureMemberInNewWeekGroup(
      values ($1, $2, 0) on conflict (league_group_id, profile_id) do nothing`,
     [groupId, profileId]
   );
+  // A user must never hold more than one membership per week. If a stale
+  // same-week membership exists in another (usually lower) tier group — e.g.
+  // from getOrCreateUserLeagueGroup running before the weekly reset — remove it
+  // so the user is only listed once, in their correct tier.
+  await client.query(
+    `delete from league_group_members
+      where profile_id = $1
+        and league_group_id in (
+          select lg.id from league_groups lg
+           where lg.week_start_date = $2 and lg.id <> $3
+        )`,
+    [profileId, weekStart, groupId]
+  );
 }
 
 export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ group: LeagueGroup; member: LeagueGroupMember }> {
@@ -317,7 +340,9 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   const existingMember = await pool.query<{ lg_id: string | number; tier: NewLeagueTier; is_legends: boolean }>(
     `select lg.id as lg_id, lg.tier, lg.is_legends_group as is_legends
      from league_groups lg join league_group_members lgm on lg.id = lgm.league_group_id
-     where lgm.profile_id = $1 and lg.week_start_date = $2`,
+     where lgm.profile_id = $1 and lg.week_start_date = $2
+     order by array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], lg.tier) desc
+     limit 1`,
     [profileId, start]
   );
   

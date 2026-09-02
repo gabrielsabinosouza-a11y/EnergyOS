@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAuth } from "@/lib/server-auth";
 import { markRecapShared } from "@/lib/db/recap";
 import { BadRequestError, UnauthorizedError } from "@/lib/errors";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      throw new UnauthorizedError("Não autorizado");
-    }
-
+    const { profileId } = await requireAuth(request);
+    
     const body = await request.json();
     const { recapId } = body;
 
@@ -18,7 +14,7 @@ export async function POST(request: Request) {
       throw new BadRequestError("ID do recap inválido");
     }
 
-    const result = await markRecapShared(session.user.id, recapId);
+    const result = await markRecapShared(profileId, recapId);
 
     return NextResponse.json({
       success: true,

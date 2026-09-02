@@ -140,10 +140,10 @@ export const api = {
   createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; categoryId?: number; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string }) =>
     request<{ task: KanbanTask }>("/api/kanban", { method: "POST", body: JSON.stringify(input) }),
   updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; categoryId?: number; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
-    request<{ task: KanbanTask }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    request<{ task: KanbanTask; xpAwarded: number; coinsAwarded: number }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteKanbanTask: (id: number) => request<{ ok: true }>(`/api/kanban/${id}`, { method: "DELETE" }),
   moveKanbanTask: (taskId: number, newStatus: "todo" | "doing" | "done", newPosition: number) =>
-    request<{ task: KanbanTask }>("/api/kanban/move", { method: "POST", body: JSON.stringify({ taskId, newStatus, newPosition }) }),
+    request<{ task: KanbanTask; xpAwarded: number; coinsAwarded: number }>("/api/kanban/move", { method: "POST", body: JSON.stringify({ taskId, newStatus, newPosition }) }),
   promoteTaskToKanban: (taskId: number) =>
     request<{ task: KanbanTask }>("/api/kanban/promote", { method: "POST", body: JSON.stringify({ taskId }) }),
   // Labels

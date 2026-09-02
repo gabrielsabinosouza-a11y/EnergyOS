@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { updateKanbanTask, deleteKanbanTask } from "@/lib/db/kanban";
-import { awardKanbanXP } from "@/lib/db/xp";
+import { awardKanbanCompletion } from "@/lib/db/kanban";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -21,10 +21,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       priority: body.priority as "low" | "medium" | "high" | undefined,
       assigneeId: body.assigneeId as string | null | undefined,
     });
-    if (body.status === "done") {
-      await awardKanbanXP(profileId, taskId);
-    }
-    return jsonOk({ task });
+    const { xpAwarded, coinsAwarded } =
+      task.status === "done"
+        ? await awardKanbanCompletion(profileId, taskId)
+        : { xpAwarded: 0, coinsAwarded: 0 };
+    return jsonOk({ task, xpAwarded, coinsAwarded });
   });
 }
 

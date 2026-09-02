@@ -70,19 +70,23 @@ const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow: strin
   league: { primary: "#ffd76b", bg: "rgba(255,215,107,0.12)", glow: "rgba(255,215,107,0.4)" },
 };
 
-const FlameImg = ({ size = 14, ...props }: { size?: number } & Record<string, unknown>) => (
-  <Image src="/energies/flame/flame_start.png" alt="streak" width={size} height={size} style={{ objectFit: "contain" }} unoptimized {...props} />
+function AchImg({ src, size = 14 }: { src: string; size?: number }) {
+  return <Image src={src} alt="" width={size} height={size} style={{ objectFit: "contain", width: size, height: size }} unoptimized />;
+}
+
+const FlameImg = ({ size = 14 }: { size?: number }) => (
+  <AchImg src="/achievements/streaks/streak_4.png" size={size} />
 );
 
 const ACHIEVEMENT_ICONS: Record<string, React.ElementType> = {
-  streak_master: FlameImg,
-  deep_focus: Zap,
-  early_riser: Sun,
-  sleep_champion: Moon,
-  consistency_king: Calendar,
-  xp_olympian: Star,
-  social_spark: Users,
-  rarest_aura: Gem,
+  streak_master:    FlameImg,
+  deep_focus:       ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/deep_focus/deep_focus4.png" size={size} />,
+  early_riser:      ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/Early_riser/early_riser3.png" size={size} />,
+  sleep_champion:   ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/sleep_champion/sleep_champion3.png" size={size} />,
+  consistency_king: ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/Consistency_King/consistency_king2.png" size={size} />,
+  xp_olympian:      ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/XP_Olympian/xp_olympian1.png" size={size} />,
+  social_spark:     ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/social_spark/social_spark2.png" size={size} />,
+  rarest_aura:      Trophy,
 };
 
 const DEFAULT_ICON = Trophy;
@@ -895,9 +899,8 @@ export default function PerfilPage() {
                     }}
                     userName={displayName}
                     userPhotoUrl={user.photoURL ?? undefined}
-                    onCoinsAwarded={(amount, newBalance) => {
-                      // Update the profile's coin balance if needed
-                      if (setCoins) setCoins(newBalance);
+                    onCoinsAwarded={(_amount, _newBalance) => {
+                      // coin balance lives in dashboard page state
                     }}
                   />
                 ))}

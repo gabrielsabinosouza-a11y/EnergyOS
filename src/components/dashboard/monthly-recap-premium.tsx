@@ -9,7 +9,7 @@ import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
 import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
-import { useSession } from "next-auth/react";
+import { useAuthRedirect } from "@/lib/auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1327,7 +1327,7 @@ export function MonthlyRecapPremium({
   const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const reduced = useReducedMotion();
-  const { data: session } = useSession();
+  const { user } = useAuthRedirect({ ifGuest: "/" });
   
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -1385,7 +1385,7 @@ export function MonthlyRecapPremium({
       // doesn't reliably let us detect if the share was completed
       // The backend will handle the one-time tracking
       
-      if (session?.user?.id && recap.id && !recap.hasBeenShared) {
+      if (user?.uid && recap.id && !recap.hasBeenShared) {
         // Award coins and mark as shared
         const response = await fetch("/api/recap/share", {
           method: "POST",
