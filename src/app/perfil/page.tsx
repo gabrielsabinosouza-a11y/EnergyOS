@@ -17,13 +17,8 @@ import { ProfileBanner } from "@/components/profile-banner";
 import React from "react";
 import Image from "next/image";
 import {
-  Zap,
-  Sun,
   Moon,
-  Calendar,
   Star,
-  Users,
-  Gem,
   Lock,
   X,
   Plus,
@@ -36,6 +31,7 @@ import {
   Sparkles,
   Camera,
 } from "lucide-react";
+import { AchievementIcon } from "@/lib/achievement-ui";
 import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premium";
 // Keep the old import for fallback if needed
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";

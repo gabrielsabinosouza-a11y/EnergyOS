@@ -22,6 +22,11 @@ const pool =
   new Pool({
     connectionString,
     ssl: /neon\.tech/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
+    // Optimize pool settings to prevent connection exhaustion
+    max: 10, // Reduce max connections to prevent database overload
+    idleTimeoutMillis: 10000, // Close idle clients after 10 seconds
+    connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
+    application_name: 'energyos-app',
   });
 
 pool.on('error', (err) => {
@@ -29,7 +34,10 @@ pool.on('error', (err) => {
 });
 
 pool.on('connect', () => {
-  console.log('[db] New client connected');
+  // Only log in development to reduce noise
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[db] New client connected');
+  }
 });
 
 console.log('[db] Database pool created');

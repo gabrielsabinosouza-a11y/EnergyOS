@@ -1,6 +1,7 @@
 "use client";
 
-import { Zap, Sun, Moon, Calendar, Star, Users, Gem, Trophy, Lock } from "lucide-react";
+import { Sun, Moon, Calendar, Users, Gem, Trophy, Lock } from "lucide-react";
+import type { ReactElement } from "react";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
 
@@ -13,22 +14,88 @@ export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow
   league: { primary: "#ffd76b", bg: "rgba(255,215,107,0.12)", glow: "rgba(255,215,107,0.4)" },
 };
 
-const FlameImg = ({ size = 14, ...props }: { size?: number } & Record<string, unknown>) => (
-  <Image src="/energies/flame/flame_start.png" alt="streak" width={size} height={size} style={{ objectFit: "contain" }} unoptimized {...props} />
-);
+/**
+ * Tier-based icon assets (one image per unlock tier, 1-indexed), keyed by
+ * achievement id. The icon shown for an achievement reflects its unlockedTier.
+ * Some achievements have fewer images than tiers; the last image is reused for
+ * higher tiers. `rarest_aura` has no asset yet and falls back to a lucide icon.
+ */
+export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
+  streak_master: [
+    "/achievements/streaks/streak_1.png",
+    "/achievements/streaks/streak_2.png",
+    "/achievements/streaks/streak_3.png",
+    "/achievements/streaks/streak_4.png",
+  ],
+  deep_focus: [
+    "/achievements/deep_focus/deep_focus1.png",
+    "/achievements/deep_focus/deep_focus2.png",
+    "/achievements/deep_focus/deep_focus3.png",
+    "/achievements/deep_focus/deep_focus4.png",
+  ],
+  early_riser: [
+    "/achievements/Early_riser/early_riser1.png",
+    "/achievements/Early_riser/early_riser2.png",
+    "/achievements/Early_riser/early_riser3.png",
+  ],
+  sleep_champion: [
+    "/achievements/sleep_champion/sleep_champion1.png",
+    "/achievements/sleep_champion/sleep_champion2.png",
+    "/achievements/sleep_champion/sleep_champion3.png",
+  ],
+  consistency_king: [
+    "/achievements/Consistency_King/consistency_king1.png",
+    "/achievements/Consistency_King/consistency_king2.png",
+  ],
+  xp_olympian: ["/achievements/XP_Olympian/xp_olympian1.png"],
+  social_spark: [
+    "/achievements/social_spark/social_spark1.png",
+    "/achievements/social_spark/social_spark2.png",
+  ],
+};
 
-export const ACHIEVEMENT_ICONS: Record<string, React.ElementType> = {
-  streak_master: FlameImg,
-  deep_focus: Zap,
-  early_riser: Sun,
-  sleep_champion: Moon,
-  consistency_king: Calendar,
-  xp_olympian: Star,
-  social_spark: Users,
+/** Lucide fallbacks used for achievements without a PNG asset. */
+export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {
   rarest_aura: Gem,
 };
 
 export const DEFAULT_ICON = Trophy;
+
+/**
+ * Renders an achievement's tier-matched icon: the PNG for the current
+ * unlockedTier when an asset exists, otherwise the fallback lucide icon.
+ * When locked (tier 0), renders a lock glyph.
+ */
+export function AchievementIcon({
+  id,
+  tier,
+  size,
+  color,
+  style,
+  locked = false,
+}: {
+  id: string;
+  tier: number;
+  size: number;
+  color?: string;
+  style?: React.CSSProperties;
+  locked?: boolean;
+}) {
+  if (locked || tier <= 0) {
+    return <Lock size={Math.round(size * 0.72)} className="text-[var(--text-faint)]" style={style} />;
+  }
+
+  const images = ACHIEVEMENT_IMAGES[id];
+  const src = images && images.length ? images[Math.min(tier, images.length) - 1] : null;
+  if (src) {
+    return (
+      <Image src={src} alt="" width={size} height={size} style={{ objectFit: "contain", ...style }} unoptimized />
+    );
+  }
+
+  const Icon = ACHIEVEMENT_BADGE_ICONS[id] ?? DEFAULT_ICON;
+  return <Icon size={size} style={{ color, ...style }} />;
+}
 
 export function AchievementBadge({
   achievement,
@@ -40,7 +107,6 @@ export function AchievementBadge({
   iconSize?: number;
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
-  const Icon = ACHIEVEMENT_ICONS[achievement.id] ?? DEFAULT_ICON;
   const isEarned = achievement.unlockedTier > 0;
 
   return (
@@ -55,11 +121,13 @@ export function AchievementBadge({
         color: isEarned ? colors.primary : undefined,
       }}
     >
-      {isEarned ? (
-        <Icon size={iconSize} style={{ color: isEarned ? colors.primary : undefined }} />
-      ) : (
-        <Lock size={iconSize * 0.72} className="text-[var(--text-faint)]" />
-      )}
+      <AchievementIcon
+        id={achievement.id}
+        tier={achievement.unlockedTier}
+        size={iconSize}
+        locked={!isEarned}
+        color={isEarned ? colors.primary : undefined}
+      />
     </div>
   );
 }

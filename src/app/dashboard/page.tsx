@@ -366,6 +366,11 @@ function DashboardContent() {
     });
   }
 
+  /** Criação de meta diretamente pelo modal do dashboard. */
+  async function createGoal(goal: Goal) {
+    setGoals((prev) => [...prev, goal]);
+  }
+
   /** Exclusão otimista de meta diretamente pelo card do dashboard. */
   async function deleteGoal(goalId: number) {
     const prev = goals;
@@ -377,6 +382,39 @@ function DashboardContent() {
       setGoals(prev);
       showError(error instanceof Error ? error.message : "Não foi possível excluir a meta.");
     }
+  }
+
+  /** Edição otimista de meta a partir do card do dashboard. */
+  function updateGoal(goalId: number, patch: { title: string; categoryId: number; targetValue: number; frequency: Goal["frequency"] }, prev: Goal) {
+    setGoals((gs) =>
+      (gs ?? []).map((g) =>
+        g.id === goalId
+          ? {
+              ...g,
+              title: patch.title,
+              categoryId: patch.categoryId,
+              targetValue: patch.targetValue,
+              frequency: patch.frequency,
+              category: categories.find((c) => c.id === patch.categoryId) ?? g.category,
+            }
+          : g,
+      ),
+    );
+    api
+      .updateGoal(goalId, {
+        title: patch.title,
+        categoryId: patch.categoryId,
+        targetValue: patch.targetValue,
+        frequency: patch.frequency,
+      })
+      .then(({ goal }) => {
+        setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
+        showSuccess("Meta atualizada com sucesso.");
+      })
+      .catch(() => {
+        setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? prev : g)));
+        showError("Não foi possível atualizar a meta.");
+      });
   }
 
   const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
@@ -533,7 +571,7 @@ function DashboardContent() {
             onStart={startFocus}
             onEnd={endFocus}
           />
-          <GoalsCard goals={goals} onAdjust={adjustGoalProgress} onDelete={deleteGoal} />
+          <GoalsCard goals={goals} categories={categories} onAdjust={adjustGoalProgress} onDelete={deleteGoal} onUpdate={updateGoal} onCreate={createGoal} />
         </section>
       </main>
 

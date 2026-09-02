@@ -578,7 +578,7 @@ alter table profiles add column if not exists banner_image_url text;
 alter table profiles add column if not exists equipped_decoration_id text;
 alter table profiles drop column if exists equipped_energy_id;
 alter table profiles add column if not exists streak_shield_count integer not null default 0;
-alter table profiles add column if not exists equipped_shield_design_id text references streak_shield_designs(id) on delete set null;
+alter table profiles add column if not exists equipped_shield_design_id text;
 
 create table if not exists avatar_decorations (
   id text primary key,
@@ -618,6 +618,10 @@ create table if not exists user_streak_shield_designs (
   purchased_at timestamptz not null default now(),
   primary key (profile_id, shield_design_id)
 );
+
+-- Add foreign key constraint to profiles.equipped_shield_design_id after the table exists
+alter table profiles add constraint if not exists fk_profiles_equipped_shield
+  foreign key (equipped_shield_design_id) references streak_shield_designs(id) on delete set null;
 
 create table if not exists streak_shield_usage (
   id bigserial primary key,

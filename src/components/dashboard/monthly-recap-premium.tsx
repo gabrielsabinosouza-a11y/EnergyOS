@@ -1050,7 +1050,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function captureRecapCard(
+export async function captureRecapCard(
   recap: MonthlyRecapPremiumProps["recap"],
   userName: string,
   userPhotoUrl?: string,
@@ -1653,18 +1653,7 @@ export function MonthlyRecapPremium({
 
 // ─── Helper functions for standalone usage ────────────────────────────────────
 
-// These are placeholders for the capture card functionality
-// The original captureCard function would need to be adapted for the new format
-export async function captureRecapCard(
-  recap: MonthlyRecapPremiumProps["recap"],
-  userName: string,
-  userPhotoUrl?: string,
-): Promise<Blob> {
-  // This would implement the new canvas-based capture for the summary slide
-  // For now, return a placeholder
-  return new Blob([], { type: "image/png" });
-}
-
+// Re-export the download and share functions using the canvas capture
 export async function downloadRecapImage(
   recap: MonthlyRecapPremiumProps["recap"],
   userName: string,
