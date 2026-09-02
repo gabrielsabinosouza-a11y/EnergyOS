@@ -36,6 +36,13 @@ const RARITY_BORDER: Record<DecorationRarity, string> = {
   legendary: "#ffd76b",
 };
 
+const RARITY_GLOW: Record<DecorationRarity, string> = {
+  common: "rgba(113,212,255,0.28)",
+  rare: "rgba(182,156,255,0.30)",
+  epic: "rgba(255,184,107,0.32)",
+  legendary: "rgba(255,215,107,0.38)",
+};
+
 function DecorationRing({ rarity, size }: { rarity: DecorationRarity; size: number }) {
   const r = size / 2 - 3;
   return (
@@ -130,6 +137,64 @@ export function Avatar({
       </div>
 
       {frame && frameErrored && <DecorationRing rarity={frame.rarity} size={size} />}
+    </div>
+  );
+}
+
+interface AvatarWithFrameProps {
+  photoUrl?: string;
+  name?: string;
+  size?: number;
+  equippedDecorationId?: string;
+  className?: string;
+  /** Additional glow color override (e.g. streak heat) when no frame is equipped. */
+  glowColor?: string;
+}
+
+/**
+ * Avatar wrapped with a soft ambient glow that matches the equipped frame's
+ * rarity tier (ou raridade destacada). Used consistently across the profile
+ * pages, league tables, and public profiles so the "premium" look is shared.
+ */
+export function AvatarWithFrame({
+  photoUrl,
+  name,
+  size = 80,
+  equippedDecorationId,
+  className = "",
+  glowColor,
+}: AvatarWithFrameProps) {
+  const frame = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
+  const halo = glowColor ?? (frame ? RARITY_GLOW[frame.rarity] : undefined);
+
+  return (
+    <div
+      className={`relative shrink-0 ${className}`}
+      style={{
+        width: size,
+        height: size,
+        transform: "translateZ(0)",
+      }}
+    >
+      {halo && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-full opacity-70"
+          style={{
+            transform: "scale(1.16)",
+            background: `radial-gradient(circle at 50% 45%, ${halo} 0%, transparent 72%)`,
+            filter: "blur(6px)",
+          }}
+        />
+      )}
+      <div className="relative z-[1] h-full w-full">
+        <Avatar
+          photoUrl={photoUrl}
+          name={name}
+          size={size}
+          equippedDecorationId={equippedDecorationId}
+        />
+      </div>
     </div>
   );
 }

@@ -2,11 +2,11 @@ import pool from "../db";
 import type { AchievementProgress } from "@/types";
 import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
-import { getLifetimeFocusMinutes, getLongestFocusSession } from "./focus";
+import { getLifetimeFocusMinutes } from "./focus";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
-  deep_focus: [25, 60, 120, 240],
+  deep_focus: [60, 120, 240, 520],
   early_riser: [5, 25, 100],
   sleep_champion: [10, 50, 100],
   consistency_king: [1, 10, 50],
@@ -17,7 +17,7 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
 
 const META: Record<string, { title: string; description: string; category: string }> = {
   streak_master: { title: "Streak Master", description: "Mantenha sequências de consistência", category: "streak" },
-  deep_focus: { title: "Deep Focus", description: "Complete sessões longas de foco", category: "focus" },
+  deep_focus: { title: "Deep Focus", description: "Acumule minutos de foco totais", category: "focus" },
   early_riser: { title: "Early Riser", description: "Faça check-in antes das 7h", category: "checkin" },
   sleep_champion: { title: "Sleep Champion", description: "Durma 7 horas ou mais", category: "sleep" },
   consistency_king: { title: "Consistency King", description: "Semanas perfeitas de check-in", category: "checkin" },
@@ -38,7 +38,6 @@ function tierFor(value: number, thresholds: number[]): number {
 async function computeValues(profileId: string): Promise<Record<string, number>> {
   const [
     streakRow,
-    longestFocus,
     lifetimeFocus,
     earlyRiser,
     sleepChampion,
@@ -50,7 +49,6 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
       `select current_streak, longest_streak from profiles where id = $1`,
       [profileId],
     ),
-    getLongestFocusSession(profileId),
     getLifetimeFocusMinutes(profileId),
     pool.query<{ count: string | number }>(
       `select count(*)::int as count from daily_checkins
@@ -94,7 +92,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
 
   return {
     streak_master: longestStreak,
-    deep_focus: longestFocus,
+    deep_focus: lifetimeFocus,
     early_riser: Number(earlyRiser.rows[0]?.count ?? 0),
     sleep_champion: Number(sleepChampion.rows[0]?.count ?? 0),
     consistency_king: Number(perfectWeeks.rows[0]?.count ?? 0),

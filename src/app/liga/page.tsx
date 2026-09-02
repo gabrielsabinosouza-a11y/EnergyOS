@@ -13,7 +13,7 @@ import { CoinIcon } from "@/components/coin-icon";
 import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
-import { Avatar as SharedAvatar } from "@/components/avatar";
+import { AvatarWithFrame } from "@/components/avatar";
 import type { NewLeagueTier } from "@/types";
 import type { NewTierMeta } from "@/lib/league-new-meta";
 import { NEW_TIER_META, NEW_TIER_ORDER } from "@/lib/league-new-meta";
@@ -78,7 +78,7 @@ function fmtCountdown(t: { days: number; hours: number; minutes: number; seconds
 
 function Avatar({ photoUrl, name, size = 32, equippedDecorationId }: { photoUrl?: string; name?: string; size?: number; equippedDecorationId?: string }) {
   return (
-    <SharedAvatar
+    <AvatarWithFrame
       photoUrl={photoUrl}
       name={name}
       size={size}

@@ -12,16 +12,14 @@ import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
 import type { AchievementProgress } from "@/types";
-import { FRAME_ASSETS, frameOverscan } from "@/components/avatar";
+import { AvatarWithFrame } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
-import React from "react";
 import Image from "next/image";
 import {
   Moon,
   Star,
   Lock,
   X,
-  Plus,
   Pencil,
   Check,
   Loader2,
@@ -31,7 +29,12 @@ import {
   Sparkles,
   Camera,
 } from "lucide-react";
-import { AchievementIcon } from "@/lib/achievement-ui";
+import {
+  CATEGORY_COLORS,
+  AchievementIcon,
+  AchievementTile,
+  AchievementAddSlot,
+} from "@/lib/achievement-ui";
 import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premium";
 // Keep the old import for fallback if needed
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
@@ -58,139 +61,24 @@ async function fileToDataUrl(file: File): Promise<string> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                         */
-/* ------------------------------------------------------------------ */
-
-const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow: string }> = {
-  streak: { primary: "#ff8c42", bg: "rgba(255,140,66,0.12)", glow: "rgba(255,140,66,0.4)" },
-  focus: { primary: "#b69cff", bg: "rgba(182,156,255,0.12)", glow: "rgba(182,156,255,0.4)" },
-  checkin: { primary: "#4ade80", bg: "rgba(74,222,128,0.12)", glow: "rgba(74,222,128,0.4)" },
-  sleep: { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" },
-  social: { primary: "#f472b6", bg: "rgba(244,114,182,0.12)", glow: "rgba(244,114,182,0.4)" },
-  league: { primary: "#ffd76b", bg: "rgba(255,215,107,0.12)", glow: "rgba(255,215,107,0.4)" },
-};
-
-function AchImg({ src, size = 14 }: { src: string; size?: number }) {
-  return <Image src={src} alt="" width={size} height={size} style={{ objectFit: "contain", width: size, height: size }} unoptimized />;
-}
-
-const FlameImg = ({ size = 14 }: { size?: number }) => (
-  <AchImg src="/achievements/streaks/streak_4.png" size={size} />
-);
-
-const ACHIEVEMENT_ICONS: Record<string, React.ElementType> = {
-  streak_master:    FlameImg,
-  deep_focus:       ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/deep_focus/deep_focus4.png" size={size} />,
-  early_riser:      ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/Early_riser/early_riser3.png" size={size} />,
-  sleep_champion:   ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/sleep_champion/sleep_champion3.png" size={size} />,
-  consistency_king: ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/Consistency_King/consistency_king2.png" size={size} />,
-  xp_olympian:      ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/XP_Olympian/xp_olympian1.png" size={size} />,
-  social_spark:     ({ size = 14 }: { size?: number }) => <AchImg src="/achievements/social_spark/social_spark2.png" size={size} />,
-  rarest_aura:      Trophy,
-};
-
-const DEFAULT_ICON = Trophy;
-
-/* ------------------------------------------------------------------ */
 /*  Animation variants                                                */
 /* ------------------------------------------------------------------ */
 
 const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.06 } },
+  visible: { transition: { staggerChildren: 0.05 } },
 };
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } },
 };
 
-/* ------------------------------------------------------------------ */
-/*  Sub-components                                                    */
-/* ------------------------------------------------------------------ */
-
 const FEATURED_SIZE = 88;
+const GRID_SIZE = 76;
 
-function AchievementBadge({
-  achievement,
-  size = 80,
-  onClick,
-  showRemove,
-  onRemove,
-  reduced,
-}: {
-  achievement: AchievementProgress;
-  size?: number;
-  onClick?: () => void;
-  showRemove?: boolean;
-  onRemove?: (e: React.MouseEvent) => void;
-  reduced?: boolean;
-}) {
-  const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
-  const Icon = ACHIEVEMENT_ICONS[achievement.id] ?? DEFAULT_ICON;
-  const isEarned = achievement.unlockedTier > 0;
-  // inner circle is 84% of the slot so the glow has room to breathe inside the cell
-  const inner = Math.round(size * 0.84);
-
-  return (
-    <motion.div
-      className="group relative block shrink-0"
-      style={{ width: size }}
-    >
-      <motion.button
-        type="button"
-        onClick={onClick}
-        whileHover={reduced ? undefined : { scale: 1.06 }}
-        whileTap={reduced ? undefined : { scale: 0.95 }}
-        className="block w-full cursor-pointer"
-      >
-        <span className="flex flex-col items-center justify-start">
-          {/* glow container — fixed square so shadow never bleeds outside size×size */}
-          <span
-            className="flex items-center justify-center rounded-full"
-            style={{
-              width: inner,
-              height: inner,
-              background: isEarned
-                ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
-                : "rgba(255,255,255,0.04)",
-              boxShadow: isEarned ? `0 0 12px 2px ${colors.glow}` : "none",
-              border: isEarned ? "none" : "1px dashed rgba(255,255,255,0.12)",
-            }}
-          >
-            {isEarned ? (
-              <Icon size={inner * 0.38} style={{ color: "#000" }} strokeWidth={2} />
-            ) : (
-              <Lock size={inner * 0.28} className="text-[var(--text-faint)]" strokeWidth={1.5} />
-            )}
-          </span>
-
-          {isEarned && achievement.thresholds.length > 1 && (
-            <span className="mt-1.5 flex justify-center gap-1">
-              {achievement.thresholds.map((_, i) => (
-                <span
-                  key={i}
-                  className="block h-1 w-1 rounded-full"
-                  style={{ background: i < achievement.unlockedTier ? colors.primary : "rgba(255,255,255,0.15)" }}
-                />
-              ))}
-            </span>
-          )}
-        </span>
-      </motion.button>
-
-      {showRemove && onRemove && (
-        <button
-          type="button"
-          aria-label="Remover destaque"
-          onClick={onRemove}
-          className="tap absolute -right-1 -top-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-[var(--red)] text-black opacity-90 shadow-md transition sm:opacity-0 sm:group-hover:opacity-100"
-        >
-          <X size={11} />
-        </button>
-      )}
-    </motion.div>
-  );
-}
+/* ------------------------------------------------------------------ */
+/*  Achievement detail modal                                          */
+/* ------------------------------------------------------------------ */
 
 function AchievementModal({
   achievement,
@@ -202,10 +90,8 @@ function AchievementModal({
   onClose: () => void;
   isOwn: boolean;
   onToggleFeatured?: () => void;
-  reduced?: boolean;
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
-  const Icon = ACHIEVEMENT_ICONS[achievement.id] ?? DEFAULT_ICON;
   const isEarned = achievement.unlockedTier > 0;
   const currentIdx = isEarned ? Math.min(achievement.unlockedTier - 1, achievement.thresholds.length - 1) : 0;
 
@@ -223,8 +109,9 @@ function AchievementModal({
         </button>
 
         <div className="mb-4 flex flex-col items-center text-center">
+          {/* Icon fills its 100px halo — no more tiny icon in a big circle */}
           <div
-            className="mb-3 flex items-center justify-center rounded-full"
+            className="relative mb-3 flex items-center justify-center overflow-hidden rounded-full"
             style={{
               width: 100,
               height: 100,
@@ -232,12 +119,13 @@ function AchievementModal({
                 ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
                 : "rgba(255,255,255,0.04)",
               boxShadow: isEarned ? `0 0 30px ${colors.glow}` : "none",
+              border: isEarned ? `1px solid ${colors.primary}33` : "1px dashed rgba(255,255,255,0.14)",
             }}
           >
             {isEarned ? (
-              <Icon size={40} style={{ color: "#000" }} />
+              <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={100} color="#000" fill />
             ) : (
-              <Lock size={36} className="text-[var(--text-faint)]" />
+              <Lock size={40} className="text-[var(--text-faint)]" />
             )}
           </div>
 
@@ -308,62 +196,6 @@ function AchievementModal({
   );
 }
 
-function FeaturedSlot({
-  achievement,
-  onClick,
-  onRemove,
-  reduced,
-  showAdd,
-}: {
-  achievement?: AchievementProgress;
-  onClick: () => void;
-  onRemove?: (e: React.MouseEvent) => void;
-  reduced?: boolean;
-  showAdd?: boolean;
-}) {
-  // All slots — filled or empty — share the same outer cell size for grid uniformity
-  const cellSize = FEATURED_SIZE;
-
-  if (!achievement) {
-    return (
-      <motion.button
-        type="button"
-        onClick={onClick}
-        whileHover={reduced ? undefined : { scale: 1.06 }}
-        whileTap={reduced ? undefined : { scale: 0.95 }}
-        className="group flex shrink-0 cursor-pointer flex-col items-center gap-2"
-        style={{ width: cellSize }}
-      >
-        <div
-          className="flex items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-colors group-hover:border-[var(--accent)]/30"
-          style={{ width: cellSize, height: cellSize }}
-        >
-          <div className="flex flex-col items-center gap-1 text-[var(--text-faint)] transition group-hover:text-[var(--accent)]">
-            <Plus size={18} />
-            <span className="text-[9px] text-center leading-tight px-1">Destacar conquista</span>
-          </div>
-        </div>
-      </motion.button>
-    );
-  }
-
-  return (
-    <div className="flex shrink-0 flex-col items-center gap-2" style={{ width: cellSize }}>
-      <AchievementBadge
-        achievement={achievement}
-        size={cellSize}
-        onClick={onClick}
-        showRemove={showAdd}
-        onRemove={onRemove}
-        reduced={reduced}
-      />
-      <span className="max-w-full truncate text-center text-[10px] text-[var(--text-muted)]">
-        {achievement.title}
-      </span>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /*  Page                                                              */
 /* ------------------------------------------------------------------ */
@@ -378,8 +210,6 @@ export default function PerfilPage() {
   const [photoError, setPhotoError] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [equippedDecorationId, setEquippedDecorationId] = useState<string | undefined>();
-  const headerDecoration = equippedDecorationId ? FRAME_ASSETS[equippedDecorationId] : undefined;
-  const headerFrameGeom = headerDecoration ? frameOverscan(80, headerDecoration) : null;
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
   const [hasCustomBanner, setHasCustomBanner] = useState(false);
   const [bannerSaving, setBannerSaving] = useState(false);
@@ -431,18 +261,17 @@ export default function PerfilPage() {
   }
 
   const displayName = user.displayName ?? "Usuário";
-  const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const avatarSrc = photoUrl ?? user.photoURL ?? undefined;
   const createdAt = user.metadata.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "—";
+  const username = (user as { username?: string }).username;
 
   const streak = dashboard?.streak?.currentStreak ?? 0;
   const longestStreak = dashboard?.streak?.longestStreak ?? streak;
-  const glowAlpha = Math.min(0.15 + streak * 0.01, 0.45).toFixed(2);
-  const avatarGlow = streak > 0
-    ? `0 0 0 3px rgba(255,184,107,${glowAlpha}), 0 0 28px rgba(255,184,107,${glowAlpha})`
-    : undefined;
+  // lifetime focus in minutes (xp_olympian achievement tracks lifetimeFocus)
+  const lifetimeFocus = achievements.find((a) => a.id === "xp_olympian")?.currentValue ?? 0;
+  const lifetimeFocusH = Math.floor(lifetimeFocus / 60);
 
   const featured = achievements.filter((a) => a.isFeatured).sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0));
   const featuredIds = new Set(featured.map((f) => f.id));
@@ -554,10 +383,6 @@ export default function PerfilPage() {
     } catch { /* silent */ }
   }
 
-  function openPicker(_slot: number) {
-    setShowPicker(true);
-  }
-
   async function handleGenerateRecap() {
     const now = new Date();
     const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -597,10 +422,41 @@ export default function PerfilPage() {
     { icon: Target, color: "#ffb86b", label: "Treino", kind: "training" as const, unit: "min" },
   ];
 
+  const heroStats = [
+    {
+      label: "Streak atual",
+      color: "var(--orange)",
+      value: `${streak} dias`,
+      icon: <Image src={streakIconSource(streak)} alt="streak" width={16} height={16} style={{ objectFit: "contain" }} unoptimized />,
+      glow: "0 0 22px -8px rgba(255,184,107,0.16)",
+    },
+    {
+      label: "Maior sequência",
+      color: "var(--orange)",
+      value: `${longestStreak} dias`,
+      icon: <Image src={streakIconSource(longestStreak)} alt="streak" width={16} height={16} style={{ objectFit: "contain" }} unoptimized />,
+      glow: "0 0 22px -8px rgba(255,184,107,0.12)",
+    },
+    {
+      label: "Conquistas",
+      color: "var(--accent)",
+      value: `${unlocked.length}/${achievements.length}`,
+      icon: <Trophy size={16} />,
+      glow: "0 0 22px -8px rgba(113,212,255,0.16)",
+    },
+    {
+      label: "Foco na vida",
+      color: "var(--purple)",
+      value: `${lifetimeFocusH}h`,
+      icon: <Timer size={16} />,
+      glow: "0 0 22px -8px rgba(182,156,255,0.16)",
+    },
+  ];
+
   return (
     <AppShell>
       <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto max-w-3xl">
           <Header eyebrow="CONTA" title="Meu perfil" />
 
           {/* ─── Env / config status (diagnostic) ─────────────── */}
@@ -664,194 +520,226 @@ export default function PerfilPage() {
             disabled={bannerSaving}
           />
 
-          {/* ─── Avatar + Name ─────────────────────────────────── */}
+          {/* ─── Hero header ───────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className={`glass-card relative mb-6 ${hasCustomBanner ? "overflow-hidden" : ""}`}
+            className={`glass-card relative mb-6 overflow-hidden`}
           >
+            {/* subtle ambient tint matching equipped frame rarity */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background: "radial-gradient(ellipse at 30% -10%, rgba(182,156,255,0.10), transparent 55%), radial-gradient(ellipse at 100% 0%, rgba(255,184,107,0.08), transparent 50%)",
+              }}
+            />
+
             {hasCustomBanner && (
               <ProfileBanner imageUrl={bannerImageUrl} alt="Banner do perfil">
                 <button
                   type="button"
                   onClick={() => bannerFileRef.current?.click()}
                   disabled={bannerSaving}
-                  className="pointer-events-auto absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur transition hover:bg-black/75 disabled:opacity-60"
+                  className="pointer-events-auto absolute bottom-3 right-3 z-20 flex items-center gap-1.5 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur transition hover:bg-black/75 disabled:opacity-60"
                 >
                   {bannerSaving ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
                   {bannerSaving ? "Enviando..." : bannerImageUrl ? "Trocar banner" : "Enviar banner"}
                 </button>
                 {bannerError && (
-                  <p className="pointer-events-auto absolute left-3 top-3 max-w-[70%] truncate rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] text-[var(--red)] backdrop-blur">
+                  <p className="pointer-events-auto absolute left-3 top-3 z-20 max-w-[70%] truncate rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] text-[var(--red)] backdrop-blur">
                     {bannerError}
                   </p>
                 )}
               </ProfileBanner>
             )}
+
             <div className={`relative z-[1] p-6 sm:p-8 ${hasCustomBanner ? "pt-0" : ""}`}>
-            <div className={`flex items-center gap-5 ${hasCustomBanner ? "-mt-10" : ""} mb-6`}>
-              <div className="relative z-10 shrink-0">
-                {headerDecoration && headerFrameGeom && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={headerDecoration.imageUrl}
-                    alt=""
-                    draggable={false}
-                    className="pointer-events-none absolute z-0 select-none max-w-none"
-                    style={{
-                      width: headerFrameGeom.size,
-                      height: headerFrameGeom.size,
-                      left: -headerFrameGeom.offset,
-                      top: -headerFrameGeom.offset,
-                    }}
+              <div className={`flex flex-col items-center gap-5 text-center ${hasCustomBanner ? "-mt-10" : ""} sm:flex-row sm:text-left`}>
+                <div className="relative z-10 shrink-0">
+                  <AvatarWithFrame
+                    photoUrl={avatarSrc}
+                    name={displayName}
+                    size={92}
+                    equippedDecorationId={equippedDecorationId}
                   />
-                )}
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={photoSaving}
-                  className="group avatar relative z-10 overflow-hidden rounded-full ring-2 ring-[var(--bg-primary)]"
-                  style={{
-                    width: 80,
-                    height: 80,
-                    fontSize: 28,
-                    boxShadow: avatarGlow,
-                    transition: "box-shadow 0.4s ease",
-                  }}
-                >
-                  {avatarSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarSrc} alt={displayName} className="h-full w-full rounded-full object-cover" />
-                  ) : (
-                    initials
-                  )}
-                  {/* camera overlay on hover */}
-                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                  {/* camera overlay */}
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={photoSaving}
+                    aria-label="Trocar foto"
+                    className="group absolute inset-0 z-20 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity hover:opacity-100 disabled:opacity-0"
+                  >
                     {photoSaving
-                      ? <Loader2 size={20} className="animate-spin text-white" />
-                      : <Camera size={20} className="text-white" />}
+                      ? <Loader2 size={22} className="animate-spin text-white" />
+                      : <Camera size={22} className="text-white" />}
+                  </button>
+                  <span className="pointer-events-none absolute -bottom-1 -right-1 z-30 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
+                    {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
                   </span>
-                </button>
-                <span className="pointer-events-none absolute -bottom-1 -right-1 z-20 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--bg)] bg-[var(--accent-bg)] text-[var(--accent)]">
-                  {photoSaving ? <Loader2 size={11} className="animate-spin" /> : <Pencil size={11} />}
-                </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  {editingName ? (
+                    <div className="flex items-center justify-center gap-2 sm:justify-start">
+                      <input
+                        autoFocus
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveName();
+                          if (e.key === "Escape") setEditingName(false);
+                        }}
+                        className="auth-input !py-1.5 !text-base flex-1"
+                      />
+                      <button onClick={saveName} disabled={saving} className="icon-button small">
+                        {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      </button>
+                      <button onClick={() => setEditingName(false)} className="icon-button small">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 sm:justify-start">
+                      <h2 className="font-display text-2xl tracking-[-0.03em]">{displayName}</h2>
+                      {dashboard?.user?.role === 'admin' && (
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
+                          Admin
+                        </span>
+                      )}
+                      <button onClick={startEdit} className="icon-button small !h-7 !w-7">
+                        <Pencil size={12} />
+                      </button>
+                    </div>
+                  )}
+                  {username && (
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">@{username}</p>
+                  )}
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">Membro desde {createdAt}</p>
+                  {saved && <p className="mt-1 text-xs text-[var(--accent)]">Salvo!</p>}
+                  {photoError && <p className="mt-1 text-xs text-[var(--red)]">{photoError}</p>}
+                </div>
               </div>
 
-              <div className="min-w-0 flex-1">
-                {editingName ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveName();
-                        if (e.key === "Escape") setEditingName(false);
-                      }}
-                      className="auth-input !py-1.5 !text-base flex-1"
-                    />
-                    <button onClick={saveName} disabled={saving} className="icon-button small">
-                      {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                    </button>
-                    <button onClick={() => setEditingName(false)} className="icon-button small">
-                      <X size={13} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-display text-2xl tracking-[-0.03em]">{displayName}</h2>
-                    {dashboard?.user?.role === 'admin' && (
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
-                        Admin
-                      </span>
-                    )}
-                    <button onClick={startEdit} className="icon-button small !h-7 !w-7">
-                      <Pencil size={12} />
-                    </button>
-                  </div>
-                )}
-                {"username" in user && (user as { username?: string }).username && (
-                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                    @{(user as { username?: string }).username}
-                  </p>
-                )}
-                <p className="mt-0.5 text-xs text-[var(--text-muted)]">Membro desde {createdAt}</p>
-                {saved && <p className="mt-1 text-xs text-[var(--accent)]">Salvo!</p>}
-                {photoError && <p className="mt-1 text-xs text-[var(--red)]">{photoError}</p>}
+              {/* ─── Stats strip ──────────────────────────────── */}
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {heroStats.map((s) => (
+                  <motion.div
+                    key={s.label}
+                    whileHover={reduced ? undefined : { y: -2 }}
+                    transition={{ duration: 0.15 }}
+                    className="metric-card"
+                    style={{ boxShadow: s.glow }}
+                  >
+                    <div className="metric-caption mb-1" style={{ color: s.color }}>{s.label}</div>
+                    <div className="flex items-center gap-1.5" style={{ color: s.color }}>
+                      {s.icon}
+                      <span className="font-display text-base">{s.value}</span>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
-            </div>
-
-            {/* ─── Streak Stats Row ─────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3">
-              <motion.div
-                whileHover={reduced ? undefined : { y: -2 }}
-                transition={{ duration: 0.15 }}
-                className="metric-card"
-                style={{ boxShadow: "0 0 20px -8px rgba(255,184,107,0.12)" }}
-              >
-                <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Streak atual</div>
-                <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src={streakIconSource(streak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
-                  <span className="font-display text-base">{streak} dias</span>
-                </div>
-              </motion.div>
-
-              <motion.div
-                whileHover={reduced ? undefined : { y: -2 }}
-                transition={{ duration: 0.15 }}
-                className="metric-card"
-                style={{ boxShadow: "0 0 20px -8px rgba(255,184,107,0.08)" }}
-              >
-                <div className="metric-caption mb-1" style={{ color: "var(--orange)" }}>Maior sequência</div>
-                <div className="flex items-center gap-1.5 text-[var(--orange)]">
-                  <Image src={streakIconSource(longestStreak)} alt="streak" width={14} height={14} style={{ objectFit: "contain" }} unoptimized />
-                  <span className="font-display text-base">{longestStreak} dias</span>
-                </div>
-              </motion.div>
-            </div>
             </div>
           </motion.div>
 
-          {/* ─── Featured Achievements ──────────────────────────── */}
+          {/* ─── Featured Achievements (Destaques) ─────────────── */}
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
-            className="glass-card mb-6 p-6 sm:p-8"
+            className="glass-card relative mb-6 overflow-hidden p-6 sm:p-8"
           >
-            <div className="mb-5 flex items-center gap-2">
+            <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at 90% 0%, rgba(255,215,107,0.06), transparent 55%)" }} />
+            <div className="relative mb-5 flex items-center gap-2">
               <Star size={16} className="text-[var(--orange)]" />
               <span className="text-xs uppercase tracking-[0.15em] text-[var(--orange)]">Destaques</span>
             </div>
 
-            {/* Wrap instead of a fixed 4-col grid: 88px slots would overflow
-                a 375px viewport with grid-cols-4. */}
-            <div className="flex flex-wrap justify-center gap-4 sm:justify-start">
-              {[0, 1, 2, 3].map((slot) => (
-                <FeaturedSlot
-                  key={slot}
-                  achievement={featured[slot]}
-                  onClick={() => {
-                    if (featured[slot]) {
-                      setSelectedAchievement(featured[slot]);
-                    } else {
-                      openPicker(slot);
-                    }
-                  }}
-                  onRemove={
-                    featured[slot]
-                      ? (e) => {
-                          e.stopPropagation();
-                          handleToggleFeatured(featured[slot]!.id);
-                        }
-                      : undefined
-                  }
-                  reduced={!!reduced}
-                  showAdd
-                />
-              ))}
+            <div className="relative flex flex-wrap justify-center gap-4 sm:justify-start">
+              {[0, 1, 2, 3].map((slot) => {
+                const ach = featured[slot];
+                if (!ach) {
+                  return (
+                    <div key={slot} className="flex shrink-0 flex-col items-center gap-2" style={{ width: FEATURED_SIZE }}>
+                      <AchievementAddSlot
+                        size={FEATURED_SIZE}
+                        onClick={() => setShowPicker(true)}
+                        reduced={!!reduced}
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={slot} className="flex shrink-0 flex-col items-center gap-2" style={{ width: FEATURED_SIZE }}>
+                    <AchievementTile
+                      achievement={ach}
+                      size={FEATURED_SIZE}
+                      onClick={() => setSelectedAchievement(ach)}
+                      showRemove
+                      onRemove={(e) => {
+                        e.stopPropagation();
+                        handleToggleFeatured(ach.id);
+                      }}
+                      reduced={!!reduced}
+                      feature
+                      showProgress={false}
+                    />
+                    <span className="max-w-full truncate text-center text-[10px] text-[var(--text-muted)]">
+                      {ach.title}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
+          </motion.section>
+
+          {/* ─── Full Achievements Grid ─────────────────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className="glass-card relative mb-6 overflow-hidden p-6 sm:p-8"
+          >
+            <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at 10% 100%, rgba(113,212,255,0.05), transparent 55%)" }} />
+            <div className="relative mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trophy size={16} className="text-[var(--accent)]" />
+                <span className="text-xs uppercase tracking-[0.15em] text-[var(--accent)]">Conquistas</span>
+              </div>
+              <span className="text-xs text-[var(--text-faint)]">
+                {unlocked.length} de {achievements.length} desbloqueadas
+              </span>
+            </div>
+
+            {achievements.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                Nenhuma conquista disponível ainda.
+              </p>
+            ) : (
+              <motion.div
+                variants={reduced ? {} : stagger}
+                initial="hidden"
+                animate="visible"
+                className="relative grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-5"
+              >
+                {sorted.map((ach) => (
+                  <motion.div key={ach.id} variants={reduced ? {} : fadeUp} className="flex flex-col items-center justify-between gap-2">
+                    <AchievementTile
+                      achievement={ach}
+                      size={GRID_SIZE}
+                      onClick={() => setSelectedAchievement(ach)}
+                      reduced={!!reduced}
+                      feature={ach.isFeatured}
+                    />
+                    <span className="line-clamp-2 text-center text-[10px] leading-tight text-[var(--text-secondary)]">
+                      {ach.title}
+                    </span>
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
           </motion.section>
 
           {/* ─── Monthly Recaps ─────────────────────────────────── */}
@@ -859,9 +747,9 @@ export default function PerfilPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 }}
-            className="glass-card mb-6 p-6 sm:p-8"
+            className="glass-card relative mb-6 overflow-hidden p-6 sm:p-8"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="relative mb-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-[var(--purple)]" />
                 <span className="text-xs uppercase tracking-[0.15em] text-[var(--purple)]">Recap mensal</span>
@@ -876,14 +764,14 @@ export default function PerfilPage() {
               </button>
             </div>
             {recapError && (
-              <p className="mb-4 text-xs text-[var(--red)]">{recapError}</p>
+              <p className="relative mb-4 text-xs text-[var(--red)]">{recapError}</p>
             )}
             {recaps.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+              <p className="relative py-6 text-center text-sm text-[var(--text-muted)]">
                 Nenhum recap disponível. Gere o recap do mês anterior!
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="relative space-y-3">
                 {recaps.map((recap) => (
                   <MonthlyRecapPremium
                     key={recap.id}
@@ -905,94 +793,6 @@ export default function PerfilPage() {
                   />
                 ))}
               </div>
-            )}
-          </motion.section>
-
-          {/* ─── Full Achievements Grid ─────────────────────────── */}
-          <motion.section
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-            className="glass-card mb-6 p-6 sm:p-8"
-          >
-            <div className="mb-5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Trophy size={16} className="text-[var(--accent)]" />
-                <span className="text-xs uppercase tracking-[0.15em] text-[var(--accent)]">Conquistas</span>
-              </div>
-              <span className="text-xs text-[var(--text-faint)]">
-                {unlocked.length} de {achievements.length} desbloqueadas
-              </span>
-            </div>
-
-            {achievements.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
-                Nenhuma conquista disponível ainda.
-              </p>
-            ) : (
-              <motion.div
-                variants={reduced ? {} : stagger}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
-              >
-                {sorted.map((ach) => {
-                  const colors = CATEGORY_COLORS[ach.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
-                  return (
-                    <motion.button
-                      key={ach.id}
-                      variants={reduced ? {} : fadeUp}
-                      whileHover={reduced ? undefined : { y: -3 }}
-                      whileTap={reduced ? undefined : { scale: 0.97 }}
-                      onClick={() => setSelectedAchievement(ach)}
-                      className="flex flex-col items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-center transition-colors hover:border-white/[0.12]"
-                    >
-                      {/* inner circle is 68px inside the padded card — glow stays inside */}
-                      <div
-                        className="flex h-[68px] w-[68px] items-center justify-center rounded-full"
-                        style={{
-                          background: ach.unlockedTier > 0
-                            ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
-                            : "rgba(255,255,255,0.03)",
-                          boxShadow: ach.unlockedTier > 0 ? `0 0 12px 2px ${colors.glow}` : "none",
-                          filter: ach.unlockedTier === 0 ? "grayscale(1) opacity(0.4)" : undefined,
-                        }}
-                      >
-                        {ach.unlockedTier > 0 ? (
-                          React.createElement(ACHIEVEMENT_ICONS[ach.id] ?? DEFAULT_ICON, {
-                            size: 28,
-                            style: { color: "#000" },
-                          })
-                        ) : (
-                          <Lock size={22} className="text-[var(--text-faint)]" />
-                        )}
-                      </div>
-
-                      <span className="text-xs text-[var(--text-secondary)]">{ach.title}</span>
-
-                      {ach.unlockedTier > 0 && ach.thresholds.length > 1 && (
-                        <div className="flex gap-1">
-                          {ach.thresholds.map((_, i) => (
-                            <span
-                              key={i}
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{
-                                background: i < ach.unlockedTier ? colors.primary : "rgba(255,255,255,0.1)",
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {ach.unlockedTier === 0 && (
-                        <span className="text-[10px] text-[var(--text-faint)]">
-                          {ach.currentValue}/{ach.thresholds[0]}
-                        </span>
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </motion.div>
             )}
           </motion.section>
 
@@ -1085,6 +885,7 @@ export default function PerfilPage() {
               <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
                 {unlocked.map((ach) => {
                   const alreadyFeatured = featuredIds.has(ach.id);
+                  const colors = CATEGORY_COLORS[ach.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)" };
                   return (
                     <button
                       key={ach.id}
@@ -1097,15 +898,12 @@ export default function PerfilPage() {
                       }`}
                     >
                       <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full"
                         style={{
-                          background: `radial-gradient(circle at 30% 30%, ${CATEGORY_COLORS[ach.category]?.primary ?? "#71d4ff"}, ${CATEGORY_COLORS[ach.category]?.bg ?? "rgba(113,212,255,0.12)"})`,
+                          background: `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`,
                         }}
                       >
-                        {React.createElement(ACHIEVEMENT_ICONS[ach.id] ?? DEFAULT_ICON, {
-                          size: 16,
-                          style: { color: "#000" },
-                        })}
+                        <AchievementIcon id={ach.id} tier={ach.unlockedTier} size={40} color="#000" fill />
                       </div>
                       <span className="text-[var(--text)]">{ach.title}</span>
                       {alreadyFeatured && <span className="ml-auto text-[10px] text-[var(--text-faint)]">Já destacada</span>}
