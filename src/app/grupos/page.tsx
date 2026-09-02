@@ -7,9 +7,9 @@ import {
   ArrowLeft, ArrowUp, ArrowDown, Check, Crown, Loader2,
   MessageCircle, Package, Plus, Send, Timer, Trophy,
   TrendingUp, Users, X as XIcon, Zap, Settings,
-  Image as ImageIcon, Video as VideoIcon, Mic, Square,
+  Image as ImageIcon, Mic, Square,
   Sticker, Shield, ShieldCheck, Trash2, UserMinus,
-  ArrowRightLeft, Pencil,
+  ArrowRightLeft,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -116,7 +116,6 @@ async function uploadToCloudinary(file: File): Promise<{ secureUrl: string; dura
   return { secureUrl: data.secure_url as string, durationSeconds: data.duration };
 }
 
-const ROLE_LABELS: Record<string, string> = { OWNER: "Dono", ADMIN: "Admin", MEMBER: "Membro" };
 const ROLE_ORDER: Record<string, number> = { OWNER: 0, ADMIN: 1, MEMBER: 2 };
 
 /* ------------------------------------------------------------------ */

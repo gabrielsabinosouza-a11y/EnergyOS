@@ -169,7 +169,7 @@ export async function markRecapShared(profileId: string, recapId: number): Promi
     [recapId, profileId],
   );
   
-  const wasFirstShare = result.rowCount > 0;
+  const wasFirstShare = (result.rowCount ?? 0) > 0;
   
   if (wasFirstShare) {
     // Award coins for first share

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
-import { removeMember, updateMemberRole, type GroupRole } from "@/lib/db/groups";
+import { removeMember, updateMemberRole } from "@/lib/db/groups";
+import type { GroupRole } from "@/types";
 
 type Period = "WEEK" | "MONTH" | "YEAR" | "ALL_TIME";
 

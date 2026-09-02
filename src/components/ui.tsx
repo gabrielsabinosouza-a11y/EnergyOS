@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useSpring, useReducedMotion } from "framer-motion";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
 import { btnHover, btnTap } from "@/lib/motion";
 
 // ── GlowCard ────────────────────────────────────────────────────────────────
@@ -69,12 +69,14 @@ export function AnimatedNumber({
   suffix = "",
   className = "",
   duration = 0.7,
+  style,
 }: {
   value: number;
   decimals?: number;
   suffix?: string;
   className?: string;
   duration?: number;
+  style?: CSSProperties;
 }) {
   const reduced = useReducedMotion();
   const [display, setDisplay] = useState(reduced ? value : 0);
@@ -114,7 +116,7 @@ export function AnimatedNumber({
   };
 
   return (
-    <span className={className}>
+    <span className={className} style={style}>
       {formatValue(display, decimals)}{suffix}
     </span>
   );

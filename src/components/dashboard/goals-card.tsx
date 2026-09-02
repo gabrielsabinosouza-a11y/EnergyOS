@@ -1220,21 +1220,6 @@ function CreateGoalModal({
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  <motion.button
-                    type="button"
-                    whileTap={reduced ? undefined : { scale: 0.9 }}
-                    onClick={addPendingHabit}
-                    disabled={!habitInput.trim()}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-all cursor-pointer disabled:opacity-30"
-                    style={{
-                      borderColor: `${glowColor}44`,
-                      background: `${glowColor}12`,
-                      color: glowColor,
-                    }}
-                    aria-label="Adicionar hábito"
-                  >
-                    <Plus size={15} strokeWidth={2.5} />
-                  </motion.button>
                 </div>
               </div>
 

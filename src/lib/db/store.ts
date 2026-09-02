@@ -594,7 +594,7 @@ export async function purchaseStreakShieldDesign(
     [profileId, shieldDesignId],
   );
 
-  if (existingResult.rowCount > 0) {
+  if ((existingResult.rowCount ?? 0) > 0) {
     throw new ConflictError("Você já possui este escudo.");
   }
 
@@ -689,5 +689,5 @@ export async function getStreakShieldDesignById(shieldDesignId: string): Promise
     [shieldDesignId],
   );
 
-  return result.rowCount > 0 ? mapStreakShieldDesign(result.rows[0]) : null;
+  return (result.rowCount ?? 0) > 0 ? mapStreakShieldDesign(result.rows[0]) : null;
 }

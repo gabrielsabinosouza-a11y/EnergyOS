@@ -1434,7 +1434,7 @@ export function MonthlyRecapPremium({
     } finally {
       setIsSharing(false);
     }
-  }, [session, recap, isSharing, monthLabel, onExternalShare, onCoinsAwarded]);
+  }, [recap, isSharing, monthLabel, onExternalShare, onCoinsAwarded]);
 
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);

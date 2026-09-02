@@ -351,7 +351,16 @@ create table if not exists group_members (
 );
 
 -- Migrate existing groups role data (lowercase old values -> uppercase new set),
--- and swap the single-column check constraint.
+-- and swap the single-column check constraint. Drop the old constraint first so
+-- legacy lowercase rows can be uppercased before the new check is applied.
+do $$ begin
+  alter table group_members drop constraint if exists group_members_role_check;
+exception when others then null; end $$;
+
+do $$ begin
+  alter table group_members alter column role drop default;
+exception when others then null; end $$;
+
 do $$ begin
   update group_members set role = 'OWNER'  where role = 'owner';
   update group_members set role = 'MEMBER' where role = 'member';
@@ -359,13 +368,13 @@ do $$ begin
 exception when others then null; end $$;
 
 do $$ begin
-  alter table group_members drop constraint if exists group_members_role_check;
-exception when others then null; end $$;
-
-do $$ begin
   alter table group_members add constraint group_members_role_check
     check (role in ('OWNER', 'ADMIN', 'MEMBER'));
 exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table group_members alter column role set default 'MEMBER';
+exception when others then null; end $$;
 
 create index if not exists group_members_profile_idx on group_members(profile_id);
 
@@ -663,8 +672,15 @@ create table if not exists user_streak_shield_designs (
 );
 
 -- Add foreign key constraint to profiles.equipped_shield_design_id after the table exists
-alter table profiles add constraint if not exists fk_profiles_equipped_shield
-  foreign key (equipped_shield_design_id) references streak_shield_designs(id) on delete set null;
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'profiles'::regclass and conname = 'fk_profiles_equipped_shield'
+  ) then
+    alter table profiles add constraint fk_profiles_equipped_shield
+      foreign key (equipped_shield_design_id) references streak_shield_designs(id) on delete set null;
+  end if;
+end $$;
 
 create table if not exists streak_shield_usage (
   id bigserial primary key,

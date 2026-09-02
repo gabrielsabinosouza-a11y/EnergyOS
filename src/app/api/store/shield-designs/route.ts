@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import {
   getAllStreakShieldDesigns,
@@ -10,7 +10,7 @@ import {
 import { NotFoundError, ConflictError, ForbiddenError } from "@/lib/errors";
 
 // GET /api/store/shield-designs - Get all available shield designs
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 }
 
 // POST /api/store/shield-designs - Purchase a shield design
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 }
 
 // PATCH /api/store/shield-designs - Equip a shield design
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
