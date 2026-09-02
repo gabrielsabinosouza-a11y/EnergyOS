@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Stakpak session files
 .stakpak/session*
+.aider*
