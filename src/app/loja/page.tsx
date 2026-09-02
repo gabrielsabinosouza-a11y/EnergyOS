@@ -38,7 +38,7 @@ import {
   ENERGY_TYPES,
   type EnergyType,
 } from "@/lib/energy-assets";
-import type { StoreItem, DecorationRarity, ActiveXPBoost, StreakShieldDesign } from "@/types";
+import type { StoreItem, DecorationRarity, ActiveXPBoost } from "@/types";
 import { FRAME_ASSETS } from "@/components/avatar";
 import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS, isXpBoostActive } from "@/lib/xp-boost";
 import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
@@ -671,11 +671,7 @@ export default function LojaPage() {
   const xpBoostUseLockRef = useRef(false);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
-  const [shieldDesigns, setShieldDesigns] = useState<{
-    designs: StreakShieldDesign[];
-    owned: string[];
-    equipped: string | null;
-  } | null>(null);
+  const [equippedShieldIconUrl, setEquippedShieldIconUrl] = useState<string | null>(null);
 
   // Animated header balance
   const animatedBalance = useAnimatedNumber(store?.balance ?? 0);
@@ -696,7 +692,7 @@ export default function LojaPage() {
 
   async function fetchStore() {
     try {
-      const [data, boost, shieldData] = await Promise.all([
+      const [data, boost, shieldDesignData] = await Promise.all([
         api.getStore(),
         api.getXpBoost().catch(() => ({ quantity: 0, itemType: "xp_boost_2x", boost: null })),
         api.getStreakShieldDesigns().catch(() => ({ designs: [], owned: [], equipped: null })),
@@ -707,7 +703,10 @@ export default function LojaPage() {
         xpBoost: boost.boost,
       });
       if (data.ownedAuras) setOwnedAuras(data.ownedAuras);
-      setShieldDesigns(shieldData);
+      const equippedIcon = shieldDesignData?.equipped
+        ? shieldDesignData.designs.find((d) => d.id === shieldDesignData.equipped)?.iconUrl ?? null
+        : null;
+      setEquippedShieldIconUrl(equippedIcon);
     } catch {
       setError("Não foi possível carregar a loja.");
     } finally {
@@ -878,38 +877,6 @@ export default function LojaPage() {
       flash("Escudo comprado!");
     } catch (e) {
       setCardError({ id: "shield", message: e instanceof Error ? e.message : "Erro ao comprar escudo." });
-    } finally {
-      setProcessing(null);
-    }
-  }
-
-  async function handleBuyShieldDesign(shieldDesignId: string) {
-    if (!shieldDesigns) return;
-    setProcessing(`shield-design-${shieldDesignId}`);
-    setCardError(null);
-    try {
-      const { balance, ownedDesigns } = await api.purchaseStreakShieldDesign(shieldDesignId);
-      setStore((s) => (s ? { ...s, balance } : s));
-      setShieldDesigns((prev) => prev ? { ...prev, owned: ownedDesigns } : null);
-      flash("Design de escudo comprado!");
-      markJustPurchased(shieldDesignId);
-    } catch (e) {
-      setCardError({ id: "shield-design", message: e instanceof Error ? e.message : "Erro ao comprar design de escudo." });
-    } finally {
-      setProcessing(null);
-    }
-  }
-
-  async function handleEquipShieldDesign(shieldDesignId: string) {
-    if (!shieldDesigns) return;
-    setProcessing(`shield-equip-${shieldDesignId}`);
-    setCardError(null);
-    try {
-      await api.equipStreakShieldDesign(shieldDesignId);
-      setShieldDesigns((prev) => prev ? { ...prev, equipped: shieldDesignId } : null);
-      flash("Design de escudo equipado!");
-    } catch (e) {
-      setCardError({ id: "shield-equip", message: e instanceof Error ? e.message : "Erro ao equipar design de escudo." });
     } finally {
       setProcessing(null);
     }
@@ -1155,13 +1122,22 @@ export default function LojaPage() {
                       border: i < store.shieldCount ? "1px solid rgba(74,222,128,0.3)" : "1px dashed rgba(255,255,255,0.1)",
                     }}
                   >
-                    <Shield
-                      size={14}
-                      style={{
-                        color: i < store.shieldCount ? "var(--green)" : "var(--text-faint)",
-                        fill: i < store.shieldCount ? "var(--green)" : "transparent",
-                      }}
-                    />
+                    {i < store.shieldCount && equippedShieldIconUrl ? (
+                      <img
+                        src={equippedShieldIconUrl}
+                        alt="Escudo"
+                        className="h-6 w-6 object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <Shield
+                        size={14}
+                        style={{
+                          color: i < store.shieldCount ? "var(--green)" : "var(--text-faint)",
+                          fill: i < store.shieldCount ? "var(--green)" : "transparent",
+                        }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -1192,173 +1168,6 @@ export default function LojaPage() {
               )}
             </button>
           </motion.section>
-
-          {/* ─── Section: Designs de Escudos ─────────────── */}
-          {shieldDesigns && (
-            <motion.section
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.3 }}
-              className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
-            >
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
-                style={{ background: "radial-gradient(ellipse, rgba(113,212,255,.2), transparent 70%)", filter: "blur(20px)" }}
-              />
-              <SectionHeader icon={<Shield size={14} />} color="#71d4ff" title="Designs de Escudos" delay={0.35} />
-
-              <p className="mb-5 text-sm text-[var(--text-muted)]">
-                Personalize seus escudos de proteção de streak com designs únicos!
-              </p>
-
-              {cardError?.id === "shield-design" && (
-                <motion.p
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
-                >
-                  <AlertCircle size={12} /> {cardError.message}
-                </motion.p>
-              )}
-              {cardError?.id === "shield-equip" && (
-                <motion.p
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300"
-                >
-                  <AlertCircle size={12} /> {cardError.message}
-                </motion.p>
-              )}
-
-              <motion.div
-                variants={stagger.container}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
-              >
-                {shieldDesigns.designs.map((design) => {
-                  const owned = shieldDesigns.owned.includes(design.id);
-                  const equipped = shieldDesigns.equipped === design.id;
-                  const rarity = RARITY_COLORS[design.rarity as keyof typeof RARITY_COLORS] || RARITY_COLORS.common;
-                  const isProcessing = processing === `shield-design-${design.id}` || processing === `shield-equip-${design.id}`;
-                  
-                  return (
-                    <motion.div key={design.id} variants={stagger.item} className="relative">
-                      <div
-                        className={`relative h-28 w-full overflow-hidden rounded-xl border transition-all ${equipped ? "ring-2 ring-[var(--accent)]" : ""}`}
-                        style={{
-                          background: "rgba(255,255,255,0.04)",
-                          borderColor: rarity.border + (owned ? "80" : "30"),
-                        }}
-                      >
-                        {/* Glow effect for equipped */}
-                        {equipped && (
-                          <div
-                            aria-hidden
-                            className="pointer-events-none absolute inset-0 rounded-xl"
-                            style={{
-                              background: `radial-gradient(circle at center, ${rarity.glow} 0%, transparent 70%)`,
-                              filter: "blur(10px)",
-                            }}
-                          />
-                        )}
-
-                        {/* Shield design image */}
-                        <div className="relative z-10 flex h-full items-center justify-center p-2">
-                          <img
-                            src={design.iconUrl}
-                            alt={design.name}
-                            className="h-16 w-16 object-contain"
-                            draggable={false}
-                          />
-                        </div>
-
-                        {/* Owned indicator */}
-                        {owned && (
-                          <div className="absolute right-1 top-1 z-20 rounded-full bg-[var(--accent)]/20 p-1">
-                            <Check size={10} className="text-[var(--accent)]" />
-                          </div>
-                        )}
-
-                        {/* Just purchased animation */}
-                        {justPurchased === design.id && (
-                          <motion.div
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0, opacity: 0 }}
-                            className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-[var(--accent)]/10"
-                          >
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              exit={{ scale: 0 }}
-                              className="rounded-full bg-[var(--accent)] p-2"
-                            >
-                              <Check size={16} className="text-white" />
-                            </motion.div>
-                          </motion.div>
-                        )}
-
-                        {/* Processing overlay */}
-                        {isProcessing && (
-                          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-black/30 backdrop-blur-sm">
-                            <Loader2 size={16} className="animate-spin text-white" />
-                          </div>
-                        )}
-
-                        {/* Rarity indicator */}
-                        <div className="absolute bottom-1 left-1 z-20 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-                             style={{
-                               background: rarity.bg,
-                               color: rarity.border,
-                               border: `1px solid ${rarity.border}`
-                             }}>
-                          {rarity.label}
-                        </div>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-medium text-[var(--text)]">{design.name}</span>
-                          <span className="text-[10px] text-[var(--text-muted)] line-clamp-1">{design.description}</span>
-                        </div>
-                        <span className="text-xs font-semibold text-amber-300">{design.price} moedas</span>
-                      </div>
-
-                      {owned ? (
-                        <button
-                          onClick={() => handleEquipShieldDesign(design.id)}
-                          disabled={isProcessing || equipped}
-                          className="mt-2 w-full rounded-lg bg-[var(--bg-surface-hover)] py-2 text-xs font-semibold transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
-                          style={{
-                            color: equipped ? "var(--accent)" : "var(--text)",
-                            border: equipped ? "1px solid var(--accent-border)" : "none"
-                          }}
-                        >
-                          {equipped ? "✓ Equipado" : "Equipar"}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleBuyShieldDesign(design.id)}
-                          disabled={isProcessing || store!.balance < design.price}
-                          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-surface-hover)] py-2 text-xs font-semibold transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
-                        >
-                          {isProcessing ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <>
-                              <CoinIcon size={12} /> Comprar
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </motion.div>
-            </motion.section>
-          )}
 
           {/* ─── Section: Poção de XP Duplo ─────────────── */}
           <motion.section

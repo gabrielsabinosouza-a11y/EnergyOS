@@ -509,6 +509,7 @@ export interface MonthlyRecap {
   leagueTier?: string;
   leaguePromoted?: boolean;
   productivityTag?: string;
+  gardenCount?: number;
   hasBeenShared?: boolean;
   generatedAt: string;
 }

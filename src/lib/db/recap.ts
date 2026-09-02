@@ -16,6 +16,7 @@ interface RecapRow {
   league_tier: string | null;
   league_promoted: boolean | null;
   productivity_tag: string | null;
+  garden_count: number;
   has_been_shared: boolean | null;
   generated_at: Date | string;
 }
@@ -30,6 +31,7 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
     leagueTier: row.league_tier ?? undefined,
     leaguePromoted: row.league_promoted ?? undefined,
     productivityTag: row.productivity_tag ?? undefined,
+    gardenCount: Number(row.garden_count) || 0,
     hasBeenShared: row.has_been_shared ?? undefined,
     generatedAt: new Date(row.generated_at).toISOString(),
   };
@@ -66,11 +68,14 @@ function resolveTag(totalMinutes: number): string {
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   parseProfileId(profileId);
   const result = await pool.query<RecapRow>(
-    `select id, recap_month, total_focus_minutes, longest_streak, league_tier,
-            league_promoted, productivity_tag, has_been_shared, generated_at
-     from monthly_recaps
-     where profile_id = $1 and recap_month >= $2::date
-     order by recap_month desc`,
+    `select r.id, r.recap_month, r.total_focus_minutes, r.longest_streak, r.league_tier,
+            r.league_promoted, r.productivity_tag, r.has_been_shared, r.generated_at,
+            (select count(*) from garden_entries g
+             where g.profile_id = r.profile_id
+               and date_trunc('year', g.planted_at) = date_trunc('year', r.recap_month)) as garden_count
+     from monthly_recaps r
+     where r.profile_id = $1 and r.recap_month >= $2::date
+     order by r.recap_month desc`,
     [profileId, ENERGYOS_LAUNCH_MONTH],
   );
   return result.rows.map((row) => mapRecap(profileId, row));
@@ -151,7 +156,20 @@ export async function generateRecap(
     [profileId, monthStart, totalMinutes, longestStreak, tier ?? null, promoted, resolveTag(totalMinutes)],
   );
 
-  return mapRecap(profileId, result.rows[0]);
+  // Conta as energias/auras plantadas no jardim ao longo do mesmo ano do recap.
+  const gardenRow = await pool.query<{ count: string | number }>(
+    `select count(*) as count
+     from garden_entries
+     where profile_id = $1
+       and date_trunc('year', planted_at) = date_trunc('year', $2::date)`,
+    [profileId, monthStart],
+  );
+
+  const recapRow = result.rows[0];
+  return {
+    ...mapRecap(profileId, recapRow),
+    gardenCount: Number(gardenRow.rows[0]?.count ?? 0) || 0,
+  };
 }
 
 // ── Share tracking & reward ────────────────────────────────────────────────────────

@@ -73,8 +73,8 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } },
 };
 
-const FEATURED_SIZE = 88;
-const GRID_SIZE = 76;
+const FEATURED_SIZE = 92;
+const GRID_SIZE = 104;
 
 /* ------------------------------------------------------------------ */
 /*  Achievement detail modal                                          */
@@ -722,7 +722,7 @@ export default function PerfilPage() {
                 variants={reduced ? {} : stagger}
                 initial="hidden"
                 animate="visible"
-                className="relative grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-5"
+                className="relative grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4"
               >
                 {sorted.map((ach) => (
                   <motion.div key={ach.id} variants={reduced ? {} : fadeUp} className="flex flex-col items-center justify-between gap-2">
@@ -783,6 +783,7 @@ export default function PerfilPage() {
                       leagueTier: recap.leagueTier,
                       leaguePromoted: recap.leaguePromoted,
                       productivityTag: recap.productivityTag,
+                      gardenCount: recap.gardenCount,
                       hasBeenShared: recap.hasBeenShared,
                     }}
                     userName={displayName}

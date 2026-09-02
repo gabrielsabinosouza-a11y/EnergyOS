@@ -22,6 +22,7 @@ interface MonthlyRecapPremiumProps {
     leagueTier?: string;
     leaguePromoted?: boolean;
     productivityTag?: string;
+    gardenCount?: number;
     hasBeenShared?: boolean;
   };
   userName: string;
@@ -446,13 +447,13 @@ function SummarySlide({
   const focusValue = formatMinutes(recap.totalFocusMinutes);
   const streakValue = `${recap.longestStreak} dias`;
   const leagueValue = meta ? meta.label : "—";
-  const tagValue = recap.productivityTag ?? "—";
+  const gardenValue = `${recap.gardenCount ?? 0} energia${recap.gardenCount === 1 ? "" : "s"}`;
 
   const stats = [
     { label: "Foco Total", value: focusValue, color: "#71d4ff", icon: iconAssets?.focusIcon, fallback: <Timer size={18} style={{ color: "#71d4ff" }} /> },
     { label: "Sequência", value: streakValue, color: "#ff8c42", icon: iconAssets?.streakIcon, fallback: <Image src="/streak/streak_alive.png" alt="Seq" width={18} height={18} unoptimized draggable={false} /> },
     { label: "Liga", value: leagueValue, color: tierColor, icon: iconAssets?.leagueIcon ?? meta?.iconPath, fallback: <Award size={18} style={{ color: tierColor }} /> },
-    { label: "Tag", value: tagValue, color: "#b69cff", icon: iconAssets?.tagIcon, fallback: <Award size={18} style={{ color: "#b69cff" }} /> },
+    { label: "Jardim", value: gardenValue, color: "#6bffb8", icon: iconAssets?.tagIcon, fallback: <Image src="/energies/earth/earth_full.png" alt="Jardim" width={18} height={18} unoptimized draggable={false} /> },
   ];
 
   return (
@@ -612,7 +613,7 @@ export async function captureRecapCard(
   const focusValue = formatMinutes(recap.totalFocusMinutes);
   const streakValue = `${recap.longestStreak} dias`;
   const leagueValue = meta ? meta.label : "—";
-  const tagValue = recap.productivityTag ?? "—";
+  const gardenValue = `${recap.gardenCount ?? 0}`;
 
   // Background
   const bg = ctx.createLinearGradient(0, 0, 0, CARD_H);
@@ -703,17 +704,18 @@ export async function captureRecapCard(
 
   const tierImg = tier && meta ? await loadImage(meta.iconPath).catch(() => null) : null;
   const streakImg = await loadImage("/streak/streak_alive.png").catch(() => null);
+  const gardenImg = await loadImage("/energies/earth/earth_full.png").catch(() => null);
 
   const stats = [
     { label: "Foco total", value: focusValue, color: "#71d4ff", glow: "rgba(113,212,255,.35)", icon: null as HTMLImageElement | null, kind: "focus" as const },
     { label: "Sequência", value: streakValue, color: "#ff8c42", glow: "rgba(255,140,66,.35)", icon: streakImg, kind: "streak" as const },
     { label: "Liga", value: leagueValue, color: tierColor, glow: `${tierColor}55`, icon: tierImg, kind: "tier" as const },
-    { label: "Tag", value: tagValue, color: "#b69cff", glow: "rgba(182,156,255,.35)", icon: null as HTMLImageElement | null, kind: "tag" as const },
+    { label: "Jardim", value: gardenValue, color: "#6bffb8", glow: "rgba(107,255,184,.35)", icon: gardenImg, kind: "garden" as const },
   ];
 
   for (const s of stats) {
-    const sx = pad + (s.kind === "streak" || s.kind === "tag" ? 1 : 0) * colW;
-    const sy = gridTop + (s.kind === "tier" || s.kind === "tag" ? 1 : 0) * rowH;
+    const sx = pad + (s.kind === "streak" || s.kind === "garden" ? 1 : 0) * colW;
+    const sy = gridTop + (s.kind === "tier" || s.kind === "garden" ? 1 : 0) * rowH;
     const cw = colW - 16;
     const ch = rowH - 20;
     const cardR = 22;
@@ -840,10 +842,10 @@ export function MonthlyRecapPremium({
   const theme = SLIDE_THEMES;
 
   const iconAssets: RecapIconAssets = {
-    focusIcon: "/icons/focus-icon.png",
+    focusIcon: undefined,
     streakIcon: "/streak/streak_alive.png",
     leagueIcon: meta?.iconPath,
-    tagIcon: "/icons/tag-icon.png",
+    tagIcon: "/energies/earth/earth_full.png",
   };
 
   const getLeagueTheme = () => theme.league(tier);
@@ -1003,15 +1005,13 @@ export function MonthlyRecapPremium({
       case 4:
         return (
           <StatSlide
-            value={recap.productivityTag ?? "—"}
-            label="Tag em Destaque"
-            description="Conquista destacada do mês"
+            value={`${recap.gardenCount ?? 0}`}
+            label="Jardim"
+            description="Energias e auras plantadas no seu jardim este ano"
             theme={theme.tag}
-            icon={iconAssets.tagIcon ? (
-              <Image src={iconAssets.tagIcon} alt="Tag" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            ) : (
-              <Award size={48} color={theme.tag.accent} />
-            )}
+            icon={
+              <Image src="/energies/earth/earth_full.png" alt="Jardim" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
+            }
           />
         );
       case 5:

@@ -176,7 +176,6 @@ export function AchievementTile({
   onClick,
   showRemove,
   onRemove,
-  showAdd,
   reduced,
   showProgress = true,
   feature = false,
@@ -186,15 +185,14 @@ export function AchievementTile({
   onClick?: () => void;
   showRemove?: boolean;
   onRemove?: (e: React.MouseEvent) => void;
-  showAdd?: boolean;
   reduced?: boolean;
   showProgress?: boolean;
   feature?: boolean;
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
-  // inner halo is ~88% of the cell so the glow + progress ring breathe inside
-  const inner = Math.round(size * 0.86);
+  // inner halo fills ~96% of the cell so it feels like the circle is the tile
+  const inner = Math.round(size * 0.96);
   const radius = inner / 2;
   const firstThreshold = achievement.thresholds[0] ?? 1;
   const progress = Math.min((achievement.currentValue ?? 0) / firstThreshold, 1);
@@ -294,7 +292,7 @@ export function AchievementTile({
           <Star size={11} strokeWidth={2.5} fill="currentColor" />
         </span>
       )}
-      {feature && showAdd && isEarned && showRemove && onRemove && (
+      {feature && showRemove && onRemove && (
         <button
           type="button"
           aria-label="Remover destaque"
@@ -306,10 +304,6 @@ export function AchievementTile({
       )}
     </div>
   );
-
-  if (showAdd && !isEarned) {
-    return null; // picker list handles adding earned ones elsewhere
-  }
 
   return shell(body);
 }
