@@ -35,7 +35,7 @@ const PERIOD_LABELS: Record<Period, string> = {
   ALL_TIME: "Total",
 };
 
-const MEDAL_COLORS = ["#ffd700", "#c0c0c0", "#cd7f32"] as const;
+const MEDAL_IMAGES = ["/places/first_place.png", "/places/second_place.png", "/places/third_place.png"] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -154,12 +154,19 @@ function PeriodFilter({ value, onChange }: { value: Period; onChange: (p: Period
   );
 }
 
-function RankCell({ rank }: { rank: number }) {
+function RankCell({ rank, size = 22 }: { rank: number; size?: number }) {
   if (rank <= 3) {
     return (
-      <div className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-black"
-        style={{ background: MEDAL_COLORS[rank - 1] }}>
-        {rank}
+      <div className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+        <Image
+          src={MEDAL_IMAGES[rank - 1]}
+          alt={`${rank}º lugar`}
+          width={size}
+          height={size}
+          style={{ objectFit: "contain" }}
+          unoptimized
+          draggable={false}
+        />
       </div>
     );
   }

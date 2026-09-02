@@ -3,6 +3,7 @@ import type { AchievementProgress } from "@/types";
 import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
 import { getLifetimeFocusMinutes } from "./focus";
+import { getUserXP } from "./xp";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
@@ -21,7 +22,7 @@ const META: Record<string, { title: string; description: string; category: strin
   early_riser: { title: "Early Riser", description: "Faça check-in antes das 7h", category: "checkin" },
   sleep_champion: { title: "Sleep Champion", description: "Durma 7 horas ou mais", category: "sleep" },
   consistency_king: { title: "Consistency King", description: "Semanas perfeitas de check-in", category: "checkin" },
-  xp_olympian: { title: "XP Olympian", description: "Acumule minutos de foco ao longo da vida", category: "focus" },
+  xp_olympian: { title: "XP Olympian", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Social Spark", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Rarest Aura", description: "Termine no topo da Liga Lendários", category: "league" },
 };
@@ -39,6 +40,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
   const [
     streakRow,
     lifetimeFocus,
+    userXP,
     earlyRiser,
     sleepChampion,
     perfectWeeks,
@@ -50,6 +52,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
       [profileId],
     ),
     getLifetimeFocusMinutes(profileId),
+    getUserXP(profileId),
     pool.query<{ count: string | number }>(
       `select count(*)::int as count from daily_checkins
        where profile_id = $1
@@ -96,7 +99,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     early_riser: Number(earlyRiser.rows[0]?.count ?? 0),
     sleep_champion: Number(sleepChampion.rows[0]?.count ?? 0),
     consistency_king: Number(perfectWeeks.rows[0]?.count ?? 0),
-    xp_olympian: lifetimeFocus,
+    xp_olympian: userXP.totalXP,
     social_spark: Number(social.rows[0]?.friends ?? 0) + Number(social.rows[0]?.groups ?? 0),
     rarest_aura: rarest.rows[0]?.unlocked_tier ? 1 : 0,
   };

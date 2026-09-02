@@ -6,8 +6,8 @@ async function main() {
   console.log("Backfilling", rows.length, "profiles...");
   for (const { id } of rows) {
     const results = await listAchievementProgress(id);
-    const df = results.find((a) => a.id === "deep_focus");
-    console.log(`${id} → value: ${df?.currentValue} min, tier: ${df?.unlockedTier}`);
+    const xpo = results.find((a) => a.id === "xp_olympian");
+    console.log(`${id} → xp_olympian value: ${xpo?.currentValue} XP, tier: ${xpo?.unlockedTier}`);
   }
   console.log("Done.");
   await pool.end();
