@@ -104,12 +104,11 @@ export async function getActiveBoost(profileId: string): Promise<ActiveXPBoost |
 }
 
 /**
- * Activate one potion. Decrements inventory by 1 and creates/extends the boost:
- * if an active (non-expired) boost already exists, the new potion EXTENDS its
- * expiresAt by XP_BOOST_DURATION_MS (matching Duolingo's stacking behavior)
- * instead of running two simultaneous boosts.
+ * Activate one potion. Decrements inventory by 1 and starts a single
+ * XP_BOOST_DURATION_MS boost. If a non-expired boost is already running,
+ * this is a no-op on inventory (transaction rolls back) and throws.
  *
- * Returns the resulting boost plus whether it was extended.
+ * `extended` is always false; kept on the return type for API compatibility.
  */
 export async function activateXpBoost(profileId: string): Promise<{
   boost: ActiveXPBoost;
@@ -118,14 +117,36 @@ export async function activateXpBoost(profileId: string): Promise<{
 }> {
   parseProfileId(profileId);
 
-  const quantity = await getPotionQuantity(profileId, XP_BOOST_ITEM_TYPE);
-  if (quantity <= 0) {
-    throw new ConflictError("Você não possui poções de XP para usar");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
+
+    // Serialize activations per user so a double-submit cannot consume two potions.
+    const potionRes = await client.query<{ quantity: number }>(
+      `select quantity from user_potions
+       where profile_id = $1 and item_type = $2
+       for update`,
+      [profileId, XP_BOOST_ITEM_TYPE],
+    );
+    const quantity = potionRes.rows[0]?.quantity ?? 0;
+    if (quantity <= 0) {
+      throw new ConflictError("Você não possui poções de XP para usar");
+    }
+
+    const existing = await client.query<{ expires_at: Date | string }>(
+      `select expires_at from active_xp_boost where profile_id = $1 for update`,
+      [profileId],
+    );
+    const existingExpiry = existing.rows[0]?.expires_at
+      ? new Date(
+          typeof existing.rows[0].expires_at === "string"
+            ? existing.rows[0].expires_at
+            : existing.rows[0].expires_at,
+        )
+      : null;
+    if (existingExpiry && existingExpiry.getTime() > Date.now()) {
+      throw new ConflictError("Poção já ativa");
+    }
 
     await client.query(
       `update user_potions set quantity = quantity - 1, updated_at = now()
@@ -133,39 +154,16 @@ export async function activateXpBoost(profileId: string): Promise<{
       [profileId, XP_BOOST_ITEM_TYPE],
     );
 
-    const existing = await client.query<{ expires_at: Date | string }>(
-      `select expires_at from active_xp_boost where profile_id = $1 and expires_at > now()`,
-      [profileId],
+    const newExpires = new Date(Date.now() + XP_BOOST_DURATION_MS);
+    await client.query(
+      `insert into active_xp_boost (profile_id, multiplier, activated_at, expires_at)
+       values ($1, $2, now(), $3)
+       on conflict (profile_id) do update set
+         multiplier = excluded.multiplier,
+         activated_at = now(),
+         expires_at = excluded.expires_at`,
+      [profileId, XP_BOOST_MULTIPLIER, newExpires],
     );
-
-    let extended = false;
-    let newExpires: Date;
-    if (existing.rows[0]) {
-      // Extend the existing active boost.
-      const currentExpiry = new Date(
-        typeof existing.rows[0].expires_at === "string"
-          ? existing.rows[0].expires_at
-          : existing.rows[0].expires_at,
-      );
-      newExpires = new Date(currentExpiry.getTime() + XP_BOOST_DURATION_MS);
-      extended = true;
-      await client.query(
-        `update active_xp_boost set expires_at = $2, multiplier = $3 where profile_id = $1`,
-        [profileId, newExpires, XP_BOOST_MULTIPLIER],
-      );
-    } else {
-      // Fresh activation.
-      newExpires = new Date(Date.now() + XP_BOOST_DURATION_MS);
-      await client.query(
-        `insert into active_xp_boost (profile_id, multiplier, activated_at, expires_at)
-         values ($1, $2, now(), $3)
-         on conflict (profile_id) do update set
-           multiplier = excluded.multiplier,
-           activated_at = now(),
-           expires_at = excluded.expires_at`,
-        [profileId, XP_BOOST_MULTIPLIER, newExpires],
-      );
-    }
 
     await client.query("commit");
 
@@ -177,7 +175,7 @@ export async function activateXpBoost(profileId: string): Promise<{
         expiresAt: newExpires.toISOString(),
         isActive: true,
       },
-      extended,
+      extended: false,
       quantity: quantity - 1,
     };
   } catch (error) {

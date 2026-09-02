@@ -36,3 +36,12 @@ export function applyXPBoost(baseXP: number, multiplier: number | null): number 
   if (!multiplier || multiplier <= 1) return Math.round(baseXP);
   return Math.round(baseXP * multiplier);
 }
+
+/** True when a boost exists and its expiresAt is still in the future. */
+export function isXpBoostActive(
+  boost: { expiresAt: string } | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!boost?.expiresAt) return false;
+  return new Date(boost.expiresAt).getTime() > now;
+}

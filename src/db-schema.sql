@@ -717,7 +717,7 @@ create table if not exists user_potions (
 );
 
 -- Single active 2x XP boost per user at a time; `isActive` is implied by
--- `expires_at > now()`. Activating while one is already running EXTENDS it.
+-- `expires_at > now()`. Activating while one is already running is rejected.
 create table if not exists active_xp_boost (
   profile_id text primary key references profiles(id) on delete cascade,
   multiplier integer not null default 2,

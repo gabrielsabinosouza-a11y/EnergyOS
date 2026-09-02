@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { markRecapShared } from "@/lib/db/recap";
 import { BadRequestError, UnauthorizedError } from "@/lib/errors";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof BadRequestError || error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error("Error marking recap as shared:", error);
     return NextResponse.json(

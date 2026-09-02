@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   motion,
   useMotionValue,
@@ -40,8 +40,9 @@ import {
 } from "@/lib/energy-assets";
 import type { StoreItem, DecorationRarity, ActiveXPBoost, StreakShieldDesign } from "@/types";
 import { FRAME_ASSETS } from "@/components/avatar";
-import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS } from "@/lib/xp-boost";
+import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS, isXpBoostActive } from "@/lib/xp-boost";
 import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
+import { formatRemaining } from "@/components/xp-boost/xp-boost-indicator";
 
 /* ------------------------------------------------------------------ */
 /*  Rarity colour system (unified)                                     */
@@ -97,6 +98,14 @@ const rarityOf = (rarity: string): StoreRarity =>
 const stagger = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.055 } },
+  container: {
+    hidden: {},
+    visible: { transition: { staggerChildren: 0.055 } },
+  },
+  item: {
+    hidden: { opacity: 0, y: 14 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" as const } },
+  },
 };
 
 const fadeUp = {
@@ -657,7 +666,9 @@ export default function LojaPage() {
   const [cardError, setCardError] = useState<{ id: string; message: string } | null>(null);
   const [justPurchased, setJustPurchased] = useState<string | null>(null);
   const [xpCelebration, setXpCelebration] = useState<{ expiresAt: string; extended: boolean } | null>(null);
+  const [boostTick, setBoostTick] = useState(0);
   const bannerFileRef = useRef<HTMLInputElement>(null);
+  const xpBoostUseLockRef = useRef(false);
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
   const [shieldDesigns, setShieldDesigns] = useState<{
@@ -709,6 +720,32 @@ export default function LojaPage() {
     fetchStore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
+
+  // Re-enable "Usar poção" when the 60-minute timer ends, without a page refresh.
+  useEffect(() => {
+    const expiresAt = store?.xpBoost?.expiresAt;
+    if (!expiresAt) {
+      xpBoostUseLockRef.current = false;
+      return;
+    }
+
+    const remainingMs = new Date(expiresAt).getTime() - Date.now();
+    const timeout = setTimeout(() => {
+      xpBoostUseLockRef.current = false;
+      setStore((s) => (s?.xpBoost ? { ...s, xpBoost: null } : s));
+    }, Math.max(0, remainingMs));
+    const interval = setInterval(() => setBoostTick((n) => n + 1), 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [store?.xpBoost?.expiresAt]);
+
+  const boostRemaining = useMemo(() => {
+    if (!store?.xpBoost?.expiresAt) return 0;
+    return Math.max(0, Math.floor((new Date(store.xpBoost.expiresAt).getTime() - Date.now()) / 1000));
+  }, [store?.xpBoost?.expiresAt, boostTick]);
 
   if (authLoading || loading || !store) {
     return (
@@ -893,13 +930,20 @@ export default function LojaPage() {
   }
 
   async function handleUseXpBoost() {
+    // Ref lock first: setState is async, so a same-tick double-click would both
+    // see processing === null and fire two activations without this.
+    if (xpBoostUseLockRef.current) return;
+    if (!store || isXpBoostActive(store.xpBoost) || store.xpBoostQuantity <= 0) return;
+
+    xpBoostUseLockRef.current = true;
     setProcessing("xp-boost-use");
     setCardError(null);
     try {
-      const { boost, extended, quantity } = await api.activateXpBoost();
+      const { boost, quantity } = await api.activateXpBoost();
       setStore((s) => (s ? { ...s, xpBoostQuantity: quantity, xpBoost: boost } : s));
-      setXpCelebration({ expiresAt: boost.expiresAt, extended });
+      setXpCelebration({ expiresAt: boost.expiresAt, extended: false });
     } catch (e) {
+      xpBoostUseLockRef.current = false;
       setCardError({ id: "xp-boost", message: e instanceof Error ? e.message : "Erro ao usar poção." });
     } finally {
       setProcessing(null);
@@ -909,6 +953,9 @@ export default function LojaPage() {
   /* ─── Derived ─────────────────────────────────────────────── */
 
   const equippedItem = store.items.find((it) => it.equipped);
+  const xpBoostActive = isXpBoostActive(store.xpBoost);
+  const xpBoostUseDisabled =
+    xpBoostActive || store.xpBoostQuantity <= 0 || processing === "xp-boost-use";
 
   /* ─── Render ──────────────────────────────────────────────── */
 
@@ -1354,13 +1401,18 @@ export default function LojaPage() {
                   <span className="text-xs text-[var(--text-secondary)]">
                     Você possui: <strong className="text-[#b69cff]">{store.xpBoostQuantity} / {XP_BOOST_MAX_HELD}</strong>
                   </span>
-                  {store.xpBoost && (
+                  {xpBoostActive && (
                     <motion.span
                       animate={{ opacity: [0.7, 1, 0.7] }}
                       transition={{ duration: 2, repeat: Infinity }}
                       className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b69cff]"
                     >
                       <Zap size={11} fill="currentColor" /> 2x XP ativo
+                      {boostRemaining > 0 && (
+                        <span className="font-mono font-medium text-[#b69cff]/80">
+                          · {formatRemaining(boostRemaining)}
+                        </span>
+                      )}
                     </motion.span>
                   )}
                 </div>
@@ -1383,11 +1435,15 @@ export default function LojaPage() {
                   {/* Use button */}
                   <button
                     onClick={handleUseXpBoost}
-                    disabled={processing === "xp-boost-use" || store.xpBoostQuantity <= 0}
+                    disabled={xpBoostUseDisabled}
+                    title={xpBoostActive ? "Poção já ativa" : undefined}
+                    aria-label={xpBoostActive ? "Poção já ativa" : "Usar poção"}
                     className="flex items-center justify-center gap-2 rounded-xl bg-[#b69cff]/20 px-4 py-2.5 text-xs font-semibold text-[#b69cff] transition hover:bg-[#b69cff]/30 disabled:opacity-40"
                   >
                     {processing === "xp-boost-use" ? (
                       <Loader2 size={13} className="animate-spin" />
+                    ) : xpBoostActive ? (
+                      <>Poção já ativa</>
                     ) : (
                       <><Zap size={14} /> Usar poção</>
                     )}

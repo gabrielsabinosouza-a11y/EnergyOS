@@ -82,7 +82,7 @@ export function AchievementIcon({
   locked?: boolean;
 }) {
   if (locked || tier <= 0) {
-    return <Lock size={Math.round(size * 0.72)} className="text-[var(--text-faint)]" style={style} />;
+    return <Lock size={Math.round(size * 1)} className="text-[var(--text-faint)]" style={style} />;
   }
 
   const images = ACHIEVEMENT_IMAGES[id];
@@ -100,7 +100,7 @@ export function AchievementIcon({
 export function AchievementBadge({
   achievement,
   size = 40,
-  iconSize = 18,
+  iconSize = 38,
 }: {
   achievement: AchievementProgress;
   size?: number;
