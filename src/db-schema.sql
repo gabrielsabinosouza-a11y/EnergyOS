@@ -389,9 +389,20 @@ create table if not exists group_messages (
   id bigserial primary key,
   group_id bigint not null references groups(id) on delete cascade,
   sender_id text not null references profiles(id) on delete cascade,
-  body text not null,
+  body text,
+  message_type text not null default 'TEXT'
+    check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO')),
+  media_url text,
+  media_duration_seconds integer,
   created_at timestamptz not null default now()
 );
+
+-- Add media columns to existing group_messages tables (idempotent for old dbs)
+do $$ begin
+  alter table group_messages add column if not exists message_type text not null default 'TEXT';
+  alter table group_messages add column if not exists media_url text;
+  alter table group_messages add column if not exists media_duration_seconds integer;
+exception when others then null; end $$;
 
 create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
 
@@ -401,6 +412,21 @@ create table if not exists group_reads (
   read_at timestamptz not null default now(),
   primary key (profile_id, group_id)
 );
+
+-- ── Group focus contributions backfill ────────────────────────────────────
+-- Existing groups may have members who completed focus sessions (reaching
+-- their target duration) before joining a group, so those sessions were never
+-- recorded as contributions. Backfill those completed sessions idempotently so
+-- every group leaderboard reflects its members' real historical focus.
+insert into group_focus_contributions (group_id, profile_id, focus_session_id, minutes, contributed_at)
+select gm.group_id, fs.profile_id, fs.id, fs.duration_minutes, fs.ended_at
+from group_members gm
+join focus_sessions fs
+  on fs.profile_id = gm.profile_id
+ and fs.ended_at is not null
+ and fs.duration_minutes >= coalesce(fs.target_duration_minutes, 0)
+where gm.role in ('OWNER', 'ADMIN', 'MEMBER')
+on conflict (group_id, profile_id, focus_session_id) do nothing;
 
 -- ── Direct messages ─────────────────────────────────────────────────────────
 create table if not exists direct_messages (

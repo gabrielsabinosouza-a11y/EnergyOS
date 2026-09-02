@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { GroupDetail, GroupMember, GroupMessage, GroupSummary, LeagueEntry } from "@/types";
+import type { GroupDetail, GroupMember, GroupMessage, GroupRole, GroupSummary, LeagueEntry } from "@/types";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
 import { areFriends } from "./social";
@@ -113,12 +113,12 @@ export async function createGroup(
     );
     const group = created.rows[0];
     await client.query(
-      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'owner')`,
+      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'OWNER')`,
       [group.id, profileId],
     );
     for (const id of inviteIds) {
       await client.query(
-        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'member')
+        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
          on conflict do nothing`,
         [group.id, id],
       );
@@ -192,12 +192,12 @@ export async function createGroupWithUsernames(
     );
     const group = created.rows[0];
     await client.query(
-      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'owner')`,
+      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'OWNER')`,
       [group.id, profileId],
     );
     for (const id of inviteIds) {
       await client.query(
-        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'member')
+        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
          on conflict do nothing`,
         [group.id, id],
       );
@@ -229,7 +229,7 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
       display_name: string;
       username: string | null;
       photo_url: string | null;
-      role: "owner" | "member";
+      role: "OWNER" | "ADMIN" | "MEMBER";
       current_streak: number | null;
     }
   >(
@@ -301,17 +301,24 @@ export async function listGroupMessages(
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
 
+  type MsgRow = {
+    id: string | number;
+    group_id: string | number;
+    sender_id: string;
+    body: string | null;
+    message_type: string;
+    media_url: string | null;
+    media_duration_seconds: string | number | null;
+    created_at: Date | string;
+    display_name: string;
+    photo_url: string | null;
+  };
+  const selectColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
+     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url`;
+
   const result = afterId
-    ? await pool.query<{
-        id: string | number;
-        group_id: string | number;
-        sender_id: string;
-        body: string;
-        created_at: Date | string;
-        display_name: string;
-        photo_url: string | null;
-      }>(
-        `select gm.id, gm.group_id, gm.sender_id, gm.body, gm.created_at, p.display_name, p.photo_url
+    ? await pool.query<MsgRow>(
+        `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
          where gm.group_id = $1 and gm.id > $2
@@ -319,16 +326,8 @@ export async function listGroupMessages(
          limit 100`,
         [groupId, afterId],
       )
-    : await pool.query<{
-        id: string | number;
-        group_id: string | number;
-        sender_id: string;
-        body: string;
-        created_at: Date | string;
-        display_name: string;
-        photo_url: string | null;
-      }>(
-        `select gm.id, gm.group_id, gm.sender_id, gm.body, gm.created_at, p.display_name, p.photo_url
+    : await pool.query<MsgRow>(
+        `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
          where gm.group_id = $1
@@ -344,29 +343,65 @@ export async function listGroupMessages(
     senderId: row.sender_id,
     senderName: row.display_name,
     senderPhotoUrl: row.photo_url ?? undefined,
-    body: row.body,
+    body: row.body ?? undefined,
+    messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
+    mediaUrl: row.media_url ?? undefined,
+    mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
   }));
 }
 
-export async function sendGroupMessage(profileId: string, groupId: number, body: string): Promise<GroupMessage> {
+export async function sendGroupMessage(
+  profileId: string,
+  groupId: number,
+  body: string,
+  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number },
+): Promise<GroupMessage> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
-  const text = parseTitle(body, "Mensagem");
-  if (text.length > 2000) throw new ValidationError("Mensagem deve ter no máximo 2000 caracteres.");
+
+  const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
+  const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"];
+  if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
+
+  let text: string | null = null;
+  if (messageType === "TEXT") {
+    text = parseTitle(body, "Mensagem");
+    if (text.length > 2000) throw new ValidationError("Mensagem deve ter no máximo 2000 caracteres.");
+  } else if (body && body.trim()) {
+    text = body.trim().slice(0, 1000);
+  }
+
+  const mediaUrl = opts?.mediaUrl?.trim() || null;
+  if (mediaUrl && mediaUrl.length > 2000) throw new ValidationError("URL de mídia inválida.");
+  if (messageType !== "TEXT" && messageType !== "STICKER" && !mediaUrl) {
+    throw new ValidationError("Mensagem de mídia requer uma URL.");
+  }
+
+  const mediaDurationSeconds =
+    opts?.mediaDurationSeconds != null && Number.isFinite(opts.mediaDurationSeconds)
+      ? Math.max(0, Math.round(opts.mediaDurationSeconds))
+      : null;
+
+  if (messageType === "STICKER" && !text) {
+    text = opts?.mediaUrl?.trim() || null;
+  }
 
   const inserted = await pool.query<{
     id: string | number;
     group_id: string | number;
     sender_id: string;
-    body: string;
+    body: string | null;
+    message_type: string;
+    media_url: string | null;
+    media_duration_seconds: string | number | null;
     created_at: Date | string;
   }>(
-    `insert into group_messages (group_id, sender_id, body)
-     values ($1, $2, $3)
-     returning id, group_id, sender_id, body, created_at`,
-    [groupId, profileId, text],
+    `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds)
+     values ($1, $2, $3, $4, $5, $6)
+     returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at`,
+    [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds],
   );
   const row = inserted.rows[0];
   const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
@@ -379,7 +414,10 @@ export async function sendGroupMessage(profileId: string, groupId: number, body:
     senderId: row.sender_id,
     senderName: sender.rows[0]?.display_name ?? "Você",
     senderPhotoUrl: sender.rows[0]?.photo_url ?? undefined,
-    body: row.body,
+    body: row.body ?? undefined,
+    messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
+    mediaUrl: row.media_url ?? undefined,
+    mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -398,12 +436,17 @@ export async function markGroupRead(profileId: string, groupId: number): Promise
 export async function updateGroupAvatar(profileId: string, groupId: number, avatarUrl: string): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
-  if (!avatarUrl || avatarUrl.length > 2000) throw new ValidationError("URL do avatar inválida.");
+  if (!avatarUrl) throw new ValidationError("URL do avatar inválida.");
+  if (avatarUrl.startsWith("data:image/")) {
+    if (avatarUrl.length > 9_400_000) throw new ValidationError("Imagem muito grande (máx. ~7 MB).");
+  } else if (avatarUrl.length > 2000) {
+    throw new ValidationError("URL do avatar inválida.");
+  }
   const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role = 'owner'`,
+    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
     [groupId, profileId],
   );
-  if (!owner.rows[0]) throw new ForbiddenError("Só o dono do grupo pode alterar o avatar.");
+  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar o avatar.");
   const result = await pool.query(`update groups set avatar_url = $2 where id = $1`, [groupId, avatarUrl]);
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Grupo não encontrado.");
 }
@@ -417,10 +460,10 @@ export async function updateGroupDetails(
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   
   const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role = 'owner'`,
+    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
     [groupId, profileId],
   );
-  if (!owner.rows[0]) throw new ForbiddenError("Só o dono do grupo pode alterar os detalhes.");
+  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar os detalhes.");
 
   const setClauses: string[] = [];
   const params: unknown[] = [groupId];
@@ -458,10 +501,10 @@ export async function inviteToGroup(profileId: string, groupId: number, inviteId
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   
   const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role = 'owner'`,
+    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
     [groupId, profileId],
   );
-  if (!owner.rows[0]) throw new ForbiddenError("Só o dono do grupo pode convidar membros.");
+  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode convidar membros.");
 
   const uniqueIds = [...new Set(inviteIds.map((id) => parseProfileId(id)))].filter((id) => id !== profileId);
   
@@ -473,7 +516,7 @@ export async function inviteToGroup(profileId: string, groupId: number, inviteId
 
   for (const id of uniqueIds) {
     await pool.query(
-      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'member')
+      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
        on conflict do nothing`,
       [groupId, id],
     );
@@ -490,7 +533,7 @@ export async function leaveGroup(profileId: string, groupId: number): Promise<vo
   );
   if (!member.rows[0]) throw new NotFoundError("Você não faz parte deste grupo.");
   
-  if (member.rows[0].role === 'owner') {
+  if (member.rows[0].role === 'OWNER') {
     throw new ValidationError("O dono do grupo não pode sair. Transfira a propriedade primeiro.");
   }
 
@@ -500,8 +543,158 @@ export async function leaveGroup(profileId: string, groupId: number): Promise<vo
   );
 }
 
+/**
+ * Get a member's role in a group (null if not a member).
+ */
+export async function getMemberRole(profileId: string, groupId: number): Promise<GroupRole | null> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ role: string }>(
+    `select role from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, profileId],
+  );
+  const role = result.rows[0]?.role as GroupRole | undefined;
+  return role ?? null;
+}
+
+const ROLE_RANK: Record<GroupRole, number> = { OWNER: 3, ADMIN: 2, MEMBER: 1 };
+
+/** Change a member's role (promote to admin / demote to member / transfer). */
+export async function updateMemberRole(
+  profileId: string,
+  groupId: number,
+  targetProfileId: string,
+  newRole: GroupRole,
+): Promise<void> {
+  parseProfileId(profileId);
+  parseProfileId(targetProfileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+  if (!Object.prototype.hasOwnProperty.call(ROLE_RANK, newRole)) throw new ValidationError("Função inválida.");
+
+  const actorRole = await getMemberRole(profileId, groupId);
+  if (!actorRole) throw new ForbiddenError("Você não faz parte deste grupo.");
+  if (!actorRole || actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode alterar funções.");
+
+  if (targetProfileId === profileId) throw new ValidationError("Você não pode alterar sua própria função.");
+
+  const targetRole = await getMemberRole(targetProfileId, groupId);
+  if (!targetRole) throw new NotFoundError("Membro não encontrado.");
+
+  const actorRank = ROLE_RANK[actorRole];
+  const targetRank = ROLE_RANK[targetRole];
+  const requestedRank = ROLE_RANK[newRole];
+  if (targetRank === 3) throw new ValidationError("O dono não pode ter a função alterada.");
+  if (requestedRank >= actorRank) throw new ValidationError("Você não pode conceder uma função igual ou superior à sua.");
+
+  await pool.query(
+    `update group_members set role = $1 where group_id = $2 and profile_id = $3`,
+    [newRole, groupId, targetProfileId],
+  );
+}
+
+/** Remove a member from the group (owner/admin can remove members/admins). */
+export async function removeMember(
+  profileId: string,
+  groupId: number,
+  targetProfileId: string,
+): Promise<void> {
+  parseProfileId(profileId);
+  parseProfileId(targetProfileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+
+  const actorRole = await getMemberRole(profileId, groupId);
+  if (!actorRole) throw new ForbiddenError("Você não faz parte deste grupo.");
+  if (targetProfileId === profileId) throw new ValidationError("Para sair, use a opção de sair do grupo.");
+
+  const targetRole = await getMemberRole(targetProfileId, groupId);
+  if (!targetRole) throw new NotFoundError("Membro não encontrado.");
+  if (targetRole === 'OWNER') throw new ValidationError("Não é possível remover o dono do grupo.");
+
+  if (actorRole === 'OWNER') {
+    // Owner can remove admins and members.
+  } else if (actorRole === 'ADMIN' && targetRole !== 'MEMBER') {
+    throw new ForbiddenError("Administradores só podem remover membros comuns.");
+  } else {
+    throw new ForbiddenError("Você não tem permissão para remover membros.");
+  }
+
+  await pool.query(
+    `delete from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, targetProfileId],
+  );
+}
+
+/** Transfer group ownership to another member (owner only). */
+export async function transferOwnership(profileId: string, groupId: number, targetProfileId: string): Promise<void> {
+  parseProfileId(profileId);
+  parseProfileId(targetProfileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+
+  const actorRole = await getMemberRole(profileId, groupId);
+  if (actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode transferir a propriedade.");
+  if (targetProfileId === profileId) throw new ValidationError("Você já é o dono do grupo.");
+
+  const targetRole = await getMemberRole(targetProfileId, groupId);
+  if (!targetRole) throw new NotFoundError("Membro não encontrado.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      `update group_members set role = 'OWNER' where group_id = $1 and profile_id = $2`,
+      [groupId, targetProfileId],
+    );
+    await client.query(
+      `update group_members set role = 'ADMIN' where group_id = $1 and profile_id = $2 and role = 'OWNER'`,
+      [groupId, profileId],
+    );
+    await client.query(`update groups set created_by = $2 where id = $1`, [groupId, targetProfileId]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Delete a group entirely (owner only). Cascades to members/messages/read-state. */
+export async function deleteGroup(profileId: string, groupId: number): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+
+  const actorRole = await getMemberRole(profileId, groupId);
+  if (!actorRole) throw new ForbiddenError("Você não faz parte deste grupo.");
+  if (actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode excluí-lo.");
+
+  const result = await pool.query(`delete from groups where id = $1`, [groupId]);
+  if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Grupo não encontrado.");
+}
+
 
 
 export function parseGroupId(value: unknown): number {
   return parseNumber(value, "Grupo", { integer: true, min: 1 });
+}
+
+const STICKERS: { id: string; emoji: string }[] = [
+  { id: "fire", emoji: "🔥" },
+  { id: "rocket", emoji: "🚀" },
+  { id: "clap", emoji: "👏" },
+  { id: "muscle", emoji: "💪" },
+  { id: "party", emoji: "🎉" },
+  { id: "fist", emoji: "✊" },
+  { id: "sparkle", emoji: "✨" },
+  { id: "star", emoji: "⭐" },
+  { id: "coffee", emoji: "☕" },
+  { id: "zzz", emoji: "😴" },
+  { id: "tear", emoji: "😂" },
+  { id: "heart", emoji: "❤️" },
+  { id: "thinking", emoji: "🤔" },
+  { id: "check", emoji: "✅" },
+  { id: "wow", emoji: "😮" },
+  { id: "moon", emoji: "🌙" },
+];
+
+export function getAvailableStickers(): { id: string; emoji: string }[] {
+  return STICKERS;
 }

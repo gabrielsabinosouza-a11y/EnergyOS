@@ -177,12 +177,14 @@ export interface GroupSummary {
   unreadCount: number;
 }
 
+export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
+
 export interface GroupMember {
   id: string;
   displayName: string;
   username?: string;
   photoUrl?: string;
-  role: "owner" | "member";
+  role: GroupRole;
   currentStreak: number;
 }
 
@@ -199,13 +201,18 @@ export interface GroupDetail {
   isPublic: boolean;
 }
 
+export type GroupMessageType = "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO";
+
 export interface GroupMessage {
   id: number;
   groupId: number;
   senderId: string;
   senderName: string;
   senderPhotoUrl?: string;
-  body: string;
+  body?: string;
+  messageType: GroupMessageType;
+  mediaUrl?: string;
+  mediaDurationSeconds?: number;
   createdAt: string;
 }
 

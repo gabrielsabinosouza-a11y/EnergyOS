@@ -29,7 +29,11 @@ export async function POST(
     const { profileId } = await requireAuth(request);
     const { id } = await params;
     const body = await request.json();
-    const message = await sendGroupMessage(profileId, Number(id), body.body);
+    const message = await sendGroupMessage(profileId, Number(id), body.body, {
+      messageType: body.messageType,
+      mediaUrl: body.mediaUrl,
+      mediaDurationSeconds: body.mediaDurationSeconds,
+    });
     return NextResponse.json({ message });
   } catch (error) {
     if (error instanceof AppError) {

@@ -181,15 +181,17 @@ export async function getGlobalGroupLeaderboard(
   const userGroupIds = userGroups.rows.map(row => Number(row.group_id));
 
   // Build the main query with period filtering
-  let whereClause = "where g.is_public = true";
-  const params: unknown[] = [];
-  let paramIndex = 1;
+  // Include the user's own groups even when they are private, so their groups
+  // always appear in the leaderboard. Other users can only see public groups.
+  let visibilityClause = "and (g.is_public = true or g.id = any($1::bigint[]))";
+  const params: unknown[] = [userGroupIds.length > 0 ? userGroupIds : [-1]];
+  let paramIndex = 2;
 
   if (start && end) {
-    whereClause += ` and gfc.contributed_at >= ($${paramIndex}::date)::timestamp at time zone 'America/Sao_Paulo'`;
+    visibilityClause += ` and gfc.contributed_at >= ($${paramIndex}::date)::timestamp at time zone 'America/Sao_Paulo'`;
     params.push(start);
     paramIndex++;
-    whereClause += ` and gfc.contributed_at < (($${paramIndex}::date))::timestamp at time zone 'America/Sao_Paulo'`;
+    visibilityClause += ` and gfc.contributed_at < (($${paramIndex}::date))::timestamp at time zone 'America/Sao_Paulo'`;
     params.push(end);
     paramIndex++;
   }
@@ -207,7 +209,8 @@ export async function getGlobalGroupLeaderboard(
             coalesce(sum(gfc.minutes), 0)::int as total_minutes
      from groups g
      left join group_focus_contributions gfc on gfc.group_id = g.id
-     ${whereClause}
+     where 1 = 1
+     ${visibilityClause}
      group by g.id, g.name, g.avatar_emoji, g.avatar_url
      having coalesce(sum(gfc.minutes), 0) > 0
      order by total_minutes desc
@@ -371,15 +374,18 @@ export async function getGroupGlobalRank(groupId: number, period: Period): Promi
   
   const { start, end } = getPeriodRange(period);
   
-  let whereClause = "where g.is_public = true";
-  const params: unknown[] = [];
-  let paramIndex = 1;
+  // A group's rank is always visible to its own members, so always include the
+  // group being ranked even if it is private. Private groups owned by other
+  // users are not part of the ranking universe.
+  let visibilityClause = "and (g.is_public = true or g.id = $1::bigint)";
+  const params: unknown[] = [groupId];
+  let paramIndex = 2;
 
   if (start && end) {
-    whereClause += ` and gfc.contributed_at >= ($${paramIndex}::date)::timestamp at time zone 'America/Sao_Paulo'`;
+    visibilityClause += ` and gfc.contributed_at >= ($${paramIndex}::date)::timestamp at time zone 'America/Sao_Paulo'`;
     params.push(start);
     paramIndex++;
-    whereClause += ` and gfc.contributed_at < (($${paramIndex}::date))::timestamp at time zone 'America/Sao_Paulo'`;
+    visibilityClause += ` and gfc.contributed_at < (($${paramIndex}::date))::timestamp at time zone 'America/Sao_Paulo'`;
     params.push(end);
     paramIndex++;
   }
@@ -395,7 +401,8 @@ export async function getGroupGlobalRank(groupId: number, period: Period): Promi
              rank() over (order by coalesce(sum(gfc.minutes), 0) desc) as group_rank
       from groups g
       left join group_focus_contributions gfc on gfc.group_id = g.id
-      ${whereClause}
+      where 1 = 1
+      ${visibilityClause}
       group by g.id
       having coalesce(sum(gfc.minutes), 0) > 0
     )

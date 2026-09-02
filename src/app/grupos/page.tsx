@@ -6,7 +6,10 @@ import Image from "next/image";
 import {
   ArrowLeft, ArrowUp, ArrowDown, Check, Crown, Loader2,
   MessageCircle, Package, Plus, Send, Timer, Trophy,
-  TrendingUp, Users, X as XIcon, Zap,
+  TrendingUp, Users, X as XIcon, Zap, Settings,
+  Image as ImageIcon, Video as VideoIcon, Mic, Square,
+  Sticker, Shield, ShieldCheck, Trash2, UserMinus,
+  ArrowRightLeft, Pencil,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -67,6 +70,54 @@ function relativeTime(iso?: string): string {
   if (hrs < 24) return `${hrs}h`;
   return `${Math.floor(hrs / 24)}d`;
 }
+
+function fmtDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return "";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Compress an image file to a small data-URL (used for group avatars). */
+async function imageToDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const MAX = 400;
+  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+/** Upload a media file to Cloudinary and return its secure URL (+ optional duration). */
+async function uploadToCloudinary(file: File): Promise<{ secureUrl: string; durationSeconds: number | undefined }> {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+  if (!cloudName || !uploadPreset) throw new Error("Cloudinary não configurado.");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", uploadPreset);
+
+  const isVideo = file.type.startsWith("video/");
+  const endpoint = isVideo
+    ? `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`
+    : `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+
+  const res = await fetch(endpoint, { method: "POST", body: formData });
+  if (!res.ok) throw new Error("Falha no upload.");
+  const data = await res.json();
+  return { secureUrl: data.secure_url as string, durationSeconds: data.duration };
+}
+
+const ROLE_LABELS: Record<string, string> = { OWNER: "Dono", ADMIN: "Admin", MEMBER: "Membro" };
+const ROLE_ORDER: Record<string, number> = { OWNER: 0, ADMIN: 1, MEMBER: 2 };
 
 /* ------------------------------------------------------------------ */
 /*  Animations                                                         */
@@ -694,19 +745,46 @@ function GroupDetailPanel({
   group: GroupDetail; currentUserId: string; reduced: boolean;
   onBack: () => void; onRead: (groupId: number) => void;
 }) {
-  const [group] = useState(initialGroup);
-  const [tab, setTab] = useState<"chat" | "members" | "stats">("chat");
+  const [group, setGroup] = useState<GroupDetail>(initialGroup);
+  const [tab, setTab] = useState<"chat" | "members" | "stats" | "settings">("chat");
   const [statsPeriod, setStatsPeriod] = useState<Period>("ALL_TIME");
   const [milestones, setMilestones] = useState<GroupMilestoneStatus[]>([]);
   const [totalMinutes, setTotalMinutes] = useState(0);
-  const [globalRank, setGlobalRank] = useState<{ rank: number; totalGroups: number } | null>(null);
+
+  /* Member/role derived */
+  const me = group.members.find((m) => m.id === currentUserId);
+  const myRole = me?.role ?? "MEMBER";
+  const isOwner = myRole === "OWNER";
+  const isAdmin = myRole === "ADMIN";
 
   /* Chat state */
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
+  const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+
+  /* Settings state */
+  const [editName, setEditName] = useState(group.name);
+  const [editDesc, setEditDesc] = useState(group.description ?? "");
+  const [editPublic, setEditPublic] = useState(group.isPublic);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [savingIcon, setSavingIcon] = useState(false);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"leave" | "delete" | null>(null);
+  const [inviteIds, setInviteIds] = useState<string[]>([]);
+  const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [inviting, setInviting] = useState(false);
+  const [messageError, setMessageError] = useState("");
+  const iconRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -757,18 +835,238 @@ function GroupDetailPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    if (!tab.includes("settings")) return;
+    if (friends.length > 0) return;
+    api.getFriends().then(({ friends: f }) => setFriends(f)).catch(() => {});
+  }, [tab, friends.length]);
+
+  useEffect(() => {
+    if (!showStickers || stickers.length > 0) return;
+    api.getGroupStickers().then((d) => setStickers(d.stickers)).catch(() => {});
+  }, [showStickers, stickers.length]);
+
+  function appendMessage(message: GroupMessage) {
+    setMessages((prev) => [...prev, message]);
+    lastIdRef.current = message.id;
+  }
+
+  async function sendMediaMessage(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
+    setSending(true);
+    try {
+      const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
+        messageType: opts.messageType,
+        mediaUrl: opts.mediaUrl,
+        mediaDurationSeconds: opts.mediaDurationSeconds,
+      });
+      appendMessage(message);
+    } catch {
+      setMessageError("Não foi possível enviar a mídia.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleSend() {
     const body = input.trim();
     if (!body || sending) return;
     setInput("");
     setSending(true);
+    setMessageError("");
     try {
       const { message } = await api.sendGroupMessage(group.id, body);
-      setMessages((prev) => [...prev, message]);
-      lastIdRef.current = message.id;
+      appendMessage(message);
     } catch { setInput(body); }
     finally { setSending(false); }
   }
+
+  async function handleSendImage(file: File) {
+    if (uploadingMedia) return;
+    setUploadingMedia(true);
+    setMessageError("");
+    try {
+      const { secureUrl } = await uploadToCloudinary(file);
+      await sendMediaMessage({ messageType: "IMAGE", mediaUrl: secureUrl });
+    } catch {
+      setMessageError("Não foi possível enviar a imagem.");
+    } finally {
+      setUploadingMedia(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function handleSendVideo(file: File) {
+    if (uploadingMedia) return;
+    setUploadingMedia(true);
+    setMessageError("");
+    try {
+      const { secureUrl, durationSeconds } = await uploadToCloudinary(file);
+      await sendMediaMessage({ messageType: "VIDEO", mediaUrl: secureUrl, mediaDurationSeconds: durationSeconds });
+    } catch {
+      setMessageError("Não foi possível enviar o vídeo.");
+    } finally {
+      setUploadingMedia(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type.startsWith("image/")) await handleSendImage(file);
+    else if (file.type.startsWith("video/")) await handleSendVideo(file);
+    else setMessageError("Formato de arquivo não suportado.");
+  }
+
+  async function handleSendSticker(emoji: string) {
+    if (sending) return;
+    setShowStickers(false);
+    await sendMediaMessage({ messageType: "STICKER", body: emoji });
+  }
+
+  async function handleSendVoice(blob: Blob) {
+    if (sending) return;
+    setMessageError("");
+    try {
+      setUploadingMedia(true);
+      const file = new File([blob], "voice.webm", { type: "audio/webm" });
+      const { secureUrl, durationSeconds } = await uploadToCloudinary(file);
+      await sendMediaMessage({
+        messageType: "AUDIO",
+        mediaUrl: secureUrl,
+        mediaDurationSeconds: durationSeconds ?? Math.round(blob.size / 16000),
+      });
+    } catch {
+      setMessageError("Não foi possível enviar o áudio.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function startRecording() {
+    setMessageError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        recordingChunksRef.current = [];
+        if (blob.size > 0) await handleSendVoice(blob);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+    } catch {
+      setMessageError("Microfone não disponível.");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  }
+
+  /* Members */
+  async function performMemberOp(op: "role" | "remove" | "transfer", targetId: string, role?: string) {
+    if (busyMemberId) return;
+    setBusyMemberId(targetId);
+    setMessageError("");
+    try {
+      if (op === "role") {
+        await api.updateGroupMemberRole(group.id, targetId, role as import("@/types").GroupRole);
+      } else if (op === "remove") {
+        await api.removeGroupMember(group.id, targetId);
+      } else {
+        await api.groupAction(group.id, "transfer", { targetProfileId: targetId });
+      }
+      setGroup((g) => g ? { ...g, members: g.members.filter((m) => m.id !== (op === "remove" ? targetId : undefined)) } : g);
+      if (op === "role") {
+        setGroup((g) => g ? { ...g, members: g.members.map((m) => m.id === targetId ? { ...m, role: role as import("@/types").GroupRole } : m) } : g);
+      }
+      if (op === "transfer") {
+        setGroup((g) => g ? { ...g, members: g.members.map((m) => m.id === targetId ? { ...m, role: "OWNER" } : m.id === currentUserId ? { ...m, role: "ADMIN" } : m) } : g);
+      }
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "Operação falhou.");
+    } finally {
+      setBusyMemberId(null);
+    }
+  }
+
+  async function saveSettings() {
+    if (savingSettings) return;
+    setSavingSettings(true);
+    setMessageError("");
+    try {
+      await api.updateGroupDetails(group.id, { name: editName, description: editDesc, isPublic: editPublic });
+      setGroup((g) => g ? { ...g, name: editName, description: editDesc, isPublic: editPublic } : g);
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "Não foi possível salvar.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function handleIconUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 7 * 1024 * 1024) {
+      setMessageError("Escolha uma imagem de até 7 MB.");
+      event.target.value = "";
+      return;
+    }
+    setSavingIcon(true);
+    setMessageError("");
+    try {
+      const avatarUrl = await imageToDataUrl(file);
+      await api.updateGroupDetails(group.id, { avatarUrl });
+      setGroup((g) => g ? { ...g, avatarUrl } : g);
+    } catch {
+      setMessageError("Não foi possível atualizar o ícone.");
+    } finally {
+      setSavingIcon(false);
+      event.target.value = "";
+    }
+  }
+
+  async function inviteFriends() {
+    if (inviting || inviteIds.length === 0) return;
+    setInviting(true);
+    setMessageError("");
+    try {
+      await api.inviteToGroup(group.id, inviteIds);
+      const { group: fresh } = await api.getGroup(group.id, "WEEK");
+      setGroup(fresh);
+      setInviteIds([]);
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "Não foi possível convidar.");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function doConfirmAction() {
+    if (!confirmAction) return;
+    setSavingSettings(true);
+    try {
+      await api.groupAction(group.id, confirmAction);
+      onBack();
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "Ação falhou.");
+      setConfirmAction(null);
+      setSavingSettings(false);
+    }
+  }
+
+  const sortedMembers = group.members.slice().sort(
+    (a, b) => (ROLE_ORDER[a.role] ?? 2) - (ROLE_ORDER[b.role] ?? 2) || a.displayName.localeCompare(b.displayName),
+  );
 
   return (
     <motion.div variants={slideLeft} initial="hidden" animate="visible" exit="exit"
@@ -780,7 +1078,11 @@ function GroupDetailPanel({
           className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]">
           <ArrowLeft size={20} />
         </button>
-        <span className="text-2xl leading-none">{group.avatarEmoji}</span>
+        {group.avatarUrl ? (
+          <img src={group.avatarUrl} alt={group.name} className="h-9 w-9 shrink-0 rounded-xl object-cover" />
+        ) : (
+          <span className="text-2xl leading-none">{group.avatarEmoji}</span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-sm font-medium text-[var(--text)]">{group.name}</p>
           <p className="text-[11px] text-[var(--text-faint)]">
@@ -796,8 +1098,19 @@ function GroupDetailPanel({
               {t === "stats" && <><TrendingUp size={13} />Stats</>}
             </button>
           ))}
+          <button onClick={() => setTab((t) => (t === "settings" ? "chat" : "settings"))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition ${tab === "settings" ? "bg-[var(--accent-bg)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text)]"}`}>
+            <Settings size={13} />
+          </button>
         </div>
       </div>
+
+      {/* Message error banner */}
+      {messageError && (
+        <div className="border-b border-[var(--red)]/20 bg-[var(--red-bg)] px-5 py-2 text-xs text-[var(--red)] sm:px-8 lg:px-12">
+          {messageError}
+        </div>
+      )}
 
       {/* Chat tab */}
       {tab === "chat" && (
@@ -817,8 +1130,31 @@ function GroupDetailPanel({
                   </div>
                   <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
                     {!isMe && <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">{msg.senderName}</p>}
-                    <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isMe ? "rounded-br-md bg-[var(--accent)] text-black" : "glass-card rounded-bl-md text-[var(--text)]"}`}>
-                      {msg.body}
+                    <div className={`overflow-hidden rounded-2xl ${isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"}`}>
+                      {msg.messageType === "IMAGE" && msg.mediaUrl && (
+                        <img src={msg.mediaUrl} alt="imagem" className="max-h-72 w-full object-cover" />
+                      )}
+                      {msg.messageType === "VIDEO" && msg.mediaUrl && (
+                        <video src={msg.mediaUrl} controls className="max-h-72 w-full object-cover" />
+                      )}
+                      {msg.messageType === "AUDIO" && msg.mediaUrl && (
+                        <div className="px-3 py-2">
+                          <audio src={msg.mediaUrl} controls className="w-64 max-w-full" />
+                          {msg.mediaDurationSeconds != null && (
+                            <p className={`mt-0.5 text-[9px] ${isMe ? "text-black/70" : "text-[var(--text-faint)]"}`}>
+                              {fmtDuration(msg.mediaDurationSeconds)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {msg.messageType === "STICKER" && (
+                        <div className="px-3 py-2 text-5xl leading-none">{msg.body || msg.mediaUrl}</div>
+                      )}
+                      {(msg.body || msg.messageType === "TEXT") && (
+                        <div className={`px-4 py-2.5 text-sm leading-relaxed ${isMe ? "text-black" : "text-[var(--text)]"}`}>
+                          {msg.body}
+                        </div>
+                      )}
                     </div>
                     <p className={`mt-0.5 text-[9px] ${isMe ? "text-right text-[var(--text-faint)]" : "text-[var(--text-faint)]"}`}>
                       {relativeTime(msg.createdAt)}
@@ -829,12 +1165,47 @@ function GroupDetailPanel({
             })}
           </div>
           <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
-            <div className="glass-card flex items-center gap-2 px-3 py-2">
+            {/* Sticker picker */}
+            <AnimatePresence>
+              {showStickers && (
+                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
+                  className="mb-2 grid max-h-40 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
+                  {stickers.map((s) => (
+                    <button key={s.id} onClick={() => handleSendSticker(s.emoji)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:bg-[var(--accent-bg)]">
+                      {s.emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div className="glass-card flex items-center gap-1.5 px-2 py-2">
+              <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden"
+                onChange={handleFileChange} />
+              <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || sending || recording}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                {uploadingMedia ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={15} />}
+              </button>
+              <button onClick={() => setShowStickers((v) => !v)} disabled={recording}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                <Sticker size={15} />
+              </button>
               <input type="text" placeholder="Mensagem..." value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none" />
-              <button onClick={handleSend} disabled={!input.trim() || sending}
+              {recording ? (
+                <button onClick={stopRecording}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110">
+                  <Square size={13} />
+                </button>
+              ) : (
+                <button onClick={startRecording} disabled={uploadingMedia || sending}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                  <Mic size={15} />
+                </button>
+              )}
+              <button onClick={handleSend} disabled={!input.trim() || sending || recording}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30">
                 {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               </button>
@@ -863,22 +1234,51 @@ function GroupDetailPanel({
             </div>
           </div>
           <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
-            {group.members.slice().sort((a, b) => a.role === "owner" ? -1 : b.role === "owner" ? 1 : 0).map((m) => (
-              <motion.div key={m.id} variants={fadeUp} className="glass-card flex items-center gap-3 px-4 py-3">
-                <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={40} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>
-                    {m.role === "owner" && <Crown size={13} className="shrink-0 text-[var(--orange)]" />}
+            {sortedMembers.map((m) => {
+              const canManageThis = isOwner || (isAdmin && m.role === "MEMBER");
+              return (
+                <motion.div key={m.id} variants={fadeUp} className="glass-card flex items-center gap-3 px-4 py-3">
+                  <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>
+                      {m.role === "OWNER" && <Crown size={13} className="shrink-0 text-[var(--orange)]" />}
+                      {m.role === "ADMIN" && <ShieldCheck size={13} className="shrink-0 text-[var(--accent)]" />}
+                      {m.id === currentUserId && <span className="text-[9px] text-[var(--text-faint)]">(você)</span>}
+                    </div>
+                    {m.username && <p className="truncate text-xs text-[var(--text-muted)]">@{m.username}</p>}
                   </div>
-                  {m.username && <p className="truncate text-xs text-[var(--text-muted)]">@{m.username}</p>}
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-[var(--orange)]">
-                  <Image src={streakIconSource(m.currentStreak)} alt="streak" width={12} height={12} style={{ objectFit: "contain" }} unoptimized />
-                  {m.currentStreak}
-                </div>
-              </motion.div>
-            ))}
+                  <div className="flex items-center gap-1 text-[11px] text-[var(--orange)]">
+                    <Image src={streakIconSource(m.currentStreak)} alt="streak" width={12} height={12} style={{ objectFit: "contain" }} unoptimized />
+                    {m.currentStreak}
+                  </div>
+                  {canManageThis && (
+                    <div className="flex items-center gap-1">
+                      {isOwner && m.role !== "OWNER" && (
+                        <button title="Transferir propriedade" disabled={busyMemberId === m.id}
+                          onClick={() => performMemberOp("transfer", m.id)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRightLeft size={14} />}
+                        </button>
+                      )}
+                      {isOwner && (
+                        <button title={m.role === "ADMIN" ? "Rebaixar para membro" : "Promover a admin"}
+                          onClick={() => performMemberOp("role", m.id, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                          disabled={busyMemberId === m.id}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Shield size={14} />}
+                        </button>
+                      )}
+                      <button title="Remover" onClick={() => performMemberOp("remove", m.id)}
+                        disabled={busyMemberId === m.id}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--red-bg)] hover:text-[var(--red)] disabled:opacity-30">
+                        <UserMinus size={14} />
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
           </motion.div>
         </div>
       )}
@@ -886,34 +1286,8 @@ function GroupDetailPanel({
       {/* Stats tab */}
       {tab === "stats" && (
         <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
-          {/* Global rank card */}
-          <div className="glass-card p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Trophy size={14} className="text-[var(--accent)]" />
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Ranking Global</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-[var(--text-faint)]">Total acumulado</p>
-                <p className="font-mono text-2xl font-bold text-[var(--accent)]">{fmtMinutes(totalMinutes)}</p>
-              </div>
-              {globalRank && (
-                <div className="text-right">
-                  <p className="text-[10px] text-[var(--text-faint)]">Posição global</p>
-                  <p className="font-mono text-2xl font-bold text-[var(--text)]">#{globalRank.rank}</p>
-                  <p className="text-[9px] text-[var(--text-faint)]">de {globalRank.totalGroups}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Weekly quest */}
           <WeeklyQuestWidget groupId={group.id} />
-
-          {/* Milestone progress */}
           {milestones.length > 0 && <MilestoneBar milestones={milestones} totalMinutes={totalMinutes} />}
-
-          {/* Member contributions */}
           <div className="glass-card p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -926,7 +1300,152 @@ function GroupDetailPanel({
           </div>
         </div>
       )}
+
+      {/* Settings tab */}
+      {tab === "settings" && (
+        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
+          <div className="flex items-center gap-2">
+            <Settings size={14} className="text-[var(--accent)]" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Configurações do grupo</span>
+          </div>
+
+          {/* Icon */}
+          <div className="glass-card flex flex-col items-center gap-4 p-5 sm:flex-row">
+            {group.avatarUrl ? (
+              <img src={group.avatarUrl} alt={group.name} className="h-16 w-16 rounded-2xl object-cover" />
+            ) : (
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl">{group.avatarEmoji}</span>
+            )}
+            <div className="flex-1 text-center sm:text-left">
+              <p className="text-sm font-medium text-[var(--text)]">Ícone do grupo</p>
+              <p className="text-xs text-[var(--text-faint)]">Envie uma imagem (até 7 MB)</p>
+            </div>
+            <input ref={iconRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
+            <button onClick={() => iconRef.current?.click()} disabled={savingIcon || uploadingIcon}
+              className="btn-primary flex items-center gap-2 px-4 py-2 text-xs disabled:opacity-30">
+              {savingIcon ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
+              {savingIcon ? "Enviando..." : "Alterar ícone"}
+            </button>
+          </div>
+
+          {/* Name / description / privacy */}
+          <div className="glass-card space-y-4 p-5">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Nome do grupo</label>
+              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                className="glass-card w-full px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Descrição</label>
+              <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={3}
+                placeholder="Descreva o objetivo do grupo..."
+                className="glass-card w-full resize-none px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
+            </div>
+            <label className="flex cursor-pointer items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--text)]">Grupo público</p>
+                <p className="text-xs text-[var(--text-faint)]">Aparece no ranking global para todos</p>
+              </div>
+              <button role="switch" aria-checked={editPublic} onClick={() => setEditPublic((v) => !v)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition ${editPublic ? "bg-[var(--accent)]" : "bg-[var(--bg-surface-hover)]"}`}>
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${editPublic ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+            </label>
+            <button onClick={saveSettings} disabled={savingSettings}
+              className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-30">
+              {savingSettings ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Salvar alterações
+            </button>
+          </div>
+
+          {/* Invite */}
+          {isOwner && (
+            <div className="glass-card space-y-3 p-5">
+              <p className="text-sm font-medium text-[var(--text)]">Convidar amigos</p>
+              {friends.length === 0 ? (
+                <p className="text-xs text-[var(--text-faint)]">Nenhum amigo disponível para convidar.</p>
+              ) : (
+                <div className="max-h-48 space-y-1 overflow-y-auto">
+                  {friends.filter((f) => !group.members.some((m) => m.id === f.id)).map((f) => {
+                    const selected = inviteIds.includes(f.id);
+                    return (
+                      <button key={f.id}
+                        onClick={() => setInviteIds((prev) => selected ? prev.filter((x) => x !== f.id) : [...prev, f.id])}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${selected ? "bg-[var(--accent-bg)] border border-[var(--accent)]/30" : "glass-card hover:brightness-110"}`}>
+                        <UserAvatar user={f} size={32} />
+                        <p className="truncate text-sm text-[var(--text)]">{f.displayName}</p>
+                        <div className={`ml-auto flex h-5 w-5 items-center justify-center rounded-md border transition ${selected ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-[var(--border-subtle)]"}`}>
+                          {selected && <Check size={11} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={inviteFriends} disabled={inviting || inviteIds.length === 0}
+                className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-30">
+                {inviting ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+                Convidar {inviteIds.length > 0 ? `(${inviteIds.length})` : ""}
+              </button>
+            </div>
+          )}
+
+          {/* Danger zone */}
+          <div className="glass-card space-y-3 border-[var(--red)]/20 p-5">
+            <p className="text-sm font-semibold text-[var(--red)]">Zona de perigo</p>
+            {!isOwner && (
+              <button onClick={() => setConfirmAction("leave")}
+                className="flex w-full items-center justify-between rounded-xl border border-[var(--red)]/30 px-4 py-3 text-sm text-[var(--red)] transition hover:bg-[var(--red-bg)]">
+                Sair do grupo
+                <UserMinus size={16} />
+              </button>
+            )}
+            {isOwner && (
+              <>
+                <p className="text-xs text-[var(--text-faint)]">
+                  O dono não pode sair sem transferir a propriedade. Use o botão de transferência na aba Membros e depois exclua o grupo se desejar.
+                </p>
+                <button onClick={() => setConfirmAction("delete")}
+                  className="flex w-full items-center justify-between rounded-xl border border-[var(--red)]/30 px-4 py-3 text-sm text-[var(--red)] transition hover:bg-[var(--red-bg)]">
+                  Excluir grupo
+                  <Trash2 size={16} />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Confirm dialog */}
+          <AnimatePresence>
+            {confirmAction && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+                <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+                  className="glass-card w-full max-w-sm space-y-4 p-6">
+                  <p className="text-base font-semibold text-[var(--text)]">
+                    {confirmAction === "delete" ? "Excluir grupo?" : "Sair do grupo?"}
+                  </p>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    {confirmAction === "delete"
+                      ? "Todos os membros, mensagens e contribuições serão apagados. Esta ação não pode ser desfeita."
+                      : "Você deixará de ver as mensagens e participação neste grupo."}
+                  </p>
+                  <div className="flex items-center justify-end gap-3">
+                    <button onClick={() => setConfirmAction(null)}
+                      className="rounded-xl px-4 py-2 text-sm text-[var(--text-muted)] transition hover:text-[var(--text)]">
+                      Cancelar
+                    </button>
+                    <button onClick={doConfirmAction} disabled={savingSettings}
+                      className="flex items-center gap-2 rounded-xl bg-[var(--red)] px-4 py-2 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-30">
+                      {savingSettings ? <Loader2 size={14} className="animate-spin" /> : null}
+                      {confirmAction === "delete" ? "Excluir" : "Sair"}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }
-

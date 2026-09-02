@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
-import { updateGroupDetails } from "@/lib/db/groups";
+import { updateGroupDetails, updateGroupAvatar } from "@/lib/db/groups";
 
 export async function PATCH(
   request: NextRequest,
@@ -17,6 +17,10 @@ export async function PATCH(
       description: body.description,
       isPublic: body.isPublic,
     });
+
+    if (body.avatarUrl !== undefined) {
+      await updateGroupAvatar(profileId, Number(id), body.avatarUrl);
+    }
     
     return NextResponse.json({ success: true });
   } catch (error) {

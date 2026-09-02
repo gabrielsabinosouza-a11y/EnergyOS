@@ -265,15 +265,40 @@ export const api = {
     request<{ group: GroupDetail }>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
   createGroupWithUsernames: (input: { name: string; avatarEmoji?: string; description?: string; isPublic?: boolean; memberUsernames?: string[] }) =>
     request<{ group: GroupDetail }>("/api/groups/create-with-usernames", { method: "POST", body: JSON.stringify(input) }),
-  getGroup: (id: number) => request<{ group: GroupDetail }>(`/api/groups/${id}`),
+  getGroup: (id: number, period?: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME") =>
+    request<{ group: GroupDetail }>(`/api/groups/${id}${period ? `?period=${period}` : ""}`),
+  updateGroupDetails: (id: number, updates: { name?: string; description?: string; isPublic?: boolean; avatarUrl?: string }) =>
+    request<{ success: true }>(`/api/groups/${id}/details`, { method: "PATCH", body: JSON.stringify(updates) }),
+  inviteToGroup: (id: number, inviteIds: string[]) =>
+    request<{ success: true }>(`/api/groups/${id}/invite`, { method: "POST", body: JSON.stringify({ inviteIds }) }),
   getGroupMessages: (id: number, afterId?: number) => {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: GroupMessage[] }>(`/api/groups/${id}/messages${query}`);
   },
-  sendGroupMessage: (id: number, body: string) =>
-    request<{ message: GroupMessage }>(`/api/groups/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+  sendGroupMessage: (id: number, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number }) =>
+    request<{ message: GroupMessage }>(`/api/groups/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, ...opts }),
+    }),
   markGroupRead: (id: number) =>
     request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
+  updateGroupMemberRole: (id: number, profileId: string, role: import("@/types").GroupRole) =>
+    request<{ success: true }>(`/api/groups/${id}/members`, {
+      method: "PATCH",
+      body: JSON.stringify({ profileId, role }),
+    }),
+  removeGroupMember: (id: number, profileId: string) =>
+    request<{ success: true }>(`/api/groups/${id}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ profileId }),
+    }),
+  groupAction: (id: number, action: "leave" | "transfer" | "delete", payload?: { targetProfileId?: string }) =>
+    request<{ success: true }>(`/api/groups/${id}/settings`, {
+      method: "POST",
+      body: JSON.stringify({ action, ...payload }),
+    }),
+  getGroupStickers: () =>
+    request<{ stickers: { id: string; emoji: string }[] }>(`/api/groups/stickers`),
   getGroupLeaderboard: (id: number) =>
     request<{ leaderboard: import("@/types").LeagueEntry[] }>(`/api/groups/${id}/leaderboard`),
   getGlobalGroupsLeaderboard: (period: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME", limit = 50, offset = 0) =>
