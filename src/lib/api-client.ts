@@ -255,9 +255,9 @@ export const api = {
   markDmRead: (friendId: string) =>
     request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
   startChatByUsername: (username: string) =>
-    request<import("@/types").StartChatResult>(`/api/dm/username/${username}`),
+    request<import("@/types").StartChatResult>(`/api/dm/by-username?username=${encodeURIComponent(username)}`),
   sendMessageByUsername: (username: string, body: string) =>
-    request<{ message: DirectMessage }>(`/api/dm/username/${username}`, { method: "POST", body: JSON.stringify({ body }) }),
+    request<{ message: DirectMessage }>(`/api/dm/by-username?username=${encodeURIComponent(username)}`, { method: "POST", body: JSON.stringify({ body }) }),
 
   // Groups
   getGroups: () => request<{ groups: GroupSummary[] }>("/api/groups"),

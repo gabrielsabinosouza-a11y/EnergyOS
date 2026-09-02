@@ -358,7 +358,7 @@ export interface WeeklyPlan {
   categoryId: number;
   category: Category;
   taskId?: number;
-  completedAt?: string;
+  completedAt?: string | null;
   startTime?: string;
   endTime?: string;
   allDay: boolean;

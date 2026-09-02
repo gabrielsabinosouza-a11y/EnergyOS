@@ -3,14 +3,11 @@ import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { startDirectChatByUsername, sendDirectMessageByUsername } from "@/lib/db/messages";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ username: string }> }
-) {
+export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
-    const { username } = await params;
-    
+    const username = request.nextUrl.searchParams.get("username") ?? "";
+
     // Remove @ prefix if present
     const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
     
@@ -25,13 +22,10 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ username: string }> }
-) {
+export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
-    const { username } = await params;
+    const username = request.nextUrl.searchParams.get("username") ?? "";
     const body = await request.json();
     
     // Remove @ prefix if present

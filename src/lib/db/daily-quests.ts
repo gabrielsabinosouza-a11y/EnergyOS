@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import pool from "../db";
 import type { DailyQuest, UserQuestProgress, QuestProgressWithQuest, QuestType, MissionMetric } from "@/types";
-import { parseProfileId } from "./validation";
+import { parseProfileId, ValidationError } from "./validation";
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso } from "./dates";
 import { addLeagueXP } from "./league-new";

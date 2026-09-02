@@ -2,7 +2,7 @@ import pool from "../db";
 import type { DirectMessage } from "@/types";
 import { parseProfileId, parseTitle, ValidationError } from "./validation";
 import { assertFriends, getUserByUsername, sendFriendRequest } from "./social";
-import { ConflictError } from "../errors";
+import { ConflictError, NotFoundError } from "../errors";
 
 interface DmRow {
   id: string | number;
