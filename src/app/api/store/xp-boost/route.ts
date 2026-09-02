@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
       boost,
     });
   } catch (error) {
+    console.error("[xp-boost GET] Failed to load boost status:", error);
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

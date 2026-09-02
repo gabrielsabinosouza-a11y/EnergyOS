@@ -20,7 +20,7 @@ import { XPBadge } from "@/components/dashboard/xp-badge";
 import { XpBoostIndicator } from "@/components/xp-boost/xp-boost-indicator";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
-import { RewardToast } from "@/components/reward-toast";
+import { RewardClaimModal } from "@/components/reward-claim-modal";
 
 import type { Variants } from "framer-motion";
 
@@ -91,7 +91,7 @@ function DashboardContent() {
   const [xpBoostUntil, setXpBoostUntil] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
-  const [rewardToast, setRewardToast] = useState<{ amount: number; balance?: number } | null>(null);
+  const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance?: number } | null>(null);
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinSaved, setCheckinSaved] = useState(false);
@@ -164,7 +164,7 @@ function DashboardContent() {
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
         api.getXpBoost()
           .then((b) => { if (!cancelled) setXpBoostUntil(b.boost?.expiresAt ?? null); })
-          .catch(() => {}),
+          .catch(() => { if (!cancelled) setXpBoostUntil(null); }),
       ]).finally(() => {
         if (!cancelled) setLoadingPage(false);
       });
@@ -185,6 +185,7 @@ function DashboardContent() {
       if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
         showSuccess(`Check-in salvo! +${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🌟`);
         setCoins((c) => c + result.coinsAwarded);
+        setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
         api.getFocusData().then((f) => setFocusData(f));
       } else {
         showSuccess("Check-in salvo!");
@@ -221,7 +222,7 @@ function DashboardContent() {
         if (result.coinsAwarded > 0) {
           setCoins((c) => {
             const newBalance = c + result.coinsAwarded;
-            setRewardToast({ amount: result.coinsAwarded, balance: newBalance });
+            setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded, balance: newBalance });
             return newBalance;
           });
         }
@@ -258,7 +259,7 @@ function DashboardContent() {
         if (result.coinsAwarded > 0) {
           setCoins((c) => {
             const newBalance = c + result.coinsAwarded;
-            setRewardToast({ amount: result.coinsAwarded, balance: newBalance });
+            setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded, balance: newBalance });
             return newBalance;
           });
         }
@@ -624,8 +625,7 @@ function DashboardContent() {
         )}
       </AnimatePresence>
 
-      {/* Reward Toast */}
-      <RewardToast toast={rewardToast} onDone={() => setRewardToast(null)} />
+      <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
     </AppShell>
   );
 }

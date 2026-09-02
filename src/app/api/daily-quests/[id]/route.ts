@@ -13,6 +13,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     
     return jsonOk({
       coinsAwarded: result.coinsAwarded,
+      xpAwarded: result.xpAwarded,
+      baseXp: result.baseXp,
       quest: result.quest,
       message: `+${result.coinsAwarded} moedas!`,
     });

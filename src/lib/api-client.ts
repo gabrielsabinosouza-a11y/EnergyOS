@@ -182,7 +182,7 @@ export const api = {
 
   // Daily Quests
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string; resetAt: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
-  claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
+  claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; xpAwarded: number; baseXp: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
   // Daily Tasks (user-written, reset daily)
   getDailyTasks: () => request<{ tasks: UserDailyTask[]; date: string }>("/api/daily-tasks"),

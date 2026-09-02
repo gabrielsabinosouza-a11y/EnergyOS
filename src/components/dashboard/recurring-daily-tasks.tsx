@@ -7,7 +7,7 @@ import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
-import { RewardToast } from "@/components/reward-toast";
+import { RewardClaimModal } from "@/components/reward-claim-modal";
 import {
   DAILY_TASK_LIMIT,
   DAILY_TASK_XP,
@@ -29,7 +29,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const [newTitle, setNewTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ id: number; xp: number; coins: number } | null>(null);
-  const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
+  const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
 
   const completed = tasks.filter((t) => t.isCompleted).length;
   const total = tasks.length;
@@ -87,7 +87,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
       if (data.coinsAwarded > 0) {
         const newCoins = coins + data.coinsAwarded;
         onCoinsChange(newCoins);
-        setRewardToast({ amount: data.coinsAwarded, balance: newCoins });
+        setRewardModal({ coins: data.coinsAwarded, xp: data.xpAwarded, balance: newCoins });
       }
       if (data.xpAwarded > 0) onXpGain?.(data.xpAwarded);
       if (data.xpAwarded > 0 || data.coinsAwarded > 0) {
@@ -230,10 +230,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
         ))}
       </AnimatePresence>
 
-      <RewardToast
-        toast={rewardToast ? { amount: rewardToast.amount, balance: rewardToast.balance } : null}
-        onDone={() => setRewardToast(null)}
-      />
+      <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
     </div>
     </>
   );

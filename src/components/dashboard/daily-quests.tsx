@@ -7,7 +7,7 @@ import type { QuestProgressWithQuest } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
 import { DAILY_MISSION_LIMIT } from "@/lib/daily-limits";
-import { RewardToast } from "@/components/reward-toast";
+import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { CoinIcon } from "@/components/coin-icon";
 
 const QUEST_TITLES: Record<string, string> = {
@@ -34,7 +34,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   const { quests, ready, resetAt, markClaimed, refresh } = useDailyQuests();
   const [countdown, setCountdown] = useState({ hours: 0, minutes: 0 });
   const [claimingId, setClaimingId] = useState<number | null>(null);
-  const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; balance: number } | null>(null);
+  const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; xp: number; baseXp: number; balance: number } | null>(null);
   const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
       }
 
       // Trigger premium reward animation
-      setShowClaimAnimation({ coins: result.coinsAwarded, balance: newCoins });
+      setShowClaimAnimation({ coins: result.coinsAwarded, xp: result.xpAwarded, baseXp: result.baseXp, balance: newCoins });
 
       // Reconcile with server truth
       void refresh();
@@ -244,10 +244,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
         )}
       </div>
 
-      <RewardToast
-        toast={showClaimAnimation ? { amount: showClaimAnimation.coins, balance: showClaimAnimation.balance } : null}
-        onDone={() => setShowClaimAnimation(null)}
-      />
+      <RewardClaimModal reward={showClaimAnimation} onClose={() => setShowClaimAnimation(null)} />
 
       <AnimatePresence>
         {claimError && (

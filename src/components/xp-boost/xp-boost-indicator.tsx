@@ -47,3 +47,22 @@ export function XpBoostIndicator({ expiresAt }: { expiresAt: string }) {
     </motion.div>
   );
 }
+
+export function XpBoostIndicatorFallback() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      title="Poção de XP Duplo ativa"
+      className="flex items-center gap-2 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-3 py-1.5"
+    >
+      <motion.span
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ duration: 2, repeat: Infinity }}
+        className="flex items-center gap-1 font-mono text-xs font-bold text-[#b69cff]"
+      >
+        <Zap size={13} fill="currentColor" /> 2x XP
+      </motion.span>
+    </motion.div>
+  );
+}

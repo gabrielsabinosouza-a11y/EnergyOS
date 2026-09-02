@@ -500,7 +500,7 @@ export async function incrementQuestProgress(
 export async function claimQuestReward(
   profileId: string,
   questProgressId: number,
-): Promise<{ coinsAwarded: number; quest: DailyQuest }> {
+): Promise<{ coinsAwarded: number; xpAwarded: number; baseXp: number; quest: DailyQuest }> {
   parseProfileId(profileId);
 
   const client = await pool.connect();
@@ -613,7 +613,7 @@ export async function claimQuestReward(
       createdAt: "",
     };
 
-    return { coinsAwarded: row.q_coin_reward, quest };
+    return { coinsAwarded: row.q_coin_reward, xpAwarded: boostedXp, baseXp: row.q_coin_reward, quest };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
