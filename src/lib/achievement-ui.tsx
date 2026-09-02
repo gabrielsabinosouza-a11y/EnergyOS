@@ -119,7 +119,7 @@ export function AchievementIcon({
   const Icon = ACHIEVEMENT_BADGE_ICONS[id] ?? DEFAULT_ICON;
   if (fill) {
     return (
-      <Icon style={{ width: "72%", height: "72%", color, ...style }} strokeWidth={2} className="mx-auto" />
+      <Icon style={{ width: "100%", height: "100%", color, ...style }} strokeWidth={2} className="mx-auto" />
     );
   }
   return <Icon size={size} style={{ color, ...style }} />;
@@ -128,31 +128,26 @@ export function AchievementIcon({
 export function AchievementBadge({
   achievement,
   size = 40,
-  iconSize = 38,
 }: {
   achievement: AchievementProgress;
   size?: number;
-  iconSize?: number;
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
 
   return (
     <div
-      className="flex items-center justify-center overflow-hidden rounded-full"
+      className="flex items-center justify-center overflow-hidden"
       style={{
         width: size,
         height: size,
-        background: isEarned ? colors.bg : "rgba(255,255,255,0.05)",
-        boxShadow: isEarned ? `0 0 14px ${colors.glow}` : "none",
-        border: isEarned ? `1px solid ${colors.primary}44` : "1px solid rgba(255,255,255,0.08)",
         color: isEarned ? colors.primary : undefined,
       }}
     >
       <AchievementIcon
         id={achievement.id}
         tier={achievement.unlockedTier}
-        size={iconSize}
+        size={size}
         locked={!isEarned}
         color={isEarned ? colors.primary : undefined}
         fill
@@ -164,9 +159,9 @@ export function AchievementBadge({
 /**
  * Shared achievement tile used across the profile pages (own + public) and the
  * featured "Destaques" rows. Encapsulates the three visual states:
- *  - unlocked: full-color radial halo + rarity glow, icon fills the halo
- *  - locked: greyscale ring, dashed border, lock glyph (optional progress hint)
- *  - in-progress (locked but has progress): small progress ring around the halo
+ *  - unlocked: full-color icon with category color
+ *  - locked: greyscale icon, lock glyph (optional progress hint)
+ *  - in-progress (locked but has progress): small progress ring around the icon
  * It also renders tier dots and, when `feature` is set, a star indicator and an
  * optional remove affordance used by the own profile.
  */
@@ -191,9 +186,9 @@ export function AchievementTile({
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
-  // inner halo fills ~96% of the cell so it feels like the circle is the tile
-  const inner = Math.round(size * 0.96);
-  const radius = inner / 2;
+  // icon container size
+  const inner = size;
+  const radius = (inner / 2) - 2; // small padding for progress ring
   const firstThreshold = achievement.thresholds[0] ?? 1;
   const progress = Math.min((achievement.currentValue ?? 0) / firstThreshold, 1);
   const pct = Math.round(progress * 100);
@@ -202,46 +197,36 @@ export function AchievementTile({
 
   const body = (
     <>
-      {/* icon halo */}
+      {/* icon container with progress ring */}
       <span
-        className="relative flex items-center justify-center overflow-hidden rounded-full"
+        className="relative flex items-center justify-center overflow-hidden"
         style={{
           width: inner,
           height: inner,
-          background: isEarned
-            ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
-            : "rgba(255,255,255,0.03)",
-          boxShadow: isEarned ? `0 0 ${Math.round(size * 0.25)}px 2px ${colors.glow}` : "none",
-          border: isEarned ? `1px solid ${colors.primary}33` : "1px dashed rgba(255,255,255,0.14)",
           filter: !isEarned ? "grayscale(1) opacity(0.5)" : undefined,
         }}
       >
-        {isEarned ? (
-          <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={inner} color="#000" fill />
-        ) : (
-          <AchievementIcon id={achievement.id} tier={0} size={inner} locked fill />
-        )}
-        {/* progress ring */}
+        {/* progress ring (behind icon) */}
         {!isEarned && showProgress && progress > 0 && (
           <svg
-            width={inner + 6}
-            height={inner + 6}
-            viewBox={`0 0 ${inner + 6} ${inner + 6}`}
+            width={inner}
+            height={inner}
+            viewBox={`0 0 ${inner} ${inner}`}
             className="pointer-events-none absolute"
             style={{ transform: "rotate(-90deg)" }}
           >
             <circle
-              cx={(inner + 6) / 2}
-              cy={(inner + 6) / 2}
-              r={radius + 1}
+              cx={inner / 2}
+              cy={inner / 2}
+              r={radius}
               fill="none"
               stroke="rgba(255,255,255,0.1)"
               strokeWidth={2}
             />
             <circle
-              cx={(inner + 6) / 2}
-              cy={(inner + 6) / 2}
-              r={radius + 1}
+              cx={inner / 2}
+              cy={inner / 2}
+              r={radius}
               fill="none"
               stroke={colors.primary}
               strokeWidth={2}
@@ -250,6 +235,11 @@ export function AchievementTile({
               style={{ opacity: 0.9 }}
             />
           </svg>
+        )}
+        {isEarned ? (
+          <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={inner} color={colors.primary} fill />
+        ) : (
+          <AchievementIcon id={achievement.id} tier={0} size={inner} locked fill />
         )}
       </span>
 

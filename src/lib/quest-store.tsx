@@ -25,6 +25,7 @@ interface MetricUpdate {
 
 interface QuestsContextValue {
   quests: QuestProgressWithQuest[];
+  resetAt: string | null;
   ready: boolean;
   applyMetric: (metric: MissionMetric | string, update?: MetricUpdate) => void;
   replaceQuests: (quests: QuestProgressWithQuest[]) => void;
@@ -45,6 +46,7 @@ export function DailyQuestsProvider({
     initialQuests.slice(0, DAILY_MISSION_LIMIT),
   );
   const [ready, setReady] = useState(initialQuests.length > 0);
+  const [resetAt, setResetAt] = useState<string | null>(null);
 
   const replaceQuests = useCallback((next: QuestProgressWithQuest[]) => {
     setQuestsState(next.slice(0, DAILY_MISSION_LIMIT));
@@ -55,6 +57,7 @@ export function DailyQuestsProvider({
     try {
       const data = await api.getDailyQuests();
       replaceQuests(data.quests);
+      setResetAt(data.resetAt);
     } catch {
       // keep local (optimistic) state on transient failures
     }
@@ -67,7 +70,10 @@ export function DailyQuestsProvider({
     let cancelled = false;
     api.getDailyQuests()
       .then((data) => {
-        if (!cancelled) replaceQuests(data.quests);
+        if (!cancelled) {
+          replaceQuests(data.quests);
+          setResetAt(data.resetAt);
+        }
       })
       .catch(() => {
         // keep local state; the next action's refresh() will reconcile
@@ -108,8 +114,8 @@ export function DailyQuestsProvider({
   }, []);
 
   const value = useMemo(
-    () => ({ quests, ready, applyMetric, replaceQuests, markClaimed, refresh }),
-    [quests, ready, applyMetric, replaceQuests, markClaimed, refresh],
+    () => ({ quests, resetAt, ready, applyMetric, replaceQuests, markClaimed, refresh }),
+    [quests, resetAt, ready, applyMetric, replaceQuests, markClaimed, refresh],
   );
 
   return <QuestsContext.Provider value={value}>{children}</QuestsContext.Provider>;

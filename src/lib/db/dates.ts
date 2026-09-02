@@ -5,6 +5,13 @@ export function todayIso(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
 }
 
+/** Instante UTC do próximo reset diário (meia-noite em São Paulo). */
+export function dailyResetAtIso(now = new Date()): string {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(now);
+  const tomorrow = addDaysIso(today, 1);
+  return new Date(`${tomorrow}T00:00:00-03:00`).toISOString();
+}
+
 function toUtcNoon(isoDate: string): Date {
   return new Date(`${isoDate}T12:00:00Z`);
 }

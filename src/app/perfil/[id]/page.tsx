@@ -71,19 +71,14 @@ function AchievementModal({
 
         <div className="mb-4 flex flex-col items-center text-center">
           <div
-            className="relative mb-3 flex items-center justify-center overflow-hidden rounded-full"
+            className="relative mb-3 flex items-center justify-center overflow-hidden"
             style={{
               width: 100,
               height: 100,
-              background: isEarned
-                ? `radial-gradient(circle at 30% 30%, ${colors.primary}, ${colors.bg})`
-                : "rgba(255,255,255,0.04)",
-              boxShadow: isEarned ? `0 0 30px ${colors.glow}` : "none",
-              border: isEarned ? `1px solid ${colors.primary}33` : "1px dashed rgba(255,255,255,0.14)",
             }}
           >
             {isEarned ? (
-              <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={100} color="#000" fill />
+              <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={100} color={colors.primary} fill />
             ) : (
               <Lock size={40} className="text-[var(--text-faint)]" />
             )}

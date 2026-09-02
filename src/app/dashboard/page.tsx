@@ -20,6 +20,7 @@ import { XPBadge } from "@/components/dashboard/xp-badge";
 import { XpBoostIndicator } from "@/components/xp-boost/xp-boost-indicator";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
+import { RewardToast } from "@/components/reward-toast";
 
 import type { Variants } from "framer-motion";
 
@@ -90,6 +91,7 @@ function DashboardContent() {
   const [xpBoostUntil, setXpBoostUntil] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
+  const [rewardToast, setRewardToast] = useState<{ amount: number; balance?: number } | null>(null);
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinSaved, setCheckinSaved] = useState(false);
@@ -216,7 +218,13 @@ function DashboardContent() {
       setKanbanTasks(updatedTasks.tasks);
       if (enteringDone) {
         void refreshQuests();
-        if (result.coinsAwarded > 0) setCoins((c) => c + result.coinsAwarded);
+        if (result.coinsAwarded > 0) {
+          setCoins((c) => {
+            const newBalance = c + result.coinsAwarded;
+            setRewardToast({ amount: result.coinsAwarded, balance: newBalance });
+            return newBalance;
+          });
+        }
         if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
           showSuccess(`+${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🎉`);
           api.getFocusData().then((f) => setFocusData(f));
@@ -247,7 +255,13 @@ function DashboardContent() {
       setKanbanTasks((ks) => ks.map((k) => k.id === id ? result.task : k));
       if (enteringDone) {
         void refreshQuests();
-        if (result.coinsAwarded > 0) setCoins((c) => c + result.coinsAwarded);
+        if (result.coinsAwarded > 0) {
+          setCoins((c) => {
+            const newBalance = c + result.coinsAwarded;
+            setRewardToast({ amount: result.coinsAwarded, balance: newBalance });
+            return newBalance;
+          });
+        }
         if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
           showSuccess(`+${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🎉`);
           api.getFocusData().then((f) => setFocusData(f));
@@ -609,6 +623,9 @@ function DashboardContent() {
           />
         )}
       </AnimatePresence>
+
+      {/* Reward Toast */}
+      <RewardToast toast={rewardToast} onDone={() => setRewardToast(null)} />
     </AppShell>
   );
 }

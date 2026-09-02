@@ -138,7 +138,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                   <div className="flex gap-3 flex-wrap">
                     {profile.featuredAchievements.map((ach) => (
                       <div key={ach.id} className="flex flex-col items-center gap-1">
-                        <AchievementBadge achievement={ach} size={40} iconSize={18} />
+                        <AchievementBadge achievement={ach} size={40} />
                         <span className="text-[9px] text-[var(--text-faint)] max-w-[48px] text-center leading-tight">{ach.title}</span>
                       </div>
                     ))}

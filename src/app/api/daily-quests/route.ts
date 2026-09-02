@@ -2,12 +2,10 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk } from "@/lib/http";
 import {
-  listDailyQuests,
   getUserQuestProgressWithQuests,
   initializeUserDailyQuests,
-  claimQuestReward,
 } from "@/lib/db/daily-quests";
-import { todayIso } from "@/lib/db/dates";
+import { dailyResetAtIso, todayIso } from "@/lib/db/dates";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -18,6 +16,6 @@ export async function GET(request: NextRequest) {
     await initializeUserDailyQuests(profileId, today);
     const quests = await getUserQuestProgressWithQuests(profileId, today);
     
-    return jsonOk({ quests, date: today });
+    return jsonOk({ quests, date: today, resetAt: dailyResetAtIso() });
   });
 }

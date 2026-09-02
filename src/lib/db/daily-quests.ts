@@ -551,6 +551,19 @@ export async function claimQuestReward(
       throw new ConflictError("Missão ainda não concluída.");
     }
 
+    // The progress flag is useful for reads, but this unique ledger is the
+    // authoritative idempotency guard for reward issuance.
+    const claimInsert = await client.query(
+      `insert into daily_mission_claims (user_id, mission_id, date)
+       values ($1, $2, $3)
+       on conflict (user_id, mission_id, date) do nothing
+       returning id`,
+      [profileId, row.uqp_quest_id, row.uqp_quest_date],
+    );
+    if (claimInsert.rowCount !== 1) {
+      throw new ConflictError("Recompensa já resgatada.");
+    }
+
     // XP may be doubled by an active 2x boost; coins are never doubled.
     const boostedXp = await calculateXPWithBoost(profileId, row.q_coin_reward);
 

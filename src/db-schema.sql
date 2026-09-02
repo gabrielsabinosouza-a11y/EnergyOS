@@ -559,6 +559,20 @@ create table if not exists user_quest_progress (
 create index if not exists user_quest_progress_profile_date_idx on user_quest_progress(profile_id, quest_date);
 create index if not exists user_quest_progress_quest_date_idx on user_quest_progress(quest_id, quest_date);
 
+-- Idempotency ledger for daily mission rewards. A mission can be awarded only
+-- once for a user and product day, even if the request is replayed.
+create table if not exists daily_mission_claims (
+  id bigserial primary key,
+  user_id text not null references profiles(id) on delete cascade,
+  mission_id bigint not null references daily_quests(id) on delete cascade,
+  date date not null,
+  claimed_at timestamptz not null default now(),
+  unique (user_id, mission_id, date)
+);
+
+create index if not exists daily_mission_claims_user_date_idx
+  on daily_mission_claims(user_id, date);
+
 -- Mission pool (each user is randomly assigned exactly 3 active missions per day).
 -- `metric` is the machine-readable event used to drive progress; `type` is kept
 -- for backward compatibility with the legacy daily-quests UI/claiming flow.

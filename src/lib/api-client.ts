@@ -181,7 +181,7 @@ export const api = {
     request<{ imported: number }>("/api/garden", { method: "POST", body: JSON.stringify({ entries }) }),
 
   // Daily Quests
-  getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
+  getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string; resetAt: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
   claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
   // Daily Tasks (user-written, reset daily)

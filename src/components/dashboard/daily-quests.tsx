@@ -31,7 +31,8 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   // Quest state lives in the shared DailyQuestsProvider so ANY quest-relevant
   // action (daily task checked, focus session completed, kanban "Feito", ...)
   // updates this widget instantly — no refetch needed.
-  const { quests, ready, markClaimed, refresh } = useDailyQuests();
+  const { quests, ready, resetAt, markClaimed, refresh } = useDailyQuests();
+  const [countdown, setCountdown] = useState({ hours: 0, minutes: 0 });
   const [claimingId, setClaimingId] = useState<number | null>(null);
   const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; balance: number } | null>(null);
   const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
@@ -42,6 +43,26 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
       return () => clearTimeout(t);
     }
   }, [claimError]);
+
+  useEffect(() => {
+    if (!resetAt) return;
+    const update = () => {
+      const remaining = Math.max(0, new Date(resetAt).getTime() - Date.now());
+      setCountdown({
+        hours: Math.floor(remaining / (1000 * 60 * 60)),
+        minutes: Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60)),
+      });
+    };
+    update();
+    const timer = setInterval(() => {
+      update();
+      if (new Date(resetAt).getTime() <= Date.now()) {
+        clearInterval(timer);
+        void refresh();
+      }
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [resetAt, refresh]);
 
   const handleClaim = useCallback(async (progressId: number, index: number) => {
     const quest = quests[index];
@@ -95,21 +116,6 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
     return quest.quest.description || fallback || "";
   };
 
-  const timeUntilReset = () => {
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    
-    const diff = tomorrow.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return { hours, minutes };
-  };
-
-  const { hours, minutes } = timeUntilReset();
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -125,7 +131,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
           </span>
         </div>
         <span className="text-[10px] text-[var(--text-faint)]">
-          Novas em {hours}h {minutes}min
+          Novas em {countdown.hours}h {countdown.minutes}min
         </span>
       </div>
 
@@ -176,21 +182,17 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
                         </div>
                       </div>
                       <span className="text-[10px] font-mono text-[var(--text-faint)] whitespace-nowrap">
-                        {quest.currentValue}/{quest.quest.targetValue}
+                        {Math.min(quest.currentValue, quest.quest.targetValue)}/{quest.quest.targetValue}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col items-center gap-2">
-                    <motion.div
-                      className="relative"
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => isCompletable && !isClaimed && handleClaim(quest.id, index)}
-                    >
+                    <motion.div className="relative" whileTap={{ scale: 0.9 }}>
                       {isClaimed ? (
                         <div className="flex items-center gap-1.5 text-[var(--text-faint)]">
                           <Check size={16} className="text-green-400" />
-                          <span className="text-[10px]">Recompensado</span>
+                          <span className="text-[10px]">Resgatado ✓</span>
                         </div>
                       ) : isCompletable ? (
                         <motion.div
@@ -198,8 +200,16 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
                           animate={{ scale: [1, 1.05, 1] }}
                           transition={{ duration: 1.5, repeat: Infinity }}
                         >
-                          <CoinIcon size={20} />
-                          <span className="text-[10px] font-bold text-amber-400">+{quest.quest.coinReward}</span>
+                          <button
+                            type="button"
+                            disabled={claimingId === quest.id}
+                            aria-label={`Resgatar ${quest.quest.coinReward} moedas`}
+                            className="flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-400/15 px-2 py-1 text-[10px] font-bold text-amber-300 shadow-[0_0_16px_rgba(251,191,36,0.35)] transition-colors hover:bg-amber-400/25 disabled:cursor-wait disabled:opacity-70"
+                            onClick={() => handleClaim(quest.id, index)}
+                          >
+                            {claimingId === quest.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                            Resgatar
+                          </button>
                         </motion.div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[var(--text-faint)]">

@@ -115,7 +115,7 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
   parseProfileId(profileId);
   const title = parseTitle(input.title);
   const status = parseEnum(input.status ?? "todo", KANBAN_STATUSES, "Status");
-  const priority = parseEnum(input.priority ?? "medium", KANBAN_PRIORITIES, "Prioridade");
+  const priority = parseEnum(input.priority ?? "low", KANBAN_PRIORITIES, "Prioridade");
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
@@ -332,8 +332,8 @@ export async function awardKanbanCompletion(
     `select priority from kanban_tasks where id = $1`,
     [taskId],
   );
-  const priority = taskRow.rows[0]?.priority ?? "medium";
-  const baseXP = KANBAN_XP_BY_PRIORITY[priority] ?? KANBAN_XP_BY_PRIORITY.medium;
+  const priority = taskRow.rows[0]?.priority ?? "low";
+  const baseXP = KANBAN_XP_BY_PRIORITY[priority] ?? KANBAN_XP_BY_PRIORITY.low;
 
   const xpAwarded = await awardKanbanXP(profileId, taskId, baseXP);
   let coinsAwarded = 0;
