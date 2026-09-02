@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     const group = await createGroupWithUsernames(profileId, {
       name: body.name,
       avatarEmoji: body.avatarEmoji,
+      avatarUrl: body.avatarUrl,
       description: body.description,
       isPublic: body.isPublic,
       memberUsernames,

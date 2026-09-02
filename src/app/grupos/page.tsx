@@ -24,8 +24,6 @@ import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/grou
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-const EMOJI_OPTIONS = ["⚡","🔥","✨","💎","🌙","☀️","🌊","🌿","🎯","💜","🌀","⭐","🚀","🧠"];
-
 type Period = "WEEK" | "MONTH" | "YEAR" | "ALL_TIME";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -109,7 +107,7 @@ async function imageToDataUrl(file: File): Promise<string> {
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
-    const img = new Image();
+    const img = new globalThis.Image();
     img.onload = () => {
       const MAX = 400;
       const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
@@ -565,7 +563,8 @@ export default function GruposPage() {
   /* Create form */
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [createEmoji, setCreateEmoji] = useState("⚡");
+  const [createIcon, setCreateIcon] = useState<string | null>(null);
+  const [createIconName, setCreateIconName] = useState("");
   const [inviteIds, setInviteIds] = useState<string[]>([]);
   const [friends, setFriends] = useState<FriendSummary[]>([]);
   const [creating, setCreating] = useState(false);
@@ -603,7 +602,7 @@ export default function GruposPage() {
     if (!name || creating) return;
     setCreating(true);
     try {
-      const { group } = await api.createGroup({ name, avatarEmoji: createEmoji, inviteIds });
+      const { group } = await api.createGroup({ name, avatarUrl: createIcon ?? undefined, inviteIds });
       setGroups((prev) => [
         { id: group.id, name: group.name, avatarEmoji: group.avatarEmoji, avatarUrl: group.avatarUrl,
           memberCount: group.members.length, weeklyFocusMinutes: group.weeklyFocusMinutes, unreadCount: 0 },
@@ -613,14 +612,34 @@ export default function GruposPage() {
       setActiveGroup(group);
       setShowCreate(false);
       setCreateName("");
-      setCreateEmoji("⚡");
+      setCreateIcon(null);
+      setCreateIconName("");
       setInviteIds([]);
     } catch {
       setError("Não foi possível criar o grupo.");
     } finally {
       setCreating(false);
     }
-  }, [createName, createEmoji, inviteIds, creating]);
+  }, [createName, createIcon, inviteIds, creating]);
+
+  async function handleCreateIcon(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 7 * 1024 * 1024) {
+      setError("Escolha uma imagem de até 7 MB.");
+      event.target.value = "";
+      return;
+    }
+    try {
+      setCreateIcon(await imageToDataUrl(file));
+      setCreateIconName(file.name);
+      setError(null);
+    } catch {
+      setError("Não foi possível ler o ícone.");
+    } finally {
+      event.target.value = "";
+    }
+  }
 
   const openGroup = useCallback((id: number) => {
     api.getGroup(id).then(({ group }) => setActiveGroup(group)).catch(() => {});
@@ -708,15 +727,17 @@ export default function GruposPage() {
                             className="glass-card w-full px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
                         </div>
                         <div>
-                          <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Emoji do grupo</label>
-                          <div className="flex flex-wrap gap-2">
-                            {EMOJI_OPTIONS.map((emoji) => (
-                              <button key={emoji} onClick={() => setCreateEmoji(emoji)}
-                                className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition ${createEmoji === emoji ? "ring-2 ring-[var(--accent)] shadow-[0_0_12px_var(--glow-cyan)]" : "glass-card hover:brightness-125"}`}>
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
+                          <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Ícone do grupo</label>
+                          <input id="create-group-icon" type="file" accept="image/*" className="sr-only" onChange={handleCreateIcon} />
+                          <label htmlFor="create-group-icon" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[var(--border-subtle)] p-3 transition hover:border-[var(--accent)]/50">
+                            <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--accent-bg)]">
+                              {createIcon ? <img src={createIcon} alt="Prévia do ícone" className="h-full w-full object-cover" /> : <ImageIcon size={22} className="text-[var(--accent)]" />}
+                            </span>
+                            <span className="min-w-0 text-xs text-[var(--text-muted)]">
+                              <strong className="block text-[var(--text)]">{createIconName || "Escolher imagem"}</strong>
+                              PNG, JPG ou WEBP até 7 MB
+                            </span>
+                          </label>
                         </div>
                         {friends.length > 0 && (
                           <div>
@@ -839,9 +860,7 @@ function GroupDetailPanel({
   const [editName, setEditName] = useState(group.name);
   const [editDesc, setEditDesc] = useState(group.description ?? "");
   const [editPublic, setEditPublic] = useState(group.isPublic);
-  const [editEmoji, setEditEmoji] = useState(group.avatarEmoji);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [uploadingIcon, setUploadingIcon] = useState(false);
   const [savingIcon, setSavingIcon] = useState(false);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"leave" | "delete" | null>(null);
@@ -1076,8 +1095,8 @@ function GroupDetailPanel({
     setSavingSettings(true);
     setMessageError("");
     try {
-      await api.updateGroupDetails(group.id, { name: editName, description: editDesc, isPublic: editPublic, avatarEmoji: editEmoji });
-      setGroup((g) => g ? { ...g, name: editName, description: editDesc, isPublic: editPublic, avatarEmoji: editEmoji, avatarUrl: null } : g);
+      await api.updateGroupDetails(group.id, { name: editName, description: editDesc, isPublic: editPublic });
+      setGroup((g) => g ? { ...g, name: editName, description: editDesc, isPublic: editPublic } : g);
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Não foi possível salvar.");
     } finally {
@@ -1391,7 +1410,7 @@ function GroupDetailPanel({
             {group.avatarUrl ? (
               <img src={group.avatarUrl} alt={group.name} className="h-16 w-16 rounded-2xl object-cover" />
             ) : (
-              <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl">{editEmoji}</span>
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl">{group.avatarEmoji}</span>
             )}
             <div className="flex-1 text-center sm:text-left">
               <p className="text-sm font-medium text-[var(--text)]">Ícone do grupo</p>
@@ -1400,7 +1419,7 @@ function GroupDetailPanel({
             {(isOwner || isAdmin) && (
               <>
                 <input ref={iconRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
-                <button onClick={() => iconRef.current?.click()} disabled={savingIcon || uploadingIcon}
+                <button onClick={() => iconRef.current?.click()} disabled={savingIcon}
                   className="btn-primary flex items-center gap-2 px-4 py-2 text-xs disabled:opacity-30">
                   {savingIcon ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
                   {savingIcon ? "Enviando..." : "Alterar ícone"}
@@ -1411,21 +1430,6 @@ function GroupDetailPanel({
 
           {(isOwner || isAdmin) && (
             <>
-              {/* Emoji picker */}
-              <div className="glass-card p-5">
-                <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">Emoji</p>
-                <div className="flex flex-wrap gap-2">
-                  {EMOJI_OPTIONS.map((emoji) => (
-                    <button key={emoji} onClick={() => setEditEmoji(emoji)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition ${
-                        editEmoji === emoji ? "bg-[var(--accent-bg)] ring-2 ring-[var(--accent)]" : "bg-white/5 hover:bg-[var(--bg-surface-hover)]"
-                      }`}>
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Name / description / privacy */}
               <div className="glass-card space-y-4 p-5">
                 <div>

@@ -261,9 +261,9 @@ export const api = {
 
   // Groups
   getGroups: () => request<{ groups: GroupSummary[] }>("/api/groups"),
-  createGroup: (input: { name: string; avatarEmoji?: string; inviteIds?: string[] }) =>
+  createGroup: (input: { name: string; avatarUrl?: string; inviteIds?: string[] }) =>
     request<{ group: GroupDetail }>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
-  createGroupWithUsernames: (input: { name: string; avatarEmoji?: string; description?: string; isPublic?: boolean; memberUsernames?: string[] }) =>
+  createGroupWithUsernames: (input: { name: string; avatarUrl?: string; avatarEmoji?: string; description?: string; isPublic?: boolean; memberUsernames?: string[] }) =>
     request<{ group: GroupDetail }>("/api/groups/create-with-usernames", { method: "POST", body: JSON.stringify(input) }),
   getGroup: (id: number, period?: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME") =>
     request<{ group: GroupDetail }>(`/api/groups/${id}${period ? `?period=${period}` : ""}`),

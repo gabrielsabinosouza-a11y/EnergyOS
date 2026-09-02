@@ -85,12 +85,16 @@ export async function listGroups(profileId: string): Promise<GroupSummary[]> {
 
 export async function createGroup(
   profileId: string,
-  input: { name: string; avatarEmoji?: string; description?: string; isPublic?: boolean; inviteIds?: string[] },
+  input: { name: string; avatarEmoji?: string; avatarUrl?: string; description?: string; isPublic?: boolean; inviteIds?: string[] },
 ): Promise<GroupDetail> {
   parseProfileId(profileId);
   const name = parseTitle(input.name, "Nome do grupo");
   const emoji = input.avatarEmoji?.trim() || "⚡";
   if (!GROUP_EMOJIS.has(emoji)) throw new ValidationError("Escolha um emoji da lista.");
+  const avatarUrl = input.avatarUrl?.trim() || null;
+  if (avatarUrl && (!avatarUrl.startsWith("data:image/") || avatarUrl.length > 9_400_000)) {
+    throw new ValidationError("Imagem inválida ou muito grande (máx. ~7 MB).");
+  }
   
   const description = input.description?.trim() || null;
   const isPublic = input.isPublic ?? false;
@@ -106,10 +110,10 @@ export async function createGroup(
   try {
     await client.query("begin");
     const created = await client.query<GroupRow>(
-      `insert into groups (name, avatar_emoji, description, is_public, created_by)
-       values ($1, $2, $3, $4, $5)
+      `insert into groups (name, avatar_emoji, avatar_url, description, is_public, created_by)
+       values ($1, $2, $3, $4, $5, $6)
        returning id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public`,
-      [name, emoji, description, isPublic, profileId],
+      [name, emoji, avatarUrl, description, isPublic, profileId],
     );
     const group = created.rows[0];
     await client.query(
@@ -144,6 +148,7 @@ export async function createGroupWithUsernames(
   input: { 
     name: string; 
     avatarEmoji?: string; 
+    avatarUrl?: string;
     description?: string; 
     isPublic?: boolean; 
     memberUsernames?: string[] 
@@ -153,6 +158,10 @@ export async function createGroupWithUsernames(
   const name = parseTitle(input.name, "Nome do grupo");
   const emoji = input.avatarEmoji?.trim() || "⚡";
   if (!GROUP_EMOJIS.has(emoji)) throw new ValidationError("Escolha um emoji da lista.");
+  const avatarUrl = input.avatarUrl?.trim() || null;
+  if (avatarUrl && (!avatarUrl.startsWith("data:image/") || avatarUrl.length > 9_400_000)) {
+    throw new ValidationError("Imagem inválida ou muito grande (máx. ~7 MB).");
+  }
   
   const description = input.description?.trim() || null;
   const isPublic = input.isPublic ?? false;
@@ -185,10 +194,10 @@ export async function createGroupWithUsernames(
   try {
     await client.query("begin");
     const created = await client.query<GroupRow>(
-      `insert into groups (name, avatar_emoji, description, is_public, created_by)
-       values ($1, $2, $3, $4, $5)
+      `insert into groups (name, avatar_emoji, avatar_url, description, is_public, created_by)
+       values ($1, $2, $3, $4, $5, $6)
        returning id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public`,
-      [name, emoji, description, isPublic, profileId],
+      [name, emoji, avatarUrl, description, isPublic, profileId],
     );
     const group = created.rows[0];
     await client.query(
