@@ -269,6 +269,8 @@ export const api = {
     request<{ group: GroupDetail }>(`/api/groups/${id}${period ? `?period=${period}` : ""}`),
   updateGroupDetails: (id: number, updates: { name?: string; description?: string; isPublic?: boolean; avatarUrl?: string; avatarEmoji?: string }) =>
     request<{ success: true }>(`/api/groups/${id}/details`, { method: "PATCH", body: JSON.stringify(updates) }),
+  setGroupMemberMuted: (id: number, profileId: string, muted: boolean) =>
+    request<{ success: true }>(`/api/groups/${id}/members`, { method: "PATCH", body: JSON.stringify({ profileId, muted }) }),
   inviteToGroup: (id: number, inviteIds: string[]) =>
     request<{ success: true }>(`/api/groups/${id}/invite`, { method: "POST", body: JSON.stringify({ inviteIds }) }),
   getGroupMessages: (id: number, afterId?: number) => {

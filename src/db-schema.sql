@@ -349,6 +349,7 @@ create table if not exists group_members (
   joined_at timestamptz not null default now(),
   primary key (group_id, profile_id)
 );
+alter table group_members add column if not exists is_muted boolean not null default false;
 
 -- Migrate existing groups role data (lowercase old values -> uppercase new set),
 -- and swap the single-column check constraint. Drop the old constraint first so

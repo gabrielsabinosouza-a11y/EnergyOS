@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
   Sticker, Shield, ShieldCheck, Trash2, UserMinus,
-  ArrowRightLeft,
+  ArrowRightLeft, VolumeX,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -1363,6 +1363,24 @@ function GroupDetailPanel({
                           disabled={busyMemberId === m.id}
                           className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
                           {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Shield size={14} />}
+                        </button>
+                      )}
+                      {m.role === "MEMBER" && (
+                        <button title={m.isMuted ? "Remover silêncio" : "Silenciar membro"}
+                          onClick={async () => {
+                            setBusyMemberId(m.id);
+                            try {
+                              await api.setGroupMemberMuted(group.id, m.id, !m.isMuted);
+                              setGroup((g) => g ? { ...g, members: g.members.map((member) => member.id === m.id ? { ...member, isMuted: !m.isMuted } : member) } : g);
+                            } catch (e) {
+                              setMessageError(e instanceof Error ? e.message : "Não foi possível alterar o silêncio.");
+                            } finally {
+                              setBusyMemberId(null);
+                            }
+                          }}
+                          disabled={busyMemberId === m.id}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition disabled:opacity-30 ${m.isMuted ? "bg-[var(--red-bg)] text-[var(--red)]" : "text-[var(--text-muted)] hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"}`}>
+                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <VolumeX size={14} />}
                         </button>
                       )}
                       <button title="Remover" onClick={() => performMemberOp("remove", m.id)}

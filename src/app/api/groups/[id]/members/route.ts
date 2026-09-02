@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
-import { removeMember, updateMemberRole } from "@/lib/db/groups";
+import { removeMember, setMemberMuted, updateMemberRole } from "@/lib/db/groups";
 import type { GroupRole } from "@/types";
 
 type Period = "WEEK" | "MONTH" | "YEAR" | "ALL_TIME";
@@ -46,6 +46,10 @@ export async function PATCH(
     const role: string = body.role;
     if (!targetProfileId) {
       return NextResponse.json({ error: "profileId é obrigatório." }, { status: 400 });
+    }
+    if (body.muted !== undefined) {
+      await setMemberMuted(profileId, Number(id), targetProfileId, Boolean(body.muted));
+      return NextResponse.json({ success: true });
     }
     if (!ROLES.includes(role as GroupRole)) {
       return NextResponse.json({ error: "Função inválida." }, { status: 400 });

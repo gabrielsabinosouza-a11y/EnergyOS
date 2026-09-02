@@ -186,6 +186,7 @@ export interface GroupMember {
   photoUrl?: string;
   role: GroupRole;
   currentStreak: number;
+  isMuted?: boolean;
 }
 
 export interface GroupDetail {

@@ -21,6 +21,28 @@ interface GroupRow {
   is_public: boolean;
 }
 
+/** Mute or unmute a regular member. Admins cannot moderate owners or admins. */
+export async function setMemberMuted(
+  profileId: string,
+  groupId: number,
+  targetProfileId: string,
+  muted: boolean,
+): Promise<void> {
+  parseProfileId(profileId);
+  parseProfileId(targetProfileId);
+  const actorRole = await getMemberRole(profileId, groupId);
+  const targetRole = await getMemberRole(targetProfileId, groupId);
+  if (!actorRole || !targetRole) throw new NotFoundError("Membro não encontrado.");
+  if (!["OWNER", "ADMIN"].includes(actorRole)) throw new ForbiddenError("Só dono ou administrador pode silenciar membros.");
+  if (targetProfileId === profileId || targetRole !== "MEMBER") {
+    throw new ForbiddenError("Apenas membros comuns podem ser silenciados.");
+  }
+  await pool.query(
+    `update group_members set is_muted = $1 where group_id = $2 and profile_id = $3`,
+    [muted, groupId, targetProfileId],
+  );
+}
+
 async function assertMember(groupId: number, profileId: string): Promise<void> {
   const result = await pool.query(
     `select 1 from group_members where group_id = $1 and profile_id = $2`,
@@ -225,7 +247,6 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
-
   const group = await pool.query<GroupRow>(
     `select id, name, avatar_emoji, avatar_url, created_by, created_at, description, is_public from groups where id = $1`,
     [groupId],
@@ -239,10 +260,11 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
       username: string | null;
       photo_url: string | null;
       role: "OWNER" | "ADMIN" | "MEMBER";
+      is_muted: boolean;
       current_streak: number | null;
     }
   >(
-    `select p.id, p.display_name, p.username, p.photo_url, m.role, p.current_streak
+    `select p.id, p.display_name, p.username, p.photo_url, m.role, m.is_muted, p.current_streak
      from group_members m
      join profiles p on p.id = m.profile_id
      where m.group_id = $1
@@ -259,6 +281,7 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     role: row.role,
+    isMuted: row.is_muted,
     currentStreak: row.current_streak ?? 0,
   }));
 
@@ -369,6 +392,11 @@ export async function sendGroupMessage(
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
+  const sender = await pool.query<{ is_muted: boolean }>(
+    `select is_muted from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, profileId],
+  );
+  if (sender.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
 
   const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
   const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"];
