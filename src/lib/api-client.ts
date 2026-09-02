@@ -90,7 +90,7 @@ export const api = {
     const query = params.toString();
     return request<{ checkins: DailyCheckin[] }>(`/api/checkins${query ? `?${query}` : ""}`);
   },
-  saveCheckin: (input: CheckinInput) => request<DailyCheckin>("/api/checkins", { method: "POST", body: JSON.stringify(input) }),
+  saveCheckin: (input: CheckinInput) => request<{ checkin: DailyCheckin; xpAwarded: number; coinsAwarded: number }>("/api/checkins", { method: "POST", body: JSON.stringify(input) }),
 
   // Tarefas
   getTasks: (date?: string) => request<TaskBundle>(`/api/tasks${date ? `?date=${date}` : ""}`),
@@ -105,7 +105,7 @@ export const api = {
   // Metas e hábitos
   getGoals: () => request<Array<{ goal: GoalWithProgress; habits: HabitWithCompletion[] }>>("/api/goals"),
   createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency: GoalFrequency }) =>
-    request<{ goal: GoalWithProgress }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
+    request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
   updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; currentValue?: number; frequency?: GoalFrequency }) =>
     request<{ goal: GoalWithProgress }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
@@ -267,7 +267,7 @@ export const api = {
     request<{ group: GroupDetail }>("/api/groups/create-with-usernames", { method: "POST", body: JSON.stringify(input) }),
   getGroup: (id: number, period?: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME") =>
     request<{ group: GroupDetail }>(`/api/groups/${id}${period ? `?period=${period}` : ""}`),
-  updateGroupDetails: (id: number, updates: { name?: string; description?: string; isPublic?: boolean; avatarUrl?: string }) =>
+  updateGroupDetails: (id: number, updates: { name?: string; description?: string; isPublic?: boolean; avatarUrl?: string; avatarEmoji?: string }) =>
     request<{ success: true }>(`/api/groups/${id}/details`, { method: "PATCH", body: JSON.stringify(updates) }),
   inviteToGroup: (id: number, inviteIds: string[]) =>
     request<{ success: true }>(`/api/groups/${id}/invite`, { method: "POST", body: JSON.stringify({ inviteIds }) }),

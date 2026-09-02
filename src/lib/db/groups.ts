@@ -384,6 +384,11 @@ export async function sendGroupMessage(
       ? Math.max(0, Math.round(opts.mediaDurationSeconds))
       : null;
 
+  // Vídeos curtos (≤30s) para manter o chat leve; áudio também limitado.
+  if ((messageType === "VIDEO" || messageType === "AUDIO") && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
+    throw new ValidationError("Vídeos e áudios devem ter no máximo 30 segundos.");
+  }
+
   if (messageType === "STICKER" && !text) {
     text = opts?.mediaUrl?.trim() || null;
   }
@@ -454,7 +459,7 @@ export async function updateGroupAvatar(profileId: string, groupId: number, avat
 export async function updateGroupDetails(
   profileId: string,
   groupId: number,
-  updates: { name?: string; description?: string; isPublic?: boolean }
+  updates: { name?: string; description?: string; isPublic?: boolean; avatarEmoji?: string }
 ): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
@@ -487,6 +492,15 @@ export async function updateGroupDetails(
     setClauses.push(`is_public = $${paramIndex}`);
     params.push(updates.isPublic);
     paramIndex++;
+  }
+
+  if (updates.avatarEmoji !== undefined) {
+    setClauses.push(`avatar_emoji = $${paramIndex}`);
+    params.push(updates.avatarEmoji);
+    paramIndex++;
+    // Choosing an emoji as the icon supersedes any uploaded image, otherwise
+    // the old avatar_url would keep rendering over the emoji.
+    setClauses.push(`avatar_url = NULL`);
   }
 
   if (setClauses.length === 0) return;
@@ -572,7 +586,7 @@ export async function updateMemberRole(
 
   const actorRole = await getMemberRole(profileId, groupId);
   if (!actorRole) throw new ForbiddenError("Você não faz parte deste grupo.");
-  if (!actorRole || actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode alterar funções.");
+  if (!['OWNER', 'ADMIN'].includes(actorRole)) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar funções.");
 
   if (targetProfileId === profileId) throw new ValidationError("Você não pode alterar sua própria função.");
 
@@ -583,7 +597,9 @@ export async function updateMemberRole(
   const targetRank = ROLE_RANK[targetRole];
   const requestedRank = ROLE_RANK[newRole];
   if (targetRank === 3) throw new ValidationError("O dono não pode ter a função alterada.");
-  if (requestedRank >= actorRank) throw new ValidationError("Você não pode conceder uma função igual ou superior à sua.");
+  if (newRole === 'OWNER') throw new ValidationError("Conceda a propriedade usando a transferência.");
+  if (requestedRank > actorRank) throw new ValidationError("Você não pode conceder uma função superior à sua.");
+  if (requestedRank === 3) throw new ValidationError("Você não pode conceder a propriedade a outro membro.");
 
   await pool.query(
     `update group_members set role = $1 where group_id = $2 and profile_id = $3`,
@@ -611,8 +627,8 @@ export async function removeMember(
 
   if (actorRole === 'OWNER') {
     // Owner can remove admins and members.
-  } else if (actorRole === 'ADMIN' && targetRole !== 'MEMBER') {
-    throw new ForbiddenError("Administradores só podem remover membros comuns.");
+  } else if (actorRole === 'ADMIN' && (targetRole === 'MEMBER' || targetRole === 'ADMIN')) {
+    // Admin can remove members and other admins (but not the owner).
   } else {
     throw new ForbiddenError("Você não tem permissão para remover membros.");
   }

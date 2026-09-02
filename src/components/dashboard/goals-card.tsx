@@ -1210,16 +1210,27 @@ function CreateGoalModal({
                     className="auth-input flex-1 py-2! text-xs!"
                     placeholder="Adicionar hábito..."
                   />
-                  <select
-                    value={habitFreq}
-                    onChange={(e) => setHabitFreq(e.target.value as HabitFrequency)}
-                    className="auth-input py-2! text-xs! w-24 shrink-0"
-                    aria-label="Frequência do hábito"
-                  >
-                    {HABIT_FREQ_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                  <div className="flex shrink-0 gap-1">
+                    {HABIT_FREQ_OPTIONS.map((o) => {
+                      const sel = habitFreq === o.value;
+                      return (
+                        <motion.button
+                          key={o.value}
+                          type="button"
+                          whileTap={reduced ? undefined : { scale: 0.93 }}
+                          onClick={() => setHabitFreq(o.value)}
+                          className="rounded-lg border px-2.5 py-2 text-[10px] font-semibold transition-all cursor-pointer"
+                          style={
+                            sel
+                              ? { borderColor: glowColor, color: glowColor, background: withAlpha(glowColor, 0.14) }
+                              : { borderColor: "var(--border-subtle)", color: "var(--text-faint)", background: "rgba(255,255,255,0.03)" }
+                          }
+                        >
+                          {o.label}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

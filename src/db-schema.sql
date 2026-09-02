@@ -278,7 +278,7 @@ delete from garden_entries where energy_type in ('nature','solar');
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','goal')),
+  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal')),
   source_id bigint,
   xp_amount integer not null,
   created_at timestamptz not null default now()
@@ -411,6 +411,8 @@ do $$ begin
   alter table group_messages add column if not exists message_type text not null default 'TEXT';
   alter table group_messages add column if not exists media_url text;
   alter table group_messages add column if not exists media_duration_seconds integer;
+  -- Media-only messages (image/video/audio) have no text body, so body must be nullable
+  alter table group_messages alter column body drop not null;
 exception when others then null; end $$;
 
 create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
@@ -442,10 +444,15 @@ create table if not exists direct_messages (
   id bigserial primary key,
   sender_id text not null references profiles(id) on delete cascade,
   recipient_id text not null references profiles(id) on delete cascade,
-  body text not null,
+  body text,
   created_at timestamptz not null default now(),
   check (sender_id <> recipient_id)
 );
+
+-- Allow media-only direct messages (body null)
+do $$ begin
+  alter table direct_messages alter column body drop not null;
+exception when others then null; end $$;
 
 create index if not exists dm_pair_idx on direct_messages (
   least(sender_id, recipient_id),

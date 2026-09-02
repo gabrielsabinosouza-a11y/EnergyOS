@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     console.log('[checkins POST] Attempting to save checkin for profile:', profileId);
     console.log('[checkins POST] Request body:', body);
     
-    const checkin = await upsertCheckin(
+    const { checkin, xpAwarded, coinsAwarded } = await upsertCheckin(
       profileId,
       {
         checkinDate: body.checkinDate as string | undefined,
@@ -38,6 +38,6 @@ export async function POST(request: NextRequest) {
     );
     
     console.log('[checkins POST] Checkin saved successfully:', checkin);
-    return jsonOk(checkin, 201);
+    return jsonOk({ checkin, xpAwarded, coinsAwarded }, 201);
   });
 }

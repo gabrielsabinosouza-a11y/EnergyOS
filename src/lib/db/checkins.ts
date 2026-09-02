@@ -1,10 +1,14 @@
 import pool from "../db";
 import type { DailyCheckin } from "@/types";
 import { ValidationError, parseDate, parseNumber, parseProfileId } from "./validation";
-import { awardXPAndCoins } from "./xp";
-
-const CHECKIN_XP = 10;
-const CHECKIN_COINS = 10;
+import { creditXP } from "./xp";
+import { addCoins } from "./settings";
+import {
+  CHECKIN_XP,
+  CHECKIN_COINS,
+  STREAK_BONUS_XP_PER_DAY,
+  STREAK_BONUS_CAP,
+} from "../daily-limits";
 
 interface CheckinRow {
   id: string | number;
@@ -36,7 +40,11 @@ export interface UpsertCheckinInput {
   energyScore?: number;
 }
 
-export async function upsertCheckin(profileId: string, input: UpsertCheckinInput, today: string): Promise<DailyCheckin> {
+export async function upsertCheckin(
+  profileId: string,
+  input: UpsertCheckinInput,
+  today: string,
+): Promise<{ checkin: DailyCheckin; xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
   const date = parseDate(input.checkinDate, "Data do check-in", today);
   const hasAnyValue =
@@ -77,11 +85,31 @@ export async function upsertCheckin(profileId: string, input: UpsertCheckinInput
     );
 
     if (isNew) {
-      await awardXPAndCoins(profileId, "checkin", result.rows[0].id, CHECKIN_XP, CHECKIN_COINS);
+      // Base check-in reward
+      const xpBase = await creditXP(profileId, "checkin", result.rows[0].id, CHECKIN_XP);
+      await addCoins(profileId, CHECKIN_COINS);
+
+      // Per-day streak bonus (capped)
+      const streakRow = await pool.query<{ current_streak: number }>(
+        `select current_streak from profiles where id = $1`,
+        [profileId],
+      );
+      const streak = streakRow.rows[0]?.current_streak ?? 0;
+      const streakBonus = streak > 0 ? Math.min(streak * STREAK_BONUS_XP_PER_DAY, STREAK_BONUS_CAP) : 0;
+      const xpStreak = streakBonus > 0
+        ? await creditXP(profileId, "checkin_streak", `${profileId}:${date}`, streakBonus)
+        : 0;
+
+      console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
+      return {
+        checkin: mapCheckin(result.rows[0]),
+        xpAwarded: xpBase + xpStreak,
+        coinsAwarded: CHECKIN_COINS,
+      };
     }
 
     console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
-    return mapCheckin(result.rows[0]);
+    return { checkin: mapCheckin(result.rows[0]), xpAwarded: 0, coinsAwarded: 0 };
   } catch (error) {
     console.error('[checkins db] Error upserting checkin:', error);
     throw error;

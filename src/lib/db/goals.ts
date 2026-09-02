@@ -4,10 +4,16 @@ import { ensureProfile } from "./profiles";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseNumber, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
-import { awardXPAndCoins } from "./xp";
+import { awardXPAndCoins, creditXP } from "./xp";
+import {
+  GOAL_CREATION_XP,
+  GOAL_COMPLETION_TIERS,
+} from "../daily-limits";
 
-const GOAL_COMPLETION_XP = 50;
-const GOAL_COMPLETION_COINS = 50;
+function goalCompletionReward(targetValue: number): { xp: number; coins: number } {
+  return GOAL_COMPLETION_TIERS.find((t) => targetValue <= t.maxTarget)
+    ?? GOAL_COMPLETION_TIERS[GOAL_COMPLETION_TIERS.length - 1];
+}
 
 export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly"] as const;
 export type GoalFrequency = (typeof GOAL_FREQUENCY_VALUES)[number];
@@ -90,7 +96,12 @@ export async function createGoal(profileId: string, input: CreateGoalInput): Pro
     [profileId, title, categoryId, targetValue, frequency],
   );
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [inserted.rows[0].id]);
-  return withProgress(mapGoalRow(result.rows[0]));
+  const goal = withProgress(mapGoalRow(result.rows[0]));
+
+  // Award creation XP (idempotent via xp_ledger source_id = goal id + ':created')
+  await creditXP(profileId, "goal", `${goal.id}:created`, GOAL_CREATION_XP);
+
+  return goal;
 }
 
 export interface UpdateGoalPatch {
@@ -150,7 +161,8 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
   // Award once when the goal reaches its target for the first time.
   const nowComplete = goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
   if (nowComplete && !wasComplete) {
-    await awardXPAndCoins(profileId, "goal", goal.id, GOAL_COMPLETION_XP, GOAL_COMPLETION_COINS);
+    const { xp, coins } = goalCompletionReward(goal.targetValue);
+    await awardXPAndCoins(profileId, "goal", goal.id, xp, coins);
   }
 
   return goal;

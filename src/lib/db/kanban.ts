@@ -6,8 +6,7 @@ import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories
 import { recordMissionProgress } from "./daily-quests";
 import { awardKanbanXP } from "./xp";
 import { addCoins } from "./settings";
-
-export const KANBAN_DONE_COINS = 10;
+import { KANBAN_XP_BY_PRIORITY, KANBAN_DONE_COINS } from "../daily-limits";
 
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
@@ -323,15 +322,22 @@ export async function moveKanbanTask(
   }
 }
 
-/** Awards XP + coins when a kanban task first enters "done". Returns amounts credited (0 if already awarded). */
+/** Awards XP (priority-scaled) + coins when a kanban task first enters "done". Returns amounts credited (0 if already awarded). */
 export async function awardKanbanCompletion(
   profileId: string,
   taskId: number,
 ): Promise<{ xpAwarded: number; coinsAwarded: number }> {
-  const xpAwarded = await awardKanbanXP(profileId, taskId);
+  // Look up priority so XP scales correctly
+  const taskRow = await pool.query<{ priority: string }>(
+    `select priority from kanban_tasks where id = $1`,
+    [taskId],
+  );
+  const priority = taskRow.rows[0]?.priority ?? "medium";
+  const baseXP = KANBAN_XP_BY_PRIORITY[priority] ?? KANBAN_XP_BY_PRIORITY.medium;
+
+  const xpAwarded = await awardKanbanXP(profileId, taskId, baseXP);
   let coinsAwarded = 0;
   if (xpAwarded > 0) {
-    // Only award coins on the same first-completion that grants XP
     await addCoins(profileId, KANBAN_DONE_COINS);
     coinsAwarded = KANBAN_DONE_COINS;
   }

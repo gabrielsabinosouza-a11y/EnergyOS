@@ -9,14 +9,7 @@ import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
 import { checkAndUnlockMilestones } from "./group-milestones";
-
-function calculateCoins(durationMinutes: number): number {
-  if (durationMinutes < 10) return 0;
-  if (durationMinutes <= 60) {
-    return Math.round(9 + 16 * ((durationMinutes - 10) / 50));
-  }
-  return Math.round(25 + 25 * ((Math.min(durationMinutes, 120) - 60) / 60));
-}
+import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN } from "../daily-limits";
 
 export const GARDEN_ENERGY_TYPES = [
   "flame", "water", "earth", "wind", "thunder", "ice",
@@ -190,9 +183,9 @@ export async function endFocusSession(
   if (session.rows[0].ended_at) throw new ValidationError("Sessão já finalizada.");
 
   const durationMinutes = Math.max(1, Math.round(focusedSeconds / 60));
-  const baseXP = calculateCoins(durationMinutes);
+  const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
+  const coins = Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
   // Coins stay at the base amount; XP may be doubled by an active 2x boost.
-  const coins = baseXP;
   const xpAwarded = baseXP > 0 ? await creditXP(profileId, "focus", sessionId, baseXP) : 0;
 
   const updated = await pool.query<FocusRow>(

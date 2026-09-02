@@ -96,7 +96,7 @@ export async function awardTaskXP(profileId: string, taskId: number, xp: number)
   await creditXP(profileId, "task", taskId, xp);
 }
 
-export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Promise<number> {
+export async function awardKanbanXP(profileId: string, kanbanTaskId: number, baseXP = 15): Promise<number> {
   parseProfileId(profileId);
   const existing = await pool.query(
     `select 1 from xp_ledger where profile_id = $1 and source = 'kanban' and source_id = $2`,
@@ -104,8 +104,7 @@ export async function awardKanbanXP(profileId: string, kanbanTaskId: number): Pr
   );
   if (existing.rows[0]) return 0;
 
-  const xp = 15;
-  return creditXP(profileId, "kanban", kanbanTaskId, xp);
+  return creditXP(profileId, "kanban", kanbanTaskId, baseXP);
 }
 
 export async function awardStreakBonus(profileId: string, streakDays: number): Promise<number> {

@@ -178,9 +178,15 @@ function DashboardContent() {
     setCheckinSaving(true);
     setCheckinSaved(false);
     try {
-      await api.saveCheckin({ sleepHours });
+      const result = await api.saveCheckin({ sleepHours });
       setCheckinSaved(true);
-      showSuccess("Check-in salvo!");
+      if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
+        showSuccess(`Check-in salvo! +${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🌟`);
+        setCoins((c) => c + result.coinsAwarded);
+        api.getFocusData().then((f) => setFocusData(f));
+      } else {
+        showSuccess("Check-in salvo!");
+      }
       await fetchDashboard();
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel salvar o check-in.");
@@ -382,6 +388,11 @@ function DashboardContent() {
   /** Criação de meta diretamente pelo modal do dashboard. */
   async function createGoal(goal: Goal) {
     setGoals((prev) => [...prev, goal]);
+    // The goal was already created server-side by CreateGoalModal; fetch fresh
+    // reward info from the API response stored in the goal object isn't available
+    // here, so we show a fixed creation toast.
+    showSuccess(`Meta criada! +5 XP ✨`);
+    api.getFocusData().then((f) => setFocusData(f));
   }
 
   /** Exclusão otimista de meta diretamente pelo card do dashboard. */

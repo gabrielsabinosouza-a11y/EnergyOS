@@ -80,8 +80,18 @@ function fmtDuration(seconds?: number): string {
 
 /** Compress an image file to a small data-URL (used for group avatars). */
 async function imageToDataUrl(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file);
   const MAX = 400;
+  let bitmap: ImageBitmap;
+  if (typeof createImageBitmap === "function") {
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      // fall through to the FileReader path below (e.g. Safari parity issues)
+      return readAsDataUrl(file);
+    }
+  } else {
+    return readAsDataUrl(file);
+  }
   const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
@@ -95,6 +105,30 @@ async function imageToDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
+/** Fallback: re-encode via an <img> element when createImageBitmap is unavailable. */
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 400;
+      const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); reject(new Error("Canvas não suportado")); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
+    img.src = url;
+  });
+}
+
 /** Upload a media file to Cloudinary and return its secure URL (+ optional duration). */
 async function uploadToCloudinary(file: File): Promise<{ secureUrl: string; durationSeconds: number | undefined }> {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
@@ -105,15 +139,39 @@ async function uploadToCloudinary(file: File): Promise<{ secureUrl: string; dura
   formData.append("file", file);
   formData.append("upload_preset", uploadPreset);
 
-  const isVideo = file.type.startsWith("video/");
-  const endpoint = isVideo
-    ? `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`
-    : `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+  // Imagens usam o endpoint de imagem; áudio e vídeo usam o de vídeo/raw.
+  const isImage = file.type.startsWith("image/");
+  const endpoint = isImage
+    ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
+    : `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
 
   const res = await fetch(endpoint, { method: "POST", body: formData });
   if (!res.ok) throw new Error("Falha no upload.");
   const data = await res.json();
-  return { secureUrl: data.secure_url as string, durationSeconds: data.duration };
+  const duration = Number(data.duration);
+  return {
+    secureUrl: data.secure_url as string,
+    durationSeconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : undefined,
+  };
+}
+
+/** Reads a video's duration in seconds (0 if it can't be determined). */
+async function readVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      const d = Number.isFinite(video.duration) ? video.duration : 0;
+      URL.revokeObjectURL(url);
+      resolve(Math.round(d));
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(0);
+    };
+    video.src = url;
+  });
 }
 
 const ROLE_ORDER: Record<string, number> = { OWNER: 0, ADMIN: 1, MEMBER: 2 };
@@ -781,6 +839,7 @@ function GroupDetailPanel({
   const [editName, setEditName] = useState(group.name);
   const [editDesc, setEditDesc] = useState(group.description ?? "");
   const [editPublic, setEditPublic] = useState(group.isPublic);
+  const [editEmoji, setEditEmoji] = useState(group.avatarEmoji);
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [savingIcon, setSavingIcon] = useState(false);
@@ -901,13 +960,20 @@ function GroupDetailPanel({
     }
   }
 
+  const MAX_VIDEO_SECONDS = 30;
+
   async function handleSendVideo(file: File) {
     if (uploadingMedia) return;
     setUploadingMedia(true);
     setMessageError("");
     try {
-      const { secureUrl, durationSeconds } = await uploadToCloudinary(file);
-      await sendMediaMessage({ messageType: "VIDEO", mediaUrl: secureUrl, mediaDurationSeconds: durationSeconds });
+      const durationSeconds = await readVideoDuration(file);
+      if (durationSeconds > 0 && durationSeconds > MAX_VIDEO_SECONDS) {
+        setMessageError(`Vídeos devem ter no máximo ${MAX_VIDEO_SECONDS}s.`);
+        return;
+      }
+      const { secureUrl } = await uploadToCloudinary(file);
+      await sendMediaMessage({ messageType: "VIDEO", mediaUrl: secureUrl, mediaDurationSeconds: durationSeconds || undefined });
     } catch {
       setMessageError("Não foi possível enviar o vídeo.");
     } finally {
@@ -1010,8 +1076,8 @@ function GroupDetailPanel({
     setSavingSettings(true);
     setMessageError("");
     try {
-      await api.updateGroupDetails(group.id, { name: editName, description: editDesc, isPublic: editPublic });
-      setGroup((g) => g ? { ...g, name: editName, description: editDesc, isPublic: editPublic } : g);
+      await api.updateGroupDetails(group.id, { name: editName, description: editDesc, isPublic: editPublic, avatarEmoji: editEmoji });
+      setGroup((g) => g ? { ...g, name: editName, description: editDesc, isPublic: editPublic, avatarEmoji: editEmoji, avatarUrl: null } : g);
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Não foi possível salvar.");
     } finally {
@@ -1241,7 +1307,12 @@ function GroupDetailPanel({
           </div>
           <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
             {sortedMembers.map((m) => {
-              const canManageThis = isOwner || (isAdmin && m.role === "MEMBER");
+              const canManageThis = isOwner
+                ? m.role !== "OWNER"
+                : isAdmin && m.role !== "OWNER" && m.id !== currentUserId;
+              const canToggleRole = isOwner
+                ? m.role !== "OWNER"
+                : isAdmin && m.role !== "OWNER" && m.id !== currentUserId;
               return (
                 <motion.div key={m.id} variants={fadeUp} className="glass-card flex items-center gap-3 px-4 py-3">
                   <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={40} />
@@ -1267,7 +1338,7 @@ function GroupDetailPanel({
                           {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRightLeft size={14} />}
                         </button>
                       )}
-                      {isOwner && (
+                      {canToggleRole && (
                         <button title={m.role === "ADMIN" ? "Rebaixar para membro" : "Promover a admin"}
                           onClick={() => performMemberOp("role", m.id, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
                           disabled={busyMemberId === m.id}
@@ -1315,57 +1386,80 @@ function GroupDetailPanel({
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Configurações do grupo</span>
           </div>
 
-          {/* Icon */}
+          {/* Icon / emoji */}
           <div className="glass-card flex flex-col items-center gap-4 p-5 sm:flex-row">
             {group.avatarUrl ? (
               <img src={group.avatarUrl} alt={group.name} className="h-16 w-16 rounded-2xl object-cover" />
             ) : (
-              <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl">{group.avatarEmoji}</span>
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl text-4xl">{editEmoji}</span>
             )}
             <div className="flex-1 text-center sm:text-left">
               <p className="text-sm font-medium text-[var(--text)]">Ícone do grupo</p>
               <p className="text-xs text-[var(--text-faint)]">Envie uma imagem (até 7 MB)</p>
             </div>
-            <input ref={iconRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
-            <button onClick={() => iconRef.current?.click()} disabled={savingIcon || uploadingIcon}
-              className="btn-primary flex items-center gap-2 px-4 py-2 text-xs disabled:opacity-30">
-              {savingIcon ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
-              {savingIcon ? "Enviando..." : "Alterar ícone"}
-            </button>
+            {(isOwner || isAdmin) && (
+              <>
+                <input ref={iconRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
+                <button onClick={() => iconRef.current?.click()} disabled={savingIcon || uploadingIcon}
+                  className="btn-primary flex items-center gap-2 px-4 py-2 text-xs disabled:opacity-30">
+                  {savingIcon ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
+                  {savingIcon ? "Enviando..." : "Alterar ícone"}
+                </button>
+              </>
+            )}
           </div>
 
-          {/* Name / description / privacy */}
-          <div className="glass-card space-y-4 p-5">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Nome do grupo</label>
-              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
-                className="glass-card w-full px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Descrição</label>
-              <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={3}
-                placeholder="Descreva o objetivo do grupo..."
-                className="glass-card w-full resize-none px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
-            </div>
-            <label className="flex cursor-pointer items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-[var(--text)]">Grupo público</p>
-                <p className="text-xs text-[var(--text-faint)]">Aparece no ranking global para todos</p>
+          {(isOwner || isAdmin) && (
+            <>
+              {/* Emoji picker */}
+              <div className="glass-card p-5">
+                <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">Emoji</p>
+                <div className="flex flex-wrap gap-2">
+                  {EMOJI_OPTIONS.map((emoji) => (
+                    <button key={emoji} onClick={() => setEditEmoji(emoji)}
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition ${
+                        editEmoji === emoji ? "bg-[var(--accent-bg)] ring-2 ring-[var(--accent)]" : "bg-white/5 hover:bg-[var(--bg-surface-hover)]"
+                      }`}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <button role="switch" aria-checked={editPublic} onClick={() => setEditPublic((v) => !v)}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition ${editPublic ? "bg-[var(--accent)]" : "bg-[var(--bg-surface-hover)]"}`}>
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${editPublic ? "left-[22px]" : "left-0.5"}`} />
-              </button>
-            </label>
-            <button onClick={saveSettings} disabled={savingSettings}
-              className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-30">
-              {savingSettings ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              Salvar alterações
-            </button>
-          </div>
+
+              {/* Name / description / privacy */}
+              <div className="glass-card space-y-4 p-5">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Nome do grupo</label>
+                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="glass-card w-full px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Descrição</label>
+                  <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={3}
+                    placeholder="Descreva o objetivo do grupo..."
+                    className="glass-card w-full resize-none px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
+                </div>
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text)]">Grupo público</p>
+                    <p className="text-xs text-[var(--text-faint)]">Aparece no ranking global para todos</p>
+                  </div>
+                  <button role="switch" aria-checked={editPublic} onClick={() => setEditPublic((v) => !v)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition ${editPublic ? "bg-[var(--accent)]" : "bg-[var(--bg-surface-hover)]"}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${editPublic ? "left-[22px]" : "left-0.5"}`} />
+                  </button>
+                </label>
+                <button onClick={saveSettings} disabled={savingSettings}
+                  className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-30">
+                  {savingSettings ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  Salvar alterações
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Invite */}
-          {isOwner && (
+          {(isOwner || isAdmin) && (
             <div className="glass-card space-y-3 p-5">
               <p className="text-sm font-medium text-[var(--text)]">Convidar amigos</p>
               {friends.length === 0 ? (
