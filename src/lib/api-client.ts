@@ -11,7 +11,7 @@ export interface DashboardSnapshot {
   metrics: Metric[];
   insights: Insight[];
   taskProgress: TaskProgress;
-  streak?: StreakInfo;
+  streak: StreakInfo;
 }
 
 export interface ApiError {
@@ -169,7 +169,7 @@ export const api = {
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 
   // Focus
-  getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP }>("/api/focus"),
+  getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP; lifetimeFocusMinutes: number }>("/api/focus"),
   startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType }) }),
   endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false) =>

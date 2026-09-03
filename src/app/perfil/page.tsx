@@ -75,6 +75,7 @@ const fadeUp = {
 
 const FEATURED_SIZE = 92;
 const GRID_SIZE = 104;
+const MAX_FEATURED_ACHIEVEMENTS = 5;
 
 /* ------------------------------------------------------------------ */
 /*  Achievement detail modal                                          */
@@ -210,6 +211,8 @@ export default function PerfilPage() {
   const [bannerSaving, setBannerSaving] = useState(false);
   const [bannerError, setBannerError] = useState("");
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
+  const [profileStreak, setProfileStreak] = useState<{ current: number; longest: number } | null>(null);
+  const [lifetimeFocusMinutes, setLifetimeFocusMinutes] = useState(0);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -230,14 +233,22 @@ export default function PerfilPage() {
       api.getAchievements().catch(() => null),
       api.getRecaps().catch(() => null),
       api.getProfile().catch(() => null),
+      api.getFocusData().catch(() => null),
       user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch(() => null) : Promise.resolve(null),
-    ]).then(([dash, ach, recapResult, profileResult, env]) => {
+    ]).then(([dash, ach, recapResult, profileResult, focusResult, env]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
       if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
+      if (profileResult?.user) {
+        setProfileStreak({
+          current: profileResult.user.currentStreak ?? 0,
+          longest: profileResult.user.longestStreak ?? 0,
+        });
+      }
       if (profileResult?.user?.equippedDecorationId) setEquippedDecorationId(profileResult.user.equippedDecorationId);
+      if (focusResult) setLifetimeFocusMinutes(focusResult.lifetimeFocusMinutes);
       if (profileResult?.user?.bannerImageUrl) setBannerImageUrl(profileResult.user.bannerImageUrl);
       if (profileResult?.user?.hasCustomBanner) setHasCustomBanner(profileResult.user.hasCustomBanner);
       if (env) setEnvStatus(env);
@@ -262,11 +273,18 @@ export default function PerfilPage() {
     : "—";
   const username = (user as { username?: string }).username;
 
-  const streak = dashboard?.streak?.currentStreak ?? 0;
-  const longestStreak = dashboard?.streak?.longestStreak ?? streak;
-  // lifetime focus in minutes (xp_olympian achievement tracks lifetimeFocus)
-  const lifetimeFocus = achievements.find((a) => a.id === "xp_olympian")?.currentValue ?? 0;
-  const lifetimeFocusH = Math.floor(lifetimeFocus / 60);
+  const streak = profileStreak?.current
+    ?? dashboard?.streak?.currentStreak
+    ?? dashboard?.user?.currentStreak
+    ?? 0;
+  const longestStreak = Math.max(
+    profileStreak?.longest ?? 0,
+    dashboard?.streak?.longestStreak ?? 0,
+    dashboard?.user?.longestStreak ?? 0,
+    streak,
+  );
+  // Lifetime focus is sourced from completed focus sessions, not XP.
+  const lifetimeFocusH = Math.floor(lifetimeFocusMinutes / 60);
 
   const featured = achievements.filter((a) => a.isFeatured).sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0));
   const featuredIds = new Set(featured.map((f) => f.id));
@@ -653,7 +671,7 @@ export default function PerfilPage() {
             </div>
 
             <div className="relative flex flex-wrap justify-center gap-4 sm:justify-start">
-              {[0, 1, 2, 3].map((slot) => {
+              {Array.from({ length: MAX_FEATURED_ACHIEVEMENTS }, (_, slot) => {
                 const ach = featured[slot];
                 if (!ach) {
                   return (

@@ -59,7 +59,7 @@ export function DailyQuestsProvider({
       replaceQuests(data.quests);
       setResetAt(data.resetAt);
     } catch {
-      // keep local (optimistic) state on transient failures
+      // Preserve current data during a transient request failure.
     }
   }, [replaceQuests]);
 
@@ -76,12 +76,35 @@ export function DailyQuestsProvider({
         }
       })
       .catch(() => {
-        // keep local state; the next action's refresh() will reconcile
+        // A later retry below reconciles transient auth/network failures.
       });
     return () => {
       cancelled = true;
     };
   }, [initialQuests.length, replaceQuests]);
+
+  useEffect(() => {
+    if (initialQuests.length > 0 || ready) return;
+    let cancelled = false;
+    let attempts = 0;
+    const retry = async () => {
+      attempts += 1;
+      try {
+        const data = await api.getDailyQuests();
+        if (!cancelled) {
+          replaceQuests(data.quests);
+          setResetAt(data.resetAt);
+        }
+      } catch {
+        if (!cancelled && attempts < 3) setTimeout(retry, attempts * 2000);
+      }
+    };
+    const timer = setTimeout(retry, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [initialQuests.length, ready, replaceQuests]);
 
   const applyMetric = useCallback((metric: MissionMetric | string, update: MetricUpdate = {}) => {
     setQuestsState((prev) =>

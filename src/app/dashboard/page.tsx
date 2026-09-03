@@ -94,6 +94,7 @@ function DashboardContent() {
   // RecurringDailyTasks and the focus/kanban flows via DailyQuestsProvider.
   const { applyMetric, refresh: refreshQuests } = useDailyQuests();
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
+  const [persistedStreak, setPersistedStreak] = useState({ current: 0, longest: 0 });
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
@@ -172,6 +173,9 @@ function DashboardContent() {
         api.getFocusData()
           .then((f) => { if (!cancelled) setFocusData(f); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, focus: "Erro ao carregar dados de foco." })); }),
+        api.getProfile()
+          .then((data) => { if (!cancelled) setPersistedStreak({ current: data.user.currentStreak ?? 0, longest: data.user.longestStreak ?? 0 }); })
+          .catch(() => {}),
         api.getSettings()
           .then((s) => { if (!cancelled) setCoins(s.coins ?? 0); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
@@ -530,15 +534,15 @@ function DashboardContent() {
                 <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIARIO</span>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">Isso nos ajuda a ajustar suas metas de foco hoje</p>
               </div>
-              {snapshot?.streak && (
+              {(snapshot || persistedStreak.current > 0 || persistedStreak.longest > 0) && (
                 <StreakBadge
-                  streak={snapshot.streak.currentStreak}
-                  todayQualified={snapshot.streak.todayQualified}
-                  todayStatus={snapshot.streak.todayStatus ?? null}
-                  yesterdayStatus={snapshot.streak.yesterdayStatus ?? null}
-                  shieldCount={snapshot.streak.shieldCount}
+                  streak={snapshot?.streak?.currentStreak ?? snapshot?.user.currentStreak ?? persistedStreak.current}
+                  todayQualified={snapshot?.streak?.todayQualified ?? false}
+                  todayStatus={snapshot?.streak?.todayStatus ?? null}
+                  yesterdayStatus={snapshot?.streak?.yesterdayStatus ?? null}
+                  shieldCount={snapshot?.streak?.shieldCount ?? 0}
                   shouldPop={streakPop}
-                  equippedShieldIconUrl={snapshot.streak.equippedShieldIconUrl}
+                  equippedShieldIconUrl={snapshot?.streak?.equippedShieldIconUrl}
                 />
               )}
             </div>

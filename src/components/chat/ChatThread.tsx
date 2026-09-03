@@ -7,6 +7,8 @@ import {
   Check,
   CheckCheck,
   Copy,
+  Pin,
+  SmilePlus,
   MessageCircleReply,
   Pencil,
   Trash2,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ChatMessage } from "@/types";
+import { AvatarWithFrame } from "@/components/avatar";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
@@ -63,38 +66,6 @@ function formatDateDivider(iso: string): string {
 }
 
 /* ─── UserAvatar (inline) ─────────────────────────────────────────── */
-
-function Avatar({
-  user,
-  size = 32,
-}: {
-  user: { displayName?: string; photoUrl?: string };
-  size?: number;
-}) {
-  if (user.photoUrl) {
-    return (
-      <img
-        src={user.photoUrl}
-        alt={user.displayName ?? ""}
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-      />
-    );
-  }
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-black"
-      style={{
-        width: size,
-        height: size,
-        background: "linear-gradient(135deg, #71d4ff, #b69cff)",
-      }}
-    >
-      {(user.displayName ?? "?").charAt(0).toUpperCase()}
-    </div>
-  );
-}
 
 /* ─── Status indicators ────────────────────────────────────────────── */
 
@@ -270,6 +241,10 @@ function MessageBubble({
   onContextMenu,
   onReply,
   read,
+  onReaction,
+  reactions,
+  reacted,
+  onQuoteClick,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -279,6 +254,10 @@ function MessageBubble({
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage) => void;
   onReply: (msg: ChatMessage) => void;
   read?: boolean;
+  onReaction: (messageId: number, emoji: string) => void;
+  reactions: Record<string, number>;
+  reacted: Set<string>;
+  onQuoteClick: (messageId: number) => void;
 }) {
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -287,6 +266,18 @@ function MessageBubble({
     },
     [msg, onContextMenu],
   );
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startLongPress = useCallback((e: React.TouchEvent) => {
+    longPressRef.current = setTimeout(() => {
+      const touch = e.touches[0];
+      onContextMenu({ clientX: touch.clientX, clientY: touch.clientY } as React.MouseEvent, msg);
+    }, 500);
+  }, [msg, onContextMenu]);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressRef.current) clearTimeout(longPressRef.current);
+  }, []);
 
   return (
     <motion.div
@@ -297,10 +288,7 @@ function MessageBubble({
     >
       {showAvatar && (
         <div className="mt-0.5 shrink-0">
-          <Avatar
-            user={{ displayName: msg.senderName, photoUrl: msg.senderPhotoUrl }}
-            size={32}
-          />
+          <AvatarWithFrame name={msg.senderName} photoUrl={msg.senderPhotoUrl} size={32} />
         </div>
       )}
       <div
@@ -316,7 +304,9 @@ function MessageBubble({
 
         {/* Reply quote */}
         {msg.replyToBody && (
-          <div
+          <button
+            type="button"
+            onClick={() => msg.replyToId && onQuoteClick(msg.replyToId)}
             className={`mb-1 flex items-start gap-1.5 rounded-t-lg border-l-2 px-2.5 py-1.5 text-[11px] ${
               isMe
                 ? "border-black/30 bg-black/10"
@@ -343,7 +333,7 @@ function MessageBubble({
                 {msg.replyToBody}
               </p>
             </div>
-          </div>
+          </button>
         )}
 
         {/* Bubble */}
@@ -352,14 +342,20 @@ function MessageBubble({
           className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
             isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"
           }`}
+          data-bubble
+          onTouchStart={startLongPress}
+          onTouchEnd={cancelLongPress}
+          onTouchMove={cancelLongPress}
         >
           {/* Media content */}
           {msg.messageType === "IMAGE" && msg.mediaUrl && (
+            <button type="button" onClick={() => window.open(msg.mediaUrl, "_blank")} className="block">
             <img
               src={msg.mediaUrl}
               alt="imagem"
               className="max-h-72 w-full object-cover"
             />
+            </button>
           )}
           {msg.messageType === "VIDEO" && msg.mediaUrl && (
             <video
@@ -424,6 +420,25 @@ function MessageBubble({
           </button>
         </div>
 
+        {Object.keys(reactions).length > 0 && (
+          <div className={`flex flex-wrap gap-1 ${isMe ? "justify-end" : ""}`}>
+            {Object.entries(reactions).map(([emoji, count]) => (
+              <button
+                type="button"
+                key={emoji}
+                onClick={() => onReaction(msg.id, emoji)}
+                className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
+                  reacted.has(emoji)
+                    ? "border-[var(--accent)] bg-[var(--accent-bg)]"
+                    : "border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+                }`}
+              >
+                {emoji} {count}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Timestamp + status */}
         <div
           className={`mt-0.5 flex items-center gap-1 ${
@@ -443,7 +458,7 @@ function MessageBubble({
 
 /* ─── Main ChatThread component ────────────────────────────────────── */
 
-const SCROLL_BOTTOM_THRESHOLD = 120;
+const SCROLL_BOTTOM_THRESHOLD = 150;
 
 export interface ChatThreadProps {
   messages: ChatMessage[];
@@ -505,6 +520,11 @@ export function ChatThread({
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [reactions, setReactions] = useState<Record<number, Record<string, number>>>({});
+  const [reacted, setReacted] = useState<Record<number, Set<string>>>({});
+  const [pinned, setPinned] = useState<ChatMessage[]>([]);
+  const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const initialScrollDoneRef = useRef(false);
 
   /* ─── Scroll management ────────────────────────────────────────── */
 
@@ -530,9 +550,11 @@ export function ChatThread({
     });
   }, []);
 
-  // Initial scroll to bottom
+  // Initial scroll to bottom after the first batch has loaded. The message
+  // list is often populated after this component mounts.
   useEffect(() => {
-    if (messages.length > 0 && prevCountRef.current === 0) {
+    if (messages.length > 0 && !initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
       scrollToBottom(false);
     }
   }, [messages.length, scrollToBottom]);
@@ -557,6 +579,34 @@ export function ChatThread({
     scrollToBottom(true);
   }, [scrollToBottom]);
 
+  const toggleReaction = useCallback((messageId: number, emoji: string) => {
+    setReacted((current) => {
+      const next = new Set(current[messageId] ?? []);
+      const removing = next.has(emoji);
+      if (removing) next.delete(emoji); else next.add(emoji);
+      setReactions((all) => {
+        const messageReactions = { ...(all[messageId] ?? {}) };
+        const count = (messageReactions[emoji] ?? 0) + (removing ? -1 : 1);
+        if (count <= 0) delete messageReactions[emoji]; else messageReactions[emoji] = count;
+        return { ...all, [messageId]: messageReactions };
+      });
+      return { ...current, [messageId]: next };
+    });
+  }, []);
+
+  const pinMessage = useCallback((message: ChatMessage) => {
+    setPinned((current) => current.some((item) => item.id === message.id) ? current : [message, ...current].slice(0, 3));
+  }, []);
+  const togglePin = useCallback((message: ChatMessage) => {
+    setPinned((current) => current.some((item) => item.id === message.id)
+      ? current.filter((item) => item.id !== message.id)
+      : [message, ...current].slice(0, 3));
+  }, []);
+
+  const jumpToMessage = useCallback((messageId: number) => {
+    messageRefs.current[messageId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   /* ─── Message actions ──────────────────────────────────────────── */
 
   const handleContextMenuAction = useCallback(
@@ -579,6 +629,9 @@ export function ChatThread({
           break;
         case "delete":
           onDelete?.(msg.id);
+          break;
+        case "pin":
+          pinMessage(msg);
           break;
       }
     },
@@ -660,6 +713,16 @@ export function ChatThread({
         onClick: () => onReplyMessage?.(msg),
       },
       {
+        label: "Reagir",
+        icon: <SmilePlus size={14} />,
+        onClick: () => toggleReaction(msg.id, "👍"),
+      },
+      {
+        label: pinned.some((item) => item.id === msg.id) ? "Desafixar" : "Fixar",
+        icon: <Pin size={14} />,
+        onClick: () => togglePin(msg),
+      },
+      {
         label: "Editar",
         icon: <Pencil size={14} />,
         onClick: () => handleContextMenuAction("edit", msg),
@@ -673,7 +736,7 @@ export function ChatThread({
         hidden: !isMe,
       },
     ];
-  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage]);
+  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, pinned, togglePin, toggleReaction]);
 
   /* ─── Render ───────────────────────────────────────────────────── */
 
@@ -706,6 +769,19 @@ export function ChatThread({
   return (
     <div className="flex h-full flex-col">
       {/* Scrollable messages area */}
+      {pinned.length > 0 && (
+        <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-bg)]/60 px-4 py-2">
+          <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+            <Pin size={12} className="text-[var(--accent)]" />
+            <span className="truncate">Fixadas: {pinned.map((message) => (
+              <button key={message.id} type="button" onClick={() => jumpToMessage(message.id)} className="mr-2 text-left text-[var(--text)] hover:text-[var(--accent)]">
+                {message.body ?? "Mídia"}
+              </button>
+            ))}</span>
+          </div>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -784,8 +860,11 @@ export function ChatThread({
           }
 
           return (
-            <MessageBubble
+            <div
               key={item.key}
+              ref={(node) => { messageRefs.current[msg.id] = node; }}
+            >
+            <MessageBubble
               msg={msg}
               isMe={isMe}
               showAvatar={showAvatar ? isFirstInGroup : false}
@@ -794,14 +873,19 @@ export function ChatThread({
               onContextMenu={handleContextMenu}
               onReply={() => onReplyMessage?.(msg)}
               read={readMessageIds?.has(msg.id)}
+              onReaction={toggleReaction}
+              reactions={reactions[msg.id] ?? {}}
+              reacted={reacted[msg.id] ?? new Set()}
+              onQuoteClick={jumpToMessage}
             />
+            </div>
           );
         })}
       </div>
 
       {/* "New messages" pill */}
       <AnimatePresence>
-        {!isNearBottom && pendingCount > 0 && (
+        {!isNearBottom && (
           <NewMessagesPill count={pendingCount} onClick={handlePillClick} />
         )}
       </AnimatePresence>

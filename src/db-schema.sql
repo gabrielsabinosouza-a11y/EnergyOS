@@ -510,6 +510,31 @@ create table if not exists dm_reads (
   primary key (profile_id, other_id)
 );
 
+-- Shared chat interaction data. conversation_type is either GROUP or DM and
+-- conversation_id is the group id or the other participant's profile id.
+create table if not exists message_reactions (
+  message_id bigint not null,
+  message_kind text not null check (message_kind in ('GROUP', 'DM')),
+  user_id text not null references profiles(id) on delete cascade,
+  emoji text not null,
+  created_at timestamptz not null default now(),
+  primary key (message_id, message_kind, user_id, emoji)
+);
+
+create index if not exists message_reactions_message_idx
+  on message_reactions(message_id, message_kind);
+
+create table if not exists pinned_messages (
+  message_id bigint not null,
+  message_kind text not null check (message_kind in ('GROUP', 'DM')),
+  pinned_by text not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (message_id, message_kind)
+);
+
+create index if not exists pinned_messages_kind_idx
+  on pinned_messages(message_kind, message_id);
+
 -- ── Weekly league ───────────────────────────────────────────────────────────
 create table if not exists league_standings (
   profile_id text primary key references profiles(id) on delete cascade,

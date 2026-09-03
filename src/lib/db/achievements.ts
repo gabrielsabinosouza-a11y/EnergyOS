@@ -306,8 +306,8 @@ export async function toggleFeaturedAchievement(
     [profileId],
   );
   const featuredCount = Number(countResult.rows[0]?.count ?? 0);
-  if (featuredCount >= 4) {
-    throw new ValidationError("Você já tem 4 conquistas em destaque. Remova uma primeiro.");
+  if (featuredCount >= 5) {
+    throw new ValidationError("Você já tem 5 conquistas em destaque. Remova uma primeiro.");
   }
 
   const nextOrder = featuredCount + 1;

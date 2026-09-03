@@ -22,6 +22,19 @@ const QUEST_DESCRIPTIONS: Record<string, string> = {
   ROOM_SESSION: "Participe de uma sessão em sala",
 };
 
+function nextResetFallback(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  const date = `${value("year")}-${value("month")}-${value("day")}`;
+  const nextMidnight = new Date(new Date(`${date}T00:00:00-03:00`).getTime() + 86_400_000);
+  return nextMidnight.toISOString();
+}
+
 export interface DailyQuestsWidgetProps {
   coins?: number;
   onCoinsChange?: (coins: number) => void;
@@ -36,6 +49,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   const [claimingId, setClaimingId] = useState<number | null>(null);
   const [showClaimAnimation, setShowClaimAnimation] = useState<{ coins: number; xp: number; baseXp: number; balance: number } | null>(null);
   const [claimError, setClaimError] = useState<{ message: string; questId: number | null } | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (claimError) {
@@ -45,9 +59,9 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   }, [claimError]);
 
   useEffect(() => {
-    if (!resetAt) return;
+    const effectiveResetAt = resetAt ?? nextResetFallback();
     const update = () => {
-      const remaining = Math.max(0, new Date(resetAt).getTime() - Date.now());
+      const remaining = Math.max(0, new Date(effectiveResetAt).getTime() - Date.now());
       setCountdown({
         hours: Math.floor(remaining / (1000 * 60 * 60)),
         minutes: Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60)),
@@ -56,13 +70,22 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
     update();
     const timer = setInterval(() => {
       update();
-      if (new Date(resetAt).getTime() <= Date.now()) {
+      if (new Date(effectiveResetAt).getTime() <= Date.now()) {
         clearInterval(timer);
         void refresh();
       }
     }, 30_000);
     return () => clearInterval(timer);
   }, [resetAt, refresh]);
+
+  useEffect(() => {
+    if (ready) {
+      setLoadError(false);
+      return;
+    }
+    const timer = setTimeout(() => setLoadError(true), 6000);
+    return () => clearTimeout(timer);
+  }, [ready]);
 
   const handleClaim = useCallback(async (progressId: number, index: number) => {
     const quest = quests[index];
@@ -142,11 +165,16 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
           </span>
         </div>
         <span className="text-[10px] text-[var(--text-faint)]">
-          Novas em {countdown.hours}h {countdown.minutes}min
+          {loadError ? "Não foi possível carregar — tentando novamente" : `Novas em ${countdown.hours}h ${countdown.minutes}min`}
         </span>
       </div>
 
       <div className="space-y-3">
+        {!ready && loadError && (
+          <button type="button" onClick={() => { setLoadError(false); void refresh(); }} className="w-full rounded-xl border border-[var(--border-subtle)] p-4 text-left text-xs text-[var(--text-muted)] hover:border-[var(--accent)]/40">
+            Recarregar missões diárias
+          </button>
+        )}
         {quests.map((quest, index) => {
           const progress = getProgressPercentage(quest);
           const isCompletable = isQuestCompletable(quest);

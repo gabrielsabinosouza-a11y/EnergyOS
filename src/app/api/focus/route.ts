@@ -2,18 +2,19 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { rateLimitForProfile } from "@/lib/rate-limit";
-import { startFocusSession, endFocusSession, getFocusHistory, getTodayFocusStats } from "@/lib/db/focus";
+import { startFocusSession, endFocusSession, getFocusHistory, getTodayFocusStats, getLifetimeFocusMinutes } from "@/lib/db/focus";
 import { getUserXP } from "@/lib/db/xp";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
-    const [history, todayStats, xp] = await Promise.all([
+    const [history, todayStats, xp, lifetimeFocusMinutes] = await Promise.all([
       getFocusHistory(profileId),
       getTodayFocusStats(profileId),
       getUserXP(profileId),
+      getLifetimeFocusMinutes(profileId),
     ]);
-    return jsonOk({ history, todayStats, xp });
+    return jsonOk({ history, todayStats, xp, lifetimeFocusMinutes });
   });
 }
 
