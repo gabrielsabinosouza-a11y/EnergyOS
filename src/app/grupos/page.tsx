@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { ChatThread } from "@/components/chat";
+import { groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
@@ -56,24 +58,6 @@ function UserAvatar({ user, size = 40 }: { user: { displayName: string; photoUrl
       {user.displayName.charAt(0).toUpperCase()}
     </div>
   );
-}
-
-function relativeTime(iso?: string): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "agora";
-  if (mins < 60) return `${mins}min`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
-}
-
-function fmtDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return "";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /** Compress an image file to a small data-URL (used for group avatars). */
@@ -888,7 +872,7 @@ function GroupDetailPanel({
   const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [replyingTo, setReplyingTo] = useState<GroupMessage | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -955,11 +939,6 @@ function GroupDetailPanel({
   }, [group.id, tab]);
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
-  useEffect(() => {
     if (!tab.includes("settings")) return;
     if (friends.length > 0) return;
     api.getFriends().then(({ friends: f }) => setFriends(f)).catch(() => {});
@@ -974,6 +953,8 @@ function GroupDetailPanel({
     setMessages((prev) => [...prev, message]);
     lastIdRef.current = message.id;
   }
+
+  const chatMessages = messages.map((m) => groupToChatMessage(m));
 
   async function sendMediaMessage(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
     setSending(true);
@@ -991,9 +972,8 @@ function GroupDetailPanel({
     }
   }
 
-  async function handleSend() {
-    const body = input.trim();
-    if (!body || sending) return;
+  async function handleSend(body: string) {
+    if (!body.trim() || sending) return;
     setInput("");
     setSending(true);
     setMessageError("");
@@ -1002,6 +982,34 @@ function GroupDetailPanel({
       appendMessage(message);
     } catch { setInput(body); }
     finally { setSending(false); }
+  }
+
+  async function handleReply(body: string, replyToId: number) {
+    if (!body.trim() || sending) return;
+    setInput("");
+    setSending(true);
+    setMessageError("");
+    try {
+      const { message } = await api.sendGroupMessage(group.id, body);
+      appendMessage({ ...message, replyToId, replyToBody: replyingTo?.body, replyToSenderName: replyingTo?.senderId === currentUserId ? "você" : replyingTo?.senderName });
+      setReplyingTo(null);
+    } catch { setInput(body); }
+    finally { setSending(false); }
+  }
+
+  async function handleEditMessage(messageId: number, newBody: string) {
+    const msg = messages.find((m) => m.id === messageId);
+    if (!msg) return;
+    try {
+      await api.sendGroupMessage(group.id, newBody);
+      setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, body: newBody, editedAt: new Date().toISOString() } : m));
+    } catch {
+      setMessageError("Não foi possível editar a mensagem.");
+    }
+  }
+
+  async function handleDeleteMessage(messageId: number) {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }
 
   async function handleSendImage(file: File) {
@@ -1245,104 +1253,75 @@ function GroupDetailPanel({
 
       {/* Chat tab */}
       {tab === "chat" && (
-        <>
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12">
-            {messages.length === 0 && (
-              <p className="pt-12 text-center text-xs text-[var(--text-faint)]">Nenhuma mensagem ainda</p>
-            )}
-            {messages.map((msg) => {
-              const isMe = msg.senderId === currentUserId;
-              return (
-                <motion.div key={msg.id} initial={reduced ? false : { opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
-                  className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
-                  <div className="mt-0.5 shrink-0">
-                    <UserAvatar user={{ displayName: msg.senderName, photoUrl: msg.senderPhotoUrl }} size={32} />
-                  </div>
-                  <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
-                    {!isMe && <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">{msg.senderName}</p>}
-                    <div className={`overflow-hidden rounded-2xl ${isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"}`}>
-                      {msg.messageType === "IMAGE" && msg.mediaUrl && (
-                        <img src={msg.mediaUrl} alt="imagem" className="max-h-72 w-full object-cover" />
-                      )}
-                      {msg.messageType === "VIDEO" && msg.mediaUrl && (
-                        <video src={msg.mediaUrl} controls className="max-h-72 w-full object-cover" />
-                      )}
-                      {msg.messageType === "AUDIO" && msg.mediaUrl && (
-                        <div className="px-3 py-2">
-                          <audio src={msg.mediaUrl} controls className="w-64 max-w-full" />
-                          {msg.mediaDurationSeconds != null && (
-                            <p className={`mt-0.5 text-[9px] ${isMe ? "text-black/70" : "text-[var(--text-faint)]"}`}>
-                              {fmtDuration(msg.mediaDurationSeconds)}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {msg.messageType === "STICKER" && (
-                        <div className="px-3 py-2 text-5xl leading-none">{msg.body || msg.mediaUrl}</div>
-                      )}
-                      {(msg.body || msg.messageType === "TEXT") && (
-                        <div className={`px-4 py-2.5 text-sm leading-relaxed ${isMe ? "text-black" : "text-[var(--text)]"}`}>
-                          {msg.body}
-                        </div>
-                      )}
-                    </div>
-                    <p className={`mt-0.5 text-[9px] ${isMe ? "text-right text-[var(--text-faint)]" : "text-[var(--text-faint)]"}`}>
-                      {relativeTime(msg.createdAt)}
-                    </p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-          <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
-            {/* Sticker picker */}
-            <AnimatePresence>
-              {showStickers && (
-                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                  className="mb-2 grid max-h-40 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
-                  {stickers.map((s) => (
-                    <button key={s.id} onClick={() => handleSendSticker(s.emoji)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:bg-[var(--accent-bg)]">
-                      {s.emoji}
-                    </button>
-                  ))}
-                </motion.div>
+        <ChatThread
+          messages={chatMessages}
+          currentUserId={currentUserId}
+          reduced={reduced}
+          showAvatar
+          showSenderName
+          onSend={handleSend}
+          onReply={handleReply}
+          onEdit={handleEditMessage}
+          onDelete={handleDeleteMessage}
+          onReplyMessage={(m) => {
+            const gm = messages.find((x) => x.id === m.id);
+            if (gm) setReplyingTo(gm);
+          }}
+          replyingTo={replyingTo ? groupToChatMessage(replyingTo) : null}
+          onCancelReply={() => setReplyingTo(null)}
+          inputSlot={
+            <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
+              {messageError && (
+                <p className="mb-2 text-[11px] text-[var(--red)]">{messageError}</p>
               )}
-            </AnimatePresence>
-            <div className="glass-card flex items-center gap-1.5 px-2 py-2">
-              <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden"
-                onChange={handleFileChange} />
-              <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || sending || recording}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                {uploadingMedia ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={15} />}
-              </button>
-              <button onClick={() => setShowStickers((v) => !v)} disabled={recording}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                <Sticker size={15} />
-              </button>
-              <input type="text" placeholder="Mensagem..." value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none" />
-              {recording ? (
-                <button onClick={stopRecording}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110">
-                  <Square size={13} />
+              {/* Sticker picker */}
+              <AnimatePresence>
+                {showStickers && (
+                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
+                    className="mb-2 grid max-h-40 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
+                    {stickers.map((s) => (
+                      <button key={s.id} onClick={() => handleSendSticker(s.emoji)}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:bg-[var(--accent-bg)]">
+                        {s.emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div className="glass-card flex items-center gap-1.5 px-2 py-2">
+                <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden"
+                  onChange={handleFileChange} />
+                <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || sending || recording}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                  {uploadingMedia ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={15} />}
                 </button>
-              ) : (
-                <button onClick={startRecording} disabled={uploadingMedia || sending}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                  <Mic size={15} />
+                <button onClick={() => setShowStickers((v) => !v)} disabled={recording}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                  <Sticker size={15} />
                 </button>
-              )}
-              <button onClick={handleSend} disabled={!input.trim() || sending || recording}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30">
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </button>
+                <input type="text" placeholder="Mensagem..." value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(input); } }}
+                  className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none" />
+                {recording ? (
+                  <button onClick={stopRecording}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110">
+                    <Square size={13} />
+                  </button>
+                ) : (
+                  <button onClick={startRecording} disabled={uploadingMedia || sending}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
+                    <Mic size={15} />
+                  </button>
+                )}
+                <button onClick={() => handleSend(input)} disabled={!input.trim() || sending || recording}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30">
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                </button>
+              </div>
             </div>
-          </div>
-        </>
+          }
+        />
       )}
 
       {/* Members tab */}

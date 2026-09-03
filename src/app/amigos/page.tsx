@@ -18,6 +18,8 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
+import { ChatThread } from "@/components/chat";
+import { dmToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
@@ -506,9 +508,7 @@ function ChatPanel({
   onRead: () => void;
 }) {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [replyingTo, setReplyingTo] = useState<DirectMessage | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
 
   /* Mark read on open */
@@ -549,119 +549,58 @@ function ChatPanel({
     return () => clearInterval(interval);
   }, [friend.id]);
 
-  /* Auto-scroll */
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
-  async function handleSend() {
-    const body = input.trim();
-    if (!body || sending) return;
-    setInput("");
-    setSending(true);
-    try {
-      const { message } = await api.sendMessage(friend.id, body);
-      setMessages((prev) => [...prev, message]);
-      lastIdRef.current = message.id;
-    } catch {
-      setInput(body);
-    } finally {
-      setSending(false);
-    }
+  async function handleSend(body: string) {
+    const { message } = await api.sendMessage(friend.id, body);
+    setMessages((prev) => [...prev, message]);
+    lastIdRef.current = message.id;
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+  async function handleReply(body: string, replyToId: number) {
+    const { message } = await api.sendMessage(friend.id, body);
+    setMessages((prev) => [...prev, { ...message, replyToId, replyToBody: replyingTo?.body, replyToSenderName: replyingTo?.senderId === currentUserId ? "você" : friend.displayName }]);
+    lastIdRef.current = message.id;
+    setReplyingTo(null);
   }
+
+  /* Convert to unified type */
+  const chatMessages = useMemo(
+    () => messages.map((m) => dmToChatMessage(m, currentUserId)),
+    [messages, currentUserId],
+  );
 
   return (
     <Modal onClose={onClose} variant="side-right">
       <div className="flex h-full w-full flex-col border-l border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
-        <UserAvatar user={friend} size={36} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[var(--text)]">
-            {friend.displayName}
-          </p>
-        </div>
-        <button
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-        >
-          <XIcon size={18} />
-        </button>
-      </div>
-
-      {/* Messages */}
-      <div
-        ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
-      >
-        {messages.length === 0 && (
-          <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
-            Nenhuma mensagem ainda
-          </p>
-        )}
-        {messages.map((msg) => {
-          const isMe = msg.senderId === currentUserId;
-          return (
-            <motion.div
-              key={msg.id}
-              initial={reduced ? false : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  isMe
-                    ? "rounded-br-md bg-[var(--accent)] text-black"
-                    : "glass-card rounded-bl-md text-[var(--text)]"
-                }`}
-              >
-                {msg.body}
-                <p
-                  className={`mt-1 text-[9px] ${
-                    isMe ? "text-black/50" : "text-[var(--text-faint)]"
-                  }`}
-                >
-                  {relativeTime(msg.createdAt)}
-                </p>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-[var(--border-subtle)] px-4 py-3">
-        <div className="glass-card flex items-center gap-2 px-3 py-2">
-          <input
-            type="text"
-            placeholder="Mensagem..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
-          />
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+          <UserAvatar user={friend} size={36} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-[var(--text)]">
+              {friend.displayName}
+            </p>
+          </div>
           <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
           >
-            {sending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Send size={14} />
-            )}
+            <XIcon size={18} />
           </button>
         </div>
-      </div>
+
+        {/* Shared ChatThread */}
+        <ChatThread
+          messages={chatMessages}
+          currentUserId={currentUserId}
+          reduced={reduced}
+          onSend={handleSend}
+          onReply={handleReply}
+          onReplyMessage={(m) => {
+            const dm = messages.find((x) => x.id === m.id);
+            if (dm) setReplyingTo(dm);
+          }}
+          replyingTo={replyingTo ? dmToChatMessage(replyingTo, currentUserId) : null}
+          onCancelReply={() => setReplyingTo(null)}
+        />
       </div>
     </Modal>
   );

@@ -26,6 +26,19 @@ import type { Variants } from "framer-motion";
 
 const fadeUp: Variants = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } } };
 
+/** Forces a promise to settle so the check-in button can never hang forever
+ *  on a stalled request (server timeout, dropped connection, lost auth token,
+ *  etc.). Always resolves the outer promise once the timeout elapses. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 const SLEEP_OPTIONS = [
   { label: "Menos de 6h", sublabel: "Descanso insuficiente", hours: 5, icon: Moon, color: "#f87171", bgColor: "rgba(248,113,113,.08)" },
   { label: "6 a 7 horas", sublabel: "Pode melhorar", hours: 6.5, icon: Moon, color: "#fbbf24", bgColor: "rgba(251,191,36,.08)" },

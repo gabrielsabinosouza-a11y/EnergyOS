@@ -32,11 +32,19 @@ import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
 import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
-import { CircularDurationPicker } from "@/components/dashboard/circular-duration-picker";
+import { CircularDurationPicker, FocusDurationReadout } from "@/components/dashboard/circular-duration-picker";
+import {
+  FOCUS_DURATION_DEFAULT_MINUTES,
+  FOCUS_DURATION_MAX_MINUTES,
+  FOCUS_DURATION_MIN_MINUTES,
+  FOCUS_DURATION_SNAP_MINUTES,
+  focusDurationProgress,
+  formatCountdownMmSs,
+} from "@/lib/focus-duration";
 
 type PageState = "list" | "create" | "join" | "room";
 
-const DEFAULT_DURATION = 60;
+const DEFAULT_DURATION = FOCUS_DURATION_DEFAULT_MINUTES;
 const CREATE_RING_SIZE = 210;
 const JOIN_RING_SIZE = 120;
 const POLL_INTERVAL_MS = 4000;
@@ -61,9 +69,7 @@ function loadRoomSession(roomId: number): PersistedRoomSession | null {
 }
 
 function formatTime(totalSeconds: number): string {
-  const m = Math.max(0, Math.floor(totalSeconds / 60));
-  const s = Math.max(0, totalSeconds % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return formatCountdownMmSs(totalSeconds);
 }
 
 function resolveStage(progress: number, isRunning: boolean): EnergyStage {
@@ -161,9 +167,9 @@ function SharedRing({
         <CircularDurationPicker
           value={room.durationMinutes}
           onChange={onDurationChange}
-          maxDurationMinutes={120}
-          snapIncrement={5}
-          minMinutes={10}
+          maxDurationMinutes={FOCUS_DURATION_MAX_MINUTES}
+          snapIncrement={FOCUS_DURATION_SNAP_MINUTES}
+          minMinutes={FOCUS_DURATION_MIN_MINUTES}
           size={RING_SIZE}
           accentColor={cfg.accent}
           disabled={disabled}
@@ -172,8 +178,7 @@ function SharedRing({
       );
     }
 
-    const total = 120 * 60 * 1000;
-    const frac = Math.max(0, Math.min(1, (room.durationMinutes * 60 * 1000) / total));
+    const frac = focusDurationProgress(room.durationMinutes);
     const radius = (RING_SIZE - 16) / 2;
     const circumference = 2 * Math.PI * radius;
     return (
@@ -810,9 +815,9 @@ export default function FocusRoomsPage() {
               <CircularDurationPicker
                 value={selectedDuration}
                 onChange={setSelectedDuration}
-                maxDurationMinutes={120}
-                snapIncrement={5}
-                minMinutes={10}
+                maxDurationMinutes={FOCUS_DURATION_MAX_MINUTES}
+                snapIncrement={FOCUS_DURATION_SNAP_MINUTES}
+                minMinutes={FOCUS_DURATION_MIN_MINUTES}
                 size={CREATE_RING_SIZE}
                 accentColor={selectedEnergyCfg.accent}
                 centerContent={<></>}
@@ -823,15 +828,10 @@ export default function FocusRoomsPage() {
                 onPick={() => setShowEnergyPicker(true)}
               />
             </div>
-            <div className="mt-4 flex flex-col items-center gap-1">
-              <span
-                className="font-mono font-bold tabular-nums leading-none"
-                style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}
-              >
-                {selectedDuration}
-              </span>
-              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">minutos</span>
-            </div>
+            <FocusDurationReadout
+              minutes={selectedDuration}
+              fontSize={34}
+            />
             <span className="mt-2 text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
               toque no centro para trocar a energia
             </span>
@@ -1030,13 +1030,14 @@ export default function FocusRoomsPage() {
             </div>
 
             {/* Countdown / duration label */}
-            <div className="mt-4 flex flex-col items-center gap-1">
-              <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 42, letterSpacing: "-0.04em", color: "var(--text)" }}>
-                {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(Math.floor(room.durationMinutes / 60)).padStart(2, "0")}:${String(room.durationMinutes % 60).padStart(2, "0")}`}
-              </span>
-              <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
-                {running ? (paused ? "pausada" : "em andamento") : "horas focadas"}
-              </span>
+            <div className="flex flex-col items-center">
+              <FocusDurationReadout
+                minutes={room.durationMinutes}
+                remainingSeconds={Math.ceil((sharedRemainingMs ?? 0) / 1000)}
+                active={running}
+                paused={paused}
+                pausedLabel="pausada"
+              />
               {paused && (
                 <span className="mt-1 flex items-center gap-1 text-[10px] text-amber-400">
                   <Pause size={11} /> O anfitrião pausou a sessão

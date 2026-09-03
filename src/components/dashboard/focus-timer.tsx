@@ -5,7 +5,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Timer, Bell, Zap } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
 import type { FocusSession } from "@/types";
-import { CircularDurationPicker } from "./circular-duration-picker";
+import { CircularDurationPicker, FocusDurationReadout } from "./circular-duration-picker";
+import {
+  FOCUS_DURATION_DEFAULT_MINUTES,
+  FOCUS_DURATION_MAX_MINUTES,
+  FOCUS_DURATION_MIN_MINUTES,
+  FOCUS_DURATION_SNAP_MINUTES,
+  formatCountdownMmSs,
+} from "@/lib/focus-duration";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
@@ -73,9 +80,6 @@ function clearSessionState(): void {
 // If cross-tab sync is needed in the future, add a 'storage' event listener.
 
 const RING_SIZE = 260;
-const MAX_DURATION = 120;
-const SNAP_INCREMENT = 5;
-const MIN_DURATION = 10;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -86,9 +90,7 @@ function calculateCoins(durationMinutes: number): number {
 }
 
 function formatTime(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return formatCountdownMmSs(totalSeconds);
 }
 
 function resolveStage(progress: number, isActive: boolean, isExtinguished: boolean): EnergyStage {
@@ -185,9 +187,9 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostA
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }: FocusTimerProps) {
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState(FOCUS_DURATION_DEFAULT_MINUTES);
   const [state, setState] = useState<TimerState>("idle");
-  const [remaining, setRemaining] = useState(60 * 60);
+  const [remaining, setRemaining] = useState(FOCUS_DURATION_DEFAULT_MINUTES * 60);
   const [lastCoins, setLastCoins] = useState(0);
   const [showComplete, setShowComplete] = useState(false);
   const [rewardCount, setRewardCount] = useState(1);
@@ -202,13 +204,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
-  const remainingRef = useRef(60 * 60);
-  const remainingMsRef = useRef(60 * 60 * 1000);
+  const remainingRef = useRef(FOCUS_DURATION_DEFAULT_MINUTES * 60);
+  const remainingMsRef = useRef(FOCUS_DURATION_DEFAULT_MINUTES * 60 * 1000);
   const runningSinceRef = useRef<number | null>(null);
   const stateRef = useRef<TimerState>("idle");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedEnergyRef = useRef<EnergyType>("flame");
-  const durationRef = useRef(60);
+  const durationRef = useRef(FOCUS_DURATION_DEFAULT_MINUTES);
   const completedRef = useRef(false);
   const soundEnabledRef = useRef(true);
 
@@ -240,7 +242,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
       setSelectedEnergy(persisted.selectedEnergy);
       selectedEnergyRef.current = persisted.selectedEnergy;
     }
-    if (persisted.durationMinutes && persisted.durationMinutes >= MIN_DURATION && persisted.durationMinutes <= MAX_DURATION) {
+    if (persisted.durationMinutes && persisted.durationMinutes >= FOCUS_DURATION_MIN_MINUTES && persisted.durationMinutes <= FOCUS_DURATION_MAX_MINUTES) {
       setDuration(persisted.durationMinutes);
       durationRef.current = persisted.durationMinutes;
     }
@@ -626,9 +628,9 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             <CircularDurationPicker
               value={duration}
               onChange={setDuration}
-              maxDurationMinutes={MAX_DURATION}
-              snapIncrement={SNAP_INCREMENT}
-              minMinutes={MIN_DURATION}
+              maxDurationMinutes={FOCUS_DURATION_MAX_MINUTES}
+              snapIncrement={FOCUS_DURATION_SNAP_MINUTES}
+              minMinutes={FOCUS_DURATION_MIN_MINUTES}
               size={RING_SIZE}
               accentColor={cfg.accent}
               centerContent={<></>}
@@ -663,18 +665,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           </div>
         )}
 
-        {/* Countdown display */}
-        <div className="mt-4 flex flex-col items-center gap-1">
-          <span
-            className="font-mono font-bold tabular-nums leading-none"
-            style={{ fontSize: 44, color: isPaused ? "#ffb86b" : "var(--text)", letterSpacing: "-0.04em", transition: "color 0.3s" }}
-          >
-            {isActive ? formatTime(remaining) : `${String(Math.floor(duration / 60)).padStart(2, "0")}:${String(duration % 60).padStart(2, "0")}`}
-          </span>
-          <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
-            {state === "running" ? "em andamento" : state === "paused" ? "pausado" : "horas focadas"}
-          </span>
-        </div>
+        <FocusDurationReadout
+          minutes={duration}
+          remainingSeconds={remaining}
+          active={isActive}
+          paused={isPaused}
+          fontSize={44}
+        />
 
         {/* Contextual notification prompt — only after a session starts, with an
             in-app explanation BEFORE the actual browser permission request */}

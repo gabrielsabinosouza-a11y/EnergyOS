@@ -119,7 +119,9 @@ export async function createFocusRoom(
 ): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
   if (!hostProfileId) throw new ValidationError("Host profile ID is required");
-  if (durationMinutes <= 0) throw new ValidationError("Duration must be positive");
+  if (!Number.isInteger(durationMinutes) || durationMinutes < FOCUS_DURATION_MIN_MINUTES || durationMinutes > FOCUS_DURATION_MAX_MINUTES) {
+    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos.`);
+  }
 
   // Generate a unique code
   let code = generateRoomCode();
@@ -259,7 +261,9 @@ export async function updateParticipantEnergyType(roomId: number, profileId: str
 // Update the room's duration (host only)
 export async function updateRoomDuration(roomId: number, hostProfileId: string, durationMinutes: number): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  if (durationMinutes <= 0) throw new ValidationError("Duration must be positive");
+  if (!Number.isInteger(durationMinutes) || durationMinutes < FOCUS_DURATION_MIN_MINUTES || durationMinutes > FOCUS_DURATION_MAX_MINUTES) {
+    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos.`);
+  }
 
   // Verify host
   const room = await pool.query<{ host_profile_id: string }>(

@@ -857,6 +857,7 @@ export default function PerfilPage() {
       {/* ─── Achievement Detail Modal ────────────────────────────── */}
       {selectedAchievement && (
         <AchievementModal
+          key={selectedAchievement.id}
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
           isOwn

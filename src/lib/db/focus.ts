@@ -10,6 +10,7 @@ import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
 import { checkAndUnlockMilestones } from "./group-milestones";
 import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
+import { FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 export const GARDEN_ENERGY_TYPES = [
   "flame", "water", "earth", "wind", "thunder", "ice",
@@ -152,7 +153,7 @@ export async function startFocusSession(
   energyType?: string,
 ): Promise<FocusSession> {
   parseProfileId(profileId);
-  if (!Number.isInteger(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > 240) {
+  if (!Number.isInteger(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > FOCUS_DURATION_MAX_MINUTES) {
     throw new ValidationError("Duração inválida.");
   }
   const energy = energyType && (GARDEN_ENERGY_TYPES as readonly string[]).includes(energyType) ? energyType : null;
@@ -188,7 +189,7 @@ export async function endFocusSession(
   // session's own target duration (the maximum legitimate reward).
   const targetCap = session.rows[0].target_duration_minutes
     ? Math.round(session.rows[0].target_duration_minutes)
-    : 240;
+    : FOCUS_DURATION_MAX_MINUTES;
   const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   const coins = Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;

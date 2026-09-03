@@ -1,6 +1,14 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useState } from "react";
+import {
+  FOCUS_DURATION_IDLE_LABEL,
+  FOCUS_DURATION_MAX_MINUTES,
+  FOCUS_DURATION_MIN_MINUTES,
+  FOCUS_DURATION_SNAP_MINUTES,
+  focusDurationProgress,
+  formatCountdownMmSs,
+} from "@/lib/focus-duration";
 
 interface CircularDurationPickerProps {
   value: number;
@@ -21,23 +29,12 @@ function clampAndSnap(raw: number, min: number, max: number, snap: number): numb
   return Math.max(min, Math.min(max, snapped));
 }
 
-/**
- * Maps a duration (in minutes) to a progress fraction of the ring.
- * The ring spans [minMinutes, maxDurationMinutes] across 360°, so the
- * minimum always sits at the 12 o'clock start (fraction 0) and the
- * maximum at the end of the arc (fraction 1).
- */
-function progressForMinutes(minutes: number, min: number, max: number): number {
-  if (max <= min) return 0;
-  return Math.max(0, Math.min(1, (minutes - min) / (max - min)));
-}
-
 export function CircularDurationPicker({
   value,
   onChange,
-  maxDurationMinutes = 120,
-  snapIncrement = 5,
-  minMinutes = 10,
+  maxDurationMinutes = FOCUS_DURATION_MAX_MINUTES,
+  snapIncrement = FOCUS_DURATION_SNAP_MINUTES,
+  minMinutes = FOCUS_DURATION_MIN_MINUTES,
   size = 220,
   disabled = false,
   accentColor = "var(--accent)",
@@ -72,7 +69,7 @@ export function CircularDurationPicker({
   const strokeWidth = 6;
   const handleRadius = 10;
 
-  const fraction = progressForMinutes(value, minMinutes, maxDurationMinutes);
+  const fraction = focusDurationProgress(value, minMinutes, maxDurationMinutes);
   const arcLength = fraction * circumference;
 
   const handleAngleDeg = fraction * 360;
@@ -209,7 +206,7 @@ export function CircularDurationPicker({
         {/* Tick marks at snap intervals (min-aware positions) */}
         {Array.from({ length: Math.floor((maxDurationMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
           const tickMinutes = minMinutes + i * snapIncrement;
-          const tickFrac = progressForMinutes(tickMinutes, minMinutes, maxDurationMinutes);
+          const tickFrac = focusDurationProgress(tickMinutes, minMinutes, maxDurationMinutes);
           const tickAngle = tickFrac * 360 - 90;
           const tickRad = (tickAngle * Math.PI) / 180;
           const isMajor = tickMinutes % 60 === 0;
@@ -296,6 +293,50 @@ export function CircularDurationPicker({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Shared duration readout used by the dashboard timer and focus rooms.
+ * Idle/setup shows the minutes value (Option A). While a session is live,
+ * it switches to an MM:SS countdown.
+ */
+export function FocusDurationReadout({
+  minutes,
+  remainingSeconds,
+  active = false,
+  paused = false,
+  pausedLabel = "pausado",
+  runningLabel = "em andamento",
+  idleLabel = FOCUS_DURATION_IDLE_LABEL,
+  fontSize = 42,
+}: {
+  minutes: number;
+  remainingSeconds?: number;
+  active?: boolean;
+  paused?: boolean;
+  pausedLabel?: string;
+  runningLabel?: string;
+  idleLabel?: string;
+  fontSize?: number;
+}) {
+  return (
+    <div className="mt-4 flex flex-col items-center gap-1">
+      <span
+        className="font-mono font-bold tabular-nums leading-none"
+        style={{
+          fontSize,
+          letterSpacing: "-0.04em",
+          color: paused ? "#ffb86b" : "var(--text)",
+          transition: "color 0.3s",
+        }}
+      >
+        {active ? formatCountdownMmSs(remainingSeconds ?? 0) : Math.round(minutes)}
+      </span>
+      <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
+        {active ? (paused ? pausedLabel : runningLabel) : idleLabel}
+      </span>
     </div>
   );
 }

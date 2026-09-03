@@ -165,6 +165,60 @@ export interface DirectMessage {
   recipientId: string;
   body: string;
   createdAt: string;
+  replyToId?: number;
+  replyToBody?: string;
+  replyToSenderName?: string;
+  editedAt?: string;
+}
+
+/* Unified message type used by the shared ChatThread component */
+export interface ChatMessage {
+  id: number;
+  senderId: string;
+  senderName?: string;
+  senderPhotoUrl?: string;
+  body?: string;
+  messageType?: string;
+  mediaUrl?: string;
+  mediaDurationSeconds?: number;
+  createdAt: string;
+  replyToId?: number;
+  replyToBody?: string;
+  replyToSenderName?: string;
+  editedAt?: string;
+}
+
+/** Convert a DirectMessage to the unified ChatMessage format */
+export function dmToChatMessage(dm: DirectMessage, currentUserId: string): ChatMessage {
+  return {
+    id: dm.id,
+    senderId: dm.senderId,
+    body: dm.body,
+    createdAt: dm.createdAt,
+    replyToId: dm.replyToId,
+    replyToBody: dm.replyToBody,
+    replyToSenderName: dm.replyToSenderName,
+    editedAt: dm.editedAt,
+  };
+}
+
+/** Convert a GroupMessage to the unified ChatMessage format */
+export function groupToChatMessage(gm: GroupMessage): ChatMessage {
+  return {
+    id: gm.id,
+    senderId: gm.senderId,
+    senderName: gm.senderName,
+    senderPhotoUrl: gm.senderPhotoUrl,
+    body: gm.body,
+    messageType: gm.messageType,
+    mediaUrl: gm.mediaUrl,
+    mediaDurationSeconds: gm.mediaDurationSeconds,
+    createdAt: gm.createdAt,
+    replyToId: (gm as GroupMessage & { replyToId?: number }).replyToId,
+    replyToBody: (gm as GroupMessage & { replyToBody?: string }).replyToBody,
+    replyToSenderName: (gm as GroupMessage & { replyToSenderName?: string }).replyToSenderName,
+    editedAt: (gm as GroupMessage & { editedAt?: string }).editedAt,
+  };
 }
 
 export interface GroupSummary {
@@ -215,6 +269,10 @@ export interface GroupMessage {
   mediaUrl?: string;
   mediaDurationSeconds?: number;
   createdAt: string;
+  replyToId?: number;
+  replyToBody?: string;
+  replyToSenderName?: string;
+  editedAt?: string;
 }
 
 export interface LeagueEntry {

@@ -452,6 +452,7 @@ export default function FriendProfilePage() {
       {/* ─── Achievement Detail Modal ────────────────────────────── */}
       {selectedAchievement && (
         <AchievementModal
+          key={selectedAchievement.id}
           achievement={selectedAchievement}
           onClose={() => setSelectedAchievement(null)}
         />
