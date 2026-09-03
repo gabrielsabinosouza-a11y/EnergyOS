@@ -230,7 +230,7 @@ export default function PerfilPage() {
       api.getAchievements().catch(() => null),
       api.getRecaps().catch(() => null),
       api.getProfile().catch(() => null),
-      api.getEnvStatus().catch(() => null),
+      user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch(() => null) : Promise.resolve(null),
     ]).then(([dash, ach, recapResult, profileResult, env]) => {
       if (!active) return;
       if (dash) setDashboard(dash);

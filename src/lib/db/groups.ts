@@ -392,11 +392,11 @@ export async function sendGroupMessage(
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
-  const sender = await pool.query<{ is_muted: boolean }>(
+  const membership = await pool.query<{ is_muted: boolean }>(
     `select is_muted from group_members where group_id = $1 and profile_id = $2`,
     [groupId, profileId],
   );
-  if (sender.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
+  if (membership.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
 
   const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
   const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"];

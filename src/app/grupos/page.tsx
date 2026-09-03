@@ -794,7 +794,19 @@ export default function GruposPage() {
                             if (g.unreadCount > 0) setGroups((prev) => prev.map((x) => x.id === g.id ? { ...x, unreadCount: 0 } : x));
                           }}
                           className="glass-card group relative flex flex-col items-center gap-3 px-4 py-6 text-center transition hover:border-[var(--accent)]/30">
-                          <span className="text-4xl leading-none">{g.avatarEmoji}</span>
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--accent-bg)] text-4xl leading-none">
+                            {typeof g.avatarUrl === "string" && g.avatarUrl.trim() ? (
+                              <img
+                                src={g.avatarUrl}
+                                alt={g.name}
+                                width={48}
+                                height={48}
+                                className="h-12 w-12 object-cover"
+                              />
+                            ) : (
+                              g.avatarEmoji
+                            )}
+                          </span>
                           <p className="font-display text-sm font-medium text-[var(--text)] group-hover:text-[var(--accent)]">{g.name}</p>
                           <div className="flex items-center gap-4 text-[11px] text-[var(--text-muted)]">
                             <span className="flex items-center gap-1"><Users size={12} />{g.memberCount}</span>
