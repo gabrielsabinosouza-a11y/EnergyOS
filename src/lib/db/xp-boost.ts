@@ -44,41 +44,41 @@ export async function getUserPotionInventory(profileId: string): Promise<UserPot
 export async function purchaseXpBoost(profileId: string): Promise<{ balance: number; quantity: number }> {
   parseProfileId(profileId);
 
-  // Server-side cap enforcement — never trust client-side disabling alone.
-  const current = await getPotionQuantity(profileId, XP_BOOST_ITEM_TYPE);
-  if (current >= XP_BOOST_MAX_HELD) {
-    throw new ConflictError("Você já possui o máximo de poções permitido");
-  }
-
-  const balance = await getCoinBalance(profileId);
-  if (balance < XP_BOOST_COST) {
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
+
+    // Authoritative, race-safe balance check inside the transaction.
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [XP_BOOST_COST, profileId],
     );
-    await client.query(
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes");
+
+    // Server-side cap enforcement — never trust client-side disabling alone.
+    // The conditional upsert reports whether the quantity actually increased;
+    // if the cap was hit concurrently, the whole purchase rolls back so coins
+    // are never deducted without granting the potion.
+    const upserted = await client.query<{ quantity: number }>(
       `insert into user_potions (profile_id, item_type, quantity, updated_at)
        values ($1, $2, 1, now())
        on conflict (profile_id, item_type)
        do update set quantity = user_potions.quantity + 1, updated_at = now()
-       where user_potions.quantity < $3`,
+       where user_potions.quantity < $3
+       returning quantity`,
       [profileId, XP_BOOST_ITEM_TYPE, XP_BOOST_MAX_HELD],
     );
+    if (!upserted.rows[0]) throw new ConflictError("Você já possui o máximo de poções permitido");
+
     await client.query("commit");
+
+    return { balance: deduct.rows[0].coins, quantity: upserted.rows[0].quantity };
   } catch (error) {
     await client.query("rollback");
     throw error;
   } finally {
     client.release();
   }
-
-  return { balance: balance - XP_BOOST_COST, quantity: current + 1 };
 }
 
 export async function getActiveBoost(profileId: string): Promise<ActiveXPBoost | null> {

@@ -49,10 +49,22 @@ async function verifyWithGoogle(token: string): Promise<VerifiedIdentity> {
 
   if (!response.ok) throw new UnauthorizedError("Sessão inválida ou expirada.");
   const body = (await response.json()) as {
-    users?: Array<{ localId: string; email?: string; displayName?: string; photoUrl?: string }>;
+    users?: Array<{
+      localId: string;
+      email?: string;
+      emailVerified?: boolean;
+      displayName?: string;
+      photoUrl?: string;
+    }>;
   };
   const user = body.users?.[0];
   if (!user?.localId) throw new UnauthorizedError("Sessão inválida ou expirada.");
+  // SECURITY: an account created with someone else's email is not verified.
+  // Require verification before honoring the identity (prevents impersonation
+  // in email-keyed checks such as admin actions).
+  if (user.email && user.emailVerified === false) {
+    throw new UnauthorizedError("Confirme seu e-mail para continuar.");
+  }
 
   const identity: VerifiedIdentity = {
     uid: user.localId,
@@ -92,7 +104,6 @@ export interface AuthenticatedRequest {
 export async function requireAuth(request: NextRequest): Promise<AuthenticatedRequest> {
   const devProfileId = devBypassProfileId(request);
   if (devProfileId) {
-    console.log('[auth] Using dev bypass profile:', devProfileId);
     touchLastActive(devProfileId);
     const role = await getUserRole(devProfileId);
     return { profileId: devProfileId, email: null, displayName: null, photoUrl: null, role };
@@ -100,14 +111,11 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
 
   const token = extractToken(request);
   if (!token) {
-    console.log('[auth] No token found in request');
     throw new UnauthorizedError();
   }
 
-  console.log('[auth] Token found, attempting verification');
   const identity = await verifyWithGoogle(token);
-  console.log('[auth] Token verified successfully for UID:', identity.uid);
-  
+
   const profileId = parseProfileId(identity.uid);
   touchLastActive(profileId);
   const role = await getUserRole(profileId);

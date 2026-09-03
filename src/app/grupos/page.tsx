@@ -245,7 +245,19 @@ function LeaderboardRow({
     >
       <div className="flex items-center justify-center"><RankCell rank={entry.rank} /></div>
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-xl leading-none">{entry.groupAvatarEmoji}</span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--accent-bg)] text-lg leading-none">
+          {typeof entry.groupAvatarUrl === "string" && entry.groupAvatarUrl.trim() ? (
+            <img
+              src={entry.groupAvatarUrl}
+              alt={entry.groupName}
+              width={32}
+              height={32}
+              className="h-8 w-8 object-cover"
+            />
+          ) : (
+            entry.groupAvatarEmoji
+          )}
+        </span>
         <div className="min-w-0">
           <p className="truncate text-[11px] font-medium text-[var(--text)]">
             {entry.groupName}
@@ -309,7 +321,19 @@ function GlobalLeaderboard({
           <p className="mb-1 text-[9px] uppercase tracking-widest text-[var(--text-faint)]">Sua posição</p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{userEntry.groupAvatarEmoji}</span>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--accent-bg)] text-base leading-none">
+                {typeof userEntry.groupAvatarUrl === "string" && userEntry.groupAvatarUrl.trim() ? (
+                  <img
+                    src={userEntry.groupAvatarUrl}
+                    alt={userEntry.groupName}
+                    width={28}
+                    height={28}
+                    className="h-7 w-7 object-cover"
+                  />
+                ) : (
+                  userEntry.groupAvatarEmoji
+                )}
+              </span>
               <span className="text-sm font-medium text-[var(--text)]">{userEntry.groupName}</span>
             </div>
             <div className="flex items-center gap-3">

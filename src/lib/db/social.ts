@@ -51,7 +51,6 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
        and (
          p.display_name ilike $2
          or coalesce(p.username, '') ilike $2
-         or coalesce(p.email, '') ilike $2
        )
      order by p.display_name asc
      limit 20`,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, LayoutGroup } from "framer-motion";
-import { deleteUser, updateProfile } from "firebase/auth";
+import { deleteUser } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
@@ -33,9 +33,6 @@ export default function ConfiguracoesPage() {
   // Last-saved snapshot — used to compute dirty state
   const savedRef = useRef<SettingsForm>(defaultSettings);
   const [form, setForm] = useState<SettingsForm>(defaultSettings);
-  const [name, setName] = useState("");
-  const [savingName, setSavingName] = useState(false);
-  const [nameSaved, setNameSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,9 +66,6 @@ export default function ConfiguracoesPage() {
 
   if (loading || !user) return <LoadingScreen />;
 
-  const currentDisplayName = user.displayName ?? "";
-  if (!name && currentDisplayName) setName(currentDisplayName);
-
   function setField<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     // Apply theme to UI immediately for live preview — but don't persist yet
@@ -102,15 +96,6 @@ export default function ConfiguracoesPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  async function saveName() {
-    if (!name.trim() || !auth?.currentUser) return;
-    setSavingName(true);
-    await updateProfile(auth.currentUser, { displayName: name.trim() });
-    setSavingName(false);
-    setNameSaved(true);
-    setTimeout(() => setNameSaved(false), 2000);
   }
 
   async function handleLogout() {
@@ -144,19 +129,6 @@ export default function ConfiguracoesPage() {
         {loadError && <p className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{loadError}</p>}
 
         <div className="space-y-4">
-          {/* Perfil */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-6">
-            <span className="eyebrow muted mb-4 block">PERFIL</span>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Nome</label>
-            <div className="flex gap-2">
-              <input value={name} onChange={(e) => setName(e.target.value)} className="auth-input flex-1" />
-              <button onClick={saveName} disabled={savingName} className="icon-button">
-                {savingName ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              </button>
-            </div>
-            {nameSaved && <p className="mt-2 text-xs text-[#71d4ff]">Nome atualizado!</p>}
-          </motion.div>
-
           {/* Preferências */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">PREFERÊNCIAS</span>

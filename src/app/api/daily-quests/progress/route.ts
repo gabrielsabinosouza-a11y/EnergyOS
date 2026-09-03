@@ -24,49 +24,49 @@ export async function POST(request: NextRequest) {
     // Get current progress for all quests today
     const progress = await getUserQuestProgress(profileId, today);
     
-    // Update relevant quests based on session data
     const updated: Array<{ questId: number; type: QuestType; newValue: number }> = [];
     
-    const questType = body.questType as QuestType | undefined;
+    // SECURITY: quest progress is derived from server-side session data only.
+    // The previous client-driven path (questId + arbitrary amount) let any
+    // authenticated user instantly complete quests and claim coin rewards.
+    // Session data is clamped to the same server-side caps used by
+    // endFocusSession (target duration ≤ 240 min).
+    const questType = typeof body.questType === "string" ? body.questType : undefined;
+
+    if (questType) {
+      throw new ValidationError("Atualizações diretas de missão foram descontinuadas. O progresso é calculado pelo servidor.");
+    }
     
-    for (const p of progress) {
-      // If this is a specific quest type update from the client
-      if (questType) {
-        // This path is for targeted updates
-        if (p.questId === Number(body.questId)) {
-          const amount = Number(body.amount) || 1;
-          const result = await incrementQuestProgress(
-            profileId,
-            p.questId,
-            today,
-            amount
-          );
-          updated.push({
-            questId: p.questId,
-            type: questType,
-            newValue: result.currentValue,
-          });
+    // Auto-update based on session completion
+    const session = (body.sessionData ?? null) as { durationMinutes?: unknown; isRoomSession?: unknown } | null;
+    
+    if (session) {
+      const durationMinutes = Math.max(
+        0,
+        Math.min(
+          Number(session.durationMinutes) || 0,
+          240,
+        ),
+      );
+      const isRoomSession = session.isRoomSession === true;
+      
+      for (const p of progress) {
+        // Update SESSIONS_COUNT quest
+        if (p.questId === 1) { // Complete 2 sessions today
+          const result = await incrementQuestProgress(profileId, p.questId, today, 1);
+          updated.push({ questId: p.questId, type: "SESSIONS_COUNT", newValue: result.currentValue });
         }
-      } else {
-        // Auto-update based on session completion
-        // This requires the client to send session data
-        const session = body.sessionData as { durationMinutes?: number; isRoomSession?: boolean } | undefined;
         
-        if (session) {
-          // Update SESSIONS_COUNT quest
-          if (p.questId === 1) { // Complete 2 sessions today
-            await incrementQuestProgress(profileId, p.questId, today, 1);
-          }
-          
-          // Update TOTAL_MINUTES quest
-          if (p.questId === 2 && session.durationMinutes) { // Focus 90 minutes
-            await incrementQuestProgress(profileId, p.questId, today, session.durationMinutes);
-          }
-          
-          // Update ROOM_SESSION quest
-          if (p.questId === 3 && session.isRoomSession) { // Focus in room
-            await incrementQuestProgress(profileId, p.questId, today, 1);
-          }
+        // Update TOTAL_MINUTES quest
+        if (p.questId === 2 && durationMinutes > 0) { // Focus 90 minutes
+          const result = await incrementQuestProgress(profileId, p.questId, today, durationMinutes);
+          updated.push({ questId: p.questId, type: "TOTAL_MINUTES", newValue: result.currentValue });
+        }
+        
+        // Update ROOM_SESSION quest
+        if (p.questId === 3 && isRoomSession) { // Focus in room
+          const result = await incrementQuestProgress(profileId, p.questId, today, 1);
+          updated.push({ questId: p.questId, type: "ROOM_SESSION", newValue: result.currentValue });
         }
       }
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Gem, Trophy, Lock, X, Plus } from "lucide-react";
+import { Trophy, Lock, X, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
@@ -52,12 +52,10 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/social_spark/social_spark1.png",
     "/achievements/social_spark/social_spark2.png",
   ],
+  rarest_aura: ["/achievements/Top_1/top1.png"],
 };
 
-/** Lucide fallbacks used for achievements without a PNG asset. */
-export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {
-  rarest_aura: Gem,
-};
+export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {};
 
 export const DEFAULT_ICON = Trophy;
 
@@ -160,7 +158,7 @@ export function AchievementBadge({
  * Shared achievement tile used across the profile pages (own + public) and the
  * featured "Destaques" rows. Encapsulates the three visual states:
  *  - unlocked: full-color icon with category color
- *  - locked: greyscale icon, lock glyph (optional progress hint)
+ *  - locked: real tier-1 icon shown in grayscale (optional progress hint)
  *  - in-progress (locked but has progress): small progress ring around the icon
  * It also renders tier dots and, when `feature` is set, an optional remove
  * affordance used by the own profile.
@@ -203,7 +201,7 @@ export function AchievementTile({
         style={{
           width: inner,
           height: inner,
-          filter: !isEarned ? "grayscale(1) opacity(0.5)" : undefined,
+          filter: !isEarned ? "grayscale(1) opacity(0.65)" : undefined,
         }}
       >
         {/* progress ring (behind icon) */}
@@ -239,7 +237,7 @@ export function AchievementTile({
         {isEarned ? (
           <AchievementIcon id={achievement.id} tier={achievement.unlockedTier} size={inner} color={colors.primary} fill />
         ) : (
-          <AchievementIcon id={achievement.id} tier={0} size={inner} locked fill />
+          <AchievementIcon id={achievement.id} tier={1} size={inner} fill />
         )}
       </span>
 

@@ -182,7 +182,14 @@ export async function endFocusSession(
   if (!session.rows[0]) throw new NotFoundError("Sessão não encontrada.");
   if (session.rows[0].ended_at) throw new ValidationError("Sessão já finalizada.");
 
-  const durationMinutes = Math.max(1, Math.round(focusedSeconds / 60));
+  // SECURITY: the reported duration is clamped server-side. A client could
+  // otherwise claim hours of focus for a 25-minute session and farm XP/coins,
+  // quest progress, streak, garden and group contributions. The cap is the
+  // session's own target duration (the maximum legitimate reward).
+  const targetCap = session.rows[0].target_duration_minutes
+    ? Math.round(session.rows[0].target_duration_minutes)
+    : 240;
+  const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   const coins = Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
   // Coins stay at the base amount; XP may be doubled by an active 2x boost.

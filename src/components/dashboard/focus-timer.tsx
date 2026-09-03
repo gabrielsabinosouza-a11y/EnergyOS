@@ -75,7 +75,7 @@ function clearSessionState(): void {
 const RING_SIZE = 260;
 const MAX_DURATION = 120;
 const SNAP_INCREMENT = 15;
-const MIN_DURATION = 30;
+const MIN_DURATION = 10;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -672,7 +672,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             {isActive ? formatTime(remaining) : `${String(Math.floor(duration / 60)).padStart(2, "0")}:${String(duration % 60).padStart(2, "0")}`}
           </span>
           <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
-            {state === "running" ? "em andamento" : state === "paused" ? "pausado" : "duração"}
+            {state === "running" ? "em andamento" : state === "paused" ? "pausado" : "horas focadas"}
           </span>
         </div>
 

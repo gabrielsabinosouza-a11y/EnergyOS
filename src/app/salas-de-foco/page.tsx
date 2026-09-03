@@ -163,7 +163,7 @@ function SharedRing({
           onChange={onDurationChange}
           maxDurationMinutes={120}
           snapIncrement={15}
-          minMinutes={30}
+          minMinutes={10}
           size={RING_SIZE}
           accentColor={cfg.accent}
           disabled={disabled}
@@ -812,7 +812,7 @@ export default function FocusRoomsPage() {
                 onChange={setSelectedDuration}
                 maxDurationMinutes={120}
                 snapIncrement={15}
-                minMinutes={30}
+                minMinutes={10}
                 size={CREATE_RING_SIZE}
                 accentColor={selectedEnergyCfg.accent}
                 centerContent={<></>}
@@ -830,7 +830,7 @@ export default function FocusRoomsPage() {
               >
                 {String(Math.floor(selectedDuration / 60)).padStart(2, "0")}:{String(selectedDuration % 60).padStart(2, "0")}
               </span>
-              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">duração</span>
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">horas focadas</span>
             </div>
             <span className="mt-2 text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
               toque no centro para trocar a energia
@@ -1035,7 +1035,7 @@ export default function FocusRoomsPage() {
                 {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(Math.floor(room.durationMinutes / 60)).padStart(2, "0")}:${String(room.durationMinutes % 60).padStart(2, "0")}`}
               </span>
               <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
-                {running ? (paused ? "pausada" : "em andamento") : "duração"}
+                {running ? (paused ? "pausada" : "em andamento") : "horas focadas"}
               </span>
               {paused && (
                 <span className="mt-1 flex items-center gap-1 text-[10px] text-amber-400">

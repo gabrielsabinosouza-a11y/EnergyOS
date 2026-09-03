@@ -671,51 +671,59 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
   const durationMinutes = roomInfo.rows[0].duration_minutes;
   const roomEnergyType = roomInfo.rows[0].energy_type ?? "flame";
 
-  await pool.query(
+  // Only an ACTIVE or PAUSED room can be completed, and side effects (mission
+  // progress, garden plants) run exactly once — when the transition happens.
+  // Re-calling this on an already-completed room returns the room unchanged,
+  // closing the duplicate-garden-planting hole.
+  const transition = await pool.query<{ id: string | number }>(
     `update focus_rooms
      set status = 'completed', ended_at = coalesce(ended_at, $1)
-     where id = $2 and status != 'completed'`,
+     where id = $2 and status in ('active', 'paused')
+     returning id`,
     [now, roomId],
   );
+  const transitioned = Boolean(transition.rows[0]);
 
-  await pool.query(
-    `update room_participants
-     set session_status = 'completed', completed_at = coalesce(completed_at, $1)
-     where room_id = $2 and session_status = 'focusing'`,
-    [now, roomId],
-  );
-
-  // Advance the "participate in N different rooms today" mission (DISTINCT_ROOMS)
-  // for every participant who just finished in this room.
-  const participants = await pool.query<{ profile_id: string; session_status: string; selected_energy_type: string | null }>(
-    `select profile_id, session_status, selected_energy_type from room_participants
-     where room_id = $1 and session_status = 'completed'`,
-    [roomId],
-  );
-  const today = todayIso();
-  const dayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
-  
-  for (const p of participants.rows) {
-    // Update DISTINCT_ROOMS mission
-    const cnt = await pool.query<{ n: string | number }>(
-      `select count(distinct room_id) as n from room_participants
-       where profile_id = $1 and completed_at is not null and completed_at >= $2`,
-      [p.profile_id, dayStart],
+  if (transitioned) {
+    await pool.query(
+      `update room_participants
+       set session_status = 'completed', completed_at = coalesce(completed_at, $1)
+       where room_id = $2 and session_status = 'focusing'`,
+      [now, roomId],
     );
-    await recordMissionProgress(p.profile_id, "DISTINCT_ROOMS", { setTo: Number(cnt.rows[0]?.n || 0) });
+
+    // Advance the "participate in N different rooms today" mission (DISTINCT_ROOMS)
+    // for every participant who just finished in this room.
+    const participants = await pool.query<{ profile_id: string; session_status: string; selected_energy_type: string | null }>(
+      `select profile_id, session_status, selected_energy_type from room_participants
+       where room_id = $1 and session_status = 'completed'`,
+      [roomId],
+    );
+    const today = todayIso();
+    const dayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
     
-    // Plant garden entries for participants who completed the room
-    // This ensures all room participants get garden entries even if their
-    // individual endFocus call didn't complete properly
-    if (p.session_status === "completed" && durationMinutes >= 10) {
-      const energyType = p.selected_energy_type || roomEnergyType || "flame";
-      try {
-        // Pass null for sessionId since we don't have individual session IDs here
-        // The entries will still be planted and count towards the garden
-        await plantGardenEntries(p.profile_id, null, energyType, durationMinutes);
-      } catch {
-        // If planting fails, garden entries will be planted via the
-        // normal endFocusSession flow
+    for (const p of participants.rows) {
+      // Update DISTINCT_ROOMS mission
+      const cnt = await pool.query<{ n: string | number }>(
+        `select count(distinct room_id) as n from room_participants
+         where profile_id = $1 and completed_at is not null and completed_at >= $2`,
+        [p.profile_id, dayStart],
+      );
+      await recordMissionProgress(p.profile_id, "DISTINCT_ROOMS", { setTo: Number(cnt.rows[0]?.n || 0) });
+      
+      // Plant garden entries for participants who completed the room
+      // This ensures all room participants get garden entries even if their
+      // individual endFocus call didn't complete properly
+      if (p.session_status === "completed" && durationMinutes >= 10) {
+        const energyType = p.selected_energy_type || roomEnergyType || "flame";
+        try {
+          // Pass null for sessionId since we don't have individual session IDs here
+          // The entries will still be planted and count towards the garden
+          await plantGardenEntries(p.profile_id, null, energyType, durationMinutes);
+        } catch {
+          // If planting fails, garden entries will be planted via the
+          // normal endFocusSession flow
+        }
       }
     }
   }

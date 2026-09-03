@@ -21,14 +21,13 @@ export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const body = assertObject(await readJsonBody(request));
-    
-    console.log('[checkins POST] Attempting to save checkin for profile:', profileId);
-    console.log('[checkins POST] Request body:', body);
-    
+
     const { checkin, xpAwarded, coinsAwarded } = await upsertCheckin(
       profileId,
       {
-        checkinDate: body.checkinDate as string | undefined,
+        // checkinDate is resolved server-side (today only) inside upsertCheckin;
+        // any client-supplied date other than today is rejected there.
+        checkinDate: typeof body.checkinDate === "string" ? body.checkinDate : undefined,
         sleepHours: body.sleepHours === undefined ? undefined : parseNumber(body.sleepHours, "Horas de sono", { min: 0, max: 24 }),
         studyMinutes: body.studyMinutes === undefined ? undefined : parseNumber(body.studyMinutes, "Minutos de estudo", { min: 0, max: 1440, integer: true }),
         trainingMinutes: body.trainingMinutes === undefined ? undefined : parseNumber(body.trainingMinutes, "Minutos de treino", { min: 0, max: 1440, integer: true }),
@@ -36,8 +35,7 @@ export async function POST(request: NextRequest) {
       },
       todayIso(),
     );
-    
-    console.log('[checkins POST] Checkin saved successfully:', checkin);
+
     return jsonOk({ checkin, xpAwarded, coinsAwarded }, 201);
   });
 }

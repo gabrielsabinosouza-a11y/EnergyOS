@@ -285,6 +285,19 @@ create table if not exists xp_ledger (
 );
 
 create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, created_at desc);
+create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, created_at desc);
+
+-- ── XP ledger hardening ───────────────────────────────────────────────────────
+-- source_id stores heterogeneous identifiers (task ids, kanban ids, dates, etc.)
+-- so it must be text; bigint crashed on string ids such as "checkin_streak" dates.
+alter table xp_ledger alter column source_id type text using source_id::text;
+-- 'kanban_task' is written by awardKanbanXP; keep legacy 'kanban' allowed too.
+alter table xp_ledger drop constraint if exists xp_ledger_source_check;
+alter table xp_ledger add constraint xp_ledger_source_check
+  check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal'));
+-- Idempotency backstop: one ledger row per (profile, source, source_id).
+create unique index if not exists xp_ledger_dedupe_idx
+  on xp_ledger(profile_id, source, coalesce(source_id, ''));
 
 create table if not exists user_xp (
   profile_id text primary key references profiles(id) on delete cascade,
@@ -517,7 +530,7 @@ insert into achievements (id, title, description, category) values
   ('consistency_king', 'Consistency King','Semanas perfeitas de check-in',                'checkin'),
   ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
-  ('rarest_aura',      'Rarest Aura',    'Termine no topo da Liga Lendários',                'league')
+  ('rarest_aura',      'Top 1 Global',   'Termine no topo da Liga Lendários',                'league')
 on conflict (id) do nothing;
 
 -- ========================================

@@ -24,7 +24,7 @@ const META: Record<string, { title: string; description: string; category: strin
   consistency_king: { title: "Consistency King", description: "Semanas perfeitas de check-in", category: "checkin" },
   xp_olympian: { title: "XP Olympian", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Social Spark", description: "Faça amigos e entre em grupos", category: "social" },
-  rarest_aura: { title: "Rarest Aura", description: "Termine no topo da Liga Lendários", category: "league" },
+  rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
 };
 
 function tierFor(value: number, thresholds: number[]): number {

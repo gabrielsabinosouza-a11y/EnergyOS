@@ -60,40 +60,37 @@ export async function purchaseDecoration(
     [decorationId],
   );
   if (!decoration.rows[0]) throw new NotFoundError("Decoração não encontrada.");
-
-  const alreadyOwned = await pool.query(
-    `select 1 from user_decorations where profile_id = $1 and decoration_id = $2`,
-    [profileId, decorationId],
-  );
-  if (alreadyOwned.rows[0]) throw new ConflictError("Você já possui esta decoração.");
-
-  const balance = await getCoinBalance(profileId);
-  console.log(`[loja/deco] purchase attempt profile=${profileId} deco=${decorationId} price=${decoration.rows[0].price} balance=${balance}`);
-  if (balance < decoration.rows[0].price) {
-    console.log(`[loja/deco] REJECTED insufficient profile=${profileId} deco=${decorationId} price=${decoration.rows[0].price} balance=${balance}`);
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
+  const price = decoration.rows[0].price;
 
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
-      [decoration.rows[0].price, profileId],
+
+    // Authoritative, race-safe balance check: the guarded deduction only
+    // succeeds when the balance covers the price, atomically.
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
+      [price, profileId],
     );
-    await client.query(
-      `insert into user_decorations (profile_id, decoration_id) values ($1, $2) on conflict do nothing`,
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes.");
+
+    // Ownership is enforced inside the same transaction; a concurrent double
+    // purchase can no longer charge twice for one item.
+    const inserted = await client.query<{ decoration_id: string }>(
+      `insert into user_decorations (profile_id, decoration_id) values ($1, $2)
+       on conflict (profile_id, decoration_id) do nothing returning decoration_id`,
       [profileId, decorationId],
     );
+    if (!inserted.rows[0]) throw new ConflictError("Você já possui esta decoração.");
+
     await client.query("commit");
+    return { balance: deduct.rows[0].coins };
   } catch (error) {
     await client.query("rollback");
     throw error;
   } finally {
     client.release();
   }
-
-  return { balance: balance - decoration.rows[0].price };
 }
 
 export async function equipDecoration(
@@ -144,42 +141,32 @@ export async function getBannerStatus(profileId: string): Promise<{
 export async function unlockBanner(profileId: string): Promise<{ balance: number }> {
   parseProfileId(profileId);
 
-  const profile = await pool.query<{ has_custom_banner: boolean }>(
-    `select has_custom_banner from profiles where id = $1`,
-    [profileId],
-  );
-  if (!profile.rows[0]) throw new NotFoundError("Perfil não encontrado.");
-  if (profile.rows[0].has_custom_banner) {
-    throw new ConflictError("Banner já desbloqueado.");
-  }
-
-  const balance = await getCoinBalance(profileId);
-  console.log(`[loja/banner] purchase attempt profile=${profileId} price=${BANNER_COST} balance=${balance}`);
-  if (balance < BANNER_COST) {
-    console.log(`[loja/banner] REJECTED insufficient profile=${profileId} price=${BANNER_COST} balance=${balance}`);
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
+
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [BANNER_COST, profileId],
     );
-    await client.query(
-      `update profiles set has_custom_banner = true where id = $1`,
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes.");
+
+    const updated = await client.query<{ id: string | number }>(
+      `update profiles set has_custom_banner = true
+       where id = $1 and has_custom_banner = false
+       returning id`,
       [profileId],
     );
+    if (!updated.rows[0]) throw new ConflictError("Banner já desbloqueado.");
+
     await client.query("commit");
+    return { balance: deduct.rows[0].coins };
   } catch (error) {
     await client.query("rollback");
     throw error;
   } finally {
     client.release();
   }
-
-  return { balance: balance - BANNER_COST };
 }
 
 export async function updateBannerImage(
@@ -214,38 +201,34 @@ export async function getShieldCount(profileId: string): Promise<number> {
 export async function purchaseShield(profileId: string): Promise<{ balance: number; shieldCount: number }> {
   parseProfileId(profileId);
 
-  const current = await getShieldCount(profileId);
-  if (current >= MAX_SHIELDS) {
-    throw new ConflictError(`Você já possui o máximo de ${MAX_SHIELDS} escudos.`);
-  }
-
-  const balance = await getCoinBalance(profileId);
-  console.log(`[loja/shield] purchase attempt profile=${profileId} price=${SHIELD_COST} balance=${balance}`);
-  if (balance < SHIELD_COST) {
-    console.log(`[loja/shield] REJECTED insufficient profile=${profileId} price=${SHIELD_COST} balance=${balance}`);
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
+
+    // Deduct first (guarded), then increment the shield count atomically with
+    // a cap check in the same statement. Any failure rolls everything back.
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [SHIELD_COST, profileId],
     );
-    await client.query(
-      `update profiles set streak_shield_count = streak_shield_count + 1 where id = $1`,
-      [profileId],
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes.");
+
+    const updated = await client.query<{ streak_shield_count: number }>(
+      `update profiles set streak_shield_count = streak_shield_count + 1
+       where id = $1 and streak_shield_count < $2
+       returning streak_shield_count`,
+      [profileId, MAX_SHIELDS],
     );
+    if (!updated.rows[0]) throw new ConflictError(`Você já possui o máximo de ${MAX_SHIELDS} escudos.`);
+
     await client.query("commit");
+    return { balance: deduct.rows[0].coins, shieldCount: updated.rows[0].streak_shield_count };
   } catch (error) {
     await client.query("rollback");
     throw error;
   } finally {
     client.release();
   }
-
-  return { balance: balance - SHIELD_COST, shieldCount: current + 1 };
 }
 
 export async function isDayProtected(profileId: string, date: string): Promise<boolean> {
@@ -448,39 +431,31 @@ export async function purchaseAura(
   const price = AURA_PRICES[auraType];
   if (price <= 0) throw new ConflictError("Esta energia já está disponível.");
 
-  const already = await pool.query(
-    `select 1 from user_auras where profile_id = $1 and aura_type = $2`,
-    [profileId, auraType],
-  );
-  if (already.rows[0]) throw new ConflictError("Você já possui esta energia.");
-
-  const balance = await getCoinBalance(profileId);
-  console.log(`[loja/aura] purchase attempt profile=${profileId} aura=${auraType} price=${price} balance=${balance}`);
-  if (balance < price) {
-    console.log(`[loja/aura] REJECTED insufficient profile=${profileId} aura=${auraType} price=${price} balance=${balance}`);
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
+
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [price, profileId],
     );
-    await client.query(
-      `insert into user_auras (profile_id, aura_type) values ($1, $2) on conflict do nothing`,
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes.");
+
+    const inserted = await client.query<{ aura_type: string }>(
+      `insert into user_auras (profile_id, aura_type) values ($1, $2)
+       on conflict (profile_id, aura_type) do nothing returning aura_type`,
       [profileId, auraType],
     );
+    if (!inserted.rows[0]) throw new ConflictError("Você já possui esta energia.");
+
     await client.query("commit");
+    return { balance: deduct.rows[0].coins };
   } catch (error) {
     await client.query("rollback");
     throw error;
   } finally {
     client.release();
   }
-
-  return { balance: balance - price };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -588,37 +563,25 @@ export async function purchaseStreakShieldDesign(
   const design = designResult.rows[0];
   const price = design.price;
 
-  // Check if already owned
-  const existingResult = await pool.query(
-    `select 1 from user_streak_shield_designs where profile_id = $1 and shield_design_id = $2`,
-    [profileId, shieldDesignId],
-  );
-
-  if ((existingResult.rowCount ?? 0) > 0) {
-    throw new ConflictError("Você já possui este escudo.");
-  }
-
-  // Check balance
-  const balance = await getCoinBalance(profileId);
-  if (balance < price) {
-    throw new ForbiddenError("Moedas insuficientes.");
-  }
-
   const client = await pool.connect();
   try {
     await client.query("begin");
 
-    // Deduct coins
-    await client.query(
-      `update user_settings set coins = coins - $1 where profile_id = $2`,
+    // Guarded deduction — the balance is verified atomically inside the tx.
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [price, profileId],
     );
+    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes.");
 
-    // Purchase the design
-    await client.query(
-      `insert into user_streak_shield_designs (profile_id, shield_design_id) values ($1, $2)`,
+    // Ownership check inside the transaction prevents a concurrent double
+    // purchase from charging twice for the same design.
+    const inserted = await client.query<{ shield_design_id: string }>(
+      `insert into user_streak_shield_designs (profile_id, shield_design_id) values ($1, $2)
+       on conflict (profile_id, shield_design_id) do nothing returning shield_design_id`,
       [profileId, shieldDesignId],
     );
+    if (!inserted.rows[0]) throw new ConflictError("Você já possui este escudo.");
 
     // If this is the first shield design, equip it automatically
     const ownedCount = await client.query(
@@ -638,7 +601,7 @@ export async function purchaseStreakShieldDesign(
     // Get updated owned designs
     const ownedDesigns = await getOwnedStreakShieldDesigns(profileId);
 
-    return { balance: balance - price, ownedDesigns };
+    return { balance: deduct.rows[0].coins, ownedDesigns };
   } catch (error) {
     await client.query("rollback");
     throw error;

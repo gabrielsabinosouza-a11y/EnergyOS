@@ -46,7 +46,13 @@ export async function upsertCheckin(
   today: string,
 ): Promise<{ checkin: DailyCheckin; xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
-  const date = parseDate(input.checkinDate, "Data do check-in", today);
+  // SECURITY: rewards are only granted for TODAY's check-in. The date is
+  // resolved server-side; a client-supplied checkinDate for any other day is
+  // rejected (prevents backdating XP/coin/streak farming).
+  if (input.checkinDate !== undefined && input.checkinDate !== today) {
+    throw new ValidationError("O check-in só pode ser registrado para o dia de hoje.");
+  }
+  const date = today;
   const hasAnyValue =
     input.sleepHours !== undefined ||
     input.studyMinutes !== undefined ||
@@ -61,18 +67,11 @@ export async function upsertCheckin(
   const trainingMinutes = input.trainingMinutes === undefined ? null : parseNumber(input.trainingMinutes, "Minutos de treino", { min: 0, max: 1440, integer: true });
   const energyScore = input.energyScore === undefined ? null : parseNumber(input.energyScore, "Nível de energia", { min: 1, max: 5, integer: true });
 
-  console.log('[checkins db] Attempting to upsert checkin:', { profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore });
-
   try {
-    // Detect whether a check-in already exists for this day so rewards are only
-    // granted on the first save (re-saving the same day shouldn't re-award).
-    const existing = await pool.query<{ id: string | number }>(
-      `select id from daily_checkins where profile_id = $1 and checkin_date = $2::date`,
-      [profileId, date],
-    );
-    const isNew = !existing.rows[0];
-
-    const result = await pool.query<CheckinRow>(
+    // Atomic first-save detection: on a fresh INSERT xmax is 0; on a
+    // conflict-update it is set. This closes the TOCTOU race where two
+    // concurrent first saves would both award the daily reward.
+    const result = await pool.query<CheckinRow & { inserted: boolean }>(
       `insert into daily_checkins (profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score)
        values ($1, $2, $3, $4, $5, $6)
        on conflict (profile_id, checkin_date) do update set
@@ -80,16 +79,18 @@ export async function upsertCheckin(
          study_minutes = coalesce(excluded.study_minutes, daily_checkins.study_minutes),
          training_minutes = coalesce(excluded.training_minutes, daily_checkins.training_minutes),
          energy_score = coalesce(excluded.energy_score, daily_checkins.energy_score)
-       returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score`,
+       returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score, (xmax = 0) as inserted`,
       [profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore],
     );
+    const isNew = Boolean(result.rows[0]?.inserted);
 
     if (isNew) {
-      // Base check-in reward
+      // Base check-in reward (creditXP is idempotent via the ledger unique index)
       const xpBase = await creditXP(profileId, "checkin", result.rows[0].id, CHECKIN_XP);
       await addCoins(profileId, CHECKIN_COINS);
 
-      // Per-day streak bonus (capped)
+      // Per-day streak bonus (capped); ledger key is the date, so it can only
+      // be awarded once per day even under retries.
       const streakRow = await pool.query<{ current_streak: number }>(
         `select current_streak from profiles where id = $1`,
         [profileId],
@@ -97,10 +98,9 @@ export async function upsertCheckin(
       const streak = streakRow.rows[0]?.current_streak ?? 0;
       const streakBonus = streak > 0 ? Math.min(streak * STREAK_BONUS_XP_PER_DAY, STREAK_BONUS_CAP) : 0;
       const xpStreak = streakBonus > 0
-        ? await creditXP(profileId, "checkin_streak", `${profileId}:${date}`, streakBonus)
+        ? await creditXP(profileId, "checkin_streak", date, streakBonus)
         : 0;
 
-      console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
       return {
         checkin: mapCheckin(result.rows[0]),
         xpAwarded: xpBase + xpStreak,
@@ -108,7 +108,6 @@ export async function upsertCheckin(
       };
     }
 
-    console.log('[checkins db] Checkin upserted successfully:', result.rows[0]);
     return { checkin: mapCheckin(result.rows[0]), xpAwarded: 0, coinsAwarded: 0 };
   } catch (error) {
     console.error('[checkins db] Error upserting checkin:', error);

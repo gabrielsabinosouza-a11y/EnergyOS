@@ -5,12 +5,14 @@ import { listCheckins, averagesForRange } from "@/lib/db/checkins";
 import { dailyCompletions, computeStreak } from "@/lib/db/tasks";
 import { listInsights } from "@/lib/db/insights";
 import { addDaysIso, todayIso } from "@/lib/db/dates";
+import { parseNumber } from "@/lib/db/validation";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const daysParam = request.nextUrl.searchParams.get("days");
-    const days = daysParam ? parseInt(daysParam, 10) : 7;
+    // Bounded window: rejects negative/zero/huge ranges (query-cost abuse).
+    const days = parseNumber(daysParam, "Período", { integer: true, min: 1, max: 366, fallback: 7 });
     
     const today = todayIso();
     const fromDate = addDaysIso(today, -days + 1);

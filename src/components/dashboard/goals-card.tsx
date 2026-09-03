@@ -657,9 +657,40 @@ function EditGoalModal({
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [localCategories, setLocalCategories] = useState<Category[]>(categories);
+  const [error, setError] = useState("");
 
-  const category = categories.find((c) => c.id === draft.categoryId);
+  useEffect(() => { setLocalCategories(categories); }, [categories]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft({
+      title: goal.title,
+      categoryId: goal.categoryId,
+      targetValue: goal.targetValue,
+      frequency: goal.frequency,
+    });
+    setShowCategoryForm(false);
+    setSaving(false);
+    setSaved(false);
+    setError("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const category = localCategories.find((c) => c.id === draft.categoryId);
   const glowColor = category?.color ?? "#71d4ff";
+
+  async function handleCategoryCreated(input: { name: string; color: string; icon: string | null }) {
+    try {
+      const { category: newCat } = await api.createCategory(input);
+      setLocalCategories((prev) => [...prev, newCat]);
+      setDraft((d) => ({ ...d, categoryId: newCat.id }));
+      setShowCategoryForm(false);
+    } catch {
+      setError("Não foi possível criar a categoria.");
+    }
+  }
 
   const handleSave = () => {
     if (!draft.title.trim()) return;
@@ -737,10 +768,31 @@ function EditGoalModal({
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Categoria</label>
             <CategoryChips
-              categories={categories}
+              categories={localCategories}
               selectedId={draft.categoryId}
               onSelect={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
+              onAdd={() => setShowCategoryForm((v) => !v)}
+              addActive={showCategoryForm}
             />
+            <AnimatePresence>
+              {showCategoryForm && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
+                    <CategoryForm
+                      submitLabel="Criar categoria"
+                      onSubmit={handleCategoryCreated}
+                      onCancel={() => setShowCategoryForm(false)}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           </div>
 
           <div>
