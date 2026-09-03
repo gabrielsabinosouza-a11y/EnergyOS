@@ -814,7 +814,9 @@ export default function GruposPage() {
                           whileHover={reduced ? undefined : { y: -2, transition: { duration: 0.15 } }}
                           whileTap={reduced ? undefined : { scale: 0.98 }}
                           onClick={() => {
-                            api.getGroup(g.id).then(({ group }) => setActiveGroup(group));
+                            api.getGroup(g.id)
+                              .then(({ group }) => { setError(null); setActiveGroup(group); })
+                              .catch(() => setError("Não foi possível abrir o grupo."));
                             if (g.unreadCount > 0) setGroups((prev) => prev.map((x) => x.id === g.id ? { ...x, unreadCount: 0 } : x));
                           }}
                           className="glass-card group relative flex flex-col items-center gap-3 px-4 py-6 text-center transition hover:border-[var(--accent)]/30">
@@ -908,17 +910,19 @@ function GroupDetailPanel({
 
   useEffect(() => {
     let cancelled = false;
-    api.markGroupRead(group.id).then(() => { if (!cancelled) onRead(group.id); });
+    api.markGroupRead(group.id).then(() => { if (!cancelled) onRead(group.id); }).catch(() => {});
     return () => { cancelled = true; };
   }, [group.id, onRead]);
 
   useEffect(() => {
     let cancelled = false;
-    api.getGroupMessages(group.id).then(({ messages: msgs }) => {
-      if (cancelled) return;
-      setMessages(msgs);
-      lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
-    });
+    api.getGroupMessages(group.id)
+      .then(({ messages: msgs }) => {
+        if (cancelled) return;
+        setMessages(msgs);
+        lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+      })
+      .catch(() => { if (!cancelled) setMessageError("Não foi possível carregar as mensagens."); });
     return () => { cancelled = true; };
   }, [group.id]);
 

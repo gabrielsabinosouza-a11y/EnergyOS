@@ -273,7 +273,12 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
   );
 
   // Get period-scoped focus minutes using the new leaderboard system
-  const periodMinutes = await getGroupTotalMinutes(groupId, period);
+  let periodMinutes = 0;
+  try {
+    periodMinutes = await getGroupTotalMinutes(groupId, period);
+  } catch (err) {
+    console.error("[getGroupDetail] getGroupTotalMinutes failed, defaulting to 0", err);
+  }
 
   const mapped: GroupMember[] = members.rows.map((row) => ({
     id: row.id,

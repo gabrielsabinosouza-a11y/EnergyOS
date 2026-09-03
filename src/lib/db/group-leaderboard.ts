@@ -146,7 +146,7 @@ export async function getGroupTotalMinutes(groupId: number, period: Period): Pro
 
   if (start && end) {
     query += ` and contributed_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'`;
-    query += ` and contributed_at < (($3::date))::timestamp at time zone 'America/Sao_Paulo'`;
+    query += ` and contributed_at < ($3::date)::timestamp at time zone 'America/Sao_Paulo'`;
     params.push(start, end);
   }
 

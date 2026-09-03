@@ -23,6 +23,7 @@ export async function GET(
     const group = await getGroupDetail(profileId, Number(id), period);
     return NextResponse.json({ group });
   } catch (error) {
+    console.error("[GET /api/groups/[id]]", error);
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

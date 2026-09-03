@@ -116,7 +116,7 @@ The audit found **27 issues**: **7 critical** (economy-farming exploits and runt
 ### M3. Malformed JSON → 500 instead of 400 (bad API returns) ✅
 - **Files:** ~25 routes calling raw `await request.json()` — `store/decorations`, `store/banner`, `store/auras`, `store/shield-designs`, `dm/[friendId]`, `dm/by-username`, `groups/[id]/messages`, `groups/*`, `recap`, `recap/share`, `achievements`, `friends`, etc.
 - **What was wrong:** `request.json()` throws `SyntaxError` on invalid JSON (caught by the generic 500 branch), and `body.decorationId` on a `null`/array body throws `TypeError` → misleading "Erro interno." 500s in logs for trivially invalid input.
-- **Fix (✅):** `readJsonBody()` now throws `BadRequestError` (an `AppError`) so both `handleRoute` and manual `catch (error instanceof AppError)` blocks map malformed/null/array bodies to 400. All raw-`request.json()` routes were converted (17 files). Three endpoints intentionally keep tolerant parsing (`habits/[id]/completions`, `weekly-plans/[id]` PATCH, `daily-tasks/[id]` PATCH) because an **empty body is a valid request** for them (legacy client compat, `.catch(() => ({}))` fallback) — malformed JSON there degrades to the default action, never a 500.
+- **Fix (✅):** `readJsonBody()` now throws `BadRequestError` (an `AppError`) so both `handleRoute` and manual `catch (error instanceof AppError)` blocks map malformed/null/array bodies to 400. All raw-`request.json()` routes were converted (17 files). Four endpoints intentionally keep tolerant parsing (`habits/[id]/completions`, `weekly-plans/[id]` PATCH, `daily-tasks/[id]` PATCH, `tasks/[id]/complete` POST) because an **empty body is a valid request** for them (legacy client compat, `.catch(() => ({}))` fallback) — malformed JSON there degrades to the default action, never a 500.
 
 ### M4. `/api/relatorio` unvalidated `days` parameter ✅
 - **File:** `src/app/api/relatorio/route.ts`
@@ -213,37 +213,43 @@ The audit found **27 issues**: **7 critical** (economy-farming exploits and runt
 | `src/app/api/relatorio/route.ts` | `days` bounded to 1–366 |
 | `src/lib/db/social.ts` | Email matching removed from user search |
 | `src/lib/rate-limit.ts` | **New** — reusable rate limiter (429 `AppError`) |
-| `next.config.ts` | Security headers (CSP, HSTS, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy) |
-| `.env.example` | Real secrets replaced with placeholders |
+| `src/app/api/social/search/route.ts` | Rate limit 30/min (GET) |
+| `src/app/api/dm/[friendId]/route.ts`, `src/app/api/dm/by-username/route.ts` | Rate limit 20/min on POST; `readJsonBody` |
+| `src/app/api/groups/[id]/messages/route.ts` | Rate limit 30/min on POST; `readJsonBody` |
+| `src/app/api/checkins/route.ts` | Rate limit 10/min on POST |
+| `src/app/api/focus/route.ts` | Rate limit 30/min on POST |
+| `src/app/api/recap/route.ts` | Rate limit 5/hour on POST; `readJsonBody` |
+| `src/app/api/focus-rooms/route.ts` | Rate limit 10/min on POST (room creation) |
+| `src/app/api/store/decorations|banner|auras|shield-designs/route.ts`, `groups/route.ts`, `groups/create-with-usernames`, `groups/[id]/{members,details,invite,settings}`, `achievements`, `friends`, `recap/share` | Raw `request.json()` → `readJsonBody()` (malformed/null/array bodies now 400, not 500) |
+| `src/lib/http.ts` | `readJsonBody` throws `BadRequestError` (an `AppError`) so manual-catch routes return 400 |
+| `src/lib/db.ts` | Strict TLS for Neon in production (empirically verified against the live endpoint); `DATABASE_SSL_STRICT` / `DATABASE_SSL_CA_PATH` knobs |
+| `scripts/init-db.mjs` | Same TLS policy as `db.ts` |
+| `next.config.ts` | Security headers (CSP, HSTS, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy); `remotePatterns` allowlist (res.cloudinary.com, *.googleusercontent.com) |
+| `src/lib/db/validation.ts` | New `parseMessage()` (2000-char chat limit, single source of truth) |
+| `src/lib/db/messages.ts` | `markDmRead` enforces friendship; `parseMessage` replaces `parseTitle`+dead check in both send paths |
+| `src/app/api/focus-rooms/cleanup/route.ts` | Admin session **or** `CRON_SECRET` (header `x-cron-secret`/Bearer); params clamped (1min–24h / 1h–30d) |
+| `src/app/api/tasks/[id]/route.ts`, `src/app/api/focus-rooms/[roomId]/join/route.ts` | PII/noise logging removed |
+| `.env.example` | Real secrets replaced with placeholders; `DATABASE_SSL_STRICT`, `DATABASE_SSL_CA_PATH`, `CRON_SECRET` documented |
 
 ---
 
 ## Remaining recommendations (priority order)
 
-1. **Rotate credentials now** (M2): Cloudinary API secret + Neon DB password. They lived in plaintext on disk in a public repo's working tree.
-2. **Wire the rate limiter** (H4). Pattern for any AppError-mapped route:
-   ```ts
-   import { rateLimitForProfile } from "@/lib/rate-limit";
-
-   // inside the handler, after requireAuth:
-   rateLimitForProfile(profileId, "dm-send", 20, 60_000);
-   ```
-   Suggested budgets: `social/search` 30/min · `dm` POST 20/min · `groups/[id]/messages` POST 30/min · `checkins` POST 10/min · `focus` POST 30/min · `recap` POST 5/hour · `focus-rooms` POST 10/min.
-3. **JSON-validation sweep** (M3): replace raw `request.json()` with `readJsonBody()` + `assertObject()` in the ~25 routes listed above.
-4. **Neon TLS verification** (M7): pin the CA and set `rejectUnauthorized: true`.
-5. **Tighten `remotePatterns`** (M8) after auditing stored `photo_url`/`banner_image_url` values.
-6. Apply the small items: friendship check in `markDmRead` (M9), dead 2000-char check (M10), cleanup endpoint hardening (M12), log cleanup in `tasks/[id]` and `focus-rooms/join` (M5).
-7. Consider moving token verification to `firebase-admin` + `verifyIdToken()` (full signature/audience validation without the extra Google API round-trip) — the current `accounts:lookup` approach is valid but adds latency and depends on the public API key.
+1. **Rotate credentials now** (M2 — MANUAL, still pending): Cloudinary API secret + Neon DB password. They lived in plaintext on disk in a public repo's working tree. Cannot be done from the codebase.
+2. **Deduplicate `xp_ledger` and apply the schema migration** (M14 — MANUAL, confirmed required): production still has the old schema (bigint `source_id`, no `kanban_task` in CHECK, no dedupe index) and **6 duplicate groups**; `npm run db:init` will fail until the dedupe SQL in M14 runs. Not executed automatically per policy.
+3. Consider moving token verification to `firebase-admin` + `verifyIdToken()` (full signature/audience validation without the extra Google API round-trip) — the current `accounts:lookup` approach is valid but adds latency and depends on the public API key.
+4. If you scale to multiple instances, move the in-memory rate limiter behind Redis/Upstash for global limits.
+5. Set a strong `CRON_SECRET` in production and point the focus-rooms cleanup scheduler at it (the endpoint now rejects unauthenticated callers).
 
 ---
 
 ## How to apply / verify
 
 ```bash
-# 1. Apply schema changes (idempotent; see M14 if unique index fails on dupes)
+# 1. REQUIRED FIRST (manual, see M14): dedupe xp_ledger in production, then:
 npm run db:init
 
-# 2. Type-check
+# 2. Type-check (verified passing — EXIT 0)
 npx tsc --noEmit
 
 # 3. Smoke-test the fixed flows
@@ -251,4 +257,6 @@ npx tsc --noEmit
 #    - first check-in of the day with a streak > 0 (no more 500s — B1)
 #    - complete a kanban task (XP awarded — B2)
 #    - double-submit a purchase (single charge only — C4)
+#    - send a malformed JSON body to any POST route (expect 400, not 500)
+#    - hammer /api/social/search 31x in a minute (expect 429 on the 31st)
 ```

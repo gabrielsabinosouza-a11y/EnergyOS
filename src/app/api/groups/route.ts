@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const { profileId } = await requireAuth(request);
     const body = await readJsonBody(request);
     const group = await createGroup(profileId, {
-      name: body.name as string | undefined,
+      name: body.name as string,
       avatarEmoji: body.avatarEmoji as string | undefined,
       avatarUrl: body.avatarUrl as string | undefined,
       description: body.description as string | undefined,

@@ -1,6 +1,6 @@
 import pool from "../db";
 import type { DirectMessage } from "@/types";
-import { parseMessage, parseProfileId } from "./validation";
+import { parseMessage, parseProfileId, ValidationError } from "./validation";
 import { assertFriends, getUserByUsername, sendFriendRequest } from "./social";
 import { ConflictError, NotFoundError } from "../errors";
 
