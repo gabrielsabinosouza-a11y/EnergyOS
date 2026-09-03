@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import type { Goal, Habit } from "@/types";
 
@@ -17,11 +18,26 @@ declare global {
   var energyosPgPool: Pool | undefined;
 }
 
+const isNeon = /neon\.tech/.test(connectionString);
+// TLS policy: in production (or DATABASE_SSL_STRICT=true) the server
+// certificate is fully verified. Neon's AWS/GCP endpoints present
+// publicly-trusted certificates (Amazon Trust Services / Google Trust
+// Services), so Node's built-in root store validates them — verified
+// empirically against the production endpoint with rejectUnauthorized: true.
+// Optionally pin an explicit CA bundle via DATABASE_SSL_CA_PATH. Development
+// keeps the lenient mode so local/self-signed Postgres still works.
+const sslStrict = process.env.NODE_ENV === "production" || process.env.DATABASE_SSL_STRICT === "true";
+const caPath = process.env.DATABASE_SSL_CA_PATH;
+
 const pool =
   globalThis.energyosPgPool ??
   new Pool({
     connectionString,
-    ssl: /neon\.tech/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
+    ssl: isNeon
+      ? sslStrict
+        ? { rejectUnauthorized: true, ...(caPath ? { ca: readFileSync(caPath) } : {}) }
+        : { rejectUnauthorized: false }
+      : undefined,
   });
 
 pool.on('error', (err) => {

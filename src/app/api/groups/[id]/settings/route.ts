@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { deleteGroup, leaveGroup, transferOwnership } from "@/lib/db/groups";
 
 export async function POST(
@@ -10,8 +11,8 @@ export async function POST(
   try {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    const body = await request.json();
-    const action: string = body.action;
+    const body = await readJsonBody(request);
+    const action = typeof body.action === "string" ? body.action : "";
 
     switch (action) {
       case "leave":
@@ -21,7 +22,7 @@ export async function POST(
         if (!body.targetProfileId) {
           return NextResponse.json({ error: "targetProfileId é obrigatório." }, { status: 400 });
         }
-        await transferOwnership(profileId, Number(id), body.targetProfileId);
+        await transferOwnership(profileId, Number(id), body.targetProfileId as string);
         return NextResponse.json({ success: true });
       case "delete":
         await deleteGroup(profileId, Number(id));

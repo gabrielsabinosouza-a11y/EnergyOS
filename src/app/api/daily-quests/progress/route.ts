@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { todayIso } from "@/lib/db/dates";
 import { incrementQuestProgress, initializeUserDailyQuests, getUserQuestProgress } from "@/lib/db/daily-quests";
+import { ValidationError } from "@/lib/db/validation";
 import type { QuestType } from "@/types";
 
 /**

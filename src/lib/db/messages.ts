@@ -1,6 +1,6 @@
 import pool from "../db";
 import type { DirectMessage } from "@/types";
-import { parseProfileId, parseTitle, ValidationError } from "./validation";
+import { parseMessage, parseProfileId } from "./validation";
 import { assertFriends, getUserByUsername, sendFriendRequest } from "./social";
 import { ConflictError, NotFoundError } from "../errors";
 
@@ -60,8 +60,7 @@ export async function sendDirectMessage(profileId: string, otherId: string, body
   parseProfileId(profileId);
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
-  const text = parseTitle(body, "Mensagem");
-  if (text.length > 2000) throw new ValidationError("Mensagem deve ter no máximo 2000 caracteres.");
+  const text = parseMessage(body);
 
   const result = await pool.query<DmRow>(
     `insert into direct_messages (sender_id, recipient_id, body)
@@ -75,6 +74,9 @@ export async function sendDirectMessage(profileId: string, otherId: string, body
 export async function markDmRead(profileId: string, otherId: string): Promise<void> {
   parseProfileId(profileId);
   const other = parseProfileId(otherId);
+  // Consistent with the rest of the DM surface: reads are only recorded
+  // between friends.
+  await assertFriends(profileId, other);
   await pool.query(
     `insert into dm_reads (profile_id, other_id, read_at)
      values ($1, $2, now())
@@ -165,8 +167,7 @@ export async function sendDirectMessageByUsername(
   body: string,
 ): Promise<DirectMessage> {
   parseProfileId(profileId);
-  const text = parseTitle(body, "Mensagem");
-  if (text.length > 2000) throw new ValidationError("Mensagem deve ter no máximo 2000 caracteres.");
+  const text = parseMessage(body);
   
   // Find the user by username
   const targetUser = await getUserByUsername(username);

@@ -20,9 +20,13 @@ const nextConfig: NextConfig = {
   images: {
     // Disable image optimization for local development on network drives
     disableStaticImages: process.env.NODE_ENV === 'development',
-    // Allow images from external domains
+    // Allow images only from known hosts. Live-data check (photo_url /
+    // banner_image_url across all profiles) found only res.cloudinary.com in
+    // use; Google profile photos come from *.googleusercontent.com.
     remotePatterns: [
-      { protocol: 'https', hostname: '*' },
+      { protocol: 'https', hostname: 'res.cloudinary.com' },
+      { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
+      { protocol: 'https', hostname: '*.googleusercontent.com' },
     ],
     // Device sizes for responsive images
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],

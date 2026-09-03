@@ -28,10 +28,14 @@ if (!connectionString) {
 }
 
 const isNeon = /neon\.tech/.test(connectionString);
+// Match the app's TLS policy: strict (certificate verification via Node's
+// built-in root store — Neon's endpoints chain to publicly-trusted roots) in
+// production or when DATABASE_SSL_STRICT=true; lenient in dev.
+const sslStrict = process.env.NODE_ENV === "production" || process.env.DATABASE_SSL_STRICT === "true";
 
 const client = new pg.Client({
   connectionString,
-  ssl: isNeon ? { rejectUnauthorized: false } : undefined,
+  ssl: isNeon ? (sslStrict ? { rejectUnauthorized: true } : { rejectUnauthorized: false }) : undefined,
 });
 
 try {

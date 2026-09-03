@@ -91,7 +91,7 @@ The audit found **27 issues**: **7 critical** (economy-farming exploits and runt
 
 ### H4. No rate limiting on abuse-prone endpoints
 - **What was wrong:** Nothing throttled user search, DMs (spam vector — see M6), group messages, check-ins, focus-session starts, recap generation, or room creation. A scripted client could hammer all of them.
-- **Fix (⚠️ Partially):** `src/lib/rate-limit.ts` created (in-memory fixed-window limiter, throws 429 `AppError` so it plugs into `handleRoute`/existing catch blocks). **Open item:** wire it into the routes (snippet in "Remaining recommendations"). Note: in-memory limits are per-instance; for multi-instance deployments use Redis/Upstash.
+- **Fix (✅):** `src/lib/rate-limit.ts` (in-memory fixed-window limiter, throws 429 `AppError` so it plugs into `handleRoute`/existing catch blocks), wired into every endpoint in the original risk list with these exact budgets: `social/search` GET 30/min · `dm` POST (`dm/[friendId]` + `dm/by-username`) 20/min · `groups/[id]/messages` POST 30/min · `checkins` POST 10/min · `focus` POST 30/min · `recap` POST 5/hour · `focus-rooms` POST 10/min. Note: in-memory limits are per-instance; for multi-instance deployments use Redis/Upstash.
 
 ### H5. No `email_verified` check in authentication
 - **File:** `src/lib/server-auth.ts`
@@ -113,70 +113,79 @@ The audit found **27 issues**: **7 critical** (economy-farming exploits and runt
 - **Fix (✅):** Replaced with placeholders + warning comments + `AUTH_ALLOW_UNVERIFIED=false` documented.
 - **⚠️ Required follow-up (cannot be done in code):** **Rotate** the Cloudinary API secret and the Neon DB password — treat them as exposed since they existed in plaintext and this repo is public.
 
-### M3. Malformed JSON → 500 instead of 400 (bad API returns)
+### M3. Malformed JSON → 500 instead of 400 (bad API returns) ✅
 - **Files:** ~25 routes calling raw `await request.json()` — `store/decorations`, `store/banner`, `store/auras`, `store/shield-designs`, `dm/[friendId]`, `dm/by-username`, `groups/[id]/messages`, `groups/*`, `recap`, `recap/share`, `achievements`, `friends`, etc.
 - **What was wrong:** `request.json()` throws `SyntaxError` on invalid JSON (caught by the generic 500 branch), and `body.decorationId` on a `null`/array body throws `TypeError` → misleading "Erro interno." 500s in logs for trivially invalid input.
-- **Fix (⚠️ Partially):** `readJsonBody()`/`assertObject()` already existed and are used by the routes touched in this audit (checkins, daily-quests/progress, focus, tasks). **Open item:** sweep the remaining routes listed above to use the same helpers.
+- **Fix (✅):** `readJsonBody()` now throws `BadRequestError` (an `AppError`) so both `handleRoute` and manual `catch (error instanceof AppError)` blocks map malformed/null/array bodies to 400. All raw-`request.json()` routes were converted (17 files). Three endpoints intentionally keep tolerant parsing (`habits/[id]/completions`, `weekly-plans/[id]` PATCH, `daily-tasks/[id]` PATCH) because an **empty body is a valid request** for them (legacy client compat, `.catch(() => ({}))` fallback) — malformed JSON there degrades to the default action, never a 500.
 
 ### M4. `/api/relatorio` unvalidated `days` parameter ✅
 - **File:** `src/app/api/relatorio/route.ts`
 - **What was wrong:** `parseInt(daysParam)` with no bounds — `days=0` queried future ranges, `days=-5` inverted the window, `days=999999` forced huge range scans (query-cost abuse).
 - **Fix (✅):** `parseNumber(..., { integer: true, min: 1, max: 366, fallback: 7 })`.
 
-### M5. PII/noise logging in API routes ✅ (main offenders removed)
-- **Files:** `checkins/route.ts` (logged full request body), `test/route.ts` (logged email/profile), `server-auth.ts` (logged on every request), `store.ts` (purchase logs incl. balances), `tasks/[id]/route.ts` (logged task bodies — still present)
-- **Fix (✅ for the audited hot paths):** Removed from checkins, test, server-auth, store. **Open item:** same cleanup in `tasks/[id]/route.ts` and `focus-rooms/[roomId]/join/route.ts`.
+### M5. PII/noise logging in API routes ✅
+- **Files:** `checkins/route.ts` (logged full request body), `test/route.ts` (logged email/profile), `server-auth.ts` (logged on every request), `store.ts` (purchase logs incl. balances), `tasks/[id]/route.ts`, `focus-rooms/[roomId]/join/route.ts`
+- **Fix (✅):** Removed from all of the above — checkins, test, server-auth, store, tasks and focus-rooms/join now log only errors.
 
 ### M6. DM-by-username spam vector ❌ (flagged)
 - **File:** `src/lib/db/messages.ts` → `sendDirectMessageByUsername()`
 - **What was wrong:** Sends a friend request *and stores the message* for non-friends on every call (the comment claims it "won't be delivered", but `listDirectMessages` performs no filtering — everything appears once friendship is accepted). With no rate limit, this is a friend-request + message spam loop against any username.
 - **Recommendation:** enforce the rate limiter on `POST /api/dm/by-username` and `POST /api/dm/[friendId]` (e.g. 20/min per profile), and consider a cooldown on repeated requests to the same target.
 
-### M7. Database TLS verification disabled ❌ (flagged)
+### M7. Database TLS verification disabled ✅
 - **File:** `src/lib/db.ts` (also `scripts/init-db.mjs`)
 - **What was wrong:** `ssl: { rejectUnauthorized: false }` for Neon — the connection is encrypted but the server certificate is **not verified**, so an active MITM can intercept DB traffic.
-- **Recommendation:** download the Neon CA root bundle, add it to the project, and use `ssl: { ca: caCert, rejectUnauthorized: true }` (keep the env-based fallback for local Postgres).
+- **Fix (✅):** Strict TLS (`rejectUnauthorized: true`) is enforced for Neon in **production** (or when `DATABASE_SSL_STRICT=true`); dev keeps the lenient mode. The Neon CA bundle download endpoint now requires auth, but this turned out to be unnecessary: the production endpoint was **empirically verified** to present a publicly-trusted certificate chain (Amazon Trust Services) that Node's built-in Mozilla root store validates (`rejectUnauthorized: true` connect test passed). An optional `DATABASE_SSL_CA_PATH` env var allows pinning an explicit CA bundle if ever needed; `scripts/init-db.mjs` follows the same policy.
 
-### M8. `next/image` allows any remote host ❌ (flagged)
-- **File:** `next.config.ts` → `images.remotePatterns: [{ hostname: '*' }]`
-- **What was wrong:** Combined with free-form `photoUrl`/`banner_image_url` inputs, this lets any third-party host be used as an image source (tracking pixels, mixed-content tricks, broken-avatar substitution).
-- **Recommendation:** restrict to the hosts actually used (e.g. `res.cloudinary.com`, `lh3.googleusercontent.com`) — requires validating existing `photo_url`/`banner_image_url` data first.
+### M8. `next/image` allows any remote host ✅
+- **File:** `next.config.ts` → `images.remotePatterns`
+- **What was wrong:** Combined with free-form `photoUrl`/`banner_image_url` inputs, this let any third-party host be used as an image source (tracking pixels, mixed-content tricks, broken-avatar substitution).
+- **Fix (✅):** Replaced `hostname: '*'` with a data-driven allowlist. A live query over `photo_url`/`banner_image_url` across all profiles found **only `res.cloudinary.com`** in use (2 banner rows; photo URLs are non-remote). Allowlist: `res.cloudinary.com`, `lh3.googleusercontent.com`, `*.googleusercontent.com` (Firebase Google profile photos). If a user ever hosts an avatar elsewhere, the allowlist needs an entry.
 
-### M9. `markDmRead` doesn't verify friendship ❌ (flagged, low impact)
+### M9. `markDmRead` doesn't verify friendship ✅
 - **File:** `src/lib/db/messages.ts`
 - **What was wrong:** Writes a `dm_reads` row for any `otherId` without checking friendship — harmless data pollution, but inconsistent with the rest of the DM surface.
-- **Recommendation:** add `assertFriends(profileId, other)` like the other DM functions.
+- **Fix (✅):** `assertFriends(profileId, other)` added, matching the other DM functions.
 
-### M10. Dead-code length check in DM validation ⚪
+### M10. Dead-code length check in DM validation ✅
 - **File:** `src/lib/db/messages.ts` → `sendDirectMessage()`, `sendDirectMessageByUsername()`
-- **What was wrong:** `parseTitle()` caps at 200 chars, so the following `if (text.length > 2000)` can never trigger — the "2000 char" limit is fiction; real limit is 200.
-- **Recommendation:** remove the dead check or introduce a dedicated `parseMessage` with the intended limit.
+- **What was wrong:** `parseTitle()` caps at 200 chars, so the following `if (text.length > 2000)` could never trigger — the "2000 char" limit was fiction; real limit was 200.
+- **Fix (✅):** New `parseMessage()` helper in `validation.ts` enforcing the intended 2000-char limit (verified safe: `direct_messages.body` is a `text` column), used by both send paths; dead checks removed. Net effect: DMs may now legitimately carry up to 2000 chars as originally intended.
 
 ### M11. Hardcoded quest IDs in the progress route ⚪ (fixed incidentally)
 - **File:** `src/app/api/daily-quests/progress/route.ts`
 - **What was wrong:** The route assumed `questId === 1/2/3` map to specific missions, but (per the code's own comment) mission row ids are not fixed — progress landed on the wrong quests.
 - **Fix (✅ within the C2 rewrite):** the route keeps its legacy IDs but no longer accepts client-driven targeting; the canonical path is `recordMissionProgress()` (metric-based) invoked server-side by focus/checkin flows.
 
-### M12. `/api/focus-rooms/cleanup` abusable by any authenticated user ⚪
+### M12. `/api/focus-rooms/cleanup` abusable by any authenticated user ✅
 - **File:** `src/app/api/focus-rooms/cleanup/route.ts`
-- **What was wrong:** Any authenticated user can trigger the sweep with arbitrary `waitingTimeoutMs`/`retentionMs` query params (unvalidated `Number()`).
-- **Recommendation:** restrict to admin role or a shared cron secret, and clamp the two params.
+- **What was wrong:** Any authenticated user could trigger the sweep with arbitrary `waitingTimeoutMs`/`retentionMs` query params (unvalidated `Number()`).
+- **Fix (✅):** Now requires an **admin session** (`requireAdmin()`) **or** a shared cron secret (`CRON_SECRET` env, via `x-cron-secret` or `Authorization: Bearer` header) so external schedulers keep working; both params are clamped via `parseNumber` (`waitingTimeoutMs` 1min–24h default 45min, `retentionMs` 1h–30d default 24h).
 
 ### M13. Token verification cache window ⚪ (accepted trade-off)
 - **File:** `src/lib/server-auth.ts`
 - **What was wrong (design note):** verified identities are cached 5 minutes keyed by raw token — a revoked/disabled account can keep calling APIs for up to 5 minutes. Bounded at 500 entries.
 - **Recommendation:** keep, but document; reduce TTL if faster revocation is needed.
 
-### M14. `xp_ledger` unique index may fail on existing duplicate rows ⚠️
+### M14. `xp_ledger` unique index may fail on existing duplicate rows 🔴 (CONFIRMED — required manual step)
 - **File:** `src/db-schema.sql`
-- **Note:** `create unique index if not exists xp_ledger_dedupe_idx` will error on `npm run db:init` **if the production table already contains duplicates** (possible, given the old race conditions). If that happens, deduplicate first:
+- **Live-database check (2026-09-03):** the production database **has not yet received** the xp_ledger hardening — `source_id` is still `bigint`, the CHECK constraint still lacks `kanban_task`, **no dedupe index exists**, and there are **6 duplicate `(profile_id, source, source_id)` groups** (all under legacy sources: focus/checkin/task/daily_task/daily_quest/kanban). Running `npm run db:init` **will fail** (the whole multi-statement script is atomic) until rows are deduplicated.
+- **Required manual step (run first, in this order):**
   ```sql
+  -- 1. Inspect the duplicates (6 groups as of the audit):
+  select profile_id, source, coalesce(source_id::text,'') as key, count(*) as n
+    from xp_ledger group by 1,2,3 having count(*) > 1;
+
+  -- 2. Deduplicate (keeps the earliest row of each group):
   delete from xp_ledger a using xp_ledger b
    where a.id > b.id
      and a.profile_id = b.profile_id
      and a.source = b.source
-     and coalesce(a.source_id,'') = coalesce(b.source_id,'');
+     and coalesce(a.source_id::text,'') = coalesce(b.source_id::text,'');
+
+  -- 3. Then apply the schema: npm run db:init
   ```
+  Do **not** run the delete against production automatically — review the 6 groups first (they also explain past double-rewards; optionally reconcile `user_xp.total_xp` for affected profiles).
 
 ### M15. Unused imports / dead parameters after fixes ⚪
 - `src/lib/db/checkins.ts`: `parseDate` import and the `hasAnyValue` flow remain valid; `UpsertCheckinInput.checkinDate` is now only accepted when equal to today.

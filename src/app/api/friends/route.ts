@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
-    const body = await request.json();
-    const result = await sendFriendRequest(profileId, body.addresseeId);
+    const body = await readJsonBody(request);
+    const result = await sendFriendRequest(profileId, body.addresseeId as string);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AppError) {

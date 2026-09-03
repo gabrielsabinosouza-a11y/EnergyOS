@@ -51,6 +51,19 @@ export function parseTitle(value: unknown, field = "Título"): string {
   return trimmed;
 }
 
+/**
+ * Mensagens de chat: limite maior que títulos (2000 caracteres), validado em
+ * um único lugar. A coluna direct_messages.body é text, portanto o limite é
+ * apenas de política, não do banco.
+ */
+export function parseMessage(value: unknown, field = "Mensagem"): string {
+  if (typeof value !== "string") throw new ValidationError(`${field} é obrigatória.`);
+  const trimmed = value.trim();
+  if (!trimmed) throw new ValidationError(`${field} é obrigatória.`);
+  if (trimmed.length > 2000) throw new ValidationError(`${field} deve ter no máximo 2000 caracteres.`);
+  return trimmed;
+}
+
 export function parseEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
   if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) {
     throw new ValidationError(`${field} inválido. Valores aceitos: ${allowed.join(", ")}.`);

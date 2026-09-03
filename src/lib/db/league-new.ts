@@ -51,9 +51,9 @@ async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeag
   await db.query(
     `update profiles set highest_league_tier = $2
      where id = $1
-       and (highest_league_tier is null
-            or array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], highest_league_tier)
-               < array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], $2::league_tier))`,
+        and (highest_league_tier is null
+             or array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS']::league_tier[], highest_league_tier)
+                < array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS']::league_tier[], $2::league_tier))`,
     [profileId, tier],
   );
 }

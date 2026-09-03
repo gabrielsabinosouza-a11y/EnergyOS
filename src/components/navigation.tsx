@@ -114,12 +114,12 @@ export function Sidebar({ pathname }: { pathname: string }) {
                   <Image
                     src={img}
                     alt=""
-                    width={17}
-                    height={17}
+                    width={22}
+                    height={22}
                     className="shrink-0 object-contain"
                   />
                 ) : (
-                  <Icon size={17} />
+                  <Icon size={22} />
                 )}
                 <span>{label}</span>
                 {showBadge && (

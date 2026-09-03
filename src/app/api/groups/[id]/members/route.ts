@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
 import { removeMember, setMemberMuted, updateMemberRole } from "@/lib/db/groups";
 import type { GroupRole } from "@/types";
@@ -41,9 +42,9 @@ export async function PATCH(
   try {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    const body = await request.json();
-    const targetProfileId: string = body.profileId;
-    const role: string = body.role;
+    const body = await readJsonBody(request);
+    const targetProfileId = typeof body.profileId === "string" ? body.profileId : "";
+    const role = typeof body.role === "string" ? body.role : "";
     if (!targetProfileId) {
       return NextResponse.json({ error: "profileId é obrigatório." }, { status: 400 });
     }
@@ -71,11 +72,12 @@ export async function DELETE(
   try {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    const body = await request.json();
-    if (!body.profileId) {
+    const body = await readJsonBody(request);
+    const targetProfileId = typeof body.profileId === "string" ? body.profileId : "";
+    if (!targetProfileId) {
       return NextResponse.json({ error: "profileId é obrigatório." }, { status: 400 });
     }
-    await removeMember(profileId, Number(id), body.profileId);
+    await removeMember(profileId, Number(id), targetProfileId);
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof AppError) {

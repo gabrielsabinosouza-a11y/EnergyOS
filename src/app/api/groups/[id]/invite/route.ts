@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { inviteToGroup } from "@/lib/db/groups";
 
 export async function POST(
@@ -10,13 +11,13 @@ export async function POST(
   try {
     const { profileId } = await requireAuth(request);
     const { id } = await params;
-    const body = await request.json();
+    const body = await readJsonBody(request);
     
     if (!Array.isArray(body.inviteIds)) {
       return NextResponse.json({ error: "inviteIds deve ser um array." }, { status: 400 });
     }
     
-    await inviteToGroup(profileId, Number(id), body.inviteIds);
+    await inviteToGroup(profileId, Number(id), body.inviteIds as string[]);
     
     return NextResponse.json({ success: true });
   } catch (error) {

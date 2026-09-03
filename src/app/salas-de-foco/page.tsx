@@ -828,9 +828,9 @@ export default function FocusRoomsPage() {
                 className="font-mono font-bold tabular-nums leading-none"
                 style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}
               >
-                {String(Math.floor(selectedDuration / 60)).padStart(2, "0")}:{String(selectedDuration % 60).padStart(2, "0")}
+                {selectedDuration}
               </span>
-              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">horas focadas</span>
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">minutos</span>
             </div>
             <span className="mt-2 text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
               toque no centro para trocar a energia

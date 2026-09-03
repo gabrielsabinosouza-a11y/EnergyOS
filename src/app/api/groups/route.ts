@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { listGroups, createGroup } from "@/lib/db/groups";
 
 export async function GET(request: NextRequest) {
@@ -19,14 +20,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const group = await createGroup(profileId, {
-      name: body.name,
-      avatarEmoji: body.avatarEmoji,
-      avatarUrl: body.avatarUrl,
-      description: body.description,
-      isPublic: body.isPublic,
-      inviteIds: body.inviteIds,
+      name: body.name as string | undefined,
+      avatarEmoji: body.avatarEmoji as string | undefined,
+      avatarUrl: body.avatarUrl as string | undefined,
+      description: body.description as string | undefined,
+      isPublic: body.isPublic as boolean | undefined,
+      inviteIds: body.inviteIds as string[] | undefined,
     });
     return NextResponse.json({ group });
   } catch (error) {
