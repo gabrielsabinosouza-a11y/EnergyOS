@@ -990,26 +990,29 @@ function GroupDetailPanel({
     setSending(true);
     setMessageError("");
     try {
-      const { message } = await api.sendGroupMessage(group.id, body);
-      appendMessage({ ...message, replyToId, replyToBody: replyingTo?.body, replyToSenderName: replyingTo?.senderId === currentUserId ? "você" : replyingTo?.senderName });
+      const { message } = await api.sendGroupMessage(group.id, body, { replyToId });
+      appendMessage(message);
       setReplyingTo(null);
     } catch { setInput(body); }
     finally { setSending(false); }
   }
 
   async function handleEditMessage(messageId: number, newBody: string) {
-    const msg = messages.find((m) => m.id === messageId);
-    if (!msg) return;
     try {
-      await api.sendGroupMessage(group.id, newBody);
-      setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, body: newBody, editedAt: new Date().toISOString() } : m));
+      const { message } = await api.editGroupMessage(messageId, group.id, newBody);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
     } catch {
       setMessageError("Não foi possível editar a mensagem.");
     }
   }
 
   async function handleDeleteMessage(messageId: number) {
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    try {
+      await api.deleteGroupMessage(messageId, group.id);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch {
+      setMessageError("Não foi possível apagar a mensagem.");
+    }
   }
 
   async function handleSendImage(file: File) {

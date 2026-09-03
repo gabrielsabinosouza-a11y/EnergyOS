@@ -193,7 +193,11 @@ function DashboardContent() {
     setCheckinSaving(true);
     setCheckinSaved(false);
     try {
-      const result = await api.saveCheckin({ sleepHours });
+      const result = await withTimeout(
+        api.saveCheckin({ sleepHours }),
+        15000,
+        "O check-in demorou demais. Tente novamente.",
+      );
       setCheckinSaved(true);
       if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
         showSuccess(`Check-in salvo! +${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🌟`);
@@ -203,12 +207,14 @@ function DashboardContent() {
       } else {
         showSuccess("Check-in salvo!");
       }
-      await fetchDashboard();
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Nao foi possivel salvar o check-in.");
+      showError(error instanceof Error ? error.message : "Não foi possível salvar o check-in.");
     } finally {
       setCheckinSaving(false);
     }
+    // Refresh the dashboard in the background AFTER the button state is reset,
+    // so a slow or failed dashboard call can never keep the button spinning.
+    void fetchDashboard();
   }
 
   async function refreshXpForDailyTask() {
@@ -572,8 +578,8 @@ function DashboardContent() {
               transition={{ type: "spring", stiffness: 400, damping: 20 }}
               className="primary-button"
             >
-              {checkinSaving ? <Loader2 size={15} className="animate-spin" /> : checkinSaved ? <Check size={15} /> : <Check size={15} />}
-              {checkinSaved ? "Check-in salvo" : "Salvar check-in"}
+              {checkinSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              {checkinSaving ? "Salvando..." : checkinSaved ? "Check-in salvo" : "Salvar check-in"}
             </motion.button>
           </div>
         </motion.section>

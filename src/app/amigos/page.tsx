@@ -104,6 +104,9 @@ export default function AmigosPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* Conversation list context menu */
+  const [listMenu, setListMenu] = useState<{ x: number; y: number; friend: FriendSummary } | null>(null);
+
   /* Search */
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
@@ -556,10 +559,21 @@ function ChatPanel({
   }
 
   async function handleReply(body: string, replyToId: number) {
-    const { message } = await api.sendMessage(friend.id, body);
-    setMessages((prev) => [...prev, { ...message, replyToId, replyToBody: replyingTo?.body, replyToSenderName: replyingTo?.senderId === currentUserId ? "você" : friend.displayName }]);
+    const { message } = await api.sendMessage(friend.id, body, { replyToId });
+    // The server returns the reply with joined reply info
+    setMessages((prev) => [...prev, message]);
     lastIdRef.current = message.id;
     setReplyingTo(null);
+  }
+
+  async function handleEditMessage(messageId: number, newBody: string) {
+    const { message } = await api.editDmMessage(messageId, newBody);
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
+  }
+
+  async function handleDeleteMessage(messageId: number) {
+    await api.deleteDmMessage(messageId);
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }
 
   /* Convert to unified type */
@@ -594,6 +608,8 @@ function ChatPanel({
           reduced={reduced}
           onSend={handleSend}
           onReply={handleReply}
+          onEdit={handleEditMessage}
+          onDelete={handleDeleteMessage}
           onReplyMessage={(m) => {
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);

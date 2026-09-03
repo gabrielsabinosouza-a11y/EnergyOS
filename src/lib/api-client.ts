@@ -250,8 +250,12 @@ export const api = {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: DirectMessage[] }>(`/api/dm/${friendId}${query}`);
   },
-  sendMessage: (friendId: string, body: string) =>
-    request<{ message: DirectMessage }>(`/api/dm/${friendId}`, { method: "POST", body: JSON.stringify({ body }) }),
+  sendMessage: (friendId: string, body: string, opts?: { replyToId?: number }) =>
+    request<{ message: DirectMessage }>(`/api/dm/${friendId}`, { method: "POST", body: JSON.stringify({ body, ...opts }) }),
+  editDmMessage: (messageId: number, body: string) =>
+    request<{ message: DirectMessage }>(`/api/dm/messages/${messageId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteDmMessage: (messageId: number) =>
+    request<{ ok: true }>(`/api/dm/messages/${messageId}`, { method: "DELETE" }),
   markDmRead: (friendId: string) =>
     request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
   startChatByUsername: (username: string) =>
@@ -277,11 +281,15 @@ export const api = {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: GroupMessage[] }>(`/api/groups/${id}/messages${query}`);
   },
-  sendGroupMessage: (id: number, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number }) =>
+  sendGroupMessage: (id: number, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number }) =>
     request<{ message: GroupMessage }>(`/api/groups/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ body, ...opts }),
     }),
+  editGroupMessage: (messageId: number, groupId: number, body: string) =>
+    request<{ message: GroupMessage }>(`/api/groups/messages/${messageId}?groupId=${groupId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteGroupMessage: (messageId: number, groupId: number) =>
+    request<{ ok: true }>(`/api/groups/messages/${messageId}?groupId=${groupId}`, { method: "DELETE" }),
   markGroupRead: (id: number) =>
     request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
   updateGroupMemberRole: (id: number, profileId: string, role: import("@/types").GroupRole) =>

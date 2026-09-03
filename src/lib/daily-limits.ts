@@ -35,6 +35,22 @@ export const GOAL_COMPLETION_TIERS: { maxTarget: number; xp: number; coins: numb
   { maxTarget: Infinity, xp: 100, coins: 30 },
 ];
 
+// ── Achievements ───────────────────────────────────────────────────────────────
+//
+// Reward granted each time a user reaches a new achievement tier. Tiers are
+// ordered by difficulty (higher index = harder to reach). index 0 = first tier
+// unlocked, etc. `tier` here is 1-based (matches unlocked_tier in
+// user_achievement_progress).
+export const ACHIEVEMENT_REWARD_TIERS: { xp: number; coins: number }[] = [
+  { xp: 25,  coins: 50 },     // tier 1
+  { xp: 75,  coins: 150 },    // tier 2
+  { xp: 200, coins: 400 },    // tier 3
+  { xp: 500, coins: 1000 },   // tier 4+
+];
+
+/** Fallback used when an achievement has more tiers than ACHIEVEMENT_REWARD_TIERS. */
+export const ACHIEVEMENT_REWARD_FALLBACK = ACHIEVEMENT_REWARD_TIERS[ACHIEVEMENT_REWARD_TIERS.length - 1];
+
 // ── Focus ─────────────────────────────────────────────────────────────────────
 /**
  * Minimum fraction of a focus session's target duration that must be completed

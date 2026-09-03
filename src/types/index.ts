@@ -451,7 +451,7 @@ export interface UserXP {
 export interface XPLedgerEntry {
   id: number;
   profileId: string;
-  source: "task" | "kanban" | "focus" | "streak_bonus";
+  source: "task" | "kanban" | "focus" | "streak_bonus" | "achievement";
   sourceId?: number;
   xpAmount: number;
   createdAt: string;

@@ -347,17 +347,25 @@ export async function listGroupMessages(
     media_url: string | null;
     media_duration_seconds: string | number | null;
     created_at: Date | string;
+    reply_to_id: string | number | null;
+    reply_to_body: string | null;
+    reply_to_sender_name: string | null;
+    edited_at: Date | string | null;
     display_name: string;
     photo_url: string | null;
   };
   const selectColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
-     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url`;
+     gm.media_url, gm.media_duration_seconds, gm.created_at, gm.reply_to_id, gm.edited_at,
+     rp.body as reply_to_body, rp.sender_id as reply_sender_id, rpname.display_name as reply_to_sender_name,
+     p.display_name, p.photo_url`;
 
   const result = afterId
     ? await pool.query<MsgRow>(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join group_messages rp on rp.id = gm.reply_to_id
+         left join profiles rpname on rpname.id = rp.sender_id
          where gm.group_id = $1 and gm.id > $2
          order by gm.created_at asc
          limit 100`,
@@ -367,6 +375,8 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join group_messages rp on rp.id = gm.reply_to_id
+         left join profiles rpname on rpname.id = rp.sender_id
          where gm.group_id = $1
          order by gm.created_at desc
          limit 80`,
@@ -385,6 +395,10 @@ export async function listGroupMessages(
     mediaUrl: row.media_url ?? undefined,
     mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
+    replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
+    replyToBody: row.reply_to_body ?? undefined,
+    replyToSenderName: row.reply_to_sender_name ?? undefined,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
   }));
 }
 
@@ -392,7 +406,7 @@ export async function sendGroupMessage(
   profileId: string,
   groupId: number,
   body: string,
-  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number },
+  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number },
 ): Promise<GroupMessage> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
@@ -444,17 +458,33 @@ export async function sendGroupMessage(
     media_url: string | null;
     media_duration_seconds: string | number | null;
     created_at: Date | string;
+    reply_to_id: string | number | null;
+    edited_at: Date | string | null;
   }>(
-    `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds)
-     values ($1, $2, $3, $4, $5, $6)
-     returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at`,
-    [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds],
+    `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id, edited_at`,
+    [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.replyToId ?? null],
   );
   const row = inserted.rows[0];
   const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
     `select display_name, photo_url from profiles where id = $1`,
     [profileId],
   );
+  // Fetch reply join info
+  let replyToBody: string | undefined;
+  let replyToSenderName: string | undefined;
+  if (row.reply_to_id != null) {
+    const rp = await pool.query<{ body: string | null; sender_id: string; display_name: string }>(
+      `select rp.body, rp.sender_id, p.display_name
+       from group_messages rp
+       join profiles p on p.id = rp.sender_id
+       where rp.id = $1`,
+      [row.reply_to_id],
+    );
+    replyToBody = rp.rows[0]?.body ?? undefined;
+    replyToSenderName = rp.rows[0]?.display_name ?? undefined;
+  }
   return {
     id: Number(row.id),
     groupId: Number(row.group_id),
@@ -466,7 +496,71 @@ export async function sendGroupMessage(
     mediaUrl: row.media_url ?? undefined,
     mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
+    replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
+    replyToBody,
+    replyToSenderName,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
   };
+}
+
+export async function editGroupMessage(
+  profileId: string,
+  groupId: number,
+  messageId: number,
+  newBody: string,
+): Promise<GroupMessage> {
+  parseProfileId(profileId);
+  await assertMember(groupId, profileId);
+  const text = parseTitle(newBody, "Mensagem");
+  if (text.length > 2000) throw new ValidationError("Mensagem deve ter no máximo 2000 caracteres.");
+  const result = await pool.query<{
+    id: string | number;
+    group_id: string | number;
+    sender_id: string;
+    body: string | null;
+    message_type: string;
+    media_url: string | null;
+    media_duration_seconds: string | number | null;
+    created_at: Date | string;
+    reply_to_id: string | number | null;
+    edited_at: Date | string | null;
+  }>(
+    `update group_messages
+     set body = $1, edited_at = now()
+     where id = $2 and group_id = $3 and sender_id = $4 and message_type = 'TEXT'
+     returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id, edited_at`,
+    [text, messageId, groupId, profileId],
+  );
+  if (!result.rows[0]) throw new NotFoundError("Mensagem não encontrada.");
+  const row = result.rows[0];
+  return {
+    id: Number(row.id),
+    groupId: Number(row.group_id),
+    senderId: row.sender_id,
+    senderName: "Você",
+    body: row.body ?? undefined,
+    messageType: "TEXT",
+    mediaUrl: row.media_url ?? undefined,
+    mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
+  };
+}
+
+export async function deleteGroupMessage(
+  profileId: string,
+  groupId: number,
+  messageId: number,
+): Promise<void> {
+  parseProfileId(profileId);
+  await assertMember(groupId, profileId);
+  const result = await pool.query(
+    `delete from group_messages
+     where id = $1 and group_id = $2 and sender_id = $3`,
+    [messageId, groupId, profileId],
+  );
+  if (result.rowCount === 0) throw new NotFoundError("Mensagem não encontrada.");
 }
 
 export async function markGroupRead(profileId: string, groupId: number): Promise<void> {

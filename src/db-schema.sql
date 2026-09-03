@@ -278,7 +278,7 @@ delete from garden_entries where energy_type in ('nature','solar');
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal')),
+  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement')),
   source_id bigint,
   xp_amount integer not null,
   created_at timestamptz not null default now()
@@ -293,7 +293,7 @@ alter table xp_ledger alter column source_id type text using source_id::text;
 -- 'kanban_task' is written by awardKanbanXP; keep legacy 'kanban' allowed too.
 alter table xp_ledger drop constraint if exists xp_ledger_source_check;
 alter table xp_ledger add constraint xp_ledger_source_check
-  check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal'));
+  check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
 -- Idempotency backstop: one ledger row per (profile, source, source_id).
 create unique index if not exists xp_ledger_dedupe_idx
   on xp_ledger(profile_id, source, coalesce(source_id, ''));
@@ -416,7 +416,9 @@ create table if not exists group_messages (
     check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO')),
   media_url text,
   media_duration_seconds integer,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  reply_to_id bigint,
+  edited_at timestamptz
 );
 
 -- Add media columns to existing group_messages tables (idempotent for old dbs)
@@ -424,11 +426,14 @@ do $$ begin
   alter table group_messages add column if not exists message_type text not null default 'TEXT';
   alter table group_messages add column if not exists media_url text;
   alter table group_messages add column if not exists media_duration_seconds integer;
+  alter table group_messages add column if not exists reply_to_id bigint;
+  alter table group_messages add column if not exists edited_at timestamptz;
   -- Media-only messages (image/video/audio) have no text body, so body must be nullable
   alter table group_messages alter column body drop not null;
 exception when others then null; end $$;
 
 create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
+create index if not exists group_messages_reply_idx on group_messages(reply_to_id);
 
 create table if not exists group_reads (
   profile_id text not null references profiles(id) on delete cascade,
@@ -459,6 +464,8 @@ create table if not exists direct_messages (
   recipient_id text not null references profiles(id) on delete cascade,
   body text,
   created_at timestamptz not null default now(),
+  reply_to_id bigint,
+  edited_at timestamptz,
   check (sender_id <> recipient_id)
 );
 
@@ -467,12 +474,19 @@ do $$ begin
   alter table direct_messages alter column body drop not null;
 exception when others then null; end $$;
 
+-- Reply + edit columns (idempotent for existing DBs)
+do $$ begin
+  alter table direct_messages add column if not exists reply_to_id bigint;
+  alter table direct_messages add column if not exists edited_at timestamptz;
+exception when others then null; end $$;
+
 create index if not exists dm_pair_idx on direct_messages (
   least(sender_id, recipient_id),
   greatest(sender_id, recipient_id),
   created_at desc
 );
 create index if not exists dm_recipient_idx on direct_messages(recipient_id, created_at desc);
+create index if not exists dm_reply_idx on direct_messages(reply_to_id);
 
 create table if not exists dm_reads (
   profile_id text not null references profiles(id) on delete cascade,
@@ -531,6 +545,22 @@ insert into achievements (id, title, description, category) values
   ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
   ('rarest_aura',      'Top 1 Global',   'Termine no topo da Liga Lendários',                'league')
 on conflict (id) do nothing;
+
+-- Idempotency ledger for achievement rewards. Each (profile, achievement, tier)
+-- row is minted exactly once, so coins + XP are never granted twice even if
+-- progress is recomputed repeatedly.
+create table if not exists achievement_rewards (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  achievement_id text not null references achievements(id) on delete cascade,
+  tier integer not null,
+  coins_awarded integer not null default 0,
+  xp_awarded integer not null default 0,
+  awarded_at timestamptz not null default now(),
+  unique (profile_id, achievement_id, tier)
+);
+create index if not exists achievement_rewards_profile_idx
+  on achievement_rewards(profile_id);
 
 -- ========================================
 -- Daily Quests System

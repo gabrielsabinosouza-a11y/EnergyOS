@@ -4,7 +4,6 @@ import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http";
 import { listGroupMessages, sendGroupMessage } from "@/lib/db/groups";
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -36,6 +35,7 @@ export async function POST(
       messageType: body.messageType as string | undefined,
       mediaUrl: body.mediaUrl as string | undefined,
       mediaDurationSeconds: body.mediaDurationSeconds as number | undefined,
+      replyToId: body.replyToId != null ? Number(body.replyToId) : undefined,
     });
     return NextResponse.json({ message });
   } catch (error) {

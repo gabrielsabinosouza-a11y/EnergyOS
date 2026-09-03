@@ -3,7 +3,9 @@ import type { AchievementProgress } from "@/types";
 import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
 import { getLifetimeFocusMinutes } from "./focus";
-import { getUserXP } from "./xp";
+import { getUserXP, creditXP } from "./xp";
+import { addCoins } from "./settings";
+import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK } from "../daily-limits";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
@@ -34,6 +36,57 @@ function tierFor(value: number, thresholds: number[]): number {
     else break;
   }
   return tier;
+}
+
+/** Reward (coin + XP) for a 1-based unlocked tier. Harder tiers pay more. */
+function rewardForTier(tier: number): { xp: number; coins: number } {
+  if (tier <= 0) return { xp: 0, coins: 0 };
+  return ACHIEVEMENT_REWARD_TIERS[tier - 1] ?? ACHIEVEMENT_REWARD_FALLBACK;
+}
+
+/**
+ * Mints the coin + XP reward for every unlocked achievement tier that hasn't
+ * been claimed yet. Idempotent: the `achievement_rewards` unique constraint on
+ * (profile_id, achievement_id, tier) guarantees each tier is rewarded exactly
+ * once, even with repeated/backfilled evaluations.
+ */
+export async function awardAchievementRewards(
+  profileId: string,
+  values: Record<string, number>,
+): Promise<void> {
+  parseProfileId(profileId);
+
+  // Read which tiers are already claimed for this profile.
+  const claimed = await pool.query<{ achievement_id: string; tier: number }>(
+    `select achievement_id, tier from achievement_rewards where profile_id = $1`,
+    [profileId],
+  );
+  const claimedKeys = new Set(claimed.rows.map((r) => `${r.achievement_id}:${r.tier}`));
+
+  for (const id of Object.keys(ACHIEVEMENT_THRESHOLDS)) {
+    const unlockedTier = tierFor(values[id] ?? 0, ACHIEVEMENT_THRESHOLDS[id]);
+    for (let tier = 1; tier <= unlockedTier; tier += 1) {
+      if (claimedKeys.has(`${id}:${tier}`)) continue;
+      const { xp, coins } = rewardForTier(tier);
+      if (xp <= 0 && coins <= 0) continue;
+
+      const inserted = await pool.query(
+        `insert into achievement_rewards (profile_id, achievement_id, tier, coins_awarded, xp_awarded)
+         values ($1, $2, $3, $4, $5)
+         on conflict (profile_id, achievement_id, tier) do nothing
+         returning id`,
+        [profileId, id, tier, coins, xp],
+      );
+      if (!inserted.rows[0]) continue; // claimed concurrently — skip
+
+      if (xp > 0) {
+        await creditXP(profileId, "achievement", `${id}:${tier}`, xp);
+      }
+      if (coins > 0) {
+        await addCoins(profileId, coins);
+      }
+    }
+  }
 }
 
 async function computeValues(profileId: string): Promise<Record<string, number>> {
@@ -108,6 +161,11 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
 export async function listAchievementProgress(profileId: string): Promise<AchievementProgress[]> {
   parseProfileId(profileId);
   const values = await computeValues(profileId);
+
+  // Award coin + XP rewards for any unlocked tiers not yet claimed (incl.
+  // retroactive backfill for previously-reached requirements).
+  await awardAchievementRewards(profileId, values);
+
   const existing = await pool.query<{
     achievement_id: string;
     current_value: number;

@@ -10,6 +10,10 @@ interface DmRow {
   recipient_id: string;
   body: string;
   created_at: Date | string;
+  reply_to_id?: string | number | null;
+  reply_to_body?: string | null;
+  reply_to_sender_name?: string | null;
+  edited_at?: Date | string | null;
 }
 
 function mapDm(row: DmRow): DirectMessage {
@@ -19,8 +23,19 @@ function mapDm(row: DmRow): DirectMessage {
     recipientId: row.recipient_id,
     body: row.body,
     createdAt: new Date(row.created_at).toISOString(),
+    replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
+    replyToBody: row.reply_to_body ?? undefined,
+    replyToSenderName: row.reply_to_sender_name ?? undefined,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
   };
 }
+
+const DM_SELECT = `select dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at, dm.edited_at,
+  dm.reply_to_id, rp.body as reply_to_body, rp.sender_id as reply_sender_id,
+  p.display_name as reply_to_sender_name
+  from direct_messages dm
+  left join direct_messages rp on rp.id = dm.reply_to_id
+  left join profiles p on p.id = rp.sender_id`;
 
 export async function listDirectMessages(
   profileId: string,
@@ -33,21 +48,19 @@ export async function listDirectMessages(
 
   const result = afterId
     ? await pool.query<DmRow>(
-        `select id, sender_id, recipient_id, body, created_at
-         from direct_messages
-         where least(sender_id, recipient_id) = least($1::text, $2::text)
-           and greatest(sender_id, recipient_id) = greatest($1::text, $2::text)
-           and id > $3
-         order by created_at asc
+        `${DM_SELECT}
+         where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
+           and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
+           and dm.id > $3
+         order by dm.created_at asc
          limit 100`,
         [profileId, other, afterId],
       )
     : await pool.query<DmRow>(
-        `select id, sender_id, recipient_id, body, created_at
-         from direct_messages
-         where least(sender_id, recipient_id) = least($1::text, $2::text)
-           and greatest(sender_id, recipient_id) = greatest($1::text, $2::text)
-         order by created_at desc
+        `${DM_SELECT}
+         where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
+           and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
+         order by dm.created_at desc
          limit 80`,
         [profileId, other],
       );
@@ -56,19 +69,34 @@ export async function listDirectMessages(
   return rows.map(mapDm);
 }
 
-export async function sendDirectMessage(profileId: string, otherId: string, body: string): Promise<DirectMessage> {
+export async function sendDirectMessage(
+  profileId: string,
+  otherId: string,
+  body: string,
+  replyToId?: number,
+): Promise<DirectMessage> {
   parseProfileId(profileId);
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
   const text = parseMessage(body);
 
   const result = await pool.query<DmRow>(
-    `insert into direct_messages (sender_id, recipient_id, body)
-     values ($1, $2, $3)
-     returning id, sender_id, recipient_id, body, created_at`,
-    [profileId, other, text],
+    `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
+     values ($1, $2, $3, $4)
+     returning id, sender_id, recipient_id, body, created_at, reply_to_id`,
+    [profileId, other, text, replyToId ?? null],
   );
-  return mapDm(result.rows[0]);
+  const row = result.rows[0];
+  // Fetch join info for reply
+  if (row.reply_to_id != null) {
+    const full = await pool.query<DmRow>(
+      `${DM_SELECT}
+       where dm.id = $1`,
+      [row.id],
+    );
+    return mapDm(full.rows[0]);
+  }
+  return mapDm(row);
 }
 
 export async function markDmRead(profileId: string, otherId: string): Promise<void> {
@@ -83,6 +111,37 @@ export async function markDmRead(profileId: string, otherId: string): Promise<vo
      on conflict (profile_id, other_id) do update set read_at = now()`,
     [profileId, other],
   );
+}
+
+export async function editDirectMessage(
+  profileId: string,
+  messageId: number,
+  newBody: string,
+): Promise<DirectMessage> {
+  parseProfileId(profileId);
+  const text = parseMessage(newBody);
+  const result = await pool.query<DmRow>(
+    `update direct_messages
+     set body = $1, edited_at = now()
+     where id = $2 and sender_id = $3
+     returning id, sender_id, recipient_id, body, created_at, reply_to_id, edited_at`,
+    [text, messageId, profileId],
+  );
+  if (!result.rows[0]) throw new NotFoundError("Mensagem não encontrada.");
+  return mapDm(result.rows[0]);
+}
+
+export async function deleteDirectMessage(
+  profileId: string,
+  messageId: number,
+): Promise<void> {
+  parseProfileId(profileId);
+  const result = await pool.query(
+    `delete from direct_messages
+     where id = $1 and sender_id = $2`,
+    [messageId, profileId],
+  );
+  if (result.rowCount === 0) throw new NotFoundError("Mensagem não encontrada.");
 }
 
 /**

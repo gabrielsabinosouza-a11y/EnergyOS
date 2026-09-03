@@ -4,6 +4,7 @@ import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
 import { plantGardenEntries, getEnergyReward } from "./focus";
+import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired";
