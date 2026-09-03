@@ -118,9 +118,9 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                 <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-[var(--accent)]">
                     <Timer size={13} />
-                    <span className="font-mono font-bold text-sm">{profile.weeklyFocusMinutes}</span>
+                    <span className="font-mono font-bold text-sm">{Math.floor(profile.weeklyFocusMinutes / 60)}h{profile.weeklyFocusMinutes % 60 > 0 ? ` ${profile.weeklyFocusMinutes % 60}` : ""}</span>
                   </div>
-                  <p className="text-[9px] text-[var(--text-faint)] mt-0.5">min/sem</p>
+                  <p className="text-[9px] text-[var(--text-faint)] mt-0.5">h/sem</p>
                 </div>
                 <div className="rounded-xl bg-[var(--bg-surface-hover)] p-3 text-center">
                   <div className="flex items-center justify-center gap-1 text-[var(--orange)]">

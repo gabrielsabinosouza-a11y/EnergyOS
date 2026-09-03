@@ -216,6 +216,11 @@ button { cursor: pointer; font: inherit; }
 .streak-badge.state-protected .streak-flame { filter:drop-shadow(0 0 6px rgba(113,212,255,.5)); }
 .streak-badge.state-lost .flame-value { background:radial-gradient(circle, rgba(148,163,184,.16) 0%, rgba(148,163,184,.05) 55%, transparent 78%); box-shadow:none; }
 .streak-badge.state-lost .streak-flame { filter:grayscale(1) brightness(.78) contrast(1.1); opacity:.9; }
+/* The streak is still "saved" but today isn't qualified yet — nudge the user
+   with an amber ring + gentle pulse so they know it's still in danger. */
+.streak-badge.state-at-risk .flame-ring { animation: streak-risk-pulse 1.6s ease-in-out infinite; }
+.streak-badge.state-at-risk .flame-ring circle:nth-child(1) { stroke:rgba(248,160,60,.5); }
+@keyframes streak-risk-pulse { 0%,100% { filter:drop-shadow(0 0 2px rgba(248,160,60,.25)); } 50% { filter:drop-shadow(0 0 10px rgba(248,160,60,.6)); } }
 .streak-badge .streak-shield-mark { position:absolute; right:-3px; bottom:-3px; z-index:3; display:grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--accent); color:var(--bg-primary); box-shadow:0 0 10px rgba(113,212,255,.55); }
 .streak-badge .streak-shield-count { position:absolute; top:-5px; right:-5px; z-index:3; display:flex; align-items:center; gap:3px; padding:2px 6px 2px 5px; border-radius:999px; background:rgba(113,212,255,.16); border:1px solid rgba(113,212,255,.35); color:var(--accent); font-family:'DM Mono',monospace; font-size:10px; font-weight:700; }
 @keyframes streak-pop { 0% { transform:scale(1); } 50% { transform:scale(1.2); } 100% { transform:scale(1); } }

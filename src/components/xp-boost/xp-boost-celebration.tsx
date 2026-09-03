@@ -92,11 +92,11 @@ export function XpBoostCelebration({
         <p className="relative mt-2 text-sm text-[var(--text-muted)]">
           {extended ? (
             <>
-              Estendido para <strong className="text-[#b69cff]">{shownMinutes} minutos</strong>
+              Estendido para <strong className="text-[#b69cff]">{shownMinutes < 60 ? `${shownMinutes} minutos` : `${Math.floor(shownMinutes / 60)} hora${Math.floor(shownMinutes / 60) > 1 ? "s" : ""}`}</strong>
             </>
           ) : (
             <>
-              <strong className="text-[#b69cff]">{shownMinutes} minutos</strong> de XP
+              <strong className="text-[#b69cff]">{shownMinutes < 60 ? `${shownMinutes} minutos` : `${Math.floor(shownMinutes / 60)} hora${Math.floor(shownMinutes / 60) > 1 ? "s" : ""}`}</strong> de XP
               duplicado
             </>
           )}

@@ -477,7 +477,7 @@ export function MonthlyRecap({
             Ver recap de {formatMonth(recap.recapMonth)}
           </p>
           <p className="truncate text-xs text-[var(--text-muted)]">
-            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} dias de sequência
+            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {recap.longestStreak === 1 ? "dia" : "dias"} de sequência
           </p>
         </div>
         <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
@@ -617,7 +617,7 @@ export function MonthlyRecap({
                       Sequência
                     </span>
                     <span className="mt-0.5 font-display text-2xl font-extrabold" style={{ color: "#ff8c42" }}>
-                      {recap.longestStreak} dias
+                      {recap.longestStreak} {recap.longestStreak === 1 ? "dia" : "dias"}
                     </span>
                   </Tile>
 

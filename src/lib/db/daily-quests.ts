@@ -34,13 +34,13 @@ const DEFAULT_DAILY_QUESTS: MissionSeed[] = [
   { title: "Complete 2 sessões de foco", description: "Conclua 2 sessões de foco hoje", metric: "SESSIONS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 2, coinReward: 10 },
   { title: "Complete 3 sessões de foco", description: "Conclua 3 sessões de foco hoje", metric: "SESSIONS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 15 },
   { title: "Foque 30 minutos hoje", description: "Acumule 30 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 30, coinReward: 10 },
-  { title: "Foque 60 minutos hoje", description: "Acumule 60 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 60, coinReward: 10 },
-  { title: "Foque 90 minutos hoje", description: "Acumule 90 minutos de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 90, coinReward: 15 },
+  { title: "Foque 1 hora hoje", description: "Acumule 1 hora de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 60, coinReward: 10 },
+  { title: "Foque 1h30 hoje", description: "Acumule 1 hora e meia de foco hoje", metric: "TOTAL_MINUTES", type: "TOTAL_MINUTES", targetValue: 90, coinReward: 15 },
   { title: "Participe de uma Sala de Foco", description: "Participe de uma sessão em uma Sala de Foco", metric: "ROOM_SESSION_COMPLETED", type: "ROOM_SESSION", targetValue: 1, coinReward: 20 },
   { title: "Participe de 2 salas diferentes", description: "Participe de sessões em 2 salas de foco diferentes", metric: "DISTINCT_ROOMS", type: "ROOM_SESSION", targetValue: 2, coinReward: 15 },
   { title: "Complete 3 tarefas hoje", description: "Conclua 3 tarefas hoje", metric: "TASKS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 10 },
   { title: "Mantenha seu streak por mais um dia", description: "Atinja a qualificação diária de streak hoje", metric: "STREAK_DAY", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
-  { title: "Complete uma sessão de 60+ minutos", description: "Conclua uma única sessão de foco com 60 minutos ou mais", metric: "LONG_SESSION_60", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 20 },
+  { title: "Complete uma sessão de 1+ hora", description: "Conclua uma única sessão de foco com 1 hora ou mais", metric: "LONG_SESSION_60", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 20 },
   { title: "Complete 3 hábitos hoje", description: "Conclua 3 hábitos diferentes hoje", metric: "HABITS_COMPLETED", type: "SESSIONS_COUNT", targetValue: 3, coinReward: 10 },
   { title: "Foque antes das 9h", description: "Complete uma sessão de foco iniciada antes das 9h", metric: "EARLY_SESSION_9AM", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
   { title: "Complete uma missão da semana", description: "Conclua uma missão do seu plano da semana", metric: "WEEKLY_PLAN_COMPLETED", type: "SESSIONS_COUNT", targetValue: 1, coinReward: 15 },
@@ -236,6 +236,16 @@ export async function ensureDailyQuestsExist(): Promise<void> {
          on conflict (title) do update set metric = excluded.metric, description = excluded.description,
            target_value = excluded.target_value, coin_reward = excluded.coin_reward, is_active = true`,
         [quest.title, quest.description, quest.type, quest.metric, quest.targetValue, quest.coinReward],
+      );
+    }
+  } else {
+    // Existing installs: refresh mission texts so the labels show hours.
+    for (const quest of DEFAULT_DAILY_QUESTS) {
+      await pool.query(
+        `update daily_quests
+         set title = $1, description = $2
+         where metric = $3 and target_value = $4 and title <> $1`,
+        [quest.title, quest.description, quest.metric, quest.targetValue],
       );
     }
   }

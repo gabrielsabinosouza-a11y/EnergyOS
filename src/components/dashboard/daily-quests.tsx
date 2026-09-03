@@ -12,13 +12,13 @@ import { CoinIcon } from "@/components/coin-icon";
 
 const QUEST_TITLES: Record<string, string> = {
   SESSIONS_COUNT: "Complete 2 sessões hoje",
-  TOTAL_MINUTES: "Foque 90 minutos hoje",
+  TOTAL_MINUTES: "Foque 1h30 hoje",
   ROOM_SESSION: "Foque em uma sala com amigos",
 };
 
 const QUEST_DESCRIPTIONS: Record<string, string> = {
   SESSIONS_COUNT: "Conclua 2 sessões de foco",
-  TOTAL_MINUTES: "Acumule 90 minutos de foco",
+  TOTAL_MINUTES: "Acumule 1h30 de foco",
   ROOM_SESSION: "Participe de uma sessão em sala",
 };
 
@@ -97,11 +97,22 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
   }, [quests, coins, onCoinsChange, markClaimed, refresh]);
 
   const getProgressPercentage = (quest: QuestProgressWithQuest) => {
-    return Math.min((quest.currentValue / quest.quest.targetValue) * 100, 100);
+    const target = quest.quest.metric === "TOTAL_MINUTES" ? quest.quest.targetValue / 60 : quest.quest.targetValue;
+    const current = quest.quest.metric === "TOTAL_MINUTES" ? quest.currentValue / 60 : quest.currentValue;
+    return Math.min((current / target) * 100, 100);
   };
 
   const isQuestCompletable = (quest: QuestProgressWithQuest) => {
     return quest.currentValue >= quest.quest.targetValue && !quest.isClaimed;
+  };
+
+  const formatProgress = (quest: QuestProgressWithQuest) => {
+    const current = Math.min(quest.currentValue, quest.quest.targetValue);
+    if (quest.quest.metric !== "TOTAL_MINUTES") {
+      return `${current}/${quest.quest.targetValue}`;
+    }
+    const fmtH = (m: number) => (m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`);
+    return `${fmtH(current)}/${fmtH(quest.quest.targetValue)}`;
   };
 
   const formatQuestTitle = (quest: QuestProgressWithQuest) => {
@@ -182,7 +193,7 @@ export function DailyQuestsWidget({ coins = 0, onCoinsChange }: DailyQuestsWidge
                         </div>
                       </div>
                       <span className="text-[10px] font-mono text-[var(--text-faint)] whitespace-nowrap">
-                        {Math.min(quest.currentValue, quest.quest.targetValue)}/{quest.quest.targetValue}
+                        {formatProgress(quest)}
                       </span>
                     </div>
                   </div>

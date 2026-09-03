@@ -509,6 +509,7 @@ function DashboardContent() {
               {snapshot?.streak && (
                 <StreakBadge
                   streak={snapshot.streak.currentStreak}
+                  todayQualified={snapshot.streak.todayQualified}
                   todayStatus={snapshot.streak.todayStatus ?? null}
                   yesterdayStatus={snapshot.streak.yesterdayStatus ?? null}
                   shieldCount={snapshot.streak.shieldCount}
@@ -634,6 +635,7 @@ type StreakBadgeState = "saved" | "protected" | "lost";
 
 function StreakBadge({
   streak,
+  todayQualified,
   todayStatus,
   yesterdayStatus,
   shieldCount,
@@ -641,6 +643,7 @@ function StreakBadge({
   equippedShieldIconUrl,
 }: {
   streak: number;
+  todayQualified: boolean;
   todayStatus: StreakDayStatus | null;
   yesterdayStatus: StreakDayStatus | null;
   shieldCount: number;
@@ -653,6 +656,10 @@ function StreakBadge({
 
   const protectedNow = todayStatus === "protected" || yesterdayStatus === "protected";
   const state: StreakBadgeState = protectedNow ? "protected" : streak > 0 ? "saved" : "lost";
+  // The streak is "at risk" when it's still alive (saved) but the user hasn't
+  // completed a qualifying focus session today yet — nothing guarantees it
+  // carries through to tomorrow.
+  const atRisk = state === "saved" && streak > 0 && !todayQualified;
 
   const iconSrc = state === "lost"
     ? "/streak/streak_lost.png"
@@ -667,8 +674,10 @@ function StreakBadge({
     : state === "lost"
       ? "Você perdeu sua sequência — não desista!"
       : streak > 0
-        ? "Sua sequência está ativa!"
-        : "Complete suas tarefas para começar sua sequência!";
+        ? todayQualified
+          ? "Sua sequência está ativa hoje — complete mais uma sessão amanhã para mantê-la!"
+          : "Sua streak está em risco — complete uma sessão de foco hoje para mantê-la"
+        : "Complete uma sessão de foco para começar sua sequência!";
 
   const dayLabel = streak === 1 ? "1 dia" : `${streak} dias`;
 
@@ -713,7 +722,7 @@ function StreakBadge({
     <>
       <div
         ref={badgeRef}
-        className={`streak-badge state-${state} ${shouldPop ? "pop" : ""}`}
+        className={`streak-badge state-${state} ${atRisk ? "state-at-risk" : ""} ${shouldPop ? "pop" : ""}`}
         tabIndex={0}
         onPointerEnter={open}
         onPointerLeave={() => setTipPos(null)}

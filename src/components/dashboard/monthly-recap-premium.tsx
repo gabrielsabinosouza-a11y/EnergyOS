@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X, Download, Share2, ChevronLeft, ChevronRight, Timer, Award } from "lucide-react";
+import { X, Download, Share2, ChevronLeft, ChevronRight, Timer, Award, Zap, Flame, Trophy } from "lucide-react";
 import Image from "next/image";
 import { Modal } from "@/components/modal";
 import { RewardToast } from "@/components/reward-toast";
@@ -13,29 +13,24 @@ import { useAuthRedirect } from "@/lib/auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface RecapData {
+  id: number;
+  recapMonth: string;
+  totalFocusMinutes: number;
+  longestStreak: number;
+  leagueTier?: string;
+  leaguePromoted?: boolean;
+  productivityTag?: string;
+  gardenCount?: number;
+  hasBeenShared?: boolean;
+}
+
 interface MonthlyRecapPremiumProps {
-  recap: {
-    id: number;
-    recapMonth: string;
-    totalFocusMinutes: number;
-    longestStreak: number;
-    leagueTier?: string;
-    leaguePromoted?: boolean;
-    productivityTag?: string;
-    gardenCount?: number;
-    hasBeenShared?: boolean;
-  };
+  recap: RecapData;
   userName: string;
   userPhotoUrl?: string;
   onShare?: (blob: Blob) => void;
   onCoinsAwarded?: (amount: number, newBalance: number) => void;
-}
-
-interface RecapIconAssets {
-  focusIcon?: string;
-  streakIcon?: string;
-  leagueIcon?: string;
-  tagIcon?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -43,48 +38,10 @@ interface RecapIconAssets {
 const SLIDE_COUNT = 6;
 const SHARE_REWARD_COINS = 50;
 
-const SLIDE_THEMES = {
-  intro: {
-    bg: "linear-gradient(135deg, #0a0e1a 0%, #111827 100%)",
-    accent: "#71d4ff",
-    glow: "rgba(113,212,255,0.35)",
-  },
-  focus: {
-    bg: "linear-gradient(135deg, #0a1628 0%, #1a3a5a 100%)",
-    accent: "#71d4ff",
-    glow: "rgba(113,212,255,0.4)",
-  },
-  streak: {
-    bg: "linear-gradient(135deg, #1a0e08 0%, #3a2110 100%)",
-    accent: "#ff8c42",
-    glow: "rgba(255,140,66,0.4)",
-  },
-  league: (tier: NewLeagueTier | null) => {
-    const meta = tier ? NEW_TIER_META[tier] : NEW_TIER_META.BRONZE;
-    return {
-      bg: `linear-gradient(135deg, ${meta.color}22 0%, ${meta.color}44 100%)`,
-      accent: meta.color,
-      glow: meta.glow,
-    };
-  },
-  tag: {
-    bg: "linear-gradient(135deg, #1a0e28 0%, #3a1a5a 100%)",
-    accent: "#b69cff",
-    glow: "rgba(182,156,255,0.4)",
-  },
-  summary: {
-    bg: "linear-gradient(135deg, #0a0e1a 0%, #111827 100%)",
-    accent: "#71d4ff",
-    glow: "rgba(113,212,255,0.35)",
-  },
-};
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function tierMeta(tier?: string) {
-  const resolved = resolveNewTier(tier);
-  if (resolved) return { tier: resolved, meta: NEW_TIER_META[resolved] };
-  return { tier: null as NewLeagueTier | null, meta: null };
+function plural(n: number, singular: string, pluralForm: string): string {
+  return n === 1 ? singular : pluralForm;
 }
 
 function formatMinutes(total: number): string {
@@ -99,116 +56,86 @@ function formatMonth(iso: string): string {
   return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
-// ─── Sparkle Effect ──────────────────────────────────────────────────────────
+function tierMeta(tier?: string) {
+  const resolved = resolveNewTier(tier);
+  if (resolved) return { tier: resolved, meta: NEW_TIER_META[resolved] };
+  return { tier: null as NewLeagueTier | null, meta: null };
+}
 
-function SparkleEffect({ color = "#ffffff", count = 8 }: { color?: string; count?: number }) {
-  const reduced = useReducedMotion();
-  if (reduced) return null;
+// Contextual copy lines — the "rarity framing" that makes stats feel earned
+function focusCopy(minutes: number): string {
+  if (minutes === 0) return "Cada minuto de foco conta. O próximo mês é seu.";
+  if (minutes < 120) return "Você plantou as primeiras sementes. Continue.";
+  if (minutes < 300) return "Mais de 2 horas de foco puro. Isso é consistência.";
+  if (minutes < 600) return "Você está entre os mais dedicados da plataforma.";
+  if (minutes < 1200) return "Nível de foco que menos de 20% dos usuários atingem.";
+  return "Foco de elite. Você está no topo da plataforma.";
+}
 
+function streakCopy(days: number): string {
+  if (days === 0) return "Amanhã é um novo começo. Construa sua sequência.";
+  if (days === 1) return "1 dia é o começo de tudo. Não pare agora.";
+  if (days < 7) return `${days} ${plural(days, "dia", "dias")} seguidos. A sequência está ganhando força.`;
+  if (days < 14) return "Uma semana inteira de consistência. Isso é raro.";
+  if (days < 30) return "Menos de 15% dos usuários chegam aqui. Você chegou.";
+  return "Sequência lendária. Você faz parte de um grupo seleto.";
+}
+
+function leagueCopy(tier: NewLeagueTier | null, promoted: boolean): string {
+  if (promoted) return "Você subiu de liga este mês. Trabalho duro recompensado.";
+  if (!tier) return "Participe da liga e compete com os melhores.";
+  const copies: Record<NewLeagueTier, string> = {
+    BRONZE:   "Você está construindo sua base. A ascensão começa aqui.",
+    PRATA:    "Consistência acima da média. A Prata é só o começo.",
+    OURO:     "Liga Ouro — você está entre os 30% mais focados.",
+    DIAMANTE: "Elite do foco. Menos de 10% chegam ao Diamante.",
+    LENDAS:   "Liga Lendas. Você está entre os melhores da plataforma.",
+  };
+  return copies[tier];
+}
+
+function gardenCopy(count: number): string {
+  if (count === 0) return "Seu jardim aguarda. Cada sessão planta uma energia.";
+  if (count === 1) return "1 energia plantada. Seu jardim está nascendo.";
+  if (count < 5) return `${count} energias cultivadas. O jardim está crescendo.`;
+  if (count < 15) return `${count} energias. Um jardim vibrante tomando forma.`;
+  return `${count} energias. Jardim exuberante — dedicação visível.`;
+}
+
+// ─── Primitive sub-components ─────────────────────────────────────────────────
+
+function AmbientGlow({ accent, glow }: { accent: string; glow: string }) {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {Array.from({ length: count }).map((_, i) => {
-        const size = Math.random() * 4 + 2;
-        const x = Math.random() * 100;
-        const y = Math.random() * 100;
-        const delay = Math.random() * 3;
-        const duration = Math.random() * 3 + 2;
+    <>
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 rounded-full"
+        style={{ width: "90%", height: "55%", background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`, filter: "blur(50px)", opacity: 0.5 }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-1/4 left-1/4 rounded-full"
+        style={{ width: "45%", height: "30%", background: `radial-gradient(circle, ${accent}18 0%, transparent 70%)`, filter: "blur(35px)" }}
+      />
+    </>
+  );
+}
 
-        return (
-          <motion.div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              width: size,
-              height: size,
-              background: color,
-              boxShadow: `0 0 ${size * 2}px ${color}`,
-              left: `${x}%`,
-              top: `${y}%`,
-            }}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{
-              opacity: [0.2, 0.8, 0.2, 0],
-              scale: [0, 1, 0],
-              y: [-10, -20, -10, 0],
-            }}
-            transition={{ duration, delay, repeat: Infinity, ease: "easeInOut" }}
-          />
-        );
-      })}
+function ProgressBar({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
+      {Array.from({ length: total }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[3px] flex-1 rounded-full transition-all duration-500"
+          style={{
+            background: i <= current ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.18)",
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-// ─── 3D Icon Container ───────────────────────────────────────────────────────
-
-function Icon3DContainer({
-  children,
-  color,
-  glow,
-  animate = true,
-}: {
-  children: React.ReactNode;
-  color: string;
-  glow: string;
-  animate?: boolean;
-}) {
-  const reduced = useReducedMotion();
-  const shouldAnimate = animate && !reduced;
-
-  if (!shouldAnimate) {
-    return (
-      <div className="relative flex items-center justify-center">
-        <div
-          className="absolute rounded-full"
-          style={{
-            width: "140%",
-            height: "140%",
-            background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`,
-            filter: "blur(20px)",
-            opacity: 0.6,
-          }}
-        />
-        <SparkleEffect color={color} count={6} />
-        {children}
-      </div>
-    );
-  }
-
-  return (
-    <motion.div
-      className="relative flex items-center justify-center"
-      initial={{ scale: 0.7, rotateY: -15, opacity: 0 }}
-      animate={{ scale: 1, rotateY: 0, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 200, damping: 20 }}
-    >
-      <motion.div
-        className="absolute rounded-full"
-        style={{
-          width: "140%",
-          height: "140%",
-          background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`,
-          filter: "blur(20px)",
-        }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.6 }}
-        transition={{ delay: 0.2, duration: 0.5 }}
-      />
-      <SparkleEffect color={color} count={6} />
-      {children}
-    </motion.div>
-  );
-}
-
-// ─── Slide Wrapper ───────────────────────────────────────────────────────────
-
-function SlideFrame({
-  children,
-  bg,
-}: {
-  children: React.ReactNode;
-  bg: string;
-}) {
+function SlideFrame({ children, bg }: { children: React.ReactNode; bg: string }) {
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden p-8 text-center"
@@ -219,341 +146,392 @@ function SlideFrame({
   );
 }
 
-// ─── Progress Bar (Duolingo-style top segments) ──────────────────────────────
-
-function ProgressBar({ current, total }: { current: number; total: number }) {
+function SparkleEffect({ color = "#ffffff", count = 8 }: { color?: string; count?: number }) {
+  const reduced = useReducedMotion();
+  if (reduced) return null;
   return (
-    <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
-      {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[3px] flex-1 rounded-full transition-all duration-500"
-          style={{
-            background: i <= current ? "#ffffff" : "rgba(255,255,255,0.2)",
-            opacity: i === current ? 1 : i < current ? 0.7 : 0.4,
-          }}
-        />
-      ))}
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {Array.from({ length: count }).map((_, i) => {
+        const size = 2 + (i % 3) + 1;
+        const x = 10 + (i * 13) % 80;
+        const y = 5 + (i * 17) % 85;
+        const delay = (i * 0.4) % 3;
+        const duration = 2.5 + (i % 3) * 0.8;
+        return (
+          <motion.div
+            key={i}
+            className="absolute rounded-full"
+            style={{ width: size, height: size, background: color, boxShadow: `0 0 ${size * 2}px ${color}`, left: `${x}%`, top: `${y}%` }}
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ opacity: [0.15, 0.75, 0.15, 0], scale: [0, 1, 0], y: [-8, -18, -8, 0] }}
+            transition={{ duration, delay, repeat: Infinity, ease: "easeInOut" }}
+          />
+        );
+      })}
     </div>
   );
 }
 
-// ─── Ambient Background ──────────────────────────────────────────────────────
+// ─── Slide themes ─────────────────────────────────────────────────────────────
 
-function AmbientGlow({ accent, glow }: { accent: string; glow: string }) {
-  return (
-    <>
-      <div
-        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 rounded-full"
-        style={{
-          width: "80%",
-          height: "60%",
-          background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`,
-          filter: "blur(40px)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute bottom-1/4 left-1/4 rounded-full"
-        style={{
-          width: "40%",
-          height: "30%",
-          background: `radial-gradient(circle, ${accent}11 0%, transparent 70%)`,
-          filter: "blur(30px)",
-        }}
-      />
-    </>
-  );
+const THEMES = {
+  intro:   { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
+  focus:   { bg: "linear-gradient(160deg, #071828 0%, #0a2540 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.35)" },
+  streak:  { bg: "linear-gradient(160deg, #1a0e06 0%, #2d1a08 100%)",          accent: "#ffb86b", glow: "rgba(255,184,107,0.38)" },
+  garden:  { bg: "linear-gradient(160deg, #071a0e 0%, #0d2a18 100%)",          accent: "#4ade80", glow: "rgba(74,222,128,0.32)"  },
+  summary: { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
+};
+
+function leagueTheme(tier: NewLeagueTier | null) {
+  const meta = tier ? NEW_TIER_META[tier] : NEW_TIER_META.BRONZE;
+  const hex = meta.color;
+  return {
+    bg: `linear-gradient(160deg, #07111f 0%, ${hex}18 100%)`,
+    accent: hex,
+    glow: meta.glow,
+  };
 }
 
-// ─── Individual Slides ───────────────────────────────────────────────────────
+// ─── Intro slide ──────────────────────────────────────────────────────────────
 
-function IntroSlide({
-  monthLabel,
-  userName,
-  userPhotoUrl,
-  theme,
-}: {
-  monthLabel: string;
-  userName: string;
-  userPhotoUrl?: string;
-  theme: typeof SLIDE_THEMES.intro;
+function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
+  monthLabel: string; userName: string; userPhotoUrl?: string;
+  theme: { bg: string; accent: string; glow: string };
 }) {
   const reduced = useReducedMotion();
-
   return (
     <SlideFrame bg={theme.bg}>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
-
+      <SparkleEffect color={theme.accent} count={10} />
       <motion.div
-        className="relative z-10 flex flex-col items-center"
-        initial={reduced ? undefined : { opacity: 0, y: 30 }}
+        className="relative z-10 flex flex-col items-center gap-4"
+        initial={reduced ? undefined : { opacity: 0, y: 28 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+        transition={{ duration: 0.7, ease: "easeOut" }}
       >
-        <p className="text-sm font-medium" style={{ color: "rgba(231,244,255,.42)" }}>
+        {/* Logo mark */}
+        <div
+          className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ background: theme.accent, boxShadow: `0 0 32px ${theme.glow}` }}
+        >
+          <Zap size={28} color="#07111f" strokeWidth={2.5} />
+        </div>
+
+        <p className="text-sm font-medium tracking-widest uppercase" style={{ color: "rgba(231,244,255,.4)" }}>
           Recap de
         </p>
+
         <motion.h2
-          className="font-display mt-2 text-4xl font-extrabold md:text-5xl"
-          style={{
-            background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-          initial={reduced ? undefined : { opacity: 0, scale: 0.8 }}
+          className="font-display text-5xl font-extrabold leading-none capitalize"
+          style={{ background: "linear-gradient(135deg, #71d4ff 0%, #b69cff 50%, #ffb86b 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          initial={reduced ? undefined : { opacity: 0, scale: 0.82 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2, duration: 0.6, ease: "easeOut" }}
+          transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
         >
           {monthLabel}
         </motion.h2>
 
         <motion.div
-          className="mt-6 flex items-center gap-3"
-          initial={reduced ? undefined : { opacity: 0, y: 20 }}
+          className="mt-2 flex items-center gap-2.5"
+          initial={reduced ? undefined : { opacity: 0, y: 14 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.6 }}
+          transition={{ delay: 0.35, duration: 0.5 }}
         >
           {userPhotoUrl ? (
-            <img
-              src={userPhotoUrl}
-              alt={userName}
-              className="h-10 w-10 rounded-full object-cover ring-2 ring-[rgba(255,255,255,.2)]"
-            />
+            <img src={userPhotoUrl} alt={userName} className="h-9 w-9 rounded-full object-cover ring-2 ring-[rgba(255,255,255,.18)]" />
           ) : (
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-secondary)]" />
+            <div className="h-9 w-9 rounded-full" style={{ background: `linear-gradient(135deg, ${theme.accent}, #b69cff)` }} />
           )}
-          <span className="text-lg font-semibold" style={{ color: "rgba(231,244,255,.8)" }}>
-            {userName}
-          </span>
+          <span className="text-base font-semibold" style={{ color: "rgba(231,244,255,.82)" }}>{userName}</span>
         </motion.div>
 
         <motion.p
-          className="mt-4 text-xs tracking-wider"
-          style={{ color: "rgba(231,244,255,.4)" }}
+          className="mt-4 text-[11px] tracking-[0.2em] uppercase"
+          style={{ color: "rgba(231,244,255,.3)" }}
           initial={reduced ? undefined : { opacity: 0 }}
           animate={reduced ? undefined : { opacity: 1 }}
           transition={{ delay: 0.6 }}
         >
-          TOQUE PARA COMEÇAR
+          Toque para começar
         </motion.p>
       </motion.div>
     </SlideFrame>
   );
 }
 
-function StatSlide({
-  value,
-  label,
-  description,
-  theme,
-  icon,
-}: {
-  value: string;
+// ─── Hero stat slide ──────────────────────────────────────────────────────────
+
+function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, animateNumber = true }: {
+  numericValue: number;
+  valueSuffix?: string;
   label: string;
-  description: string;
+  copy: string;
   theme: { bg: string; accent: string; glow: string };
   icon: React.ReactNode;
+  animateNumber?: boolean;
 }) {
   const reduced = useReducedMotion();
-
-  const numericValue = parseFloat(value.replace(/[^0-9.]/g, "")) || 0;
-  const suffix = value.includes("h") ? value.replace(/[0-9.]/g, "") : value.includes("dias") ? "dias" : "";
-
   return (
     <SlideFrame bg={theme.bg}>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
+      <SparkleEffect color={theme.accent} count={7} />
 
       <motion.div
         className="relative z-10 flex flex-col items-center"
-        initial={reduced ? undefined : { opacity: 0, y: 30 }}
+        initial={reduced ? undefined : { opacity: 0, y: 24 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+        transition={{ duration: 0.65, ease: "easeOut" }}
       >
+        {/* Icon halo */}
         <motion.div
-          className="mb-6"
-          initial={reduced ? undefined : { scale: 0.5, opacity: 0 }}
+          className="relative mb-8 flex items-center justify-center"
+          initial={reduced ? undefined : { scale: 0.55, opacity: 0 }}
           animate={reduced ? undefined : { scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 20 }}
+          transition={{ type: "spring", stiffness: 220, damping: 22 }}
         >
-          <Icon3DContainer color={theme.accent} glow={theme.glow} animate={!reduced}>
+          <div
+            className="absolute rounded-full"
+            style={{ width: 120, height: 120, background: `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`, filter: "blur(18px)" }}
+          />
+          <div
+            className="relative flex h-24 w-24 items-center justify-center rounded-full"
+            style={{ background: `radial-gradient(circle at 35% 30%, ${theme.accent}30, ${theme.accent}08)`, border: `1px solid ${theme.accent}40`, boxShadow: `0 0 28px -6px ${theme.glow}` }}
+          >
             {icon}
-          </Icon3DContainer>
+          </div>
         </motion.div>
 
+        {/* Hero number */}
         <motion.div
           className="flex items-baseline gap-2"
-          initial={reduced ? undefined : { opacity: 0, scale: 0.5 }}
+          initial={reduced ? undefined : { opacity: 0, scale: 0.6 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2, duration: 0.6 }}
+          transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
         >
-          <AnimatedNumber
-            value={numericValue}
-            className="font-display text-6xl font-extrabold md:text-7xl"
-            style={{ color: theme.accent }}
-            duration={1.2}
-          />
-          {suffix && (
-            <span className="font-display text-3xl font-extrabold" style={{ color: theme.accent }}>
-              {suffix}
+          {animateNumber ? (
+            <AnimatedNumber
+              value={numericValue}
+              className="font-display font-extrabold leading-none"
+              style={{ fontSize: 88, color: theme.accent, letterSpacing: "-0.04em" }}
+              duration={1.1}
+            />
+          ) : (
+            <span className="font-display font-extrabold leading-none" style={{ fontSize: 88, color: theme.accent, letterSpacing: "-0.04em" }}>
+              {numericValue}
+            </span>
+          )}
+          {valueSuffix && (
+            <span className="font-display font-extrabold" style={{ fontSize: 36, color: theme.accent, opacity: 0.85 }}>
+              {valueSuffix}
             </span>
           )}
         </motion.div>
 
-        <motion.span
-          className="mt-3 text-sm font-semibold uppercase tracking-wider"
+        {/* Label */}
+        <motion.p
+          className="mt-3 text-sm font-bold uppercase tracking-[0.18em]"
           style={{ color: theme.accent }}
-          initial={reduced ? undefined : { opacity: 0, y: 10 }}
+          initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.32 }}
         >
           {label}
-        </motion.span>
+        </motion.p>
 
+        {/* Contextual copy */}
         <motion.p
-          className="mt-3 max-w-[260px] text-sm leading-relaxed"
-          style={{ color: "rgba(231,244,255,.55)" }}
-          initial={reduced ? undefined : { opacity: 0, y: 10 }}
+          className="mt-5 max-w-[260px] text-sm leading-relaxed"
+          style={{ color: "rgba(231,244,255,.52)" }}
+          initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.48 }}
         >
-          {description}
+          {copy}
         </motion.p>
       </motion.div>
     </SlideFrame>
   );
 }
 
-function SummarySlide({
-  recap,
-  userName,
-  userPhotoUrl,
-  onDownload,
-  onShare,
-  theme,
-  iconAssets,
-}: {
-  recap: MonthlyRecapPremiumProps["recap"];
-  userName: string;
-  userPhotoUrl?: string;
-  onDownload: () => void;
-  onShare: () => void;
-  theme: typeof SLIDE_THEMES.summary;
-  iconAssets?: RecapIconAssets;
+// ─── League slide (text value, not numeric) ───────────────────────────────────
+
+function LeagueSlide({ tier, meta, promoted, theme }: {
+  tier: NewLeagueTier | null;
+  meta: (typeof NEW_TIER_META)[NewLeagueTier] | null;
+  promoted: boolean;
+  theme: { bg: string; accent: string; glow: string };
 }) {
   const reduced = useReducedMotion();
-  const { meta } = tierMeta(recap.leagueTier);
-  const tierColor = meta ? meta.color : "#71d4ff";
+  const label = meta ? meta.label : "—";
+  const copy = leagueCopy(tier, promoted);
 
-  const focusValue = formatMinutes(recap.totalFocusMinutes);
-  const streakValue = `${recap.longestStreak} dias`;
-  const leagueValue = meta ? meta.label : "—";
-  const gardenValue = `${recap.gardenCount ?? 0} energia${recap.gardenCount === 1 ? "" : "s"}`;
+  return (
+    <SlideFrame bg={theme.bg}>
+      <AmbientGlow accent={theme.accent} glow={theme.glow} />
+      <SparkleEffect color={theme.accent} count={8} />
+
+      <motion.div
+        className="relative z-10 flex flex-col items-center"
+        initial={reduced ? undefined : { opacity: 0, y: 24 }}
+        animate={reduced ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.65, ease: "easeOut" }}
+      >
+        {/* League icon halo */}
+        <motion.div
+          className="relative mb-8 flex items-center justify-center"
+          initial={reduced ? undefined : { scale: 0.55, opacity: 0 }}
+          animate={reduced ? undefined : { scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 220, damping: 22 }}
+        >
+          <div
+            className="absolute rounded-full"
+            style={{ width: 130, height: 130, background: `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`, filter: "blur(20px)" }}
+          />
+          <div
+            className="relative flex h-28 w-28 items-center justify-center rounded-full"
+            style={{ background: `radial-gradient(circle at 35% 30%, ${theme.accent}28, ${theme.accent}06)`, border: `1px solid ${theme.accent}38`, boxShadow: `0 0 32px -8px ${theme.glow}` }}
+          >
+            {meta ? (
+              <Image src={meta.iconPath} alt={meta.label} width={64} height={64} style={{ objectFit: "contain" }} unoptimized draggable={false} />
+            ) : (
+              <Award size={52} color={theme.accent} />
+            )}
+          </div>
+        </motion.div>
+
+        {/* Hero text */}
+        <motion.p
+          className="font-display font-extrabold leading-none uppercase"
+          style={{ fontSize: 72, color: theme.accent, letterSpacing: "-0.03em" }}
+          initial={reduced ? undefined : { opacity: 0, scale: 0.65 }}
+          animate={reduced ? undefined : { opacity: 1, scale: 1 }}
+          transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
+        >
+          {label}
+        </motion.p>
+
+        <motion.p
+          className="mt-3 text-sm font-bold uppercase tracking-[0.18em]"
+          style={{ color: theme.accent }}
+          initial={reduced ? undefined : { opacity: 0, y: 8 }}
+          animate={reduced ? undefined : { opacity: 1, y: 0 }}
+          transition={{ delay: 0.32 }}
+        >
+          Liga do mês
+        </motion.p>
+
+        {promoted && (
+          <motion.div
+            className="mt-3 flex items-center gap-1.5 rounded-full px-3 py-1"
+            style={{ background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.25)" }}
+            initial={reduced ? undefined : { opacity: 0, scale: 0.8 }}
+            animate={reduced ? undefined : { opacity: 1, scale: 1 }}
+            transition={{ delay: 0.42, type: "spring" }}
+          >
+            <Trophy size={12} color="#4ade80" />
+            <span className="text-xs font-bold" style={{ color: "#4ade80" }}>Promovido!</span>
+          </motion.div>
+        )}
+
+        <motion.p
+          className="mt-5 max-w-[260px] text-sm leading-relaxed"
+          style={{ color: "rgba(231,244,255,.52)" }}
+          initial={reduced ? undefined : { opacity: 0, y: 8 }}
+          animate={reduced ? undefined : { opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          {copy}
+        </motion.p>
+      </motion.div>
+    </SlideFrame>
+  );
+}
+
+// ─── Summary slide ────────────────────────────────────────────────────────────
+
+function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, onDownload, onShare, theme }: {
+  recap: RecapData; userName: string; userPhotoUrl?: string; monthLabel: string;
+  onDownload: () => void; onShare: () => void;
+  theme: { bg: string; accent: string; glow: string };
+}) {
+  const reduced = useReducedMotion();
+  const { meta, tier } = tierMeta(recap.leagueTier);
+  const tierColor = meta ? meta.color : "#71d4ff";
+  const garden = recap.gardenCount ?? 0;
 
   const stats = [
-    { label: "Foco Total", value: focusValue, color: "#71d4ff", icon: iconAssets?.focusIcon, fallback: <Timer size={18} style={{ color: "#71d4ff" }} /> },
-    { label: "Sequência", value: streakValue, color: "#ff8c42", icon: iconAssets?.streakIcon, fallback: <Image src="/streak/streak_alive.png" alt="Seq" width={18} height={18} unoptimized draggable={false} /> },
-    { label: "Liga", value: leagueValue, color: tierColor, icon: iconAssets?.leagueIcon ?? meta?.iconPath, fallback: <Award size={18} style={{ color: tierColor }} /> },
-    { label: "Jardim", value: gardenValue, color: "#6bffb8", icon: iconAssets?.tagIcon, fallback: <Image src="/energies/earth/earth_full.png" alt="Jardim" width={18} height={18} unoptimized draggable={false} /> },
+    { label: "Foco",      value: formatMinutes(recap.totalFocusMinutes), color: "#71d4ff" },
+    { label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: "#ffb86b" },
+    { label: "Liga",      value: meta ? meta.label : "—",                color: tierColor  },
+    { label: plural(garden, "energia", "energias"), value: String(garden), color: "#4ade80" },
   ];
 
   return (
     <SlideFrame bg={theme.bg}>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
-
       <motion.div
-        className="relative z-10 flex w-full max-w-[320px] flex-col items-center"
-        initial={reduced ? undefined : { opacity: 0, y: 30 }}
+        className="relative z-10 flex w-full max-w-[300px] flex-col items-center"
+        initial={reduced ? undefined : { opacity: 0, y: 24 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+        transition={{ duration: 0.65, ease: "easeOut" }}
       >
-        <p className="text-xs font-medium" style={{ color: "rgba(231,244,255,.42)" }}>
-          Recap de
-        </p>
+        <p className="text-xs font-medium tracking-widest uppercase" style={{ color: "rgba(231,244,255,.38)" }}>Recap de</p>
         <h2
-          className="font-display mt-1 text-2xl font-extrabold"
-          style={{
-            background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
+          className="font-display mt-1 text-3xl font-extrabold capitalize"
+          style={{ background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
-          {formatMonth(recap.recapMonth)}
+          {monthLabel}
         </h2>
 
-        <div className="mt-3 flex items-center gap-2">
-          {userPhotoUrl ? (
-            <img
-              src={userPhotoUrl}
-              alt={userName}
-              className="h-7 w-7 rounded-full object-cover ring-1 ring-[rgba(255,255,255,.15)]"
-            />
-          ) : null}
-          <span className="text-xs font-medium" style={{ color: "rgba(231,244,255,.72)" }}>
-            {userName}
-          </span>
-        </div>
+        {userPhotoUrl && (
+          <div className="mt-3 flex items-center gap-2">
+            <img src={userPhotoUrl} alt={userName} className="h-7 w-7 rounded-full object-cover ring-1 ring-[rgba(255,255,255,.15)]" />
+            <span className="text-xs font-medium" style={{ color: "rgba(231,244,255,.7)" }}>{userName}</span>
+          </div>
+        )}
 
+        {/* 2×2 summary grid */}
         <div className="mt-5 grid w-full grid-cols-2 gap-2.5">
           {stats.map((s, i) => (
             <motion.div
               key={s.label}
-              className="overflow-hidden rounded-xl border border-[rgba(255,255,255,.08)] bg-[rgba(255,255,255,.035)] p-3"
-              style={{
-                boxShadow: `0 0 20px -8px ${s.color}22`,
-                backdropFilter: "blur(10px)",
-              }}
-              initial={reduced ? undefined : { opacity: 0, y: 16 }}
+              className="flex flex-col items-center justify-center rounded-2xl p-4"
+              style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${s.color}28`, boxShadow: `0 0 20px -8px ${s.color}44` }}
+              initial={reduced ? undefined : { opacity: 0, y: 14 }}
               animate={reduced ? undefined : { opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 + i * 0.08 }}
+              transition={{ delay: 0.12 + i * 0.07 }}
             >
-              <div className="flex items-center gap-1.5">
-                {typeof s.icon === "string" ? (
-                  <Image src={s.icon} alt={s.label} width={18} height={18} unoptimized draggable={false} />
-                ) : (
-                  s.fallback
-                )}
-                <span className="text-[10px] font-medium" style={{ color: "rgba(231,244,255,.6)" }}>
-                  {s.label}
-                </span>
-              </div>
-              <p className="mt-1 font-display text-base font-extrabold" style={{ color: s.color }}>
-                {s.value}
-              </p>
-              {s.label === "Liga" && recap.leaguePromoted && (
-                <p className="text-[9px] font-semibold" style={{ color: "#4ade80" }}>
-                  ⬆ Promovido!
-                </p>
-              )}
+              <span className="font-display text-2xl font-extrabold" style={{ color: s.color }}>{s.value}</span>
+              <span className="mt-0.5 text-[10px] uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>{s.label}</span>
             </motion.div>
           ))}
         </div>
 
+        {/* Action buttons */}
         <motion.div
           className="mt-5 flex gap-2.5"
-          initial={reduced ? undefined : { opacity: 0, y: 16 }}
+          initial={reduced ? undefined : { opacity: 0, y: 14 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
+          transition={{ delay: 0.5 }}
         >
           <button onClick={onDownload} className="primary-button min-w-[110px] gap-1.5 text-xs">
-            <Download size={14} />
-            Baixar
+            <Download size={14} /> Baixar
           </button>
           <button
             onClick={onShare}
             className="icon-button min-w-[110px] gap-1.5 text-xs"
             style={{ width: "auto", padding: "0 14px" }}
           >
-            <Share2 size={14} />
-            Compartilhar
+            <Share2 size={14} /> Compartilhar
           </button>
         </motion.div>
 
         <motion.p
-          className="mt-3 text-[10px] tracking-wider"
-          style={{ color: "rgba(231,244,255,.25)" }}
+          className="mt-3 text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "rgba(231,244,255,.2)" }}
           initial={reduced ? undefined : { opacity: 0 }}
           animate={reduced ? undefined : { opacity: 1 }}
-          transition={{ delay: 0.7 }}
+          transition={{ delay: 0.65 }}
         >
           energyOS
         </motion.p>
@@ -562,7 +540,7 @@ function SummarySlide({
   );
 }
 
-// ─── Canvas Capture for Export ───────────────────────────────────────────────
+// ─── Canvas export — 9:16 story format ───────────────────────────────────────
 
 const CARD_W = 1080;
 const CARD_H = 1920;
@@ -580,7 +558,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y + h, x, y + h, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
@@ -590,13 +568,21 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("img load failed"));
+    img.onerror = () => reject(new Error("img load failed: " + src));
     img.src = src;
   });
 }
 
+function drawGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, color);
+  g.addColorStop(1, "transparent");
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+}
+
 export async function captureRecapCard(
-  recap: MonthlyRecapPremiumProps["recap"],
+  recap: RecapData,
   userName: string,
   userPhotoUrl?: string,
 ): Promise<Blob> {
@@ -604,223 +590,222 @@ export async function captureRecapCard(
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext("2d")!;
-  const pad = 72;
+  const pad = 80;
+  const CX = CARD_W / 2;
 
   const { meta, tier } = tierMeta(recap.leagueTier);
   const tierColor = meta ? meta.color : "#71d4ff";
   const monthLabel = formatMonth(recap.recapMonth);
+  const garden = recap.gardenCount ?? 0;
 
-  const focusValue = formatMinutes(recap.totalFocusMinutes);
-  const streakValue = `${recap.longestStreak} dias`;
-  const leagueValue = meta ? meta.label : "—";
-  const gardenValue = `${recap.gardenCount ?? 0}`;
-
-  // Background
+  // ── Background ──
   const bg = ctx.createLinearGradient(0, 0, 0, CARD_H);
-  bg.addColorStop(0, "#0a0e1a");
-  bg.addColorStop(1, "#111827");
+  bg.addColorStop(0, "#07111f");
+  bg.addColorStop(1, "#0d1b2d");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
   // Grid noise
-  ctx.strokeStyle = "rgba(113,212,255,.035)";
+  ctx.strokeStyle = "rgba(113,212,255,.03)";
   ctx.lineWidth = 1;
-  for (let y = 0; y < CARD_H; y += 44) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(CARD_W, y);
-    ctx.stroke();
+  for (let y = 0; y < CARD_H; y += 48) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CARD_W, y); ctx.stroke();
+  }
+  for (let x = 0; x < CARD_W; x += 48) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CARD_H); ctx.stroke();
   }
 
-  // Glow blobs
-  const drawGlow = (cx: number, cy: number, r: number, color: string) => {
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, color);
-    g.addColorStop(1, "transparent");
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-  };
-  drawGlow(CARD_W * 0.78, 150, 280, "rgba(113,212,255,.07)");
-  drawGlow(CARD_W * 0.22, CARD_H * 0.55, 260, "rgba(182,156,255,.05)");
-  drawGlow(CARD_W * 0.85, CARD_H * 0.78, 220, "rgba(255,184,107,.05)");
+  // Ambient glows
+  drawGlow(ctx, CARD_W * 0.8, 200, 320, "rgba(113,212,255,.06)");
+  drawGlow(ctx, CARD_W * 0.15, CARD_H * 0.42, 280, "rgba(182,156,255,.04)");
+  drawGlow(ctx, CARD_W * 0.85, CARD_H * 0.72, 260, "rgba(255,184,107,.04)");
+  drawGlow(ctx, CARD_W * 0.2, CARD_H * 0.88, 240, "rgba(74,222,128,.04)");
 
   // Top accent line
-  const accentGrad = ctx.createLinearGradient(0, 0, CARD_W, 0);
-  accentGrad.addColorStop(0, "rgba(113,212,255,0)");
-  accentGrad.addColorStop(0.5, "rgba(113,212,255,.6)");
-  accentGrad.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, CARD_W, 3);
+  const accentLine = ctx.createLinearGradient(0, 0, CARD_W, 0);
+  accentLine.addColorStop(0, "rgba(113,212,255,0)");
+  accentLine.addColorStop(0.5, "rgba(113,212,255,.7)");
+  accentLine.addColorStop(1, "rgba(113,212,255,0)");
+  ctx.fillStyle = accentLine;
+  ctx.fillRect(0, 0, CARD_W, 4);
 
-  let y = 112;
-
-  // Title
+  // ── Header ──
+  let y = 110;
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.42)";
-  ctx.font = "500 34px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("Recap de", CARD_W / 2, y);
-  y += 68;
+  ctx.fillStyle = "rgba(231,244,255,.38)";
+  ctx.font = "500 32px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("Recap de", CX, y);
+  y += 72;
 
   const titleGrad = ctx.createLinearGradient(CARD_W * 0.2, 0, CARD_W * 0.8, 0);
   titleGrad.addColorStop(0, "#71d4ff");
   titleGrad.addColorStop(0.5, "#b69cff");
   titleGrad.addColorStop(1, "#ffb86b");
   ctx.fillStyle = titleGrad;
-  ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(monthLabel, CARD_W / 2, y);
-  y += 70;
+  ctx.font = "800 80px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(monthLabel, CX, y);
+  y += 56;
 
-  // Divider
-  const divGrad = ctx.createLinearGradient(CARD_W * 0.3, 0, CARD_W * 0.7, 0);
-  divGrad.addColorStop(0, "rgba(113,212,255,0)");
-  divGrad.addColorStop(0.5, "rgba(113,212,255,.35)");
-  divGrad.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = divGrad;
-  ctx.fillRect(CARD_W * 0.3, y, CARD_W * 0.4, 2);
-  y += 50;
-
-  // User
+  // User avatar + name
   if (userPhotoUrl) {
     try {
       const img = await loadImage(userPhotoUrl);
+      const avatarR = 26;
+      const nameW = ctx.measureText(userName).width;
+      const totalW = avatarR * 2 + 14 + nameW;
+      const avatarX = CX - totalW / 2 + avatarR;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(CARD_W / 2 - ctx.measureText(userName).width / 2 - 30, y - 16, 22, 0, Math.PI * 2);
+      ctx.arc(avatarX, y + 4, avatarR, 0, Math.PI * 2);
       ctx.clip();
-      ctx.drawImage(img, CARD_W / 2 - ctx.measureText(userName).width / 2 - 52, y - 38, 44, 44);
+      ctx.drawImage(img, avatarX - avatarR, y + 4 - avatarR, avatarR * 2, avatarR * 2);
       ctx.restore();
-    } catch { /* fallback */ }
+      ctx.fillStyle = "rgba(231,244,255,.72)";
+      ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(userName, avatarX + avatarR + 14, y + 12);
+      ctx.textAlign = "center";
+    } catch {
+      ctx.fillStyle = "rgba(231,244,255,.72)";
+      ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
+      ctx.fillText(userName, CX, y + 12);
+    }
+  } else {
+    ctx.fillStyle = "rgba(231,244,255,.72)";
+    ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(userName, CX, y + 12);
   }
-  ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.72)";
-  ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(userName, CARD_W / 2, y + 8);
-  y += 76;
+  y += 80;
 
-  // Stats grid
-  const colW = (CARD_W - pad * 2) / 2;
-  const rowH = 272;
-  const gridTop = y + 22;
+  // Divider
+  const div1 = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
+  div1.addColorStop(0, "rgba(113,212,255,0)");
+  div1.addColorStop(0.5, "rgba(113,212,255,.28)");
+  div1.addColorStop(1, "rgba(113,212,255,0)");
+  ctx.fillStyle = div1;
+  ctx.fillRect(CARD_W * 0.25, y, CARD_W * 0.5, 2);
+  y += 60;
 
-  const tierImg = tier && meta ? await loadImage(meta.iconPath).catch(() => null) : null;
-  const streakImg = await loadImage("/streak/streak_alive.png").catch(() => null);
-  const gardenImg = await loadImage("/energies/earth/earth_full.png").catch(() => null);
-
-  const stats = [
-    { label: "Foco total", value: focusValue, color: "#71d4ff", glow: "rgba(113,212,255,.35)", icon: null as HTMLImageElement | null, kind: "focus" as const },
-    { label: "Sequência", value: streakValue, color: "#ff8c42", glow: "rgba(255,140,66,.35)", icon: streakImg, kind: "streak" as const },
-    { label: "Liga", value: leagueValue, color: tierColor, glow: `${tierColor}55`, icon: tierImg, kind: "tier" as const },
-    { label: "Jardim", value: gardenValue, color: "#6bffb8", glow: "rgba(107,255,184,.35)", icon: gardenImg, kind: "garden" as const },
+  // ── Four hero stat rows ──
+  const statRows = [
+    { label: "Foco total",  value: formatMinutes(recap.totalFocusMinutes), color: "#71d4ff", glow: "rgba(113,212,255,.32)", copy: focusCopy(recap.totalFocusMinutes) },
+    { label: plural(recap.longestStreak, "dia de sequência", "dias de sequência"), value: String(recap.longestStreak), color: "#ffb86b", glow: "rgba(255,184,107,.32)", copy: streakCopy(recap.longestStreak) },
+    { label: "Liga",        value: meta ? meta.label : "—",                color: tierColor, glow: `${tierColor}55`,       copy: leagueCopy(tier, recap.leaguePromoted ?? false) },
+    { label: plural(garden, "energia plantada", "energias plantadas"), value: String(garden), color: "#4ade80", glow: "rgba(74,222,128,.32)", copy: gardenCopy(garden) },
   ];
 
-  for (const s of stats) {
-    const sx = pad + (s.kind === "streak" || s.kind === "garden" ? 1 : 0) * colW;
-    const sy = gridTop + (s.kind === "tier" || s.kind === "garden" ? 1 : 0) * rowH;
-    const cw = colW - 16;
-    const ch = rowH - 20;
-    const cardR = 22;
+  const rowH = 290;
+  const cardR = 28;
 
+  // Preload league icon
+  const tierImg = tier && meta ? await loadImage(meta.iconPath).catch(() => null) : null;
+
+  for (let i = 0; i < statRows.length; i++) {
+    const s = statRows[i];
+    const sx = pad;
+    const sy = y;
+    const cw = CARD_W - pad * 2;
+    const ch = rowH - 18;
+
+    // Card shadow
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.5)";
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = "rgba(0,0,0,.45)";
+    ctx.shadowBlur = 22;
     ctx.shadowOffsetY = 10;
     roundRect(ctx, sx, sy, cw, ch, cardR);
-    ctx.fillStyle = "rgba(15,23,42,.6)";
+    ctx.fillStyle = "rgba(10,18,32,.7)";
     ctx.fill();
     ctx.restore();
 
+    // Card glow border
     ctx.save();
     ctx.shadowColor = s.glow;
-    ctx.shadowBlur = 30;
+    ctx.shadowBlur = 28;
     roundRect(ctx, sx, sy, cw, ch, cardR);
-    ctx.fillStyle = "rgba(255,255,255,.045)";
+    ctx.fillStyle = "rgba(255,255,255,.03)";
     ctx.fill();
-    ctx.restore();
-
-    roundRect(ctx, sx, sy, cw, ch, cardR);
-    ctx.fillStyle = "rgba(255,255,255,.04)";
-    ctx.fill();
-    ctx.save();
-    ctx.shadowColor = s.glow;
-    ctx.shadowBlur = 12;
-    ctx.strokeStyle = hexToRgba(s.color, 0.5);
-    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = hexToRgba(s.color, 0.38);
+    ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
 
-    const glowGrad = ctx.createRadialGradient(sx + cw / 2, sy + ch * 0.6, 0, sx + cw / 2, sy + ch * 0.6, 110);
-    glowGrad.addColorStop(0, s.glow);
-    glowGrad.addColorStop(1, "transparent");
-    ctx.fillStyle = glowGrad;
+    // Inner glow
+    const innerGlow = ctx.createRadialGradient(sx + cw * 0.5, sy + ch * 0.7, 0, sx + cw * 0.5, sy + ch * 0.7, cw * 0.55);
+    innerGlow.addColorStop(0, s.glow);
+    innerGlow.addColorStop(1, "transparent");
+    ctx.fillStyle = innerGlow;
     ctx.fillRect(sx, sy, cw, ch);
 
-    const chipX = sx + 34;
-    const chipY = sy + 56;
-    const chipR = 26;
-    const chipGrad = ctx.createRadialGradient(chipX, chipY, 2, chipX, chipY, chipR);
-    chipGrad.addColorStop(0, s.color + "55");
-    chipGrad.addColorStop(1, s.color + "0d");
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(chipX, chipY, chipR, 0, Math.PI * 2);
-    ctx.fillStyle = chipGrad;
-    ctx.shadowColor = s.glow;
-    ctx.shadowBlur = 14;
-    ctx.fill();
-    ctx.strokeStyle = hexToRgba(s.color, 0.4);
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
+    // Stat value — large, left-aligned
+    ctx.fillStyle = s.color;
+    ctx.font = "800 96px 'Inter', -apple-system, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(s.value, sx + 52, sy + 118);
 
-    if (s.icon) {
-      const s2 = 36;
-      ctx.drawImage(s.icon, chipX - s2 / 2, chipY - s2 / 2, s2, s2);
+    // Label
+    ctx.fillStyle = hexToRgba(s.color, 0.75);
+    ctx.font = "700 28px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(s.label.toUpperCase(), sx + 52, sy + 162);
+
+    // Copy line
+    ctx.fillStyle = "rgba(231,244,255,.45)";
+    ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
+    // Wrap copy text
+    const maxW = cw - 104;
+    const words = s.copy.split(" ");
+    let line = "";
+    let lineY = sy + 210;
+    for (const word of words) {
+      const test = line ? line + " " + word : word;
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line, sx + 52, lineY);
+        line = word;
+        lineY += 34;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, sx + 52, lineY);
+
+    // League icon on the right
+    if (i === 2 && tierImg) {
+      const iconS = 80;
+      ctx.drawImage(tierImg, sx + cw - iconS - 44, sy + ch / 2 - iconS / 2, iconS, iconS);
     }
 
-    ctx.fillStyle = "rgba(231,244,255,.45)";
-    ctx.font = "500 23px 'Inter', -apple-system, sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(s.label, sx + 76, sy + 52);
+    // Promoted badge
+    if (i === 2 && recap.leaguePromoted) {
+      ctx.fillStyle = "rgba(74,222,128,.15)";
+      roundRect(ctx, sx + cw - 220, sy + 28, 180, 44, 22);
+      ctx.fill();
+      ctx.fillStyle = "#4ade80";
+      ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("⬆ Promovido!", sx + cw - 130, sy + 56);
+      ctx.textAlign = "left";
+    }
 
-    ctx.fillStyle = s.color;
-    ctx.font = "800 56px 'Inter', -apple-system, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(s.value, sx + cw / 2, sy + ch - 52);
+    y += rowH;
   }
 
-  y = gridTop + 2 * rowH + 38;
-
-  if (recap.leaguePromoted) {
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#4ade80";
-    ctx.font = "700 28px 'Inter', -apple-system, sans-serif";
-    ctx.fillText("⬆ Promovido!", CARD_W / 2, y + 10);
-  }
-
-  // Footer
-  const footY = CARD_H - 110;
-  const footLine = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
-  footLine.addColorStop(0, "rgba(113,212,255,0)");
-  footLine.addColorStop(0.5, "rgba(113,212,255,.18)");
-  footLine.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = footLine;
+  // ── Footer ──
+  const footY = CARD_H - 120;
+  const footDiv = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
+  footDiv.addColorStop(0, "rgba(113,212,255,0)");
+  footDiv.addColorStop(0.5, "rgba(113,212,255,.18)");
+  footDiv.addColorStop(1, "rgba(113,212,255,0)");
+  ctx.fillStyle = footDiv;
   ctx.fillRect(CARD_W * 0.25, footY, CARD_W * 0.5, 1);
 
-  const brandGlow = ctx.createRadialGradient(CARD_W / 2, footY + 55, 0, CARD_W / 2, footY + 55, 160);
-  brandGlow.addColorStop(0, "rgba(113,212,255,.08)");
-  brandGlow.addColorStop(1, "transparent");
-  ctx.fillStyle = brandGlow;
-  ctx.fillRect(CARD_W / 2 - 160, footY + 10, 320, 90);
-
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.22)";
-  ctx.font = "800 36px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("energyOS", CARD_W / 2, footY + 60);
+  ctx.fillStyle = "rgba(231,244,255,.2)";
+  ctx.font = "800 38px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("energyOS", CX, footY + 68);
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"));
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function MonthlyRecapPremium({
   recap,
@@ -832,112 +817,37 @@ export function MonthlyRecapPremium({
   const [open, setOpen] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSharing, setIsSharing] = useState(false);
-  const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
   const reduced = useReducedMotion();
   const { user } = useAuthRedirect({ ifGuest: "/" });
 
   const monthLabel = formatMonth(recap.recapMonth);
   const { meta, tier } = tierMeta(recap.leagueTier);
-  const theme = SLIDE_THEMES;
+  const garden = recap.gardenCount ?? 0;
 
-  const iconAssets: RecapIconAssets = {
-    focusIcon: undefined,
-    streakIcon: "/streak/streak_alive.png",
-    leagueIcon: meta?.iconPath,
-    tagIcon: "/energies/earth/earth_full.png",
-  };
+  const goNext = useCallback(() => setCurrentSlide((s) => Math.min(s + 1, SLIDE_COUNT - 1)), []);
+  const goPrev = useCallback(() => setCurrentSlide((s) => Math.max(s - 1, 0)), []);
 
-  const getLeagueTheme = () => theme.league(tier);
+  const handleSlideTap = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < rect.width / 3) goPrev(); else goNext();
+  }, [goPrev, goNext]);
 
-  // Navigation
-  const goToNextSlide = useCallback(() => {
-    setCurrentSlide((s) => Math.min(s + 1, SLIDE_COUNT - 1));
-  }, []);
-
-  const goToPrevSlide = useCallback(() => {
-    setCurrentSlide((s) => Math.max(s - 1, 0));
-  }, []);
-
-  const handleSlideTap = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const third = rect.width / 3;
-      if (x < third) goToPrevSlide();
-      else if (x > third * 2) goToNextSlide();
-    },
-    [goToPrevSlide, goToNextSlide],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!open) return;
-      if (e.key === "ArrowLeft") goToPrevSlide();
-      if (e.key === "ArrowRight" || e.key === " ") goToNextSlide();
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "ArrowRight" || e.key === " ") goNext();
       if (e.key === "Escape") setOpen(false);
-    },
-    [open, goToPrevSlide, goToNextSlide],
-  );
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, goPrev, goNext]);
 
-  useEffect(() => {
-    if (open) {
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [open, handleKeyDown]);
+  useEffect(() => { if (open) setCurrentSlide(0); }, [open]);
 
-  // Reset slide when opening
-  useEffect(() => {
-    if (open) setCurrentSlide(0);
-  }, [open]);
-
-  // Share handler
-  const handleShare = useCallback(async () => {
-    if (isSharing) return;
-    setIsSharing(true);
-
-    try {
-      if (user?.uid && recap.id && !recap.hasBeenShared) {
-        const response = await fetch("/api/recap/share", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recapId: recap.id }),
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.wasFirstShare && result.newBalance !== undefined) {
-            setRewardToast({ amount: SHARE_REWARD_COINS, balance: result.newBalance });
-            if (onCoinsAwarded) onCoinsAwarded(SHARE_REWARD_COINS, result.newBalance);
-          }
-        }
-      }
-
-      const blob = await captureRecapCard(recap, userName, userPhotoUrl);
-
-      if (onExternalShare) onExternalShare(blob);
-
-      if (navigator.share && navigator.canShare) {
-        try {
-          const file = new File([blob], `recap-${recap.recapMonth.slice(0, 7)}.png`, { type: "image/png" });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: `Meu recap de ${monthLabel} no energyOS`,
-              text: `Confira meu progresso no energyOS - ${formatMinutes(recap.totalFocusMinutes)} de foco, ${recap.longestStreak} dias de sequência!`,
-            });
-          }
-        } catch {
-          // User cancelled
-        }
-      }
-    } finally {
-      setIsSharing(false);
-    }
-  }, [recap, isSharing, monthLabel, onExternalShare, onCoinsAwarded, user, userName, userPhotoUrl]);
-
-  // Download handler
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
     try {
@@ -953,65 +863,85 @@ export function MonthlyRecapPremium({
     }
   }, [recap, userName, userPhotoUrl]);
 
-  // Render slide content
-  const renderCurrentSlide = () => {
+  const handleShare = useCallback(async () => {
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      if (user?.uid && recap.id && !recap.hasBeenShared) {
+        const res = await fetch("/api/recap/share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recapId: recap.id }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.wasFirstShare && result.newBalance !== undefined) {
+            setRewardToast({ amount: SHARE_REWARD_COINS, balance: result.newBalance });
+            onCoinsAwarded?.(SHARE_REWARD_COINS, result.newBalance);
+          }
+        }
+      }
+      const blob = await captureRecapCard(recap, userName, userPhotoUrl);
+      if (onExternalShare) onExternalShare(blob);
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], `recap-${recap.recapMonth.slice(0, 7)}.png`, { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `Meu recap de ${monthLabel} no energyOS`,
+            text: `${formatMinutes(recap.totalFocusMinutes)} de foco, ${recap.longestStreak} ${plural(recap.longestStreak, "dia", "dias")} de sequência!`,
+          }).catch(() => {/* user cancelled */});
+        }
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  }, [recap, isSharing, monthLabel, onExternalShare, onCoinsAwarded, user, userName, userPhotoUrl]);
+
+  function renderSlide() {
     switch (currentSlide) {
       case 0:
-        return <IntroSlide monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} theme={theme.intro} />;
+        return <IntroSlide monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} theme={THEMES.intro} />;
       case 1:
         return (
-          <StatSlide
-            value={formatMinutes(recap.totalFocusMinutes)}
-            label="Foco Total"
-            description="Você dedicou isso à sua energia este mês"
-            theme={theme.focus}
-            icon={iconAssets.focusIcon ? (
-              <Image src={iconAssets.focusIcon} alt="Foco" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            ) : (
-              <Timer size={48} color={theme.focus.accent} />
-            )}
+          <HeroStatSlide
+            numericValue={Math.floor(recap.totalFocusMinutes / 60)}
+            valueSuffix={recap.totalFocusMinutes < 60 ? "min" : "h"}
+            label="Foco total"
+            copy={focusCopy(recap.totalFocusMinutes)}
+            theme={THEMES.focus}
+            icon={<Timer size={48} color={THEMES.focus.accent} strokeWidth={1.5} />}
           />
         );
       case 2:
         return (
-          <StatSlide
-            value={`${recap.longestStreak} dias`}
+          <HeroStatSlide
+            numericValue={recap.longestStreak}
+            valueSuffix={plural(recap.longestStreak, "dia", "dias")}
             label="Sequência"
-            description="Melhor sequência de foco do mês"
-            theme={theme.streak}
-            icon={iconAssets.streakIcon ? (
-              <Image src={iconAssets.streakIcon} alt="Seq" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            ) : (
-              <Image src="/streak/streak_alive.png" alt="Seq" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            )}
+            copy={streakCopy(recap.longestStreak)}
+            theme={THEMES.streak}
+            icon={<Flame size={52} color={THEMES.streak.accent} strokeWidth={1.5} />}
           />
         );
       case 3:
         return (
-          <StatSlide
-            value={meta ? meta.label : "—"}
-            label="Liga"
-            description={`Você terminou o mês na liga ${meta ? meta.label : "—"}`}
-            theme={getLeagueTheme()}
-            icon={iconAssets.leagueIcon ? (
-              <Image src={iconAssets.leagueIcon} alt="Liga" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            ) : meta ? (
-              <Image src={meta.iconPath} alt={meta.label} width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            ) : (
-              <Award size={48} color={getLeagueTheme().accent} />
-            )}
+          <LeagueSlide
+            tier={tier}
+            meta={meta}
+            promoted={recap.leaguePromoted ?? false}
+            theme={leagueTheme(tier)}
           />
         );
       case 4:
         return (
-          <StatSlide
-            value={`${recap.gardenCount ?? 0}`}
+          <HeroStatSlide
+            numericValue={garden}
+            valueSuffix={plural(garden, "energia", "energias")}
             label="Jardim"
-            description="Energias e auras plantadas no seu jardim este ano"
-            theme={theme.tag}
-            icon={
-              <Image src="/energies/earth/earth_full.png" alt="Jardim" width={64} height={64} className="relative z-10" unoptimized draggable={false} />
-            }
+            copy={gardenCopy(garden)}
+            theme={THEMES.garden}
+            icon={<Zap size={52} color={THEMES.garden.accent} strokeWidth={1.5} />}
           />
         );
       case 5:
@@ -1020,16 +950,16 @@ export function MonthlyRecapPremium({
             recap={recap}
             userName={userName}
             userPhotoUrl={userPhotoUrl}
+            monthLabel={monthLabel}
             onDownload={handleDownload}
             onShare={handleShare}
-            theme={theme.summary}
-            iconAssets={iconAssets}
+            theme={THEMES.summary}
           />
         );
       default:
         return null;
     }
-  };
+  }
 
   return (
     <>
@@ -1040,10 +970,7 @@ export function MonthlyRecapPremium({
         onClick={() => setOpen(true)}
         className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3.5 text-left transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--bg-surface-hover)]"
       >
-        <div
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
-          style={{ background: "rgba(255,255,255,.05)" }}
-        >
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(255,255,255,.05)" }}>
           {meta ? (
             <Image src={meta.iconPath} alt={meta.label} width={20} height={20} unoptimized draggable={false} />
           ) : (
@@ -1051,15 +978,13 @@ export function MonthlyRecapPremium({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text)]">
-            Ver recap de {monthLabel}
-          </p>
+          <p className="truncate text-sm font-semibold text-[var(--text)]">Ver recap de {monthLabel}</p>
           <p className="truncate text-xs text-[var(--text-muted)]">
-            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} dias de sequência
+            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")} de sequência
           </p>
         </div>
         <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
-          Premium
+          Recap
         </span>
       </motion.button>
 
@@ -1067,45 +992,36 @@ export function MonthlyRecapPremium({
       <AnimatePresence>
         {open && (
           <Modal onClose={() => setOpen(false)}>
-            {/* Use a fixed-aspect container that works within the modal's constraints */}
             <div className="relative flex w-full max-w-[420px] flex-col items-center">
-              {/* Close button */}
               <button
                 onClick={() => setOpen(false)}
-                className="absolute right-2 top-2 z-30 rounded-full bg-[rgba(0,0,0,0.4)] p-2 backdrop-blur-sm transition-colors hover:bg-[rgba(0,0,0,0.6)]"
+                className="absolute right-2 top-2 z-30 rounded-full bg-[rgba(0,0,0,0.45)] p-2 backdrop-blur-sm transition-colors hover:bg-[rgba(0,0,0,0.65)]"
                 aria-label="Fechar"
               >
                 <X size={18} className="text-white/80" />
               </button>
 
-              {/* Story-style slide viewport */}
               <div
                 className="relative w-full overflow-hidden rounded-2xl"
-                style={{
-                  aspectRatio: "9/16",
-                  maxHeight: "calc(100dvh - 80px)",
-                  boxShadow: "0 25px 60px -12px rgba(0, 0, 0, 0.6)",
-                }}
+                style={{ aspectRatio: "9/16", maxHeight: "calc(100dvh - 80px)", boxShadow: "0 25px 60px -12px rgba(0,0,0,.65)" }}
                 onClick={handleSlideTap}
               >
-                {/* Progress bar */}
                 <ProgressBar current={currentSlide} total={SLIDE_COUNT} />
 
-                {/* Navigation arrows (desktop only) */}
                 {!reduced && (
                   <>
                     <button
-                      onClick={(e) => { e.stopPropagation(); goToPrevSlide(); }}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
+                      onClick={(e) => { e.stopPropagation(); goPrev(); }}
                       disabled={currentSlide === 0}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
                       aria-label="Slide anterior"
                     >
                       <ChevronLeft size={18} className="text-white/70" />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); goToNextSlide(); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
+                      onClick={(e) => { e.stopPropagation(); goNext(); }}
                       disabled={currentSlide === SLIDE_COUNT - 1}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
                       aria-label="Próximo slide"
                     >
                       <ChevronRight size={18} className="text-white/70" />
@@ -1113,30 +1029,28 @@ export function MonthlyRecapPremium({
                   </>
                 )}
 
-                {/* Slides with crossfade */}
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={currentSlide}
                     className="absolute inset-0"
-                    initial={{ opacity: 0, scale: 0.96 }}
+                    initial={{ opacity: 0, scale: 0.97 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 1.02 }}
-                    transition={{ duration: reduced ? 0 : 0.25, ease: "easeInOut" }}
+                    transition={{ duration: reduced ? 0 : 0.22, ease: "easeInOut" }}
                   >
-                    {renderCurrentSlide()}
+                    {renderSlide()}
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              {/* Bottom hint */}
               <motion.p
-                className="mt-3 text-[10px] tracking-wider"
-                style={{ color: "rgba(231,244,255,.25)" }}
+                className="mt-3 text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: "rgba(231,244,255,.22)" }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1.5 }}
+                transition={{ delay: 1.2 }}
               >
-                TOQUE NOS LADOS OU USE AS SETAS PARA NAVEGAR
+                Toque nos lados ou use as setas para navegar
               </motion.p>
             </div>
 
@@ -1148,13 +1062,9 @@ export function MonthlyRecapPremium({
   );
 }
 
-// ─── Standalone helpers ──────────────────────────────────────────────────────
+// ─── Standalone helpers ───────────────────────────────────────────────────────
 
-export async function downloadRecapImage(
-  recap: MonthlyRecapPremiumProps["recap"],
-  userName: string,
-  userPhotoUrl?: string,
-) {
+export async function downloadRecapImage(recap: RecapData, userName: string, userPhotoUrl?: string) {
   const blob = await captureRecapCard(recap, userName, userPhotoUrl);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1164,19 +1074,12 @@ export async function downloadRecapImage(
   URL.revokeObjectURL(url);
 }
 
-export async function shareRecapImage(
-  recap: MonthlyRecapPremiumProps["recap"],
-  userName: string,
-  userPhotoUrl?: string,
-) {
+export async function shareRecapImage(recap: RecapData, userName: string, userPhotoUrl?: string) {
   const blob = await captureRecapCard(recap, userName, userPhotoUrl);
   if (navigator.share && navigator.canShare) {
     const file = new File([blob], `recap-${recap.recapMonth.slice(0, 7)}.png`, { type: "image/png" });
     if (navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        text: `Meu recap de ${formatMonth(recap.recapMonth)} no energyOS`,
-      });
+      await navigator.share({ files: [file], text: `Meu recap de ${formatMonth(recap.recapMonth)} no energyOS` });
       return;
     }
   }

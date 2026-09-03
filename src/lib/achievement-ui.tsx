@@ -1,6 +1,6 @@
 "use client";
 
-import { Gem, Trophy, Lock, Star, X, Plus } from "lucide-react";
+import { Gem, Trophy, Lock, X, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
@@ -162,8 +162,8 @@ export function AchievementBadge({
  *  - unlocked: full-color icon with category color
  *  - locked: greyscale icon, lock glyph (optional progress hint)
  *  - in-progress (locked but has progress): small progress ring around the icon
- * It also renders tier dots and, when `feature` is set, a star indicator and an
- * optional remove affordance used by the own profile.
+ * It also renders tier dots and, when `feature` is set, an optional remove
+ * affordance used by the own profile.
  */
 export function AchievementTile({
   achievement,
@@ -274,15 +274,7 @@ export function AchievementTile({
       >
         {children}
       </motion.button>
-      {feature && isEarned && (
-        <span
-          className="pointer-events-none absolute -left-1 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full"
-          style={{ background: colors.primary, color: "#000" }}
-        >
-          <Star size={11} strokeWidth={2.5} fill="currentColor" />
-        </span>
-      )}
-      {feature && showRemove && onRemove && (
+      {showRemove && onRemove && (
         <button
           type="button"
           aria-label="Remover destaque"

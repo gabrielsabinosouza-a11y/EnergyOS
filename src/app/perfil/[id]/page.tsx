@@ -245,7 +245,7 @@ export default function FriendProfilePage() {
     {
       label: "Foco semanal",
       color: "var(--purple)",
-      value: `${profile.weeklyFocusMinutes}min`,
+      value: `${Math.floor(profile.weeklyFocusMinutes / 60)}h${profile.weeklyFocusMinutes % 60 > 0 ? ` ${profile.weeklyFocusMinutes % 60}min` : ""}`,
       icon: <Trophy size={16} />,
     },
   ];

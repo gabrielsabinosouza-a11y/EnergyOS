@@ -810,7 +810,7 @@ export default function GruposPage() {
                           <p className="font-display text-sm font-medium text-[var(--text)] group-hover:text-[var(--accent)]">{g.name}</p>
                           <div className="flex items-center gap-4 text-[11px] text-[var(--text-muted)]">
                             <span className="flex items-center gap-1"><Users size={12} />{g.memberCount}</span>
-                            <span className="flex items-center gap-1 text-[var(--green)]"><Timer size={12} />{g.weeklyFocusMinutes}min</span>
+                            <span className="flex items-center gap-1 text-[var(--green)]"><Timer size={12} />{fmtMinutes(g.weeklyFocusMinutes)}</span>
                           </div>
                           {g.unreadCount > 0 && (
                             <span className="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-black">
@@ -1189,7 +1189,7 @@ function GroupDetailPanel({
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-sm font-medium text-[var(--text)]">{group.name}</p>
           <p className="text-[11px] text-[var(--text-faint)]">
-            {group.members.length} membros · {group.weeklyFocusMinutes}min/semana
+            {group.members.length} membros · {fmtMinutes(group.weeklyFocusMinutes)}/semana
           </p>
         </div>
         <div className="flex overflow-hidden rounded-xl border border-[var(--border-subtle)]">
@@ -1325,7 +1325,7 @@ function GroupDetailPanel({
               <Timer size={22} />
             </div>
             <div>
-              <p className="text-lg font-bold text-[var(--text)]">{group.weeklyFocusMinutes}<span className="ml-1 text-xs font-normal text-[var(--text-muted)]">min</span></p>
+              <p className="text-lg font-bold text-[var(--text)]">{(() => { const m = group.weeklyFocusMinutes; const h = Math.floor(m / 60); const r = m % 60; return r > 0 ? `${h}h ${r}min` : `${h}h`; })()}<span className="ml-1 text-xs font-normal text-[var(--text-muted)]">foco</span></p>
               <p className="text-[11px] text-[var(--text-faint)]">foco total da semana</p>
             </div>
             <div className="ml-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-bg)] text-[var(--accent)]">

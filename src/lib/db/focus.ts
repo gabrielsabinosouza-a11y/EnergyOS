@@ -9,7 +9,7 @@ import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
 import { checkAndUnlockMilestones } from "./group-milestones";
-import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN } from "../daily-limits";
+import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
 
 export const GARDEN_ENERGY_TYPES = [
   "flame", "water", "earth", "wind", "thunder", "ice",
@@ -225,25 +225,28 @@ export async function endFocusSession(
     await recordMissionProgress(profileId, "EARLY_SESSION_9AM", { incrementBy: 1 });
   }
 
-  // Real-time streak: a session that reached its full target duration counts as
-  // the day's "success" for streak purposes and advances the streak immediately
-  // (first qualifying session of the day). Given-up sessions (fewer focused
-  // minutes than the target) and abandoned ones do not affect the streak.
-  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+  // Real-time streak: a session that reached at least `STREAK_COMPLETION_THRESHOLD`
+  // of its target duration counts as the day's "success" for streak purposes and
+  // advances the streak immediately (first qualifying session of the day).
+  // Given-up sessions (fewer focused minutes than the target) and abandoned ones
+  // do not affect the streak.
+  const targetMinutes = session.rows[0].target_duration_minutes ?? 0;
+  const completedThreshold = targetMinutes * STREAK_COMPLETION_THRESHOLD;
+  if (durationMinutes >= completedThreshold) {
     await onFocusSessionCompleted(profileId);
   }
 
   // Garden: plant the energy(ies) earned by a fully completed session. Only
   // sessions that reached their target duration (i.e. the timer ran to 0, not a
   // give-up/abandon) add plants — mirroring the streak qualification rule.
-  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+  if (durationMinutes >= completedThreshold) {
     const energyType = session.rows[0].energy_type ?? "flame";
     await plantGardenEntries(profileId, sessionId, energyType, durationMinutes);
   }
 
   // Record group focus contributions for leaderboard
   // Only record contributions for completed sessions that reached target duration
-  if (durationMinutes >= (session.rows[0].target_duration_minutes ?? 0)) {
+  if (durationMinutes >= completedThreshold) {
     const endedAt = updated.rows[0].ended_at;
     if (endedAt) {
       const completedAt = typeof endedAt === "string" 

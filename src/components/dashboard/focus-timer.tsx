@@ -74,8 +74,8 @@ function clearSessionState(): void {
 
 const RING_SIZE = 260;
 const MAX_DURATION = 120;
-const SNAP_INCREMENT = 5;
-const MIN_DURATION = 10;
+const SNAP_INCREMENT = 15;
+const MIN_DURATION = 30;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -185,9 +185,9 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostA
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }: FocusTimerProps) {
-  const [duration, setDuration] = useState(25);
+  const [duration, setDuration] = useState(60);
   const [state, setState] = useState<TimerState>("idle");
-  const [remaining, setRemaining] = useState(25 * 60);
+  const [remaining, setRemaining] = useState(60 * 60);
   const [lastCoins, setLastCoins] = useState(0);
   const [showComplete, setShowComplete] = useState(false);
   const [rewardCount, setRewardCount] = useState(1);
@@ -202,13 +202,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
-  const remainingRef = useRef(25 * 60);
-  const remainingMsRef = useRef(25 * 60 * 1000);
+  const remainingRef = useRef(60 * 60);
+  const remainingMsRef = useRef(60 * 60 * 1000);
   const runningSinceRef = useRef<number | null>(null);
   const stateRef = useRef<TimerState>("idle");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedEnergyRef = useRef<EnergyType>("flame");
-  const durationRef = useRef(25);
+  const durationRef = useRef(60);
   const completedRef = useRef(false);
   const soundEnabledRef = useRef(true);
 
@@ -669,7 +669,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             className="font-mono font-bold tabular-nums leading-none"
             style={{ fontSize: 44, color: isPaused ? "#ffb86b" : "var(--text)", letterSpacing: "-0.04em", transition: "color 0.3s" }}
           >
-            {isActive ? formatTime(remaining) : `${String(duration).padStart(2, "0")}:00`}
+            {isActive ? formatTime(remaining) : `${String(Math.floor(duration / 60)).padStart(2, "0")}:${String(duration % 60).padStart(2, "0")}`}
           </span>
           <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
             {state === "running" ? "em andamento" : state === "paused" ? "pausado" : "duração"}
@@ -773,7 +773,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
       {/* Today stats */}
       <div className="grid grid-cols-2 gap-2 mt-6">
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
-          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{todayStats.minutesFocused}min</div>
+          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{Math.floor(todayStats.minutesFocused / 60)}h{todayStats.minutesFocused % 60 > 0 ? ` ${todayStats.minutesFocused % 60}min` : ""}</div>
           <div className="text-[10px] text-[var(--text-faint)]">foco hoje</div>
         </div>
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
@@ -792,7 +792,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           <div className="mt-2 space-y-1">
             {history.slice(0, 3).map((s) => (
               <div key={s.id} className="flex items-center justify-between text-[10px] py-1">
-                <span className="text-[var(--text-muted)]">{s.durationMinutes}min</span>
+                <span className="text-[var(--text-muted)]">{Math.floor(s.durationMinutes / 60)}h{s.durationMinutes % 60 > 0 ? ` ${s.durationMinutes % 60}min` : ""}</span>
                 <span className="text-[#ffb86b] font-mono">+{s.xpEarned}</span>
               </div>
             ))}

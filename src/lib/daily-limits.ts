@@ -36,6 +36,14 @@ export const GOAL_COMPLETION_TIERS: { maxTarget: number; xp: number; coins: numb
 ];
 
 // ── Focus ─────────────────────────────────────────────────────────────────────
+/**
+ * Minimum fraction of a focus session's target duration that must be completed
+ * for it to count toward the streak. 1.0 = the full target must be reached;
+ * 0.8 = 80 % is enough. Stored as a fraction so it can be compared directly
+ * against `duration_minutes / target_duration_minutes`.
+ */
+export const STREAK_COMPLETION_THRESHOLD = 1.0;
+
 /** XP per minute of focus (base, before boost). */
 export const FOCUS_XP_PER_MIN = 1;
 /** Coins per 10 minutes of focus. */

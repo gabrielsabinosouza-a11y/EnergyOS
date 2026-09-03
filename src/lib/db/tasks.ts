@@ -2,8 +2,10 @@ import pool from "../db";
 import type { StreakDayStatus, Task } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
-import { APP_TIMEZONE, todayIso } from "./dates";
+import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
 import { consumeShield, getShieldCount, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
+import { calculateStreak } from "@/lib/streak";
+import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { recordMissionProgress } from "./daily-quests";
 
@@ -217,19 +219,20 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   parseProfileId(profileId);
 
   // Completed focus sessions grouped by product-timezone day. A session counts
-  // only when it reached its full target duration — abandoned sessions never
-  // get `ended_at`, and given-up ones end with fewer focused minutes than the
-  // target, so both are excluded by the same predicate.
+  // only when it reached at least `STREAK_COMPLETION_THRESHOLD` of its target
+  // duration (default: 100% of the target) — abandoned sessions never get
+  // `ended_at`, and given-up ones end with fewer focused minutes than the
+  // target, so both are excluded by the same predicate when the threshold is 1.
   const sessions = await pool.query<{ day: string; n: string | number }>(
     `select to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day, count(*)::int as n
        from focus_sessions
       where profile_id = $2
         and ended_at is not null
-        and duration_minutes >= target_duration_minutes
+        and duration_minutes * 1.0 >= target_duration_minutes * $4
         and (ended_at at time zone $1)::date > ($3::date - interval '400 days')
         and (ended_at at time zone $1)::date <= $3::date
       group by day`,
-    [APP_TIMEZONE, profileId, today],
+    [APP_TIMEZONE, profileId, today, STREAK_COMPLETION_THRESHOLD],
   );
   const sessionsByDay = new Map<string, number>(
     sessions.rows.map((r) => [r.day, Number(r.n)]),
@@ -237,46 +240,67 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   const todaySessions = sessionsByDay.get(today) ?? 0;
   const baseShields = await getShieldCount(profileId);
 
-  // Walk backwards from yesterday: consecutive qualifying (or shield-protected)
-  // days extend the streak; the first unprotected miss breaks it. The walk is
-  // short in practice — it stops at the first unprotected miss.
-  let streak = 0;
+  // The day-set of qualifying sessions. `calculateStreak` derives the current
+  // streak from this real history (source of truth) — a pure, testable function.
+  const qualifyingDates = [...sessionsByDay.keys()].sort();
+  const { currentStreak, todayQualified } = calculateStreak(qualifyingDates, today);
+
+  // Now that we know how far the streak extends (or where it broke), reconcile
+  // the streak-day log: mark each past day that qualified as "success" and each
+  // unprotected missed day (up to the break) as "lost". Shield protection is
+  // applied idempotently and can extend a broken streak.
+  // NOTE: shield consumption is intentionally kept independent of the pure
+  // calculation above — shields may "fill a gap" that would otherwise reset the
+  // streak, so we walk backward applying them after computing the base run.
+  let streak = currentStreak;
   let shieldsUsed = 0;
-  let cursor = addDays(today, -1);
-  for (let i = 0; i < 400; i += 1) {
-    if ((sessionsByDay.get(cursor) ?? 0) > 0) {
-      streak += 1;
-      await logStreakDay(profileId, cursor, "success");
-    } else {
-      // A fully-missed past day: attempt idempotent protection with a shield.
+  {
+    // Mark all qualifying days in the window as success first.
+    for (const date of qualifyingDates) {
+      await logStreakDay(profileId, date, "success");
+    }
+
+    // Walk backward from yesterday, attempting to protect missed days that fall
+    // inside the current run's span. Consecutive shieldable misses are all
+    // consumed (matching the previous behavior); the walk stops at the first
+    // unprotected miss, or after `maxWalk` days.
+    const maxWalk = 400;
+    let cursor = addDaysIso(today, -1);
+    let walked = 0;
+    while (walked < maxWalk) {
+      const hasSession = (sessionsByDay.get(cursor) ?? 0) > 0;
+      if (hasSession) {
+        cursor = addDaysIso(cursor, -1);
+        walked += 1;
+        continue;
+      }
+      // A missed past day inside the run: try to shield it to keep the streak.
       const protectedNow = await consumeShield(profileId, cursor, streak + 1);
       if (protectedNow) {
         shieldsUsed += 1;
         streak += 1;
         console.log(`[streak] ${profileId} missed ${cursor} but protected by shield (shield #${shieldsUsed})`);
+        cursor = addDaysIso(cursor, -1);
+        walked += 1;
       } else {
-        // No shield available (or already spent on this day) -> streak breaks.
         await logStreakDay(profileId, cursor, "lost");
-        console.log(`[streak] ${profileId} day ${cursor} missed without shield -> current streak reset to ${streak}`);
+        console.log(`[streak] ${profileId} day ${cursor} missed without shield -> current streak ${streak}`);
         break;
       }
     }
-    cursor = addDays(cursor, -1);
   }
 
   // Longest consecutive qualifying run across the whole window (ignores shield
   // protection).
-  const qualifyingDates = [...sessionsByDay.keys()].sort();
   let longest = 0;
   let run = 0;
   let prevDate: string | null = null;
   for (const date of qualifyingDates) {
-    run = prevDate !== null && addDays(prevDate, 1) === date ? run + 1 : 1;
+    run = prevDate !== null && addDaysIso(prevDate, 1) === date ? run + 1 : 1;
     if (run > longest) longest = run;
     prevDate = date;
   }
 
-  const todayQualified = todaySessions > 0;
   await persistStreak(profileId, streak, longest);
 
   // Record the "keep your streak alive one more day" mission (idempotent: it
@@ -285,7 +309,7 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   await recordMissionProgress(profileId, "STREAK_DAY", { setTo: todayQualified ? 1 : 0, questDate: today });
 
   // Pull latest streak-day log statuses so the UI can render saved/protected/lost states.
-  const yesterday = addDays(today, -1);
+  const yesterday = addDaysIso(today, -1);
   const logRes = await pool.query<{ log_date: string; status: string }>(
     `select to_char(log_date, 'YYYY-MM-DD') as log_date, status
       from streak_day_log
@@ -336,9 +360,9 @@ export async function onFocusSessionCompleted(profileId: string): Promise<void> 
        from focus_sessions
       where profile_id = $1
         and ended_at is not null
-        and duration_minutes >= target_duration_minutes
+        and duration_minutes * 1.0 >= target_duration_minutes * $4
         and (ended_at at time zone $2)::date = $3::date`,
-    [profileId, APP_TIMEZONE, today],
+    [profileId, APP_TIMEZONE, today, STREAK_COMPLETION_THRESHOLD],
   );
   // `prior` already includes the session that just completed: n === 1 means
   // this is the first qualifying session of the day, so the streak may move now.
@@ -353,12 +377,7 @@ async function persistStreak(profileId: string, current: number, longest: number
      set current_streak = $2,
          longest_streak = greatest(coalesce(longest_streak, 0), $3)
      where id = $1`,
-    [profileId, current, longest],
+     [profileId, current, longest],
   );
 }
 
-function addDays(isoDate: string, days: number): string {
-  const date = new Date(`${isoDate}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}

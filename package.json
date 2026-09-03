@@ -17,6 +17,7 @@
     "@langchain/anthropic": "^1.5.8",
     "cline": "^3.0.60",
     "cursor-cli": "^1.0.0",
+    "date-fns": "^4.4.0",
     "firebase": "^12.18.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.468.0",

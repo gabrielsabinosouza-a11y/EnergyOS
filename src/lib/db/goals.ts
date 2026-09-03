@@ -98,8 +98,14 @@ export async function createGoal(profileId: string, input: CreateGoalInput): Pro
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [inserted.rows[0].id]);
   const goal = withProgress(mapGoalRow(result.rows[0]));
 
-  // Award creation XP (idempotent via xp_ledger source_id = goal id + ':created')
-  await creditXP(profileId, "goal", `${goal.id}:created`, GOAL_CREATION_XP);
+  // Award creation XP (idempotent: skip if already credited for this goal)
+  const alreadyCredited = await pool.query(
+    `select 1 from xp_ledger where profile_id = $1 and source = 'goal' and source_id = $2`,
+    [profileId, goal.id],
+  );
+  if (!alreadyCredited.rows[0]) {
+    await creditXP(profileId, "goal", goal.id, GOAL_CREATION_XP);
+  }
 
   return goal;
 }

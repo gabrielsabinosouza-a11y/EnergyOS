@@ -168,7 +168,9 @@ export function CircularDurationPicker({
   }, [dragging, onChange, snapIncrement, minMinutes, maxDurationMinutes]);
 
   const minutes = Math.round(value);
-  const displayText = `${String(minutes).padStart(2, "0")}:00`;
+  const displayH = Math.floor(minutes / 60);
+  const displayM = minutes % 60;
+  const displayText = `${String(displayH).padStart(2, "0")}:${String(displayM).padStart(2, "0")}`;
 
   return (
     <div className="circular-duration-picker" style={{ position: "relative", width: size, height: size, maxWidth: "100%" }}>

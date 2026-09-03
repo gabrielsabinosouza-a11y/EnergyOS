@@ -36,7 +36,7 @@ import { CircularDurationPicker } from "@/components/dashboard/circular-duration
 
 type PageState = "list" | "create" | "join" | "room";
 
-const DEFAULT_DURATION = 25;
+const DEFAULT_DURATION = 60;
 const CREATE_RING_SIZE = 210;
 const JOIN_RING_SIZE = 120;
 const POLL_INTERVAL_MS = 4000;
@@ -162,8 +162,8 @@ function SharedRing({
           value={room.durationMinutes}
           onChange={onDurationChange}
           maxDurationMinutes={120}
-          snapIncrement={5}
-          minMinutes={10}
+          snapIncrement={15}
+          minMinutes={30}
           size={RING_SIZE}
           accentColor={cfg.accent}
           disabled={disabled}
@@ -730,7 +730,7 @@ export default function FocusRoomsPage() {
                   <div>
                     <p className="text-xs text-[var(--text-faint)] mb-0.5">Sala: {room.code}</p>
                     <p className="text-sm font-medium text-[var(--text)]">
-                      {room.durationMinutes} min • {room.energyType || "Foco"}
+                      {Math.floor(room.durationMinutes / 60)}h{room.durationMinutes % 60 > 0 ? ` ${room.durationMinutes % 60}min` : ""} • {room.energyType || "Foco"}
                     </p>
                     <p className="text-[10px] text-[var(--text-muted)] mt-1">
                       Status:{" "}
@@ -811,8 +811,8 @@ export default function FocusRoomsPage() {
                 value={selectedDuration}
                 onChange={setSelectedDuration}
                 maxDurationMinutes={120}
-                snapIncrement={5}
-                minMinutes={10}
+                snapIncrement={15}
+                minMinutes={30}
                 size={CREATE_RING_SIZE}
                 accentColor={selectedEnergyCfg.accent}
                 centerContent={<></>}
@@ -828,7 +828,7 @@ export default function FocusRoomsPage() {
                 className="font-mono font-bold tabular-nums leading-none"
                 style={{ fontSize: 34, letterSpacing: "-0.03em", color: "var(--text)" }}
               >
-                {String(selectedDuration).padStart(2, "0")}:00
+                {String(Math.floor(selectedDuration / 60)).padStart(2, "0")}:{String(selectedDuration % 60).padStart(2, "0")}
               </span>
               <span className="text-[10px] uppercase tracking-widest text-[var(--text-faint)]">duração</span>
             </div>
@@ -1032,7 +1032,7 @@ export default function FocusRoomsPage() {
             {/* Countdown / duration label */}
             <div className="mt-4 flex flex-col items-center gap-1">
               <span className="font-mono font-bold tabular-nums leading-none" style={{ fontSize: 42, letterSpacing: "-0.04em", color: "var(--text)" }}>
-                {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(room.durationMinutes).padStart(2, "0")}:00`}
+                {running ? formatTime(Math.ceil((sharedRemainingMs ?? 0) / 1000)) : `${String(Math.floor(room.durationMinutes / 60)).padStart(2, "0")}:${String(room.durationMinutes % 60).padStart(2, "0")}`}
               </span>
               <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
                 {running ? (paused ? "pausada" : "em andamento") : "duração"}
