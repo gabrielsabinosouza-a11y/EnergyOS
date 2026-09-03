@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { rateLimitForProfile } from "@/lib/rate-limit";
 import { listCheckins, upsertCheckin } from "@/lib/db/checkins";
 import { addDaysIso, todayIso } from "@/lib/db/dates";
 import { assertObject, parseDate, parseNumber } from "@/lib/db/validation";
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    rateLimitForProfile(profileId, "checkin-post", 10, 60_000);
     const body = assertObject(await readJsonBody(request));
 
     const { checkin, xpAwarded, coinsAwarded } = await upsertCheckin(

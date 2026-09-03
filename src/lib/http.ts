@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AppError } from "./errors";
+import { AppError, BadRequestError } from "./errors";
 import { ValidationError } from "./db/validation";
 
 export function jsonOk<T>(data: T, status = 200): NextResponse {
@@ -18,16 +18,21 @@ export function notFound(message = "Não encontrado."): NextResponse {
   return jsonError(404, message);
 }
 
+/**
+ * Parses a JSON object body. Throws `BadRequestError` (an AppError) so that
+ * both `handleRoute` and manual `catch (error instanceof AppError)` blocks in
+ * routes map malformed/null/array bodies to 400 instead of a generic 500.
+ */
 export async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = await request.json();
     if (typeof body !== "object" || body === null || Array.isArray(body)) {
-      throw new ValidationError("Corpo da requisição inválido.");
+      throw new BadRequestError("Corpo da requisição inválido.");
     }
     return body as Record<string, unknown>;
   } catch (error) {
-    if (error instanceof ValidationError) throw error;
-    throw new ValidationError("Corpo JSON inválido.");
+    if (error instanceof BadRequestError) throw error;
+    throw new BadRequestError("Corpo JSON inválido.");
   }
 }
 

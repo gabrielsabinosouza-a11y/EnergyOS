@@ -655,11 +655,13 @@ function StreakBadge({
   const offset = circumference - progress * circumference;
 
   const protectedNow = todayStatus === "protected" || yesterdayStatus === "protected";
-  const state: StreakBadgeState = protectedNow ? "protected" : streak > 0 ? "saved" : "lost";
-  // The streak is "at risk" when it's still alive (saved) but the user hasn't
-  // completed a qualifying focus session today yet — nothing guarantees it
-  // carries through to tomorrow.
-  const atRisk = state === "saved" && streak > 0 && !todayQualified;
+  // 3 distinct streak states driven by real data:
+  //  - "saved": today's qualifying action is done -> vivid flame.
+  //  - "protected": streak is alive but today isn't secured yet (at risk), OR a
+  //    shield was consumed to keep it alive -> shield-wrapped dim flame.
+  //  - "lost": streak broken -> extinguished flame.
+  const atRisk = streak > 0 && !todayQualified && !protectedNow;
+  const state: StreakBadgeState = streak === 0 ? "lost" : todayQualified ? "saved" : "protected";
 
   const iconSrc = state === "lost"
     ? "/streak/streak_lost.png"
@@ -667,17 +669,15 @@ function StreakBadge({
       ? "/streak/streak_protected.png"
       : "/streak/streak_alive.png";
 
-  const statusLabel = state === "protected"
-    ? shieldCount > 0
-      ? `Sua sequência foi protegida por um escudo — você ainda tem ${shieldCount} escudo${shieldCount > 1 ? "s" : ""}!`
-      : "Sua sequência foi protegida por um escudo!"
-    : state === "lost"
-      ? "Você perdeu sua sequência — não desista!"
-      : streak > 0
-        ? todayQualified
-          ? "Sua sequência está ativa hoje — complete mais uma sessão amanhã para mantê-la!"
-          : "Sua streak está em risco — complete uma sessão de foco hoje para mantê-la"
-        : "Complete uma sessão de foco para começar sua sequência!";
+  const statusLabel = state === "lost"
+    ? "Você perdeu sua sequência — não desista!"
+    : state === "protected"
+      ? protectedNow
+        ? shieldCount > 0
+          ? `Sua sequência foi protegida por um escudo — você ainda tem ${shieldCount} escudo${shieldCount > 1 ? "s" : ""}!`
+          : "Sua sequência foi protegida por um escudo!"
+        : "Sua streak está em risco — complete uma sessão de foco hoje para mantê-la"
+      : "Sua sequência está ativa hoje — complete mais uma sessão amanhã para mantê-la!";
 
   const dayLabel = streak === 1 ? "1 dia" : `${streak} dias`;
 
@@ -754,7 +754,7 @@ function StreakBadge({
           </svg>
           <div className="flame-value">
             <Image src={iconSrc} alt={statusLabel} title={statusLabel} width={30} height={30} style={{ objectFit: "contain" }} unoptimized className="streak-flame" draggable={false} />
-            {state === "protected" && (
+            {state === "protected" && protectedNow && (
               <span className="streak-shield-mark" title={statusLabel}>
                 {equippedShieldIconUrl ? (
                   <img src={equippedShieldIconUrl} alt="Escudo equipado" className="h-11 w-11 object-contain" draggable={false} />

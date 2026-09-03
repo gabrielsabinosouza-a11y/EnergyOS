@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { rateLimitForProfile } from "@/lib/rate-limit";
+import { readJsonBody } from "@/lib/http";
 import { listGroupMessages, sendGroupMessage } from "@/lib/db/groups";
 
 export async function GET(
@@ -27,12 +29,13 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    rateLimitForProfile(profileId, "group-msg-send", 30, 60_000);
     const { id } = await params;
-    const body = await request.json();
-    const message = await sendGroupMessage(profileId, Number(id), body.body, {
-      messageType: body.messageType,
-      mediaUrl: body.mediaUrl,
-      mediaDurationSeconds: body.mediaDurationSeconds,
+    const body = await readJsonBody(request);
+    const message = await sendGroupMessage(profileId, Number(id), body.body as string, {
+      messageType: body.messageType as string | undefined,
+      mediaUrl: body.mediaUrl as string | undefined,
+      mediaDurationSeconds: body.mediaDurationSeconds as number | undefined,
     });
     return NextResponse.json({ message });
   } catch (error) {

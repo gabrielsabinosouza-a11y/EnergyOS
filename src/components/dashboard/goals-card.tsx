@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
-  ArrowUpRight,
   Check,
   Plus,
   Target,
@@ -18,7 +17,6 @@ import {
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
-import Link from "next/link";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 import { CategoryForm } from "@/components/category-form";
@@ -46,7 +44,6 @@ function withAlpha(hex: string, alpha: number): string {
 }
 
 /** Máximo de metas exibidas no card antes de delegar o restante ao link "Ver todas". */
-const MAX_VISIBLE_GOALS = 12;
 
 function isComplete(goal: Goal): boolean {
   return goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
@@ -68,8 +65,7 @@ export function GoalsCard({
   categories?: Category[];
 }) {
   const reduced = useReducedMotion();
-  const activeGoals = goals.slice(0, MAX_VISIBLE_GOALS);
-  const overflowCount = goals.length - activeGoals.length;
+  const activeGoals = goals;
 
   // ids em celebração (acabaram de completar) — controla a animação de parabenização
   const [celebrating, setCelebrating] = useState<Set<number>>(new Set());
@@ -208,19 +204,7 @@ export function GoalsCard({
     <div className="panel p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <span className="eyebrow muted">METAS ATIVAS</span>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/metas"
-            aria-label="Ir para Metas e hábitos"
-            title="Ir para Metas e hábitos"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-muted)] transition hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
-          >
-            <ArrowUpRight size={14} />
-          </Link>
-          <Link href="/metas" className="text-xs text-[var(--accent)] hover:underline">
-            Ver todas{overflowCount > 0 ? ` (+${overflowCount})` : ""}
-          </Link>
-        </div>
+        <span className="text-xs text-[var(--text-muted)]">{goals.length} meta{goals.length === 1 ? "" : "s"}</span>
       </div>
 
       <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
@@ -403,8 +387,7 @@ export function GoalsCard({
           })}
 
           {/* Ghost placeholder — preenche espaço vazio e convida a criar uma nova meta */}
-          {activeGoals.length < MAX_VISIBLE_GOALS && (
-            <motion.div
+          <motion.div
               layout="position"
               key="ghost-placeholder"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -435,7 +418,6 @@ export function GoalsCard({
                 <span className="text-xs font-medium">Criar nova meta</span>
               </motion.button>
             </motion.div>
-          )}
         </AnimatePresence>
       </div>
 

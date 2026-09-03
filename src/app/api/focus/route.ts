@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { rateLimitForProfile } from "@/lib/rate-limit";
 import { startFocusSession, endFocusSession, getFocusHistory, getTodayFocusStats } from "@/lib/db/focus";
 import { getUserXP } from "@/lib/db/xp";
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    rateLimitForProfile(profileId, "focus-post", 30, 60_000);
     const body = await readJsonBody(request);
     const action = body.action as string;
 

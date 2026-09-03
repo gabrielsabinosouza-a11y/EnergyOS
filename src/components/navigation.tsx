@@ -5,22 +5,21 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, ListTodo, Settings, TrendingUp, UserPlus, Users, Trophy,
+  LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
   Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library,
 } from "lucide-react";
 import { Modal } from "./modal";
 
 export const navigationItems = [
-  { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard },
-  { href: "/metas",     label: "Metas e hábitos",  icon: ListTodo },
-  { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null },
-  { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "social" as const },
-  { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null },
-  { href: "/grupos",    label: "Grupos",           icon: Users,        badge: "social" as const },
-  { href: "/loja",      label: "Loja",             icon: ShoppingBag,  badge: null },
-  { href: "/jardim",    label: "Meu jardim",       icon: Leaf },
-  { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+  { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
+  { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
+  { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "social" as const, img: "/sidebar_menu/friends.png" },
+  { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null, img: "/sidebar_menu/leaderboard.png" },
+  { href: "/grupos",    label: "Grupos",           icon: Users,        badge: "social" as const, img: "/sidebar_menu/groups.png" },
+  { href: "/loja",      label: "Loja",             icon: ShoppingBag,  badge: null, img: "/sidebar_menu/store.png" },
+  { href: "/jardim",    label: "Meu jardim",       icon: Leaf, img: "/sidebar_menu/garden.png" },
+  { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp, img: "/sidebar_menu/profile.png" },
+  { href: "/configuracoes", label: "Configurações", icon: Settings, img: "/sidebar_menu/settings.png" },
 ];
 
 /* Bottom tab bar: the 4 most frequently used sections get permanent,
@@ -33,7 +32,6 @@ const PRIMARY_TABS = [
 ] as const;
 
 const MORE_TABS = [
-  { href: "/metas",         label: "Metas e hábitos", icon: ListTodo },
   { href: "/grupos",        label: "Grupos",          icon: Users,      badge: "social" as const },
   { href: "/loja",          label: "Loja",            icon: ShoppingBag },
   { href: "/jardim",        label: "Meu jardim",      icon: Leaf },
@@ -85,7 +83,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
       </Link>
 
       <nav className="space-y-1">
-        {navigationItems.map(({ href, label, icon: Icon, badge }) => {
+        {navigationItems.map(({ href, label, icon: Icon, badge, img }) => {
           const isActive = pathname === href;
           const showBadge = badge === "social" && unreadCount > 0;
           return (
@@ -112,7 +110,17 @@ export function Sidebar({ pathname }: { pathname: string }) {
                 />
               )}
               <span className="relative z-10 flex items-center gap-[13px]">
-                <Icon size={17} />
+                {img ? (
+                  <Image
+                    src={img}
+                    alt=""
+                    width={17}
+                    height={17}
+                    className="shrink-0 object-contain"
+                  />
+                ) : (
+                  <Icon size={17} />
+                )}
                 <span>{label}</span>
                 {showBadge && (
                   <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--orange)] px-1 text-[10px] font-bold text-black">

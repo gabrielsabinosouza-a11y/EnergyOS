@@ -285,7 +285,6 @@ create table if not exists xp_ledger (
 );
 
 create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, created_at desc);
-create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, created_at desc);
 
 -- ── XP ledger hardening ───────────────────────────────────────────────────────
 -- source_id stores heterogeneous identifiers (task ids, kanban ids, dates, etc.)

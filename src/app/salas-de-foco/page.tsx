@@ -162,7 +162,7 @@ function SharedRing({
           value={room.durationMinutes}
           onChange={onDurationChange}
           maxDurationMinutes={120}
-          snapIncrement={15}
+          snapIncrement={5}
           minMinutes={10}
           size={RING_SIZE}
           accentColor={cfg.accent}
@@ -811,7 +811,7 @@ export default function FocusRoomsPage() {
                 value={selectedDuration}
                 onChange={setSelectedDuration}
                 maxDurationMinutes={120}
-                snapIncrement={15}
+                snapIncrement={5}
                 minMinutes={10}
                 size={CREATE_RING_SIZE}
                 accentColor={selectedEnergyCfg.accent}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { getBannerStatus, unlockBanner, updateBannerImage } from "@/lib/db/store";
 
 export async function GET(request: NextRequest) {
@@ -19,13 +20,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
-    const body = await request.json();
+    const body = await readJsonBody(request);
     if (body.action === "unlock") {
       const result = await unlockBanner(profileId);
       return NextResponse.json(result);
     }
     if (body.action === "update" && body.imageUrl) {
-      await updateBannerImage(profileId, body.imageUrl);
+      await updateBannerImage(profileId, body.imageUrl as string);
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: "Ação inválida." }, { status: 400 });

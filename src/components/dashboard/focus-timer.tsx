@@ -74,7 +74,7 @@ function clearSessionState(): void {
 
 const RING_SIZE = 260;
 const MAX_DURATION = 120;
-const SNAP_INCREMENT = 15;
+const SNAP_INCREMENT = 5;
 const MIN_DURATION = 10;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

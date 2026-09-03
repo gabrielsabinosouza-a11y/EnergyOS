@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
+import { rateLimitForProfile } from "@/lib/rate-limit";
 import {
   createFocusRoom,
   getFocusRoomByCode,
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    rateLimitForProfile(profileId, "focus-room-create", 10, 60_000);
     const body = await readJsonBody(request);
 
     const durationMinutes = body.durationMinutes as number | undefined;

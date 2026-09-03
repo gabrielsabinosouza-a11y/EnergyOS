@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { rateLimitForProfile } from "@/lib/rate-limit";
+import { readJsonBody } from "@/lib/http";
 import { listDirectMessages, sendDirectMessage } from "@/lib/db/messages";
 
 export async function GET(
@@ -27,9 +29,10 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    rateLimitForProfile(profileId, "dm-send", 20, 60_000);
     const { friendId } = await params;
-    const body = await request.json();
-    const message = await sendDirectMessage(profileId, friendId, body.body);
+    const body = await readJsonBody(request);
+    const message = await sendDirectMessage(profileId, friendId, body.body as string);
     return NextResponse.json({ message });
   } catch (error) {
     if (error instanceof AppError) {

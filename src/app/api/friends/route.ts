@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 import { listFriends, sendFriendRequest } from "@/lib/db/social";
 
 export async function GET(request: NextRequest) {

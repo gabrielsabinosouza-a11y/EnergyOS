@@ -7,7 +7,8 @@ import {
   purchaseStreakShieldDesign,
   equipStreakShieldDesign,
 } from "@/lib/db/store";
-import { NotFoundError, ConflictError, ForbiddenError } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
+import { readJsonBody } from "@/lib/http";
 
 // GET /api/store/shield-designs - Get all available shield designs
 export async function GET(request: NextRequest) {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const { shieldDesignId } = body;
 
     if (!shieldDesignId || typeof shieldDesignId !== "string") {
@@ -57,14 +58,8 @@ export async function POST(request: NextRequest) {
       ownedDesigns: result.ownedDesigns,
     });
   } catch (error) {
-    if (error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-    if (error instanceof ConflictError) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-    if (error instanceof ForbiddenError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error("Error purchasing streak shield design:", error);
     return NextResponse.json(
@@ -79,7 +74,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const { shieldDesignId } = body;
 
     if (!shieldDesignId || typeof shieldDesignId !== "string") {
@@ -95,11 +90,8 @@ export async function PATCH(request: NextRequest) {
       success: result.success,
     });
   } catch (error) {
-    if (error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-    if (error instanceof ForbiddenError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error("Error equipping streak shield design:", error);
     return NextResponse.json(
