@@ -89,8 +89,10 @@ export async function upsertCheckin(
       const xpBase = await creditXP(profileId, "checkin", result.rows[0].id, CHECKIN_XP);
       await addCoins(profileId, CHECKIN_COINS);
 
-      // Per-day streak bonus (capped); ledger key is the date, so it can only
-      // be awarded once per day even under retries.
+      // Per-day streak bonus (capped). The ledger key is a numeric YYYYMMDD
+      // derived from the date (source_id is bigint; the raw "YYYY-MM-DD" string
+      // would not cast), so it can only be awarded once per day even under
+      // retries while matching the same per-day idempotency intent.
       const streakRow = await pool.query<{ current_streak: number }>(
         `select current_streak from profiles where id = $1`,
         [profileId],
@@ -98,7 +100,7 @@ export async function upsertCheckin(
       const streak = streakRow.rows[0]?.current_streak ?? 0;
       const streakBonus = streak > 0 ? Math.min(streak * STREAK_BONUS_XP_PER_DAY, STREAK_BONUS_CAP) : 0;
       const xpStreak = streakBonus > 0
-        ? await creditXP(profileId, "checkin_streak", date, streakBonus)
+        ? await creditXP(profileId, "checkin_streak", Number(date.replaceAll("-", "")), streakBonus)
         : 0;
 
       return {

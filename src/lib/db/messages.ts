@@ -4,6 +4,27 @@ import { parseMessage, parseProfileId, ValidationError } from "./validation";
 import { assertFriends, getUserByUsername, sendFriendRequest } from "./social";
 import { ConflictError, NotFoundError } from "../errors";
 
+/** Detect whether a column exists on the direct_messages table (cached). */
+const dmColumnCache = new Map<string, Promise<boolean>>();
+function hasDmColumn(column: string): Promise<boolean> {
+  if (!dmColumnCache.has(column)) {
+    dmColumnCache.set(
+      column,
+      pool
+        .query<{ exists: boolean }>(
+          `select exists (
+             select 1 from information_schema.columns
+             where table_name = 'direct_messages' and column_name = $1
+           ) as exists`,
+          [column],
+        )
+        .then((r) => r.rows[0]?.exists ?? false)
+        .catch(() => false),
+    );
+  }
+  return dmColumnCache.get(column)!;
+}
+
 interface DmRow {
   id: string | number;
   sender_id: string;
@@ -46,9 +67,23 @@ export async function listDirectMessages(
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
 
+  // The reply/edit columns may not exist on older databases until the
+  // migration runs; detect them so the query stays valid either way.
+  const hasReplyCols = await hasDmColumn("reply_to_id");
+  const baseColumns = `dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at, p.display_name as reply_to_sender_name`;
+  const replyColumns = hasReplyCols
+    ? `, dm.edited_at, dm.reply_to_id, rp.body as reply_to_body`
+    : `, null::timestamptz as edited_at, null::bigint as reply_to_id, null::text as reply_to_body`;
+  const FROM = hasReplyCols
+    ? ` from direct_messages dm
+        left join direct_messages rp on rp.id = dm.reply_to_id
+        left join profiles p on p.id = rp.sender_id`
+    : ` from direct_messages dm`;
+
   const result = afterId
     ? await pool.query<DmRow>(
-        `${DM_SELECT}
+        `select ${baseColumns}${replyColumns}
+         ${FROM}
          where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
            and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
            and dm.id > $3
@@ -57,7 +92,8 @@ export async function listDirectMessages(
         [profileId, other, afterId],
       )
     : await pool.query<DmRow>(
-        `${DM_SELECT}
+        `select ${baseColumns}${replyColumns}
+         ${FROM}
          where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
            and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
          order by dm.created_at desc
@@ -80,15 +116,23 @@ export async function sendDirectMessage(
   await assertFriends(profileId, other);
   const text = parseMessage(body);
 
+  const hasReplyCols = await hasDmColumn("reply_to_id");
+  // If reply columns haven't been migrated yet, fall back to plain text sends.
+  const effectiveReplyId = hasReplyCols ? replyToId : undefined;
+
   const result = await pool.query<DmRow>(
-    `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
-     values ($1, $2, $3, $4)
-     returning id, sender_id, recipient_id, body, created_at, reply_to_id`,
-    [profileId, other, text, replyToId ?? null],
+    hasReplyCols
+      ? `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
+         values ($1, $2, $3, $4)
+         returning id, sender_id, recipient_id, body, created_at, reply_to_id`
+      : `insert into direct_messages (sender_id, recipient_id, body)
+         values ($1, $2, $3)
+         returning id, sender_id, recipient_id, body, created_at`,
+    [profileId, other, text, effectiveReplyId ?? null],
   );
   const row = result.rows[0];
   // Fetch join info for reply
-  if (row.reply_to_id != null) {
+  if (hasReplyCols && effectiveReplyId != null && row.reply_to_id != null) {
     const full = await pool.query<DmRow>(
       `${DM_SELECT}
        where dm.id = $1`,

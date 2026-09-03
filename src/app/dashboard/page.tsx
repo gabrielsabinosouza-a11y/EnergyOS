@@ -201,8 +201,13 @@ function DashboardContent() {
       setCheckinSaved(true);
       if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
         showSuccess(`Check-in salvo! +${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🌟`);
-        setCoins((c) => c + result.coinsAwarded);
-        setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
+        // Update balance inside the same state updater so the reward modal shows
+        // the post-credit saldo (consistent with mission/task/kanban claims).
+        setCoins((c) => {
+          const newBalance = c + result.coinsAwarded;
+          setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded, balance: newBalance });
+          return newBalance;
+        });
         api.getFocusData().then((f) => setFocusData(f));
       } else {
         showSuccess("Check-in salvo!");

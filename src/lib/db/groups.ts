@@ -10,6 +10,28 @@ import { getGroupTotalMinutes, getGroupMemberContributions, getGroupGlobalRank, 
 
 const GROUP_EMOJIS = new Set(["⚡", "🔥", "✨", "💎", "🌙", "☀️", "🌊", "🌿", "🎯", "💜", "🌀", "⭐", "🚀", "🧠"]);
 
+/** Detect whether a column exists on a table (cached, so we don't pay on every call). */
+const columnCache = new Map<string, Promise<boolean>>();
+function hasColumn(table: string, column: string): Promise<boolean> {
+  const key = `${table}.${column}`;
+  if (!columnCache.has(key)) {
+    columnCache.set(
+      key,
+      pool
+        .query<{ exists: boolean }>(
+          `select exists (
+             select 1 from information_schema.columns
+             where table_name = $1 and column_name = $2
+           ) as exists`,
+          [table, column],
+        )
+        .then((r) => r.rows[0]?.exists ?? false)
+        .catch(() => false),
+    );
+  }
+  return columnCache.get(key)!;
+}
+
 interface GroupRow {
   id: string | number;
   name: string;
@@ -354,18 +376,25 @@ export async function listGroupMessages(
     display_name: string;
     photo_url: string | null;
   };
-  const selectColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
-     gm.media_url, gm.media_duration_seconds, gm.created_at, gm.reply_to_id, gm.edited_at,
-     rp.body as reply_to_body, rp.sender_id as reply_sender_id, rpname.display_name as reply_to_sender_name,
-     p.display_name, p.photo_url`;
+  // The reply/edit columns may not exist on older databases until the
+  // migration runs; detect them so the query stays valid either way.
+  const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
+  const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
+     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url`;
+  const replyColumns = hasReplyCols
+    ? `, gm.reply_to_id, gm.edited_at, rp.body as reply_to_body,
+       rpname.display_name as reply_to_sender_name`
+    : `, null::bigint as reply_to_id, null::timestamptz as edited_at,
+       null::text as reply_to_body, null::text as reply_to_sender_name`;
+  const selectColumns = baseColumns + replyColumns;
 
   const result = afterId
     ? await pool.query<MsgRow>(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
-         left join group_messages rp on rp.id = gm.reply_to_id
-         left join profiles rpname on rpname.id = rp.sender_id
+         ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
+         left join profiles rpname on rpname.id = rp.sender_id` : ""}
          where gm.group_id = $1 and gm.id > $2
          order by gm.created_at asc
          limit 100`,
@@ -375,8 +404,8 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
-         left join group_messages rp on rp.id = gm.reply_to_id
-         left join profiles rpname on rpname.id = rp.sender_id
+         ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
+         left join profiles rpname on rpname.id = rp.sender_id` : ""}
          where gm.group_id = $1
          order by gm.created_at desc
          limit 80`,
@@ -449,6 +478,10 @@ export async function sendGroupMessage(
     text = opts?.mediaUrl?.trim() || null;
   }
 
+  // Reply columns may not exist on older DBs until migration runs.
+  const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
+  const effectiveReplyId = hasReplyCols ? opts?.replyToId : undefined;
+
   const inserted = await pool.query<{
     id: string | number;
     group_id: string | number;
@@ -461,10 +494,16 @@ export async function sendGroupMessage(
     reply_to_id: string | number | null;
     edited_at: Date | string | null;
   }>(
-    `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
-     values ($1, $2, $3, $4, $5, $6, $7)
-     returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id, edited_at`,
-    [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.replyToId ?? null],
+    hasReplyCols
+      ? `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id, edited_at`
+      : `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds)
+         values ($1, $2, $3, $4, $5, $6)
+         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at`,
+    hasReplyCols
+      ? [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, effectiveReplyId ?? null]
+      : [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds],
   );
   const row = inserted.rows[0];
   const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
@@ -474,7 +513,7 @@ export async function sendGroupMessage(
   // Fetch reply join info
   let replyToBody: string | undefined;
   let replyToSenderName: string | undefined;
-  if (row.reply_to_id != null) {
+  if (hasReplyCols && effectiveReplyId != null && row.reply_to_id != null) {
     const rp = await pool.query<{ body: string | null; sender_id: string; display_name: string }>(
       `select rp.body, rp.sender_id, p.display_name
        from group_messages rp

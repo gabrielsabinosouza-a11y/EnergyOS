@@ -18,7 +18,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
-import { ChatThread } from "@/components/chat";
+import { ChatThread, ConversationContextMenu, convActions } from "@/components/chat";
 import { dmToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
@@ -425,6 +425,10 @@ export default function AmigosPage() {
                   variants={fadeUp}
                   whileHover={reduced ? undefined : { y: -2, transition: { duration: 0.15 } }}
                   whileTap={reduced ? undefined : { scale: 0.98 }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setListMenu({ x: e.clientX, y: e.clientY, friend: f });
+                  }}
                   onClick={() => {
                     setActiveChat(f);
                     if (f.unreadCount > 0) {
@@ -486,6 +490,35 @@ export default function AmigosPage() {
                 ),
               );
             }}
+          />
+        )}
+
+        {/* Conversation list context menu */}
+        {listMenu && (
+          <ConversationContextMenu
+            x={listMenu.x}
+            y={listMenu.y}
+            onClose={() => setListMenu(null)}
+            actions={[
+              convActions.markAsRead(() => {
+                if (listMenu.friend.unreadCount > 0) {
+                  api.markDmRead(listMenu.friend.id).catch(() => {});
+                  setFriends((prev) =>
+                    prev.map((x) =>
+                      x.id === listMenu.friend.id ? { ...x, unreadCount: 0 } : x,
+                    ),
+                  );
+                }
+              }),
+              convActions.unfriend(() => {
+                const friendshipId = listMenu.friend.friendshipId;
+                if (friendshipId) {
+                  // DELETE /api/friends/:id removes the friendship
+                  api.declineFriendRequest(friendshipId).catch(() => {});
+                  setFriends((prev) => prev.filter((x) => x.id !== listMenu.friend.id));
+                }
+              }),
+            ]}
           />
         )}
       </main>
