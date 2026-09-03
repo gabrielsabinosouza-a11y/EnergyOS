@@ -12,7 +12,7 @@ export const FOCUS_DURATION_MIN_MINUTES = 10;
  * Maximum settable duration for a single session (minutes).
  * Matches `startFocusSession`'s server-side cap.
  */
-export const FOCUS_DURATION_MAX_MINUTES = 240;
+export const FOCUS_DURATION_MAX_MINUTES = 120;
 
 /** Drag / keyboard snap increment (minutes). */
 export const FOCUS_DURATION_SNAP_MINUTES = 5;

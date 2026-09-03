@@ -1,11 +1,16 @@
 import { getEnergyReward, type EnergyType } from "./energy-assets";
 
+export type GardenGrowthStage = "sprout" | "young" | "mature";
+export type GardenStatus = "growing" | "alive" | "withered";
+
 export interface GardenEntry {
   id: string;
   energyType: EnergyType;
   durationMinutes: number;
   reward: number;
   plantedAt: string; // ISO string
+  growthStage: GardenGrowthStage;
+  status: GardenStatus;
 }
 
 const KEY = "energyos_garden";
@@ -24,7 +29,12 @@ function save(entries: GardenEntry[]) {
 }
 
 export function addGardenEntry(entry: Omit<GardenEntry, "id">): GardenEntry {
-  const full: GardenEntry = { ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
+  const full: GardenEntry = {
+    ...entry,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    growthStage: entry.growthStage || "sprout",
+    status: entry.status || "growing",
+  };
   const entries = load();
   entries.unshift(full);
   save(entries);
@@ -47,12 +57,14 @@ export function addGardenEntriesForSession(props: {
   energyType: EnergyType;
   focusedMinutes: number;
   plantedAt?: string;
+  status?: GardenStatus;
 }): GardenEntry[] {
-  const { energyType, focusedMinutes, plantedAt = new Date().toISOString() } = props;
+  const { energyType, focusedMinutes, plantedAt = new Date().toISOString(), status = "growing" } = props;
   const reward = getEnergyReward(focusedMinutes);
   if (reward <= 0 || focusedMinutes <= 0) return [];
 
   const perEnergy = focusedMinutes / reward;
+  const growthStage = focusedMinutes >= 60 ? "mature" : focusedMinutes >= 30 ? "young" : "sprout";
   const entries: GardenEntry[] = [];
   for (let i = 0; i < reward; i++) {
     entries.push(
@@ -61,6 +73,8 @@ export function addGardenEntriesForSession(props: {
         durationMinutes: perEnergy,
         reward,
         plantedAt,
+        growthStage,
+        status,
       }),
     );
   }

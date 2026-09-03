@@ -1,4 +1,6 @@
 export type EnergyStage = "spark" | "forming" | "full" | "extinguished";
+export type GardenGrowthStage = "sprout" | "young" | "mature";
+export type GardenStatus = "growing" | "alive" | "withered";
 export type EnergyType =
   | "flame" | "water" | "earth" | "wind" | "thunder" | "ice"
   | "shadow" | "light" | "crystal" | "cosmic"
@@ -110,4 +112,12 @@ export function resolveDefaultEnergy(ownedAuras: string[]): EnergyType {
 /** Streak icon reflecting a user's streak state: alive when > 0, otherwise lost/protected. */
 export function streakIconSource(streak: number): string {
   return streak > 0 ? "/streak/streak_alive.png" : "/streak/streak_lost.png";
+}
+
+/** Map garden growth stage to energy visual stage */
+export function mapGrowthStageToEnergyStage(growthStage: GardenGrowthStage, status: GardenStatus): EnergyStage {
+  if (status === "withered") return "extinguished";
+  if (growthStage === "sprout") return "spark";
+  if (growthStage === "young") return "forming";
+  return "full";
 }

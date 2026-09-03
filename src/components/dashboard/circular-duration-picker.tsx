@@ -42,6 +42,7 @@ export function CircularDurationPicker({
   label,
   centerContent,
 }: CircularDurationPickerProps) {
+  const effectiveMaxMinutes = Math.min(maxDurationMinutes, FOCUS_DURATION_MAX_MINUTES);
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
@@ -68,8 +69,9 @@ export function CircularDurationPicker({
   const circumference = 2 * Math.PI * radius;
   const strokeWidth = 6;
   const handleRadius = 10;
+  const safeValue = Math.max(minMinutes, Math.min(effectiveMaxMinutes, value));
 
-  const fraction = focusDurationProgress(value, minMinutes, maxDurationMinutes);
+  const fraction = focusDurationProgress(safeValue, minMinutes, effectiveMaxMinutes);
   const arcLength = fraction * circumference;
 
   const handleAngleDeg = fraction * 360;
@@ -97,7 +99,7 @@ export function CircularDurationPicker({
    * Angular width that corresponds to a change of one minute, used to
    * convert an angular delta into a change in duration.
    */
-  const minutesPerDegree = (maxDurationMinutes - minMinutes) / 360;
+  const minutesPerDegree = (effectiveMaxMinutes - minMinutes) / 360;
 
   function clearWindowListeners(move: (e: PointerEvent) => void, up: (e: PointerEvent) => void) {
     window.removeEventListener("pointermove", move);
@@ -132,7 +134,7 @@ export function CircularDurationPicker({
         if (delta < -180) delta += 360;
 
         runningValueRef.current += delta * minutesPerDegree;
-        onChange(clampAndSnap(runningValueRef.current, minMinutes, maxDurationMinutes, snapIncrement));
+        onChange(clampAndSnap(runningValueRef.current, minMinutes, effectiveMaxMinutes, snapIncrement));
       };
       const up = () => {
         draggingRef.current = false;
@@ -145,7 +147,7 @@ export function CircularDurationPicker({
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", up);
     },
-    [computeAngleDegrees, minutesPerDegree, minMinutes, maxDurationMinutes, snapIncrement, onChange],
+    [computeAngleDegrees, minutesPerDegree, minMinutes, effectiveMaxMinutes, snapIncrement, onChange],
   );
 
   useEffect(() => {
@@ -154,17 +156,17 @@ export function CircularDurationPicker({
     function handleKey(e: KeyboardEvent) {
       if (e.key === "ArrowUp" || e.key === "ArrowRight") {
         e.preventDefault();
-        onChange(clampAndSnap(valueRef.current + snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
+        onChange(clampAndSnap(valueRef.current + snapIncrement, minMinutes, effectiveMaxMinutes, snapIncrement));
       } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
         e.preventDefault();
-        onChange(clampAndSnap(valueRef.current - snapIncrement, minMinutes, maxDurationMinutes, snapIncrement));
+        onChange(clampAndSnap(valueRef.current - snapIncrement, minMinutes, effectiveMaxMinutes, snapIncrement));
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [dragging, onChange, snapIncrement, minMinutes, maxDurationMinutes]);
+  }, [dragging, onChange, snapIncrement, minMinutes, effectiveMaxMinutes]);
 
-  const minutes = Math.round(value);
+  const minutes = Math.round(safeValue);
   const displayText = `${minutes}`;
 
   return (
@@ -204,15 +206,15 @@ export function CircularDurationPicker({
         />
 
         {/* Tick marks at snap intervals (min-aware positions) */}
-        {Array.from({ length: Math.floor((maxDurationMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
+        {Array.from({ length: Math.floor((effectiveMaxMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
           const tickMinutes = minMinutes + i * snapIncrement;
-          const tickFrac = focusDurationProgress(tickMinutes, minMinutes, maxDurationMinutes);
+          const tickFrac = focusDurationProgress(tickMinutes, minMinutes, effectiveMaxMinutes);
           const tickAngle = tickFrac * 360 - 90;
           const tickRad = (tickAngle * Math.PI) / 180;
           const isMajor = tickMinutes % 60 === 0;
           const innerR = radius - (isMajor ? 14 : 10);
           const outerR = radius - 7;
-          const active = tickMinutes <= value;
+          const active = tickMinutes <= safeValue;
           return (
             <line
               key={tickMinutes}

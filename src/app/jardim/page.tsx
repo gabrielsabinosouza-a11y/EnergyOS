@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer } from "lucide-react";
+import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer, Grid3X3, List } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { useAuthRedirect, useAuth } from "@/lib/auth-context";
 import { getGardenEntries } from "@/lib/garden-store";
 import { api } from "@/lib/api-client";
-import { ENERGY_CONFIGS } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage } from "@/lib/energy-assets";
+import { IsometricGarden } from "@/components/isometric-garden";
 import type { GardenEntry } from "@/lib/db/focus";
 
 type Period = "day" | "week" | "month" | "year";
@@ -217,6 +218,8 @@ export default function JardimPage() {
   const [gardenLoading, setGardenLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("week");
   const [anchor, setAnchor] = useState(() => new Date());
+  const [viewMode, setViewMode] = useState<"garden" | "list">("garden");
+  const [selectedEntry, setSelectedEntry] = useState<GardenEntry | null>(null);
 
   // Load garden entries from the DB (authoritative). Also migrates any legacy
   // localStorage garden entries into the DB once (idempotent via legacy_key).
@@ -308,6 +311,36 @@ export default function JardimPage() {
             ))}
           </div>
 
+          {/* View mode toggle */}
+          <div className="mb-6 flex justify-end">
+            <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode("garden")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === "garden"
+                    ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                }`}
+              >
+                <Grid3X3 size={14} className="inline mr-1" />
+                Jardim
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === "list"
+                    ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                }`}
+              >
+                <List size={14} className="inline mr-1" />
+                Lista
+              </button>
+            </div>
+          </div>
+
           {/* Date navigator */}
           <div className="mb-8 flex items-center justify-center gap-3">
             <button
@@ -352,9 +385,9 @@ export default function JardimPage() {
             </div>
           </div>
 
-          {/* Garden grid */}
+          {/* Garden view */}
           <motion.section
-            key={`grid-${period}-${range.start.getTime()}`}
+            key={`garden-${period}-${range.start.getTime()}-${viewMode}`}
             variants={stagger}
             initial="hidden"
             animate="visible"
@@ -370,10 +403,23 @@ export default function JardimPage() {
                 <p className="text-sm text-[var(--text-muted)]">{EMPTY_TEXT[period]}</p>
                 <p className="text-xs text-[var(--text-faint)]">Complete uma sessão de foco para plantar sua primeira energia.</p>
               </div>
+            ) : viewMode === "garden" ? (
+              <IsometricGarden
+                entries={periodEntries}
+                onEntryClick={setSelectedEntry}
+                className="min-h-[300px]"
+              />
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 {periodEntries.map((entry) => {
-                  const cfg = ENERGY_CONFIGS[entry.energyType] ?? ENERGY_CONFIGS.flame;
+                  const cfg = ENERGY_CONFIGS[entry.energyType];
+                  if (!cfg) {
+                    if (process.env.NODE_ENV !== "production") {
+                      throw new Error(`Unknown garden energy type: ${entry.energyType}`);
+                    }
+                    return null;
+                  }
+                  const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
                   const planted = new Date(entry.plantedAt);
                   const date = planted.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
                   const datetime = planted.toLocaleDateString("pt-BR", {
@@ -383,26 +429,46 @@ export default function JardimPage() {
                     hour: "2-digit",
                     minute: "2-digit",
                   });
+                  const isWithered = entry.status === "withered";
+                  const isGrowing = entry.status === "growing";
+
                   return (
                     <motion.div
                       key={entry.id}
                       variants={fadeUp}
                       className="group relative flex flex-col items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
-                      style={{ boxShadow: `0 0 16px -6px ${cfg.glow}` }}
+                      style={{
+                        boxShadow: `0 0 16px -6px ${cfg.glow}`,
+                        opacity: isWithered ? 0.6 : 1,
+                      }}
+                      onClick={() => setSelectedEntry(entry)}
                     >
+                      {/* Status indicator */}
+                      {isGrowing && (
+                        <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+                      )}
+                      {isWithered && (
+                        <div className="absolute -top-1 -right-1 text-xs">🥀</div>
+                      )}
+
                       {/* Tooltip */}
                       <div className="pointer-events-none absolute -top-2 left-1/2 z-20 hidden -translate-x-1/2 -translate-y-full flex-col items-center gap-0.5 whitespace-nowrap rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-center shadow-xl group-hover:flex">
                         <span className="text-[10px] font-bold" style={{ color: cfg.accent }}>{cfg.label}</span>
                         <span className="text-[9px] text-[var(--text-muted)]">plantada em {datetime}</span>
                         <span className="text-[9px] text-[var(--text-faint)]">{entry.durationMinutes}min de foco</span>
+                        {isWithered && <span className="text-[9px] text-red-400">Sessão abandonada</span>}
+                        {isGrowing && <span className="text-[9px] text-[var(--accent)]">Crescendo...</span>}
                       </div>
 
                       <div className="relative h-14 w-14">
                         <Image
-                          src={cfg.assets.full}
+                          src={cfg.assets[energyStage]}
                           alt={cfg.label}
                           fill
-                          style={{ objectFit: "contain" }}
+                          style={{
+                            objectFit: "contain",
+                            filter: isWithered ? "grayscale(100%) brightness(0.7)" : "none",
+                          }}
                           unoptimized
                         />
                       </div>
@@ -445,6 +511,105 @@ export default function JardimPage() {
           </motion.section>
             </>
           )}
+
+          {/* Entry detail popup */}
+          <AnimatePresence>
+            {selectedEntry && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                onClick={() => setSelectedEntry(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="panel max-w-sm w-full p-6"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {(() => {
+                    const cfg = ENERGY_CONFIGS[selectedEntry.energyType];
+                    if (!cfg) {
+                      if (process.env.NODE_ENV !== "production") {
+                        throw new Error(`Unknown garden energy type: ${selectedEntry.energyType}`);
+                      }
+                      return null;
+                    }
+                    const energyStage = mapGrowthStageToEnergyStage(selectedEntry.growthStage, selectedEntry.status);
+                    const planted = new Date(selectedEntry.plantedAt);
+                    const datetime = planted.toLocaleDateString("pt-BR", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const isWithered = selectedEntry.status === "withered";
+                    const isGrowing = selectedEntry.status === "growing";
+
+                    return (
+                      <>
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="relative h-24 w-24">
+                            <Image
+                              src={cfg.assets[energyStage]}
+                              alt={cfg.label}
+                              fill
+                              style={{
+                                objectFit: "contain",
+                                filter: isWithered ? "grayscale(100%) brightness(0.7)" : "none",
+                              }}
+                              unoptimized
+                            />
+                          </div>
+
+                          <div className="text-center">
+                            <h3 className="text-lg font-bold" style={{ color: cfg.accent }}>
+                              {cfg.label}
+                            </h3>
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm text-[var(--text-muted)]">
+                                Plantada em {datetime}
+                              </p>
+                              <p className="text-sm text-[var(--text-muted)]">
+                                {selectedEntry.durationMinutes}min de foco
+                              </p>
+                              <div className="flex items-center justify-center gap-2 mt-2">
+                                {isGrowing && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-primary)]">
+                                    Crescendo...
+                                  </span>
+                                )}
+                                {isWithered && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400">
+                                    🥀 Murcha
+                                  </span>
+                                )}
+                                {selectedEntry.status === "alive" && (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
+                                    ✓ Viva
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedEntry(null)}
+                            className="mt-4 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--text)] hover:bg-[var(--bg-surface-active)] transition-colors"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </AppShell>

@@ -15,6 +15,7 @@ import {
 } from "@/lib/focus-duration";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
+import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 import {
@@ -108,7 +109,7 @@ interface FocusTimerProps {
   history: FocusSession[];
   boostActive: boolean;
   onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
-  onEnd: (sessionId: number, focusedSeconds: number) => Promise<{ session: FocusSession; xpAwarded: number }>;
+  onEnd: (sessionId: number, focusedSeconds: number) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
 }
 
 type TimerState = "idle" | "running" | "paused";
@@ -192,6 +193,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const [remaining, setRemaining] = useState(FOCUS_DURATION_DEFAULT_MINUTES * 60);
   const [lastCoins, setLastCoins] = useState(0);
   const [showComplete, setShowComplete] = useState(false);
+  const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number } | null>(null);
   const [rewardCount, setRewardCount] = useState(1);
   const [isExtinguished, setIsExtinguished] = useState(false);
   const [selectedEnergy, setSelectedEnergy] = useState<EnergyType>("flame");
@@ -292,6 +294,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             const result = await onEnd(sessionId, focusedSeconds);
             
             setLastCoins(result.xpAwarded);
+            setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
             const reward = getEnergyReward(durationMinutes);
             setRewardCount(reward);
             setShowComplete(true);
@@ -492,6 +495,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     try {
       const result = await onEnd(sess.id, focusedSeconds);
       setLastCoins(result.xpAwarded);
+      setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
 
       const reward = getEnergyReward(focusedMinutes);
       setRewardCount(reward);
@@ -584,6 +588,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
       const result = await onEnd(sess.id, focusedSeconds);
       if (!giveUp) {
         setLastCoins(result.xpAwarded);
+        setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
         setRewardCount(getEnergyReward(Math.floor(focusedSeconds / 60)));
         setShowComplete(true);
       }
@@ -798,6 +803,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
       )}
 
       {/* Energy picker modal */}
+      <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
+
       {showPicker && (
         <EnergyPickerModal
           current={selectedEnergy}

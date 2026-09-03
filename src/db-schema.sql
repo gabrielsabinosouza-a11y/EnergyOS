@@ -266,12 +266,20 @@ create table if not exists garden_entries (
   duration_minutes numeric(8,2) not null default 0,
   reward integer not null default 1,
   planted_at timestamptz not null default now(),
-  legacy_key text
+  legacy_key text,
+  growth_stage text not null default 'sprout' check (growth_stage in ('sprout', 'young', 'mature')),
+  status text not null default 'growing' check (status in ('growing', 'alive', 'withered'))
 );
 
 create unique index if not exists garden_entries_legacy_key_idx on garden_entries(profile_id, legacy_key) where legacy_key is not null;
 
 create index if not exists garden_entries_profile_planted_idx on garden_entries(profile_id, planted_at desc);
+
+-- Add new columns for existing databases (idempotent)
+do $$ begin
+  alter table garden_entries add column if not exists growth_stage text not null default 'sprout' check (growth_stage in ('sprout', 'young', 'mature'));
+  alter table garden_entries add column if not exists status text not null default 'growing' check (status in ('growing', 'alive', 'withered'));
+exception when duplicate_column then null; end $$;
 
 delete from garden_entries where energy_type in ('nature','solar');
 
@@ -295,6 +303,13 @@ alter table xp_ledger drop constraint if exists xp_ledger_source_check;
 alter table xp_ledger add constraint xp_ledger_source_check
   check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
 -- Idempotency backstop: one ledger row per (profile, source, source_id).
+-- Reconcile legacy duplicate awards before enforcing the invariant.
+delete from xp_ledger older
+using xp_ledger newer
+where older.profile_id = newer.profile_id
+  and older.source = newer.source
+  and coalesce(older.source_id, '') = coalesce(newer.source_id, '')
+  and older.id > newer.id;
 create unique index if not exists xp_ledger_dedupe_idx
   on xp_ledger(profile_id, source, coalesce(source_id, ''));
 

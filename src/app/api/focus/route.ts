@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
     if (action === "end") {
       const focusedSeconds = Number(body.focusedSeconds) || 0;
       const isRoomSession = body.isRoomSession === true;
-      const { session, xpAwarded, questsUpdated } = await endFocusSession(profileId, Number(body.sessionId), focusedSeconds, isRoomSession);
-      return jsonOk({ session, xpAwarded, questsUpdated });
+      const { session, xpAwarded, coinsAwarded, questsUpdated } = await endFocusSession(profileId, Number(body.sessionId), focusedSeconds, isRoomSession);
+      return jsonOk({ session, xpAwarded, coinsAwarded, questsUpdated });
     }
 
     return jsonOk({ error: "Ação inválida" }, 400);

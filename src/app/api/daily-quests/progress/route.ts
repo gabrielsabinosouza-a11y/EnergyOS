@@ -5,6 +5,7 @@ import { todayIso } from "@/lib/db/dates";
 import { incrementQuestProgress, initializeUserDailyQuests, getUserQuestProgress } from "@/lib/db/daily-quests";
 import { ValidationError } from "@/lib/db/validation";
 import type { QuestType } from "@/types";
+import { FOCUS_DURATION_MAX_MINUTES } from "@/lib/focus-duration";
 
 /**
  * This endpoint is called when a focus session completes to update relevant quests.
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     // The previous client-driven path (questId + arbitrary amount) let any
     // authenticated user instantly complete quests and claim coin rewards.
     // Session data is clamped to the same server-side caps used by
-    // endFocusSession (target duration ≤ 240 min).
+    // endFocusSession (target duration ≤ shared focus-duration max).
     const questType = typeof body.questType === "string" ? body.questType : undefined;
 
     if (questType) {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
         0,
         Math.min(
           Number(session.durationMinutes) || 0,
-          240,
+          FOCUS_DURATION_MAX_MINUTES,
         ),
       );
       const isRoomSession = session.isRoomSession === true;
