@@ -27,6 +27,7 @@ import { AppShell } from "@/components/app-shell";
 import { CoinIcon } from "@/components/coin-icon";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
+import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
@@ -909,6 +910,8 @@ export default function FocusRoomsPage() {
     const myProgress = sharedRemainingMs != null
       ? Math.max(0, Math.min(100, ((totalMs - sharedRemainingMs) / totalMs) * 100))
       : room.status === "completed" ? 100 : 0;
+    const totalFocusedSec = room.durationMinutes * 60;
+    const elapsedFocusedSec = myProgress > 0 ? Math.round((myProgress / 100) * totalFocusedSec) : 0;
     const running = room.status === "active" || room.status === "paused";
     const paused = room.status === "paused";
     const completed = room.status === "completed";
@@ -1011,10 +1014,13 @@ export default function FocusRoomsPage() {
               />
 
               {/* Center energy image */}
-              <EnergyRingCenter
+              <GrowingEnergyIcon
                 energyType={myEnergy}
                 ringSize={RING_SIZE}
-                stage={myParticipant?.sessionStatus === "left" ? "extinguished" : "full"}
+                elapsedSeconds={elapsedFocusedSec}
+                totalSeconds={totalFocusedSec}
+                previewFullStage={room.status === "waiting"}
+                extinguished={myParticipant?.sessionStatus === "left"}
                 dimmed={running && myParticipant?.sessionStatus === "left"}
                 onPick={
                   room.status !== "completed" && myParticipant?.sessionStatus !== "left"

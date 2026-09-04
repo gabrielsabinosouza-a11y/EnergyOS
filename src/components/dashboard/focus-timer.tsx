@@ -14,9 +14,9 @@ import {
   formatCountdownMmSs,
 } from "@/lib/focus-duration";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
-import { EnergyRingCenter } from "@/components/energy-ring-center";
+import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
-import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
 import {
   playCompletionSound,
@@ -92,14 +92,6 @@ function calculateCoins(durationMinutes: number): number {
 
 function formatTime(totalSeconds: number): string {
   return formatCountdownMmSs(totalSeconds);
-}
-
-function resolveStage(progress: number, isActive: boolean, isExtinguished: boolean): EnergyStage {
-  if (isExtinguished) return "extinguished";
-  if (!isActive) return "full";   // idle: always preview the final form
-  if (progress < 25) return "spark";
-  if (progress < 70) return "forming";
-  return "full";
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -409,7 +401,6 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const countdownProgress = Math.min(((totalDurationSec - remaining) / totalDurationSec) * 100, 100);
   const isActive = state !== "idle";
   const isPaused = state === "paused";
-  const stage = resolveStage(countdownProgress, isActive, isExtinguished);
   const cfg = ENERGY_CONFIGS[selectedEnergy];
   const imageSize = Math.round(RING_SIZE * 0.58);
 
@@ -650,10 +641,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           )}
 
           {/* Center energy image with smooth crossfade animations */}
-          <EnergyRingCenter
+          <GrowingEnergyIcon
             energyType={selectedEnergy}
             ringSize={RING_SIZE}
-            stage={stage}
+            elapsedSeconds={isActive ? totalDurationSec - remaining : 0}
+            totalSeconds={totalDurationSec}
+            previewFullStage={!isActive}
+            extinguished={isExtinguished}
             dimmed={isExtinguished}
             showCluster={showComplete && rewardCount > 1}
             clusterCount={rewardCount}

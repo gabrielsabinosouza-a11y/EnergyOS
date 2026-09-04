@@ -238,16 +238,84 @@ export async function ensureDailyQuestsExist(): Promise<void> {
         [quest.title, quest.description, quest.type, quest.metric, quest.targetValue, quest.coinReward],
       );
     }
-  } else {
-    // Existing installs: refresh mission texts so the labels show hours.
+    return;
+  }
+
+  // Fast-path: pool already has exactly one active row per mission with the
+  // current title — nothing to do (avoid ~45 queries on every event/read).
+  const placeholders = DEFAULT_DAILY_QUESTS.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}::int, $${i * 3 + 3})`).join(", ");
+  const flat = DEFAULT_DAILY_QUESTS.flatMap((q) => [q.metric, q.targetValue, q.title]);
+  const check = await pool.query<{ active: string; present: string }>(
+    `select
+       (select count(*)::int from daily_quests where is_active = true) as active,
+       (select count(*)::int
+        from (values ${placeholders}) as pool(metric, target_value, title)
+        where exists (select 1 from daily_quests d
+                      where d.metric = pool.metric and d.target_value = pool.target_value
+                        and d.title = pool.title and d.is_active = true)) as present`,
+    flat,
+  );
+  const clean =
+    Number(check.rows[0]?.active ?? 0) === DEFAULT_DAILY_QUESTS.length &&
+    Number(check.rows[0]?.present ?? 0) === DEFAULT_DAILY_QUESTS.length;
+  if (clean) return;
+
+  // Existing installs: refresh each mission so exactly ONE active row carries
+  // the current title, and deactivate stale duplicates. Older deploy runs
+  // seeded missions under different title formats, leaving multiple rows with
+  // the same (metric, target_value) but different titles — overwriting them all
+  // at once would violate the unique title constraint and 500 every read.
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
     for (const quest of DEFAULT_DAILY_QUESTS) {
-      await pool.query(
+      const matches = await client.query<{ id: string | number }>(
+        `select id from daily_quests
+         where metric = $1 and target_value = $2
+         order by id asc`,
+        [quest.metric, quest.targetValue],
+      );
+      if (matches.rows.length === 0) {
+        // Mission doesn't exist in the pool yet — seed it.
+        await client.query(
+          `insert into daily_quests (title, description, type, metric, target_value, coin_reward, is_active)
+           values ($1, $2, $3::quest_type, $4, $5, $6, true)
+           on conflict (title) do update set metric = excluded.metric, description = excluded.description,
+             target_value = excluded.target_value, coin_reward = excluded.coin_reward, is_active = true`,
+          [quest.title, quest.description, quest.type, quest.metric, quest.targetValue, quest.coinReward],
+        );
+        continue;
+      }
+
+      const withTitle = await client.query<{ id: string | number }>(
+        `select id from daily_quests
+         where metric = $1 and target_value = $2 and title = $3
+         order by id asc limit 1`,
+        [quest.metric, quest.targetValue, quest.title],
+      );
+      const canonicalId = withTitle.rows[0]?.id ?? matches.rows[0].id;
+
+      await client.query(
         `update daily_quests
-         set title = $1, description = $2
-         where metric = $3 and target_value = $4 and title <> $1`,
-        [quest.title, quest.description, quest.metric, quest.targetValue],
+         set title = $1, description = $2, type = $3::quest_type,
+             coin_reward = $4, is_active = true
+         where id = $5`,
+        [quest.title, quest.description, quest.type, quest.coinReward, canonicalId],
+      );
+
+      // Deactivate duplicate rows (kept so historical mission progress stays intact).
+      await client.query(
+        `update daily_quests set is_active = false
+         where metric = $1 and target_value = $2 and id <> $3`,
+        [quest.metric, quest.targetValue, canonicalId],
       );
     }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
