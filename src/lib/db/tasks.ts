@@ -3,7 +3,7 @@ import type { StreakDayStatus, Task } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
-import { consumeShield, getShieldCount, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
+import { consumeShield, getShieldCount, isDayProtected, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
 import { calculateStreak } from "@/lib/streak";
 import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
@@ -243,51 +243,106 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   // The day-set of qualifying sessions. `calculateStreak` derives the current
   // streak from this real history (source of truth) — a pure, testable function.
   const qualifyingDates = [...sessionsByDay.keys()].sort();
-  const { currentStreak, todayQualified } = calculateStreak(qualifyingDates, today);
+  const { todayQualified } = calculateStreak(qualifyingDates, today);
 
-  // Now that we know how far the streak extends (or where it broke), reconcile
-  // the streak-day log: mark each past day that qualified as "success" and each
-  // unprotected missed day (up to the break) as "lost". Shield protection is
-  // applied idempotently and can extend a broken streak.
-  // NOTE: shield consumption is intentionally kept independent of the pure
-  // calculation above — shields may "fill a gap" that would otherwise reset the
-  // streak, so we walk backward applying them after computing the base run.
-  let streak = currentStreak;
+  // ─── Reconcile the streak-day log and the live streak ─────────────────────
+  // A day is ALIVE when it has a qualifying session OR a shield was spent on it
+  // (streak_shield_usage). Protected days count as alive and must stay labeled
+  // "protected": `consumeShield` returns false for an already-protected day, and
+  // a previous version of this walk misread that as "no shield -> lost", which
+  // relabeled protected days to "lost" and broke the run on the next read.
+  const protectedRes = await pool.query<{ day: string }>(
+    `select to_char(used_on_date, 'YYYY-MM-DD') as day
+       from streak_shield_usage
+      where profile_id = $1
+        and used_on_date > ($2::date - interval '400 days')
+        and used_on_date <= $2::date`,
+    [profileId, today],
+  );
+  const protectedDates = new Set<string>(protectedRes.rows.map((r) => r.day));
+  const isAlive = (date: string): boolean =>
+    (sessionsByDay.get(date) ?? 0) > 0 || protectedDates.has(date);
+
+  // Count the contiguous alive tail. Today, when not yet qualified, is open and
+  // never counts as a break — the run simply starts from yesterday instead.
+  let streak = 0;
+  let cursor = addDaysIso(today, -1);
+  if (isAlive(today)) streak += 1;
+  while (streak < 400 && isAlive(cursor)) {
+    if (protectedDates.has(cursor)) {
+      // Repair a protected day a previous buggy evaluation relabeled "lost".
+      await logStreakDay(profileId, cursor, "protected");
+    }
+    streak += 1;
+    cursor = addDaysIso(cursor, -1);
+  }
+
+  // Mark every qualifying day in the window as success (idempotent).
+  for (const date of qualifyingDates) {
+    await logStreakDay(profileId, date, "success");
+  }
+
+  // Extend the run across missed days using shields, but ONLY when the whole
+  // region of consecutive missed days can be bridged by the shields still
+  // available AND it anchors on an alive day behind it. That keeps shields from
+  // being spent at the start of the run (a missed day before the first real
+  // session) or across a huge inactivity gap — a shield saves "one missed day",
+  // it does not resurrect a month-old run.
+  const shieldBudget = baseShields;
+  const windowFloor = addDaysIso(today, -400);
   let shieldsUsed = 0;
-  {
-    // Mark all qualifying days in the window as success first.
-    for (const date of qualifyingDates) {
-      await logStreakDay(profileId, date, "success");
+  while (streak < 400) {
+    if (isAlive(cursor)) {
+      if (protectedDates.has(cursor)) {
+        await logStreakDay(profileId, cursor, "protected");
+      }
+      streak += 1;
+      cursor = addDaysIso(cursor, -1);
+      continue;
     }
 
-    // Walk backward from yesterday, attempting to protect missed days that fall
-    // inside the current run's span. Consecutive shieldable misses are all
-    // consumed (matching the previous behavior); the walk stops at the first
-    // unprotected miss, or after `maxWalk` days.
-    const maxWalk = 400;
-    let cursor = addDaysIso(today, -1);
-    let walked = 0;
-    while (walked < maxWalk) {
-      const hasSession = (sessionsByDay.get(cursor) ?? 0) > 0;
-      if (hasSession) {
-        cursor = addDaysIso(cursor, -1);
-        walked += 1;
-        continue;
-      }
-      // A missed past day inside the run: try to shield it to keep the streak.
-      const protectedNow = await consumeShield(profileId, cursor, streak + 1);
+    // All shields spent already -> nothing left to bridge.
+    if (shieldsUsed >= shieldBudget) break;
+
+    // Walk the contiguous region of missed days to find the next alive anchor.
+    let regionLen = 0;
+    let probe = cursor;
+    while (probe > windowFloor && !isAlive(probe)) {
+      regionLen += 1;
+      probe = addDaysIso(probe, -1);
+    }
+
+    // No alive anchor anywhere behind, or the missed region is wider than the
+    // shields we can spend → the run ends here.
+    if (probe <= windowFloor || regionLen > shieldBudget - shieldsUsed) {
+      await logStreakDay(profileId, cursor, "lost");
+      console.log(`[streak] ${profileId} day ${cursor} missed without shield -> current streak ${streak}`);
+      break;
+    }
+
+    // Bridge the whole region (regionLen <= remaining shields), anchoring on
+    // the alive day found at `probe`.
+    let aborted = false;
+    for (let i = 0; i < regionLen; i += 1) {
+      const missedDay = addDaysIso(cursor, i);
+      const protectedNow = await consumeShield(profileId, missedDay, streak + 1 + i);
       if (protectedNow) {
+        protectedDates.add(missedDay);
         shieldsUsed += 1;
-        streak += 1;
-        console.log(`[streak] ${profileId} missed ${cursor} but protected by shield (shield #${shieldsUsed})`);
-        cursor = addDaysIso(cursor, -1);
-        walked += 1;
+      } else if (await isDayProtected(profileId, missedDay)) {
+        // A concurrent evaluation may have just protected this exact day.
+        protectedDates.add(missedDay);
       } else {
-        await logStreakDay(profileId, cursor, "lost");
-        console.log(`[streak] ${profileId} day ${cursor} missed without shield -> current streak ${streak}`);
+        await logStreakDay(profileId, missedDay, "lost");
+        console.log(`[streak] ${profileId} day ${missedDay} missed without shield -> current streak ${streak}`);
+        aborted = true;
         break;
       }
+      streak += 1;
+      console.log(`[streak] ${profileId} missed ${missedDay} but protected by shield (shield #${shieldsUsed})`);
     }
+    if (aborted) break;
+    cursor = probe;
   }
 
   // Longest consecutive qualifying run across the whole window (ignores shield

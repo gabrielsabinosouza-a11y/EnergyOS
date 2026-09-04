@@ -1,7 +1,7 @@
 import pool from "../db";
 import { addCoins } from "./settings";
 import { getGroupTotalMinutes } from "./group-leaderboard";
-import { weekStartIso, todayIso } from "./dates";
+import { weekStartIso, todayIso, addDaysIso } from "./dates";
 import { parseProfileId } from "./validation";
 
 // ─── Milestone definitions ────────────────────────────────────────────────────
@@ -45,43 +45,63 @@ export interface GroupWeeklyQuestStatus {
 // ─── Milestone helpers ────────────────────────────────────────────────────────
 
 /**
+ * Auto-credit coins to every current group member who contributed at least one
+ * minute. Idempotent: the unique claims constraint plus `on conflict do nothing`
+ * guarantees each member is rewarded exactly once per milestone.
+ */
+async function creditMilestoneContributors(
+  groupId: number,
+  thresholdMinutes: number,
+  coinsPerMember: number,
+): Promise<void> {
+  const contributors = await pool.query<{ profile_id: string }>(
+    `select distinct gfc.profile_id
+     from group_focus_contributions gfc
+     join group_members gm on gm.group_id = gfc.group_id and gm.profile_id = gfc.profile_id
+     where gfc.group_id = $1`,
+    [groupId],
+  );
+
+  for (const { profile_id } of contributors.rows) {
+    const inserted = await pool.query(
+      `insert into group_milestone_claims (group_id, profile_id, threshold_minutes, coins_awarded)
+       values ($1, $2, $3, $4)
+       on conflict (group_id, profile_id, threshold_minutes) do nothing
+       returning id`,
+      [groupId, profile_id, thresholdMinutes, coinsPerMember],
+    );
+    if (inserted.rows[0]) await addCoins(profile_id, coinsPerMember);
+  }
+}
+
+/**
+ * Unlock a milestone (idempotent) and, only when it was actually unlocked just
+ * now, auto-credit its reward to every contributing member.
+ */
+async function unlockMilestoneAndAutoCredit(groupId: number, def: MilestoneDef): Promise<void> {
+  const result = await pool.query<{ id: number }>(
+    `insert into group_activity_milestones (group_id, threshold_minutes, coins_per_member, badge_key)
+     values ($1, $2, $3, $4)
+     on conflict (group_id, threshold_minutes) do nothing
+     returning id`,
+    [groupId, def.thresholdMinutes, def.coinsPerMember, def.badgeKey],
+  );
+
+  if (!result.rows[0]) return; // already unlocked — skip reward distribution
+
+  await creditMilestoneContributors(groupId, def.thresholdMinutes, def.coinsPerMember);
+}
+
+/**
  * After every focus session, call this to unlock any newly crossed milestones
- * and award coins to all current members automatically.
+ * and award coins to all contributing members automatically.
  */
 export async function checkAndUnlockMilestones(groupId: number): Promise<void> {
   const totalMinutes = await getGroupTotalMinutes(groupId, "ALL_TIME");
 
   for (const def of MILESTONE_DEFS) {
-    if (totalMinutes < def.thresholdMinutes) continue;
-
-    // Upsert the milestone unlock row (idempotent)
-    const result = await pool.query<{ id: number; newly_inserted: boolean }>(
-      `insert into group_activity_milestones (group_id, threshold_minutes, coins_per_member, badge_key)
-       values ($1, $2, $3, $4)
-       on conflict (group_id, threshold_minutes) do nothing
-       returning id`,
-      [groupId, def.thresholdMinutes, def.coinsPerMember, def.badgeKey],
-    );
-
-    if (!result.rows[0]) continue; // already existed — skip coin distribution
-
-    // Award coins to every current member who hasn't claimed yet
-    const members = await pool.query<{ profile_id: string }>(
-      `select profile_id from group_members where group_id = $1`,
-      [groupId],
-    );
-
-    for (const { profile_id } of members.rows) {
-      const inserted = await pool.query(
-        `insert into group_milestone_claims (group_id, profile_id, threshold_minutes, coins_awarded)
-         values ($1, $2, $3, $4)
-         on conflict (group_id, profile_id, threshold_minutes) do nothing
-         returning id`,
-        [groupId, profile_id, def.thresholdMinutes, def.coinsPerMember],
-      );
-      if (inserted.rows[0]) {
-        await addCoins(profile_id, def.coinsPerMember);
-      }
+    if (totalMinutes >= def.thresholdMinutes) {
+      await unlockMilestoneAndAutoCredit(groupId, def);
     }
   }
 }
@@ -96,6 +116,15 @@ export async function getGroupMilestones(
   parseProfileId(profileId);
 
   const totalMinutes = await getGroupTotalMinutes(groupId, "ALL_TIME");
+
+  // Live completion check: unlock (and reward) any threshold already crossed.
+  // This covers historical/backfilled minutes that predate the milestone rows,
+  // so completion reflects actual current progress instead of a stale label.
+  for (const def of MILESTONE_DEFS) {
+    if (totalMinutes >= def.thresholdMinutes) {
+      await unlockMilestoneAndAutoCredit(groupId, def);
+    }
+  }
 
   const unlocked = await pool.query<{ threshold_minutes: number; unlocked_at: string }>(
     `select threshold_minutes, unlocked_at::text from group_activity_milestones where group_id = $1`,
@@ -177,6 +206,13 @@ export async function getGroupWeeklyQuest(
     row.completed_at = new Date().toISOString();
   }
 
+  // Auto-credit the reward to every contributing member once the quest is
+  // complete. Idempotent: the unique claims constraint plus `on conflict do
+  // nothing` guarantees each member is rewarded exactly once per week.
+  if (row.completed_at) {
+    await creditWeeklyQuestContributors(groupId, weekStart, row.coins_per_member);
+  }
+
   // This user's contribution this week
   const userContrib = await pool.query<{ minutes: number }>(
     `select coalesce(sum(minutes), 0)::int as minutes
@@ -204,49 +240,34 @@ export async function getGroupWeeklyQuest(
 }
 
 /**
- * Claim the weekly quest reward. User must have contributed > 0 minutes
- * and the quest must be completed.
+ * Auto-credit coins to every current group member who contributed at least one
+ * minute in the given week. Idempotent via the unique claims constraint.
  */
-export async function claimGroupWeeklyQuest(
-  profileId: string,
+async function creditWeeklyQuestContributors(
   groupId: number,
-): Promise<{ coinsAwarded: number }> {
-  parseProfileId(profileId);
+  weekStart: string,
+  coinsPerMember: number,
+): Promise<void> {
+  const weekEnd = addDaysIso(weekStart, 7);
 
-  const weekStart = weekStartIso(todayIso());
-
-  const quest = await pool.query<{ completed_at: string | null; coins_per_member: number }>(
-    `select completed_at, coins_per_member from group_weekly_quests
-     where group_id = $1 and week_start = $2`,
-    [groupId, weekStart],
+  const contributors = await pool.query<{ profile_id: string }>(
+    `select distinct gfc.profile_id
+     from group_focus_contributions gfc
+     join group_members gm on gm.group_id = gfc.group_id and gm.profile_id = gfc.profile_id
+     where gfc.group_id = $1
+       and gfc.contributed_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+       and gfc.contributed_at < ($3::date)::timestamp at time zone 'America/Sao_Paulo'`,
+    [groupId, weekStart, weekEnd],
   );
-  if (!quest.rows[0]?.completed_at) throw new Error("Missão ainda não concluída.");
 
-  const alreadyClaimed = await pool.query(
-    `select 1 from group_weekly_quest_claims
-     where group_id = $1 and profile_id = $2 and week_start = $3`,
-    [groupId, profileId, weekStart],
-  );
-  if (alreadyClaimed.rows[0]) throw new Error("Recompensa já resgatada.");
-
-  const contrib = await pool.query<{ minutes: number }>(
-    `select coalesce(sum(minutes), 0)::int as minutes
-     from group_focus_contributions
-     where group_id = $1 and profile_id = $2
-       and contributed_at >= ($3::date)::timestamptz`,
-    [groupId, profileId, weekStart],
-  );
-  if (Number(contrib.rows[0]?.minutes ?? 0) === 0) {
-    throw new Error("Você não contribuiu com foco esta semana.");
+  for (const { profile_id } of contributors.rows) {
+    const inserted = await pool.query(
+      `insert into group_weekly_quest_claims (group_id, profile_id, week_start, coins_awarded)
+       values ($1, $2, $3, $4)
+       on conflict (group_id, profile_id, week_start) do nothing
+       returning id`,
+      [groupId, profile_id, weekStart, coinsPerMember],
+    );
+    if (inserted.rows[0]) await addCoins(profile_id, coinsPerMember);
   }
-
-  const coins = quest.rows[0].coins_per_member;
-  await pool.query(
-    `insert into group_weekly_quest_claims (group_id, profile_id, week_start, coins_awarded)
-     values ($1, $2, $3, $4)`,
-    [groupId, profileId, weekStart, coins],
-  );
-  await addCoins(profileId, coins);
-
-  return { coinsAwarded: coins };
 }

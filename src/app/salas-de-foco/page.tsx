@@ -787,9 +787,11 @@ export default function FocusRoomsPage() {
                         {room.code}
                       </span>
                       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                        <img
+                        <Image
                           src={energyCfg.assets.full}
                           alt={energyLabel}
+                          width={24}
+                          height={24}
                           className="h-6 w-6 object-contain"
                           style={{ filter: `drop-shadow(0 0 8px ${energyCfg.glow})` }}
                         />

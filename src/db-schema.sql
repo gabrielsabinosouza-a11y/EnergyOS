@@ -542,6 +542,49 @@ create unique index if not exists pinned_messages_one_per_conversation_idx
   on pinned_messages(message_kind, conversation_id)
   where conversation_id is not null;
 
+-- ── Group milestones & weekly quest ──────────────────────────────────────────
+-- Lifetime combined-minute milestones for each group.
+create table if not exists group_activity_milestones (
+  id bigserial primary key,
+  group_id integer not null references groups(id) on delete cascade,
+  threshold_minutes integer not null,
+  coins_per_member integer not null,
+  badge_key text,
+  unlocked_at timestamptz not null default now(),
+  unique (group_id, threshold_minutes)
+);
+
+-- Idempotency ledger: one row per (member, milestone) exactly once.
+create table if not exists group_milestone_claims (
+  id bigserial primary key,
+  group_id integer not null references groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  threshold_minutes integer not null,
+  coins_awarded integer not null,
+  claimed_at timestamptz not null default now(),
+  unique (group_id, profile_id, threshold_minutes)
+);
+
+create table if not exists group_weekly_quests (
+  id bigserial primary key,
+  group_id integer not null references groups(id) on delete cascade,
+  week_start date not null,
+  target_minutes integer not null default 500,
+  coins_per_member integer not null default 50,
+  completed_at timestamptz,
+  unique (group_id, week_start)
+);
+
+create table if not exists group_weekly_quest_claims (
+  id bigserial primary key,
+  group_id integer not null references groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  week_start date not null,
+  coins_awarded integer not null,
+  claimed_at timestamptz not null default now(),
+  unique (group_id, profile_id, week_start)
+);
+
 -- ── Weekly league ───────────────────────────────────────────────────────────
 create table if not exists league_standings (
   profile_id text primary key references profiles(id) on delete cascade,

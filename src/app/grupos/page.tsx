@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import {
   ArrowLeft, ArrowUp, ArrowDown, Check, Crown, Loader2,
-  MessageCircle, Package, Plus, Send, Timer, Trophy,
+  MessageCircle, Plus, Send, Timer, Trophy,
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
   Sticker, Shield, ShieldCheck, Trash2, UserMinus,
@@ -370,8 +370,11 @@ function GlobalLeaderboard({
 /* ------------------------------------------------------------------ */
 
 function MilestoneBar({ milestones, totalMinutes }: { milestones: GroupMilestoneStatus[]; totalMinutes: number }) {
-  const next = milestones.find((m) => !m.unlockedAt);
-  const prev = milestones.filter((m) => m.unlockedAt).at(-1);
+  // Live completion: a milestone is complete when it was unlocked OR current
+  // progress already reached/passed its threshold (covers stale label rows).
+  const isComplete = (m: GroupMilestoneStatus) => !!m.unlockedAt || totalMinutes >= m.thresholdMinutes;
+  const next = milestones.find((m) => !isComplete(m));
+  const prev = milestones.filter((m) => isComplete(m)).at(-1);
 
   if (!next) {
     return (
@@ -411,11 +414,11 @@ function MilestoneBar({ milestones, totalMinutes }: { milestones: GroupMilestone
       )}
 
       {/* Unlocked milestones */}
-      {milestones.filter((m) => m.unlockedAt).length > 0 && (
+      {milestones.filter((m) => isComplete(m)).length > 0 && (
         <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
           <p className="mb-2 text-[9px] uppercase tracking-widest text-[var(--text-faint)]">Marcos conquistados</p>
           <div className="flex flex-wrap gap-2">
-            {milestones.filter((m) => m.unlockedAt).map((m) => (
+            {milestones.filter((m) => isComplete(m)).map((m) => (
               <div key={m.thresholdMinutes}
                 className="flex items-center gap-1 rounded-full border border-[var(--accent)]/20 bg-[var(--accent-bg)] px-2 py-0.5 text-[9px] text-[var(--accent)]">
                 <Trophy size={9} /> {m.label}
@@ -434,38 +437,22 @@ function MilestoneBar({ milestones, totalMinutes }: { milestones: GroupMilestone
 
 function WeeklyQuestWidget({ groupId }: { groupId: number }) {
   const [quest, setQuest] = useState<GroupWeeklyQuestStatus | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const [claimed, setClaimed] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.getGroupWeeklyQuest(groupId).then((d) => setQuest(d.quest)).catch(() => {});
+    api.getGroupWeeklyQuest(groupId)
+      .then((d) => setQuest(d.quest))
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar missão."));
   }, [groupId]);
-
-  async function handleClaim() {
-    if (claiming || claimed) return;
-    setClaiming(true);
-    setError("");
-    try {
-      await api.claimGroupWeeklyQuest(groupId);
-      setClaimed(true);
-      setQuest((q) => q ? { ...q, claimedAt: new Date().toISOString() } : q);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao resgatar.");
-    } finally {
-      setClaiming(false);
-    }
-  }
 
   if (!quest) return null;
 
   const progress = Math.min((quest.currentMinutes / quest.targetMinutes) * 100, 100);
   const isComplete = !!quest.completedAt;
-  const isClaimed = !!quest.claimedAt || claimed;
-  const canClaim = isComplete && !isClaimed && quest.contributedMinutes > 0;
+  const isCredited = !!quest.claimedAt;
 
   return (
-    <div className={`glass-card p-4 ${isComplete && !isClaimed ? "border-amber-400/30" : ""}`}>
+    <div className={`glass-card p-4 ${isComplete && !isCredited ? "border-amber-400/30" : ""}`}>
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Zap size={14} className="text-amber-400" />
@@ -473,7 +460,7 @@ function WeeklyQuestWidget({ groupId }: { groupId: number }) {
             Missão Semanal do Grupo
           </span>
         </div>
-        {isClaimed && <Check size={14} className="text-green-400" />}
+        {isComplete && <Check size={14} className="text-green-400" />}
       </div>
 
       <p className="mb-2 text-xs text-[var(--text)]">
@@ -500,20 +487,18 @@ function WeeklyQuestWidget({ groupId }: { groupId: number }) {
         </p>
       )}
 
-      {canClaim && (
-        <motion.button
-          whileTap={{ scale: 0.94 }}
-          onClick={handleClaim}
-          disabled={claiming}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400/10 border border-amber-400/30 py-2 text-xs font-bold text-amber-400 transition hover:bg-amber-400/20"
-        >
-          {claiming ? <Loader2 size={13} className="animate-spin" /> : <Package size={13} />}
-          Resgatar +{quest.coinsPerMember} moedas
-        </motion.button>
+      {isCredited && (
+        <p className="text-center text-[10px] text-green-400">✓ Recompensa resgatada!</p>
       )}
 
-      {isClaimed && (
-        <p className="text-center text-[10px] text-green-400">✓ Recompensa resgatada!</p>
+      {isComplete && !isCredited && quest.contributedMinutes > 0 && (
+        <p className="text-center text-[10px] text-green-400">✓ Recompensa creditada automaticamente!</p>
+      )}
+
+      {isComplete && quest.contributedMinutes === 0 && (
+        <p className="mt-1 text-center text-[10px] text-[var(--text-faint)]">
+          Contributors receberam +{quest.coinsPerMember} moedas. Participe com foco para ganhar as próximas.
+        </p>
       )}
 
       {error && <p className="mt-1 text-[10px] text-[var(--red)]">{error}</p>}

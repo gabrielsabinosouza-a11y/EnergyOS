@@ -333,8 +333,6 @@ export const api = {
     ),
   getGroupWeeklyQuest: (id: number) =>
     request<{ quest: import("@/lib/db/group-milestones").GroupWeeklyQuestStatus }>(`/api/groups/${id}/weekly-quest`),
-  claimGroupWeeklyQuest: (id: number) =>
-    request<{ coinsAwarded: number }>(`/api/groups/${id}/weekly-quest`, { method: "POST" }),
 
   // League
   getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
