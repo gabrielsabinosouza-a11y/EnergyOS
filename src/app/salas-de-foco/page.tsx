@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
   Plus,
@@ -20,6 +20,8 @@ import {
   Trash2,
   UserPlus,
   Square,
+  Eye,
+  DoorOpen,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -32,7 +34,7 @@ import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType, type EnergyConfig } from "@/lib/energy-assets";
 import { CircularDurationPicker, FocusDurationReadout } from "@/components/dashboard/circular-duration-picker";
 import {
   FOCUS_DURATION_DEFAULT_MINUTES,
@@ -71,6 +73,32 @@ function loadRoomSession(roomId: number): PersistedRoomSession | null {
 
 function formatTime(totalSeconds: number): string {
   return formatCountdownMmSs(totalSeconds);
+}
+
+// ─── List-view animation + status helpers ───────────────────────────────────
+
+const listStagger: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06, delayChildren: 0.04 } },
+};
+
+const roomCard: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
+  exit: { opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeOut" } },
+};
+
+const ROOM_STATUS_META: Record<string, { label: string; pill: string; dot: string }> = {
+  waiting:   { label: "Aguardando",    pill: "border-cyan-400/25 bg-cyan-400/5  text-cyan-200/90",   dot: "bg-cyan-300" },
+  active:    { label: "Em andamento",  pill: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300", dot: "bg-emerald-400" },
+  paused:    { label: "Pausada",       pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
+  completed: { label: "Concluída",     pill: "border-emerald-400/25 bg-emerald-400/5  text-emerald-300/80", dot: "bg-emerald-400" },
+};
+
+const ROOM_STATUS_FALLBACK = { label: "Expirada", pill: "border-white/10 bg-white/5 text-[var(--text-faint)]", dot: "bg-[var(--text-faint)]" };
+
+function energyConfigFor(type: string | null | undefined): EnergyConfig {
+  return ENERGY_CONFIGS[(type as EnergyType) ?? "flame"] ?? ENERGY_CONFIGS.flame;
 }
 
 // ─── Small avatar with optional energy badge ─────────────────────────────────
@@ -697,97 +725,157 @@ export default function FocusRoomsPage() {
 
   // ═══════════════════════ VIEWS ═══════════════════════
   const renderListView = () => (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="flex items-center gap-4">
+    <motion.div variants={listStagger} initial="hidden" animate="show" className="space-y-6">
+      {/* Primary actions — glass buttons */}
+      <motion.div variants={roomCard} className="flex flex-wrap items-center gap-3">
         <motion.button
           onClick={() => setPageState("create")}
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--text)] transition-colors"
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[var(--text)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 hover:border-[var(--accent)]/30 hover:bg-white/[0.08] hover:shadow-[0_0_20px_rgba(113,212,255,0.3)]"
         >
-          <Plus size={16} /> Criar sala
+          <Plus size={16} className="text-[var(--accent)]" /> Criar sala
         </motion.button>
         <motion.button
           onClick={() => setPageState("join")}
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--text)] transition-colors"
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-[var(--text)] backdrop-blur-md transition-[border-color,background-color,box-shadow] duration-200 hover:border-[var(--accent)]/30 hover:bg-white/[0.08] hover:shadow-[0_0_20px_rgba(113,212,255,0.3)]"
         >
-          <Users size={16} /> Entrar em sala
+          <UserPlus size={16} className="text-[var(--accent)]" /> Entrar em sala
         </motion.button>
-      </div>
+      </motion.div>
 
       <div className="grid gap-4">
-        {rooms.length > 0 ? (
-          rooms.map((room) => {
-            const isMyRoomHost = room.hostProfileId === myProfileId;
-            return (
-              <motion.div
-                key={room.id}
-                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-[var(--text-faint)] mb-0.5">Sala: {room.code}</p>
-                    <p className="text-sm font-medium text-[var(--text)]">
-                      {Math.floor(room.durationMinutes / 60)}h{room.durationMinutes % 60 > 0 ? ` ${room.durationMinutes % 60}min` : ""} • {room.energyType || "Foco"}
-                    </p>
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                      Status:{" "}
-                      {room.status === "waiting" ? "Aguardando" :
-                       room.status === "active" ? "Em andamento" :
-                       room.status === "paused" ? "Pausada" :
-                       room.status === "completed" ? "Concluída" : "Expirada"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
-                      <Users size={12} /> {room.participants.length}
+        {loadingRooms ? (
+          <motion.div variants={roomCard} className="flex items-center justify-center py-10">
+            <Loader2 size={22} className="animate-spin text-[var(--accent)]" />
+          </motion.div>
+        ) : rooms.length > 0 ? (
+          <AnimatePresence mode="popLayout" initial={false}>
+            {rooms.map((room) => {
+              const isMyRoomHost = room.hostProfileId === myProfileId;
+              const energyCfg = energyConfigFor(room.energyType);
+              const energyLabel = room.energyType ? energyCfg.label : "Foco";
+              const status = ROOM_STATUS_META[room.status] ?? ROOM_STATUS_FALLBACK;
+              const live = room.status === "active" || room.status === "paused";
+              const durationLabel = `${Math.floor(room.durationMinutes / 60)}h${room.durationMinutes % 60 > 0 ? ` ${room.durationMinutes % 60}min` : ""}`;
+              return (
+                <motion.div
+                  key={room.id}
+                  variants={roomCard}
+                  layout
+                  exit="exit"
+                  whileHover={{ y: -4, boxShadow: `0 24px 56px -18px rgba(0,0,0,0.65), 0 0 34px -8px ${energyCfg.accent}55` }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="glass-card group relative overflow-hidden rounded-2xl shadow-xl shadow-black/40 hover:shadow-2xl hover:shadow-black/50"
+                  style={{
+                    borderColor: `${energyCfg.accent}30`,
+                    boxShadow: `0 16px 44px -16px rgba(0,0,0,0.55), 0 0 24px -10px ${energyCfg.glow}`,
+                  }}
+                >
+                  {/* energy-tinted top hairline + soft corner glow */}
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${energyCfg.accent}80, transparent)` }} />
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-[0.07] blur-2xl" style={{ background: energyCfg.accent }} />
+
+                  <div className="relative flex items-start justify-between gap-3 p-4 sm:p-5">
+                    <div className="min-w-0">
+                      <span
+                        className="inline-flex items-center rounded-md border px-2 py-1 font-mono text-[10px] font-semibold tracking-[0.18em]"
+                        style={{ color: energyCfg.accent, borderColor: `${energyCfg.accent}28`, background: `${energyCfg.accent}12` }}
+                      >
+                        {room.code}
+                      </span>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        <img
+                          src={energyCfg.assets.full}
+                          alt={energyLabel}
+                          className="h-6 w-6 object-contain"
+                          style={{ filter: `drop-shadow(0 0 8px ${energyCfg.glow})` }}
+                        />
+                        <p className="text-base font-semibold leading-none text-[var(--text)]">{durationLabel}</p>
+                        <span className="text-sm text-[var(--text-faint)]">·</span>
+                        <span className="text-sm text-[var(--text-secondary)]">{energyLabel}</span>
+                      </div>
+                    </div>
+
+                    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium ${status.pill}`}>
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${status.dot} ${live ? "animate-pulse" : ""}`}
+                        style={{ boxShadow: live ? `0 0 8px ${energyCfg.accent}` : undefined }}
+                      />
+                      {status.label}
                     </span>
-                    {/* Delete — host (or admin) only, disabled while a session is live */}
-                    {isMyRoomHost && (
+                  </div>
+
+                  <div className="relative flex items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-2.5 sm:px-5">
+                    <span
+                      className="flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.04] px-2.5 py-1.5 text-[10px] text-[var(--text-faint)] backdrop-blur-md"
+                      title="Participantes"
+                    >
+                      <Users size={12} className="text-[var(--text-muted)]" />
+                      {room.participants.length}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      {/* Delete — host only, disabled while a session is live */}
+                      {isMyRoomHost && (
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => {
+                            if (room.status === "active" || room.status === "paused") { setError("Não é possível excluir uma sala em andamento"); return; }
+                            setRoomToDelete(room);
+                            setShowDeleteConfirm(true);
+                          }}
+                          disabled={room.status === "active" || room.status === "paused"}
+                          title={live ? "Sala em andamento" : "Excluir sala"}
+                          aria-label="Excluir sala"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-[var(--text-faint)] transition-colors hover:border-red-400/25 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 size={14} />
+                        </motion.button>
+                      )}
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
-                          if (room.status === "active" || room.status === "paused") { setError("Não é possível excluir uma sala em andamento"); return; }
-                          setRoomToDelete(room);
-                          setShowDeleteConfirm(true);
+                          setShowCompletion(false);
+                          setLastCoins(0);
+                          setCurrentRoom(room);
+                          setPageState("room");
                         }}
-                        disabled={room.status === "active" || room.status === "paused"}
-                        className="rounded-lg p-1.5 text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={room.status === "active" || room.status === "paused" ? "Sala em andamento" : "Excluir sala"}
+                        title="Ver sala"
+                        aria-label="Ver sala"
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-[var(--text-muted)] backdrop-blur-md transition-colors hover:border-[var(--accent)]/30 hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
                       >
-                        <Trash2 size={14} />
+                        <Eye size={14} />
                       </motion.button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setShowCompletion(false);
-                        setLastCoins(0);
-                        setCurrentRoom(room);
-                        setPageState("room");
-                      }}
-                      className="text-button text-[10px]"
-                    >
-                      Ver
-                    </button>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            );
-          })
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         ) : (
-          !loadingRooms && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Sparkles size={32} className="text-[var(--text-faint)] mb-3" />
-              <p className="text-sm text-[var(--text-muted)]">Você não está em nenhuma sala no momento</p>
-              <p className="text-[10px] text-[var(--text-faint)] mt-1">Crie uma sala ou junte-se a uma sala existente</p>
+          <motion.div variants={roomCard} className="glass-card flex flex-col items-center justify-center gap-4 px-6 py-14 text-center">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-[var(--accent-glow)] blur-2xl" />
+              <div className="relative grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-lg">
+                <DoorOpen size={26} className="text-[var(--accent)]" />
+              </div>
             </div>
-          )
-        )}
-        {loadingRooms && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-[var(--accent)]" />
-          </div>
+            <div>
+              <p className="text-sm font-semibold text-[var(--text)]">Nenhuma sala ativa no momento</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Crie uma sala ou junte-se a um código compartilhado por um amigo.</p>
+            </div>
+            <motion.button
+              onClick={() => setPageState("create")}
+              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="primary-button"
+            >
+              <Plus size={16} /> Criar sala
+            </motion.button>
+          </motion.div>
         )}
       </div>
     </motion.div>
@@ -1236,14 +1324,19 @@ export default function FocusRoomsPage() {
   return (
     <AppShell>
       <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12 lg:py-10">
-        <header className="mb-8 flex items-center gap-3">
+        <motion.header
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="mb-8 flex items-center gap-3"
+        >
           <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
             <ChevronLeft size={18} /> Voltar
           </Link>
           <div className="ml-auto" />
           <Sparkles size={18} className="text-[var(--accent)]" />
           <span className="font-display text-xl font-semibold tracking-[-0.04em]">Salas de Foco</span>
-        </header>
+        </motion.header>
 
         <AnimatePresence mode="wait">{renderCurrentView()}</AnimatePresence>
 
