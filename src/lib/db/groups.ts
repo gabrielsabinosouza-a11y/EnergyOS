@@ -1,7 +1,7 @@
 import pool from "../db";
-import type { GroupDetail, GroupMember, GroupMessage, GroupRole, GroupSummary, LeagueEntry } from "@/types";
+import type { GroupDetail, GroupMember, GroupMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
 import { ForbiddenError, NotFoundError } from "../errors";
-import { parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
+import { parseEnum, parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
 import { areFriends } from "./social";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
 import { sundayWeekStartIso, todayIso } from "./dates";
@@ -71,6 +71,28 @@ async function assertMember(groupId: number, profileId: string): Promise<void> {
     [groupId, profileId],
   );
   if (!result.rows[0]) throw new ForbiddenError("Você não faz parte deste grupo.");
+}
+
+function normalizeReactions(value: unknown): MessageReactionSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const emoji = typeof row.emoji === "string" ? row.emoji : "";
+      const count = Number(row.count ?? 0);
+      const userNames = Array.isArray(row.userNames)
+        ? row.userNames.filter((name): name is string => typeof name === "string")
+        : [];
+      if (!emoji || count <= 0) return null;
+      return {
+        emoji,
+        count,
+        userNames,
+        reactedByMe: Boolean(row.reactedByMe),
+      };
+    })
+    .filter((item): item is MessageReactionSummary => item !== null);
 }
 
 export async function listGroups(profileId: string): Promise<GroupSummary[]> {
@@ -375,12 +397,18 @@ export async function listGroupMessages(
     edited_at: Date | string | null;
     display_name: string;
     photo_url: string | null;
+    reactions: unknown;
+    is_pinned: boolean | null;
+    pinned_at: Date | string | null;
+    pinned_by: string | null;
   };
   // The reply/edit columns may not exist on older databases until the
   // migration runs; detect them so the query stays valid either way.
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
-     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url`;
+     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url,
+     reactions.reactions, (pinned.message_id is not null) as is_pinned,
+     pinned.created_at as pinned_at, pinned.pinned_by`;
   const replyColumns = hasReplyCols
     ? `, gm.reply_to_id, gm.edited_at, rp.body as reply_to_body,
        rpname.display_name as reply_to_sender_name`
@@ -395,10 +423,32 @@ export async function listGroupMessages(
          join profiles p on p.id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
+         left join lateral (
+           select coalesce(jsonb_agg(jsonb_build_object(
+             'emoji', grouped.emoji,
+             'count', grouped.reaction_count,
+             'userNames', grouped.user_names,
+             'reactedByMe', grouped.reacted_by_me
+           ) order by grouped.emoji), '[]'::jsonb) as reactions
+           from (
+             select mr.emoji,
+                    count(*)::int as reaction_count,
+                    array_agg(rp.display_name order by rp.display_name) as user_names,
+                    bool_or(mr.user_id = $3) as reacted_by_me
+             from message_reactions mr
+             join profiles rp on rp.id = mr.user_id
+             where mr.message_kind = 'GROUP' and mr.message_id = gm.id
+             group by mr.emoji
+           ) grouped
+         ) reactions on true
+         left join pinned_messages pinned
+           on pinned.message_kind = 'GROUP'
+          and pinned.conversation_id = gm.group_id::text
+          and pinned.message_id = gm.id
          where gm.group_id = $1 and gm.id > $2
          order by gm.created_at asc
          limit 100`,
-        [groupId, afterId],
+        [groupId, afterId, profileId],
       )
     : await pool.query<MsgRow>(
         `select ${selectColumns}
@@ -406,10 +456,32 @@ export async function listGroupMessages(
          join profiles p on p.id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
+         left join lateral (
+           select coalesce(jsonb_agg(jsonb_build_object(
+             'emoji', grouped.emoji,
+             'count', grouped.reaction_count,
+             'userNames', grouped.user_names,
+             'reactedByMe', grouped.reacted_by_me
+           ) order by grouped.emoji), '[]'::jsonb) as reactions
+           from (
+             select mr.emoji,
+                    count(*)::int as reaction_count,
+                    array_agg(rp.display_name order by rp.display_name) as user_names,
+                    bool_or(mr.user_id = $2) as reacted_by_me
+             from message_reactions mr
+             join profiles rp on rp.id = mr.user_id
+             where mr.message_kind = 'GROUP' and mr.message_id = gm.id
+             group by mr.emoji
+           ) grouped
+         ) reactions on true
+         left join pinned_messages pinned
+           on pinned.message_kind = 'GROUP'
+          and pinned.conversation_id = gm.group_id::text
+          and pinned.message_id = gm.id
          where gm.group_id = $1
          order by gm.created_at desc
          limit 80`,
-        [groupId],
+        [groupId, profileId],
       );
 
   const rows = afterId ? result.rows : [...result.rows].reverse();
@@ -428,6 +500,10 @@ export async function listGroupMessages(
     replyToBody: row.reply_to_body ?? undefined,
     replyToSenderName: row.reply_to_sender_name ?? undefined,
     editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
+    reactions: normalizeReactions(row.reactions),
+    isPinned: Boolean(row.is_pinned),
+    pinnedAt: row.pinned_at ? new Date(row.pinned_at).toISOString() : undefined,
+    pinnedBy: row.pinned_by ?? undefined,
   }));
 }
 
@@ -481,6 +557,15 @@ export async function sendGroupMessage(
   // Reply columns may not exist on older DBs until migration runs.
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
   const effectiveReplyId = hasReplyCols ? opts?.replyToId : undefined;
+  if (effectiveReplyId != null) {
+    const reply = await pool.query<{ group_id: string | number }>(
+      `select group_id from group_messages where id = $1`,
+      [effectiveReplyId],
+    );
+    if (Number(reply.rows[0]?.group_id) !== groupId) {
+      throw new ValidationError("Mensagem respondida inválida.");
+    }
+  }
 
   const inserted = await pool.query<{
     id: string | number;
@@ -600,6 +685,89 @@ export async function deleteGroupMessage(
     [messageId, groupId, profileId],
   );
   if (result.rowCount === 0) throw new NotFoundError("Mensagem não encontrada.");
+}
+
+async function assertGroupMessageParticipant(
+  profileId: string,
+  messageId: number,
+): Promise<{ id: number; groupId: number }> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(messageId) || messageId <= 0) throw new ValidationError("Mensagem inválida.");
+  const result = await pool.query<{ id: string | number; group_id: string | number }>(
+    `select id, group_id from group_messages where id = $1`,
+    [messageId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new NotFoundError("Mensagem não encontrada.");
+  const groupId = Number(row.group_id);
+  await assertMember(groupId, profileId);
+  return { id: Number(row.id), groupId };
+}
+
+export async function toggleGroupMessageReaction(
+  profileId: string,
+  messageId: number,
+  emojiValue: unknown,
+): Promise<GroupMessage> {
+  const emoji = parseEnum(emojiValue, ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const, "Emoji");
+  const message = await assertGroupMessageParticipant(profileId, messageId);
+  const existing = await pool.query(
+    `select 1 from message_reactions
+     where message_kind = 'GROUP' and message_id = $1 and user_id = $2 and emoji = $3`,
+    [messageId, profileId, emoji],
+  );
+  if (existing.rows[0]) {
+    await pool.query(
+      `delete from message_reactions
+       where message_kind = 'GROUP' and message_id = $1 and user_id = $2 and emoji = $3`,
+      [messageId, profileId, emoji],
+    );
+  } else {
+    await pool.query(
+      `insert into message_reactions (message_id, message_kind, user_id, emoji)
+       values ($1, 'GROUP', $2, $3)
+       on conflict (message_id, message_kind, user_id, emoji) do nothing`,
+      [messageId, profileId, emoji],
+    );
+  }
+  const messages = await listGroupMessages(profileId, message.groupId);
+  const updated = messages.find((item) => item.id === messageId);
+  if (!updated) throw new NotFoundError("Mensagem não encontrada.");
+  return updated;
+}
+
+export async function toggleGroupMessagePin(
+  profileId: string,
+  messageId: number,
+): Promise<void> {
+  const message = await assertGroupMessageParticipant(profileId, messageId);
+  const conversationId = String(message.groupId);
+  const existing = await pool.query(
+    `select 1 from pinned_messages
+     where message_kind = 'GROUP' and conversation_id = $1 and message_id = $2`,
+    [conversationId, messageId],
+  );
+  if (existing.rows[0]) {
+    await pool.query(
+      `delete from pinned_messages
+       where message_kind = 'GROUP' and conversation_id = $1 and message_id = $2`,
+      [conversationId, messageId],
+    );
+    return;
+  }
+  await pool.query(
+    `delete from pinned_messages where message_kind = 'GROUP' and conversation_id = $1`,
+    [conversationId],
+  );
+  await pool.query(
+    `insert into pinned_messages (message_id, message_kind, conversation_id, pinned_by)
+     values ($1, 'GROUP', $2, $3)
+     on conflict (message_id, message_kind) do update
+     set conversation_id = excluded.conversation_id,
+         pinned_by = excluded.pinned_by,
+         created_at = now()`,
+    [messageId, conversationId, profileId],
+  );
 }
 
 export async function markGroupRead(profileId: string, groupId: number): Promise<void> {

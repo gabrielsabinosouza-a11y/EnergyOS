@@ -256,6 +256,10 @@ export const api = {
     request<{ message: DirectMessage }>(`/api/dm/messages/${messageId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
   deleteDmMessage: (messageId: number) =>
     request<{ ok: true }>(`/api/dm/messages/${messageId}`, { method: "DELETE" }),
+  reactToDmMessage: (messageId: number, emoji: string) =>
+    request<{ message: DirectMessage }>(`/api/dm/messages/${messageId}/react`, { method: "POST", body: JSON.stringify({ emoji }) }),
+  pinDmMessage: (messageId: number) =>
+    request<{ ok: true }>(`/api/dm/messages/${messageId}/pin`, { method: "POST" }),
   markDmRead: (friendId: string) =>
     request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
   startChatByUsername: (username: string) =>
@@ -290,6 +294,10 @@ export const api = {
     request<{ message: GroupMessage }>(`/api/groups/messages/${messageId}?groupId=${groupId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
   deleteGroupMessage: (messageId: number, groupId: number) =>
     request<{ ok: true }>(`/api/groups/messages/${messageId}?groupId=${groupId}`, { method: "DELETE" }),
+  reactToGroupMessage: (messageId: number, emoji: string) =>
+    request<{ message: GroupMessage }>(`/api/groups/messages/${messageId}/react`, { method: "POST", body: JSON.stringify({ emoji }) }),
+  pinGroupMessage: (messageId: number) =>
+    request<{ ok: true }>(`/api/groups/messages/${messageId}/pin`, { method: "POST" }),
   markGroupRead: (id: number) =>
     request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
   updateGroupMemberRole: (id: number, profileId: string, role: import("@/types").GroupRole) =>

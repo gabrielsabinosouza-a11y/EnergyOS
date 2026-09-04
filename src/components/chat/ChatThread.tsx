@@ -20,15 +20,12 @@ import { AvatarWithFrame } from "@/components/avatar";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
-function relativeTime(iso?: string): string {
+function formatClock(iso?: string): string {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "agora";
-  if (mins < 60) return `${mins}min`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }
 
 function fmtDuration(seconds?: number): string {
@@ -232,6 +229,8 @@ function NewMessagesPill({ count, onClick }: { count: number; onClick: () => voi
 
 /* ─── Message bubble ───────────────────────────────────────────────── */
 
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
+
 function MessageBubble({
   msg,
   isMe,
@@ -239,11 +238,8 @@ function MessageBubble({
   showSenderName,
   reduced,
   onContextMenu,
-  onReply,
   read,
   onReaction,
-  reactions,
-  reacted,
   onQuoteClick,
 }: {
   msg: ChatMessage;
@@ -252,13 +248,11 @@ function MessageBubble({
   showSenderName: boolean;
   reduced: boolean;
   onContextMenu: (e: React.MouseEvent, msg: ChatMessage) => void;
-  onReply: (msg: ChatMessage) => void;
   read?: boolean;
   onReaction: (messageId: number, emoji: string) => void;
-  reactions: Record<string, number>;
-  reacted: Set<string>;
   onQuoteClick: (messageId: number) => void;
 }) {
+  const reactions = msg.reactions ?? [];
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -294,7 +288,7 @@ function MessageBubble({
       <div
         className={`max-w-[75%] ${showAvatar ? "" : isMe ? "ml-[42px]" : "mr-[42px]"} ${
           isMe ? "items-end" : "items-start"
-        } flex flex-col`}
+        } group/message flex flex-col`}
       >
         {showSenderName && !isMe && (
           <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">
@@ -337,6 +331,22 @@ function MessageBubble({
         )}
 
         {/* Bubble */}
+        <div
+          className={`mb-1 hidden items-center gap-0.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 py-0.5 shadow-lg group-hover/message:flex ${
+            isMe ? "self-end" : "self-start"
+          }`}
+        >
+          {QUICK_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => onReaction(msg.id, emoji)}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-sm transition hover:bg-[var(--accent-bg)]"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
         <div
           onContextMenu={handleContextMenu}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
@@ -420,20 +430,21 @@ function MessageBubble({
           </button>
         </div>
 
-        {Object.keys(reactions).length > 0 && (
+        {reactions.length > 0 && (
           <div className={`flex flex-wrap gap-1 ${isMe ? "justify-end" : ""}`}>
-            {Object.entries(reactions).map(([emoji, count]) => (
+            {reactions.map((reaction) => (
               <button
                 type="button"
-                key={emoji}
-                onClick={() => onReaction(msg.id, emoji)}
+                key={reaction.emoji}
+                onClick={() => onReaction(msg.id, reaction.emoji)}
+                title={reaction.userNames.join(", ")}
                 className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
-                  reacted.has(emoji)
+                  reaction.reactedByMe
                     ? "border-[var(--accent)] bg-[var(--accent-bg)]"
                     : "border-[var(--border-subtle)] bg-[var(--bg-surface)]"
                 }`}
               >
-                {emoji} {count}
+                {reaction.emoji} {reaction.count}
               </button>
             ))}
           </div>
@@ -446,7 +457,7 @@ function MessageBubble({
           }`}
         >
           <p className="text-[9px] text-[var(--text-faint)]">
-            {relativeTime(msg.createdAt)}
+            {formatClock(msg.createdAt)}
             {msg.editedAt && " (editada)"}
           </p>
           {isMe && <CheckMark read={read} />}
@@ -473,6 +484,8 @@ export interface ChatThreadProps {
   onReply?: (body: string, replyToId: number) => Promise<void>;
   onEdit?: (messageId: number, newBody: string) => Promise<void>;
   onDelete?: (messageId: number) => Promise<void>;
+  onReact?: (messageId: number, emoji: string) => Promise<void>;
+  onTogglePin?: (messageId: number) => Promise<void>;
 
   /** Read status tracking: message IDs that the other party has read */
   readMessageIds?: Set<number>;
@@ -501,6 +514,8 @@ export function ChatThread({
   onReply,
   onEdit,
   onDelete,
+  onReact,
+  onTogglePin,
   readMessageIds,
   inputSlot,
   replyingTo,
@@ -520,11 +535,11 @@ export function ChatThread({
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
-  const [reactions, setReactions] = useState<Record<number, Record<string, number>>>({});
-  const [reacted, setReacted] = useState<Record<number, Set<string>>>({});
-  const [pinned, setPinned] = useState<ChatMessage[]>([]);
+  const [busyReaction, setBusyReaction] = useState<string | null>(null);
+  const [busyPinId, setBusyPinId] = useState<number | null>(null);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
+  const pinned = useMemo(() => messages.find((message) => message.isPinned) ?? null, [messages]);
 
   /* ─── Scroll management ────────────────────────────────────────── */
 
@@ -579,29 +594,27 @@ export function ChatThread({
     scrollToBottom(true);
   }, [scrollToBottom]);
 
-  const toggleReaction = useCallback((messageId: number, emoji: string) => {
-    setReacted((current) => {
-      const next = new Set(current[messageId] ?? []);
-      const removing = next.has(emoji);
-      if (removing) next.delete(emoji); else next.add(emoji);
-      setReactions((all) => {
-        const messageReactions = { ...(all[messageId] ?? {}) };
-        const count = (messageReactions[emoji] ?? 0) + (removing ? -1 : 1);
-        if (count <= 0) delete messageReactions[emoji]; else messageReactions[emoji] = count;
-        return { ...all, [messageId]: messageReactions };
-      });
-      return { ...current, [messageId]: next };
-    });
-  }, []);
+  const toggleReaction = useCallback(async (messageId: number, emoji: string) => {
+    if (!onReact) return;
+    const key = `${messageId}:${emoji}`;
+    if (busyReaction === key) return;
+    setBusyReaction(key);
+    try {
+      await onReact(messageId, emoji);
+    } finally {
+      setBusyReaction(null);
+    }
+  }, [busyReaction, onReact]);
 
-  const pinMessage = useCallback((message: ChatMessage) => {
-    setPinned((current) => current.some((item) => item.id === message.id) ? current : [message, ...current].slice(0, 3));
-  }, []);
-  const togglePin = useCallback((message: ChatMessage) => {
-    setPinned((current) => current.some((item) => item.id === message.id)
-      ? current.filter((item) => item.id !== message.id)
-      : [message, ...current].slice(0, 3));
-  }, []);
+  const togglePin = useCallback(async (message: ChatMessage) => {
+    if (!onTogglePin || busyPinId === message.id) return;
+    setBusyPinId(message.id);
+    try {
+      await onTogglePin(message.id);
+    } finally {
+      setBusyPinId(null);
+    }
+  }, [busyPinId, onTogglePin]);
 
   const jumpToMessage = useCallback((messageId: number) => {
     messageRefs.current[messageId]?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -631,11 +644,11 @@ export function ChatThread({
           onDelete?.(msg.id);
           break;
         case "pin":
-          pinMessage(msg);
+          void togglePin(msg);
           break;
       }
     },
-    [onCopy, onDelete],
+    [onCopy, onDelete, togglePin],
   );
 
   const handleContextMenu = useCallback(
@@ -715,12 +728,14 @@ export function ChatThread({
       {
         label: "Reagir",
         icon: <SmilePlus size={14} />,
-        onClick: () => toggleReaction(msg.id, "👍"),
+        onClick: () => void toggleReaction(msg.id, "👍"),
+        hidden: !onReact,
       },
       {
-        label: pinned.some((item) => item.id === msg.id) ? "Desafixar" : "Fixar",
+        label: msg.isPinned ? "Desafixar" : "Fixar",
         icon: <Pin size={14} />,
-        onClick: () => togglePin(msg),
+        onClick: () => void togglePin(msg),
+        hidden: !onTogglePin,
       },
       {
         label: "Editar",
@@ -736,7 +751,7 @@ export function ChatThread({
         hidden: !isMe,
       },
     ];
-  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, pinned, togglePin, toggleReaction]);
+  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onReact, onTogglePin, togglePin, toggleReaction]);
 
   /* ─── Render ───────────────────────────────────────────────────── */
 
@@ -769,15 +784,18 @@ export function ChatThread({
   return (
     <div className="flex h-full flex-col">
       {/* Scrollable messages area */}
-      {pinned.length > 0 && (
+      {pinned && (
         <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-bg)]/60 px-4 py-2">
           <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
             <Pin size={12} className="text-[var(--accent)]" />
-            <span className="truncate">Fixadas: {pinned.map((message) => (
-              <button key={message.id} type="button" onClick={() => jumpToMessage(message.id)} className="mr-2 text-left text-[var(--text)] hover:text-[var(--accent)]">
-                {message.body ?? "Mídia"}
-              </button>
-            ))}</span>
+            <span className="shrink-0">Mensagem fixada:</span>
+            <button
+              type="button"
+              onClick={() => jumpToMessage(pinned.id)}
+              className="min-w-0 flex-1 truncate text-left text-[var(--text)] hover:text-[var(--accent)]"
+            >
+              {pinned.body ?? "Mídia"}
+            </button>
           </div>
         </div>
       )}
@@ -801,10 +819,11 @@ export function ChatThread({
           const { msg, prevMsg } = item;
           const isMe = msg.senderId === currentUserId;
 
-          // Show avatar+name for first message or after a gap
+          // Show avatar+name for first message or after a short sequence gap.
           const isFirstInGroup =
             !prevMsg ||
             prevMsg.senderId !== msg.senderId ||
+            (prevMsg && new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() > 5 * 60_000) ||
             (prevMsg && differentDays(prevMsg.createdAt, msg.createdAt));
 
           // If we're editing this message inline
@@ -871,11 +890,8 @@ export function ChatThread({
               showSenderName={showSenderName ? isFirstInGroup : false}
               reduced={reduced}
               onContextMenu={handleContextMenu}
-              onReply={() => onReplyMessage?.(msg)}
               read={readMessageIds?.has(msg.id)}
               onReaction={toggleReaction}
-              reactions={reactions[msg.id] ?? {}}
-              reacted={reacted[msg.id] ?? new Set()}
               onQuoteClick={jumpToMessage}
             />
             </div>

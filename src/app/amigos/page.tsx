@@ -571,13 +571,9 @@ function ChatPanel({
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const { messages: msgs } = await api.getMessages(friend.id, lastIdRef.current);
+        const { messages: msgs } = await api.getMessages(friend.id);
+        setMessages(msgs);
         if (msgs.length > 0) {
-          setMessages((prev) => {
-            const existing = new Set(prev.map((m) => m.id));
-            const fresh = msgs.filter((m) => !existing.has(m.id));
-            return fresh.length > 0 ? [...prev, ...fresh] : prev;
-          });
           lastIdRef.current = msgs[msgs.length - 1].id;
         }
       } catch { /* silent */ }
@@ -609,10 +605,29 @@ function ChatPanel({
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }
 
+  async function handleReactMessage(messageId: number, emoji: string) {
+    const { message } = await api.reactToDmMessage(messageId, emoji);
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
+  }
+
+  async function handleTogglePin(messageId: number) {
+    await api.pinDmMessage(messageId);
+    const { messages: msgs } = await api.getMessages(friend.id);
+    setMessages(msgs);
+    lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+  }
+
   /* Convert to unified type */
   const chatMessages = useMemo(
-    () => messages.map((m) => dmToChatMessage(m, currentUserId)),
-    [messages, currentUserId],
+    () => messages.map((m) => {
+      const chatMessage = dmToChatMessage(m, currentUserId);
+      if (m.senderId === friend.id) {
+        chatMessage.senderName = friend.displayName;
+        chatMessage.senderPhotoUrl = friend.photoUrl;
+      }
+      return chatMessage;
+    }),
+    [messages, currentUserId, friend.displayName, friend.id, friend.photoUrl],
   );
 
   return (
@@ -643,6 +658,9 @@ function ChatPanel({
           onReply={handleReply}
           onEdit={handleEditMessage}
           onDelete={handleDeleteMessage}
+          onReact={handleReactMessage}
+          onTogglePin={handleTogglePin}
+          showAvatar
           onReplyMessage={(m) => {
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);

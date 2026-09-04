@@ -527,13 +527,20 @@ create index if not exists message_reactions_message_idx
 create table if not exists pinned_messages (
   message_id bigint not null,
   message_kind text not null check (message_kind in ('GROUP', 'DM')),
+  conversation_id text,
   pinned_by text not null references profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (message_id, message_kind)
 );
 
+alter table pinned_messages add column if not exists conversation_id text;
+
 create index if not exists pinned_messages_kind_idx
   on pinned_messages(message_kind, message_id);
+
+create unique index if not exists pinned_messages_one_per_conversation_idx
+  on pinned_messages(message_kind, conversation_id)
+  where conversation_id is not null;
 
 -- ── Weekly league ───────────────────────────────────────────────────────────
 create table if not exists league_standings (

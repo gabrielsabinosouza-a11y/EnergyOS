@@ -960,13 +960,9 @@ function GroupDetailPanel({
     if (tab !== "chat") return;
     const interval = setInterval(async () => {
       try {
-        const { messages: msgs } = await api.getGroupMessages(group.id, lastIdRef.current);
+        const { messages: msgs } = await api.getGroupMessages(group.id);
+        setMessages(msgs);
         if (msgs.length > 0) {
-          setMessages((prev) => {
-            const existing = new Set(prev.map((m) => m.id));
-            const fresh = msgs.filter((m) => !existing.has(m.id));
-            return fresh.length > 0 ? [...prev, ...fresh] : prev;
-          });
           lastIdRef.current = msgs[msgs.length - 1].id;
         }
       } catch { /* silent */ }
@@ -1048,6 +1044,26 @@ function GroupDetailPanel({
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
     } catch {
       setMessageError("Não foi possível apagar a mensagem.");
+    }
+  }
+
+  async function handleReactMessage(messageId: number, emoji: string) {
+    try {
+      const { message } = await api.reactToGroupMessage(messageId, emoji);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
+    } catch {
+      setMessageError("Não foi possível reagir à mensagem.");
+    }
+  }
+
+  async function handleTogglePin(messageId: number) {
+    try {
+      await api.pinGroupMessage(messageId);
+      const { messages: msgs } = await api.getGroupMessages(group.id);
+      setMessages(msgs);
+      lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+    } catch {
+      setMessageError("Não foi possível fixar a mensagem.");
     }
   }
 
@@ -1302,6 +1318,8 @@ function GroupDetailPanel({
           onReply={handleReply}
           onEdit={handleEditMessage}
           onDelete={handleDeleteMessage}
+          onReact={handleReactMessage}
+          onTogglePin={handleTogglePin}
           onReplyMessage={(m) => {
             const gm = messages.find((x) => x.id === m.id);
             if (gm) setReplyingTo(gm);
@@ -1338,9 +1356,15 @@ function GroupDetailPanel({
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
                   <Sticker size={15} />
                 </button>
-                <input type="text" placeholder="Mensagem..." value={input}
+                <input type="text" placeholder={replyingTo ? "Responder..." : "Mensagem..."} value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(input); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (replyingTo) handleReply(input, replyingTo.id);
+                      else handleSend(input);
+                    }
+                  }}
                   className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none" />
                 {recording ? (
                   <button onClick={stopRecording}
@@ -1353,7 +1377,10 @@ function GroupDetailPanel({
                     <Mic size={15} />
                   </button>
                 )}
-                <button onClick={() => handleSend(input)} disabled={!input.trim() || sending || recording}
+                <button onClick={() => {
+                  if (replyingTo) handleReply(input, replyingTo.id);
+                  else handleSend(input);
+                }} disabled={!input.trim() || sending || recording}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30">
                   {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 </button>

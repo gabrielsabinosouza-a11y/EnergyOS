@@ -2,8 +2,7 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import Image from "next/image";
-import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage, type GardenGrowthStage, type GardenStatus, type EnergyType } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage, type EnergyType } from "@/lib/energy-assets";
 import type { GardenEntry } from "@/lib/db/focus";
 
 interface IsometricGardenProps {
@@ -12,21 +11,30 @@ interface IsometricGardenProps {
   className?: string;
 }
 
+const TILE_WIDTH = 116;
+const TILE_HEIGHT = 78;
+const X_STEP = TILE_WIDTH / 2;
+const Y_STEP = TILE_HEIGHT / 2;
+const ICON_SIZE = 54;
+
 export function IsometricGarden({ entries, onEntryClick, className = "" }: IsometricGardenProps) {
-  const { grid, cols } = useMemo(() => {
-    // Keep the garden compact and aligned with the list view.
+  const layout = useMemo(() => {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
-    const targetCols = isMobile ? 3 : 5;
-    const cols = Math.min(targetCols, Math.max(1, Math.ceil(Math.sqrt(entries.length))));
+    const cols = Math.min(isMobile ? 3 : 5, Math.max(1, Math.ceil(Math.sqrt(entries.length))));
+    const rows = Math.ceil(entries.length / cols);
+    const span = rows + cols - 2;
 
-    // Arrange entries in grid order (left to right, top to bottom)
-    const grid = entries.map((entry, index) => ({
-      entry,
-      row: Math.floor(index / cols),
-      col: index % cols,
-    }));
-
-    return { grid, cols };
+    return {
+      cols,
+      rows,
+      width: span * X_STEP + TILE_WIDTH,
+      height: span * Y_STEP + TILE_HEIGHT,
+      items: entries.map((entry, index) => ({
+        entry,
+        row: Math.floor(index / cols),
+        col: index % cols,
+      })),
+    };
   }, [entries]);
 
   if (entries.length === 0) {
@@ -40,19 +48,19 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   }
 
   return (
-    <div className={`isometric-garden ${className}`}>
+    <div
+      className={`panel w-full overflow-auto p-3 sm:p-5 ${className}`}
+      style={{ maxHeight: "min(62vh, 560px)" }}
+    >
       <div
-        className="isometric-grid"
+        className="relative mx-auto"
         style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gap: "8px",
-          transform: "rotateX(60deg) rotateZ(-45deg)",
-          transformStyle: "preserve-3d",
-          perspective: "1000px",
+          width: layout.width,
+          height: layout.height,
+          minWidth: "100%",
         }}
       >
-        {grid.map(({ entry, row, col }) => {
+        {layout.items.map(({ entry, row, col }, index) => {
           const cfg = ENERGY_CONFIGS[entry.energyType as EnergyType];
           if (!cfg) {
             if (process.env.NODE_ENV !== "production") {
@@ -60,142 +68,93 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             }
             return null;
           }
+
           const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
           const isWithered = entry.status === "withered";
           const isGrowing = entry.status === "growing";
-
-          // Calculate visual properties based on growth stage
-          const sizeMultiplier = entry.growthStage === "mature" ? 1.2 : entry.growthStage === "young" ? 1.0 : 0.7;
-          const opacity = isWithered ? 0.4 : isGrowing ? 0.7 : 1.0;
-          const filter = isWithered ? "grayscale(100%) brightness(0.7)" : "none";
-
-          // Stagger animation based on position
-          const delay = (row * cols + col) * 0.05;
+          const left = (col - row) * X_STEP + (layout.rows - 1) * X_STEP;
+          const top = (col + row) * Y_STEP;
+          const delay = index * 0.04;
 
           return (
-            <motion.div
+            <motion.button
               key={entry.id}
-              className="garden-tile"
-              initial={{ opacity: 0, scale: 0, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{
-                delay,
-                type: "spring",
-                stiffness: 260,
-                damping: 20
-              }}
+              type="button"
+              aria-label={`${cfg.label} — ${entry.durationMinutes} minutos`}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay, type: "spring", stiffness: 260, damping: 22 }}
+              className="absolute border-0 bg-transparent p-0"
               style={{
-                position: "relative",
-                aspectRatio: "1",
-                overflow: "visible",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                left,
+                top,
+                width: TILE_WIDTH,
+                height: TILE_HEIGHT,
                 cursor: onEntryClick ? "pointer" : "default",
+                zIndex: row + col + 1,
               }}
               onClick={() => onEntryClick?.(entry)}
             >
-              {/* Tile base */}
-              <div
-                className="tile-base"
+              <span
+                aria-hidden="true"
+                className="absolute inset-0"
                 style={{
-                  position: "absolute",
-                  inset: 0,
+                  clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                   background: isWithered
-                    ? "linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%)"
-                    : `linear-gradient(135deg, ${cfg.glow}22 0%, ${cfg.glow}11 100%)`,
-                  borderRadius: "8px",
-                  transform: "translateZ(-20px)",
-                  boxShadow: isWithered
-                    ? "0 4px 8px rgba(0,0,0,0.3)"
-                    : `0 8px 16px ${cfg.glow}44`,
-                  border: isWithered
-                    ? "1px solid #3a3a3a"
-                    : `1px solid ${cfg.accent}44`,
+                    ? "linear-gradient(135deg, #4a4a4a, #292929)"
+                    : `linear-gradient(135deg, ${cfg.glow}66, ${cfg.glow}18)`,
+                  border: `1px solid ${isWithered ? "#555" : cfg.accent}66`,
+                  boxShadow: `0 8px 16px ${isWithered ? "rgba(0,0,0,.28)" : cfg.glow}`,
                 }}
               />
 
-              {/* Plant/energy */}
-              <div
+              <span
                 aria-hidden="true"
+                className="absolute rounded-[50%]"
                 style={{
-                  position: "absolute",
-                  bottom: "20%",
-                  width: "58%",
-                  height: "18%",
-                  borderRadius: "50%",
-                  background: "rgba(0, 0, 0, 0.38)",
+                  left: "25%",
+                  bottom: "14%",
+                  width: "50%",
+                  height: 9,
+                  background: "rgba(0, 0, 0, .42)",
                   filter: "blur(4px)",
-                  transform: "translateZ(2px)",
                 }}
               />
-              <motion.div
-                className="plant-container"
-                animate={isGrowing ? {
-                  scale: [1, 1.05, 1],
-                  opacity: [0.7, 0.8, 0.7]
-                } : {}}
-                transition={isGrowing ? {
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                } : {}}
+
+              <motion.span
+                aria-hidden="true"
+                className="absolute left-1/2 flex items-end justify-center"
+                animate={isGrowing ? { scale: [1, 1.04, 1] } : undefined}
+                transition={isGrowing ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : undefined}
                 style={{
-                  position: "relative",
-                  width: "76%",
-                  height: "76%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  // The tile is isometric; cancel that transform for the
-                  // artwork so the energy stands upright above its shadow.
-                  transform: `rotateZ(45deg) rotateX(-60deg) translateY(-18px) translateZ(28px) scale(${sizeMultiplier})`,
-                  opacity,
-                  filter,
+                  width: ICON_SIZE,
+                  height: ICON_SIZE,
+                  left: `calc(50% - ${ICON_SIZE / 2}px)`,
+                  bottom: "18%",
+                  transform: "translateY(-18px)",
+                  opacity: isWithered ? 0.45 : isGrowing ? 0.75 : 1,
+                  filter: isWithered ? "grayscale(100%) brightness(.7)" : "none",
                 }}
               >
-                <Image
+                {/* Fixed bounds keep source canvases, including Flame, visually consistent. */}
+                <img
                   src={cfg.assets[energyStage]}
-                  alt={cfg.label}
-                  fill
-                  style={{ objectFit: "contain", maxHeight: "100%" }}
-                  unoptimized
+                  alt=""
+                  width={ICON_SIZE}
+                  height={ICON_SIZE}
+                  draggable={false}
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 />
-              </motion.div>
+              </motion.span>
 
-              {/* Growth indicator for growing plants */}
               {isGrowing && (
-                <motion.div
-                  className="growth-indicator"
-                  animate={{ opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{
-                    position: "absolute",
-                    top: "-8px",
-                    right: "-8px",
-                    width: "16px",
-                    height: "16px",
-                    borderRadius: "50%",
-                    background: cfg.accent,
-                    boxShadow: `0 0 8px ${cfg.accent}`,
-                  }}
+                <span
+                  aria-hidden="true"
+                  className="absolute right-[18%] top-[18%] h-2.5 w-2.5 rounded-full"
+                  style={{ background: cfg.accent, boxShadow: `0 0 8px ${cfg.accent}` }}
                 />
               )}
-
-              {/* Withered indicator */}
-              {isWithered && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "-6px",
-                    right: "-6px",
-                    fontSize: "12px",
-                  }}
-                >
-                  🥀
-                </div>
-              )}
-            </motion.div>
+            </motion.button>
           );
         })}
       </div>

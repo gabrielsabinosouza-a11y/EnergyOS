@@ -169,6 +169,17 @@ export interface DirectMessage {
   replyToBody?: string;
   replyToSenderName?: string;
   editedAt?: string;
+  reactions?: MessageReactionSummary[];
+  isPinned?: boolean;
+  pinnedAt?: string;
+  pinnedBy?: string;
+}
+
+export interface MessageReactionSummary {
+  emoji: string;
+  count: number;
+  userNames: string[];
+  reactedByMe: boolean;
 }
 
 /* Unified message type used by the shared ChatThread component */
@@ -186,6 +197,10 @@ export interface ChatMessage {
   replyToBody?: string;
   replyToSenderName?: string;
   editedAt?: string;
+  reactions?: MessageReactionSummary[];
+  isPinned?: boolean;
+  pinnedAt?: string;
+  pinnedBy?: string;
 }
 
 /** Convert a DirectMessage to the unified ChatMessage format */
@@ -199,6 +214,10 @@ export function dmToChatMessage(dm: DirectMessage, currentUserId: string): ChatM
     replyToBody: dm.replyToBody,
     replyToSenderName: dm.replyToSenderName,
     editedAt: dm.editedAt,
+    reactions: dm.reactions,
+    isPinned: dm.isPinned,
+    pinnedAt: dm.pinnedAt,
+    pinnedBy: dm.pinnedBy,
   };
 }
 
@@ -218,6 +237,10 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     replyToBody: (gm as GroupMessage & { replyToBody?: string }).replyToBody,
     replyToSenderName: (gm as GroupMessage & { replyToSenderName?: string }).replyToSenderName,
     editedAt: (gm as GroupMessage & { editedAt?: string }).editedAt,
+    reactions: gm.reactions,
+    isPinned: gm.isPinned,
+    pinnedAt: gm.pinnedAt,
+    pinnedBy: gm.pinnedBy,
   };
 }
 
@@ -273,6 +296,10 @@ export interface GroupMessage {
   replyToBody?: string;
   replyToSenderName?: string;
   editedAt?: string;
+  reactions?: MessageReactionSummary[];
+  isPinned?: boolean;
+  pinnedAt?: string;
+  pinnedBy?: string;
 }
 
 export interface LeagueEntry {

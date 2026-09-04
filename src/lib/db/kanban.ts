@@ -6,7 +6,8 @@ import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories
 import { recordMissionProgress } from "./daily-quests";
 import { awardKanbanXP } from "./xp";
 import { addCoins } from "./settings";
-import { KANBAN_XP_BY_PRIORITY, KANBAN_DONE_COINS } from "../daily-limits";
+import { addLeagueXP } from "./league-new";
+import { KANBAN_DONE_XP, KANBAN_DONE_COINS } from "../daily-limits";
 
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
@@ -322,26 +323,57 @@ export async function moveKanbanTask(
   }
 }
 
-/** Awards XP (priority-scaled) + coins when a kanban task first enters "done". Returns amounts credited (0 if already awarded). */
+/**
+ * Awards fixed XP + coins when a kanban task first enters "done". Returns the
+ * amounts credited (0/0 if already awarded, not owned, or not actually "done").
+ *
+ * The whole award is a single transaction: if either the XP credit or the coin
+ * grant fails, both are rolled back together (never XP without coins or the
+ * reverse). Idempotency is the xp_ledger unique index (profile_id, source,
+ * source_id) — moving a task to "done" repeatedly forever pays exactly once.
+ */
 export async function awardKanbanCompletion(
   profileId: string,
   taskId: number,
 ): Promise<{ xpAwarded: number; coinsAwarded: number }> {
-  // Look up priority so XP scales correctly
-  const taskRow = await pool.query<{ priority: string }>(
-    `select priority from kanban_tasks where id = $1`,
-    [taskId],
-  );
-  const priority = taskRow.rows[0]?.priority ?? "low";
-  const baseXP = KANBAN_XP_BY_PRIORITY[priority] ?? KANBAN_XP_BY_PRIORITY.low;
+  parseProfileId(profileId);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
 
-  const xpAwarded = await awardKanbanXP(profileId, taskId, baseXP);
-  let coinsAwarded = 0;
-  if (xpAwarded > 0) {
-    await addCoins(profileId, KANBAN_DONE_COINS);
-    coinsAwarded = KANBAN_DONE_COINS;
+    // Re-verify ownership + the actual "done" transition inside the same
+    // transaction that credits the rewards. Closing the gap between the route's
+    // pre-read and this award guarantees no reward is paid for tasks the caller
+    // doesn't own, and that only a real transition to "done" (status now reads
+    // "done") triggers it.
+    const statusRow = await client.query<{ status: string }>(
+      `select status from kanban_tasks where id = $1 and profile_id = $2 for update`,
+      [taskId, profileId],
+    );
+    if (statusRow.rows[0]?.status !== "done") {
+      await client.query("commit");
+      return { xpAwarded: 0, coinsAwarded: 0 };
+    }
+
+    const xpAwarded = await awardKanbanXP(profileId, taskId, KANBAN_DONE_XP, client);
+    let coinsAwarded = 0;
+    if (xpAwarded > 0) {
+      await addCoins(profileId, KANBAN_DONE_COINS, client);
+      coinsAwarded = KANBAN_DONE_COINS;
+    }
+    await client.query("commit");
+
+    // League XP is applied after commit: addLeagueXP writes its own tables on
+    // separate connections and cannot join this transaction (see creditXP).
+    if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
+
+    return { xpAwarded, coinsAwarded };
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-  return { xpAwarded, coinsAwarded };
 }
 
 export async function promoteTaskToKanban(profileId: string, taskId: number): Promise<KanbanTask> {

@@ -78,7 +78,7 @@ export async function ensureDailyTasksSchema(): Promise<void> {
   await pool.query(`
     do $$ begin
       alter table xp_ledger add constraint xp_ledger_source_check
-        check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal'));
+        check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
     exception when duplicate_object then null;
     end $$`);
 }

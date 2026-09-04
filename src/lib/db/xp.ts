@@ -1,4 +1,5 @@
 import pool from "../db";
+import type { Pool, PoolClient } from "pg";
 import type { UserXP } from "@/types";
 import { parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
@@ -45,7 +46,7 @@ export async function creditXP(
   source: string,
   sourceId: number | string,
   xp: number,
-  options?: { recordMission?: boolean; questDate?: string },
+  options?: { recordMission?: boolean; questDate?: string; db?: Pool | PoolClient },
 ): Promise<number> {
   parseProfileId(profileId);
   if (!Number.isFinite(xp) || xp <= 0) return 0;
@@ -53,11 +54,12 @@ export async function creditXP(
   const finalXP = await calculateXPWithBoost(profileId, xp);
   if (!Number.isFinite(finalXP) || finalXP <= 0) return 0;
 
+  const db = options?.db ?? pool;
   const sourceKey = String(sourceId ?? "");
   // The ledger has a unique index on (profile_id, source, coalesce(source_id,'')).
   // ON CONFLICT DO NOTHING makes every award idempotent: a duplicate insert
   // (double-submit, race, replay) returns no row and nothing else is credited.
-  const ledger = await pool.query(
+  const ledger = await db.query(
     `insert into xp_ledger (profile_id, source, source_id, xp_amount)
      values ($1, $2, $3, $4)
      on conflict (profile_id, source, coalesce(source_id, '')) do nothing
@@ -66,7 +68,7 @@ export async function creditXP(
   );
   if (!ledger.rows[0]) return 0;
 
-  await pool.query(
+  await db.query(
     `insert into user_xp (profile_id, total_xp, level, updated_at)
      values ($1, $2, 1, now())
      on conflict (profile_id) do update set total_xp = user_xp.total_xp + $2, updated_at = now()`,
@@ -76,9 +78,15 @@ export async function creditXP(
     await recordMissionProgress(profileId, "XP_EARNED", {
       incrementBy: finalXP,
       questDate: options?.questDate,
+      ...(options?.db ? { client: options.db } : {}),
     });
   }
-  await addLeagueXP(profileId, finalXP);
+  // When running inside a caller-owned transaction (options.db), the league
+  // board is deferred to the caller — addLeagueXP touches its own tables and
+  // connections and cannot join this transaction. See also the docstring below.
+  if (!options?.db) {
+    await addLeagueXP(profileId, finalXP);
+  }
   return finalXP;
 }
 
@@ -105,11 +113,16 @@ export async function awardTaskXP(profileId: string, taskId: number, xp: number)
   await creditXP(profileId, "task", taskId, xp);
 }
 
-export async function awardKanbanXP(profileId: string, kanbanTaskId: number, baseXP = 15): Promise<number> {
+export async function awardKanbanXP(
+  profileId: string,
+  kanbanTaskId: number,
+  baseXP = 15,
+  db?: Pool | PoolClient,
+): Promise<number> {
   parseProfileId(profileId);
   // creditXP is idempotent (unique ledger row per source_id), so the extra
   // existence check is only a fast path.
-  return creditXP(profileId, "kanban_task", kanbanTaskId, baseXP);
+  return creditXP(profileId, "kanban_task", kanbanTaskId, baseXP, db ? { db } : undefined);
 }
 
 export async function awardStreakBonus(profileId: string, streakDays: number): Promise<number> {

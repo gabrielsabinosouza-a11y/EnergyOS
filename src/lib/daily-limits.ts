@@ -22,8 +22,8 @@ export const STREAK_BONUS_XP_PER_DAY = 5;
 export const STREAK_BONUS_CAP = 50;
 
 // ── Kanban ────────────────────────────────────────────────────────────────────
-export const KANBAN_XP_BY_PRIORITY: Record<string, number> = { low: 10, medium: 15, high: 20 };
-export const KANBAN_DONE_COINS = 5;
+export const KANBAN_DONE_XP = 10;
+export const KANBAN_DONE_COINS = 10;
 
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;
