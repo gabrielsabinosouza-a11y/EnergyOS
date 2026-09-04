@@ -589,7 +589,7 @@ export default function JardimPage() {
                                 )}
                                 {selectedEntry.status === "alive" && (
                                   <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
-                                    ✓ Viva
+                                    ✓ Completo
                                   </span>
                                 )}
                               </div>

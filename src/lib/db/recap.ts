@@ -5,6 +5,8 @@ import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
 import { NEW_TIER_ORDER } from "@/lib/league-new-meta";
 import { addCoins } from "./settings";
+import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
+import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
@@ -63,45 +65,120 @@ function resolveTag(totalMinutes: number): string {
   return "Explorador";
 }
 
-// ─── Queries ─────────────────────────────────────────────────────────────────
+// ─── Longest streak for a month ──────────────────────────────────────────────
 
-export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
-  parseProfileId(profileId);
-  const result = await pool.query<RecapRow>(
-    `select r.id, r.recap_month, r.total_focus_minutes, r.longest_streak, r.league_tier,
-            r.league_promoted, r.productivity_tag, r.has_been_shared, r.generated_at,
-            (select count(*) from garden_entries g
-             where g.profile_id = r.profile_id
-               and date_trunc('year', g.planted_at) = date_trunc('year', r.recap_month)) as garden_count
-     from monthly_recaps r
-     where r.profile_id = $1 and r.recap_month >= $2::date
-     order by r.recap_month desc`,
-    [profileId, ENERGYOS_LAUNCH_MONTH],
+/**
+ * Retorna o maior run de dias consecutivos "vivos" (uma sessão de foco que
+ * atingiu a duração-alvo OU um dia protegido por escudo) que contenha ao menos
+ * um dia dentro de [monthStart, monthEnd).
+ *
+ * Espelha a semântica de `calculateStreak`: hoje não conta como "buraco" antes
+ * de terminar — se hoje ainda não foi qualificado, o run de ontem é preservado.
+ *
+ * OBS: os dias "vivos" vêm dos dados reais (focus_sessions + streak_shield_usage),
+ * NÃO de `streak_shield_usage.streak_value_at_use`, que só existia quando um
+ * escudo era consumido e por isso subestimava (ou zerava) o streak de quem
+ * mantinha a sequência sem usar escudos.
+ */
+async function computeLongestStreakForMonth(
+  profileId: string,
+  monthStart: string,
+  monthEnd: string,
+): Promise<number> {
+  const today = todayIso();
+  // Janela estendida antes do mês para capturar runs que começaram no mês
+  // anterior e continuam dentro do mês alvo. 400 dias espelha a janela de
+  // histórico do próprio sistema de streak (`computeStreak`), garantindo que
+  // nenhuma sequência longa seja truncada na borda da janela.
+  const windowStart = addDaysIso(monthStart, -400);
+  const windowEnd = addDaysIso(monthEnd, 400);
+
+  // 1) Dias com sessão de foco qualificada (mesmo predicado do streak).
+  const focus = await pool.query<{ day: string }>(
+    `select distinct to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day
+       from focus_sessions
+      where profile_id = $2
+        and ended_at is not null
+        and duration_minutes * 1.0 >= target_duration_minutes * $3
+        and (ended_at at time zone $1)::date >= $4::date
+        and (ended_at at time zone $1)::date < $5::date`,
+    [APP_TIMEZONE, profileId, STREAK_COMPLETION_THRESHOLD, windowStart, windowEnd],
   );
-  return result.rows.map((row) => mapRecap(profileId, row));
+  const alive = new Set<string>(focus.rows.map((r) => r.day));
+
+  // 2) Dias protegidos por escudo também mantêm o streak vivo.
+  const protectedDays = await pool.query<{ day: string }>(
+    `select distinct to_char(used_on_date, 'YYYY-MM-DD') as day
+       from streak_shield_usage
+      where profile_id = $1
+        and used_on_date >= $2::date
+        and used_on_date < $3::date`,
+    [profileId, windowStart, windowEnd],
+  );
+  for (const row of protectedDays.rows) alive.add(row.day);
+
+  // 3) Percorre dia a dia acumulando runs. Um run só é considerado "dentro do
+  //    mês" se algum de seus dias cai em [monthStart, monthEnd). Hoje não
+  //    qualificado não quebra o run (o dia ainda está em andamento).
+  let best = 0;
+  let run = 0;
+  let runTouchesMonth = false;
+  for (
+    let cursor = windowStart;
+    cursor < windowEnd;
+    cursor = addDaysIso(cursor, 1)
+  ) {
+    const inMonth = cursor >= monthStart && cursor < monthEnd;
+    if (inMonth) runTouchesMonth = true;
+
+    const isAlive = alive.has(cursor);
+    const isOpenToday = cursor === today && !isAlive;
+
+    if (isAlive) {
+      run += 1;
+    } else if (isOpenToday) {
+      if (run > best && runTouchesMonth) best = run;
+    } else {
+      if (run > best && runTouchesMonth) best = run;
+      run = 0;
+      runTouchesMonth = false;
+    }
+  }
+  if (run > best && runTouchesMonth) best = run;
+  return best;
 }
 
-export async function generateRecap(
-  profileId: string,
-  monthDate: string,
-): Promise<MonthlyRecap> {
-  parseProfileId(profileId);
-  const monthStart = resolveMonthStart(monthDate);
-  const monthEnd = getMonthEnd(monthStart);
+// ─── Queries ─────────────────────────────────────────────────────────────────
 
-  const [focusRow, streakRow, leagueRow] = await Promise.all([
+/** Primeiro dia do mês corrente no fuso do produto (YYYY-MM-01). */
+function currentMonthStart(): string {
+  return todayIso().slice(0, 7) + "-01";
+}
+
+/** Instante UTC (ISO) em que o mês termina (primeiro dia do mês seguinte, 00:00 em São Paulo). */
+function monthEndUtcIso(monthStart: string): string {
+  const endDay = getMonthEnd(monthStart);
+  return new Date(`${endDay}T00:00:00-03:00`).toISOString();
+}
+
+interface RecapSummary {
+  totalFocusMinutes: number;
+  longestStreak: number;
+  leagueTier?: string;
+  promoted: boolean;
+}
+
+async function buildRecapSummary(
+  profileId: string,
+  monthStart: string,
+  monthEnd: string,
+): Promise<RecapSummary> {
+  const [focusRow, leagueRow] = await Promise.all([
     pool.query<{ minutes: string | number }>(
       `select coalesce(sum(duration_minutes), 0) as minutes
        from focus_sessions
        where profile_id = $1 and ended_at is not null
          and started_at >= $2::date and started_at < $3::date`,
-      [profileId, monthStart, monthEnd],
-    ),
-    pool.query<{ max_streak: string | number }>(
-      `select coalesce(max(streak_value_at_use), 0) as max_streak
-       from streak_shield_usage
-       where profile_id = $1
-         and used_on_date >= $2::date and used_on_date < $3::date`,
       [profileId, monthStart, monthEnd],
     ),
     // Tier do mês: usamos o sistema ATUAL (league_groups / league_group_members),
@@ -133,14 +210,21 @@ export async function generateRecap(
   ]);
 
   const totalMinutes = Number(focusRow.rows[0]?.minutes ?? 0);
-  const longestStreak = Number(streakRow.rows[0]?.max_streak ?? 0);
+  const longestStreak = await computeLongestStreakForMonth(profileId, monthStart, monthEnd);
   // Normaliza para o sistema atual; se o valor não for um tier válido, descarta.
   const rawTier = leagueRow.rows[0]?.tier ?? undefined;
-  const tier = rawTier && NEW_TIER_ORDER.includes(rawTier.toUpperCase() as typeof NEW_TIER_ORDER[number])
+  const leagueTier = rawTier && NEW_TIER_ORDER.includes(rawTier.toUpperCase() as typeof NEW_TIER_ORDER[number])
     ? rawTier.toUpperCase()
     : undefined;
-  const promoted = false;
 
+  return { totalFocusMinutes: totalMinutes, longestStreak, leagueTier, promoted: false };
+}
+
+async function upsertRecap(
+  profileId: string,
+  monthStart: string,
+  summary: RecapSummary,
+): Promise<MonthlyRecap> {
   const result = await pool.query<RecapRow>(
     `insert into monthly_recaps
        (profile_id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag)
@@ -153,7 +237,15 @@ export async function generateRecap(
        productivity_tag = excluded.productivity_tag,
        generated_at = now()
      returning id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, generated_at`,
-    [profileId, monthStart, totalMinutes, longestStreak, tier ?? null, promoted, resolveTag(totalMinutes)],
+    [
+      profileId,
+      monthStart,
+      summary.totalFocusMinutes,
+      summary.longestStreak,
+      summary.leagueTier ?? null,
+      summary.promoted,
+      resolveTag(summary.totalFocusMinutes),
+    ],
   );
 
   // Conta as energias/auras plantadas no jardim ao longo do mesmo ano do recap.
@@ -172,13 +264,69 @@ export async function generateRecap(
   };
 }
 
-// ── Share tracking & reward ────────────────────────────────────────────────────────
+export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<RecapRow>(
+    `select r.id, r.recap_month, r.total_focus_minutes, r.longest_streak, r.league_tier,
+            r.league_promoted, r.productivity_tag, r.has_been_shared, r.generated_at,
+            (select count(*) from garden_entries g
+             where g.profile_id = r.profile_id
+               and date_trunc('year', g.planted_at) = date_trunc('year', r.recap_month)) as garden_count
+     from monthly_recaps r
+     where r.profile_id = $1 and r.recap_month >= $2::date
+     order by r.recap_month desc`,
+    [profileId, ENERGYOS_LAUNCH_MONTH],
+  );
+
+  const currentMonth = currentMonthStart();
+
+  const output: MonthlyRecap[] = [];
+  for (const row of result.rows) {
+    const monthStart =
+      typeof row.recap_month === "string" ? row.recap_month : row.recap_month.toISOString().slice(0, 10);
+    if (monthStart === currentMonth) {
+      // Mês corrente: dados atualizados ao vivo a cada visualização.
+      const monthEnd = getMonthEnd(monthStart);
+      const summary = await buildRecapSummary(profileId, monthStart, monthEnd);
+      output.push(await upsertRecap(profileId, monthStart, summary));
+    } else {
+      // Mês fechado: se foi gerado antes do fim do mês (ficou "congelado" com
+      // dados parciais), finaliza UMA vez com os dados finais do mês. Depois
+      // disso o snapshot fica travado.
+      const generatedAt = new Date(row.generated_at).toISOString();
+      const isClosedMonth = monthStart < currentMonth;
+      const needsFinalize = isClosedMonth && generatedAt < monthEndUtcIso(monthStart);
+      if (needsFinalize) {
+        const monthEnd = getMonthEnd(monthStart);
+        const summary = await buildRecapSummary(profileId, monthStart, monthEnd);
+        output.push(await upsertRecap(profileId, monthStart, summary));
+      } else {
+        output.push(mapRecap(profileId, row));
+      }
+    }
+  }
+  return output;
+}
+
+export async function generateRecap(
+  profileId: string,
+  monthDate: string,
+): Promise<MonthlyRecap> {
+  parseProfileId(profileId);
+  const monthStart = resolveMonthStart(monthDate);
+  const monthEnd = getMonthEnd(monthStart);
+
+  const summary = await buildRecapSummary(profileId, monthStart, monthEnd);
+  return upsertRecap(profileId, monthStart, summary);
+}
+
+// ─── Share tracking & reward ────────────────────────────────────────────────
 
 const SHARE_REWARD_COINS = 50;
 
 export async function markRecapShared(profileId: string, recapId: number): Promise<{ newBalance: number; wasFirstShare: boolean }> {
   parseProfileId(profileId);
-  
+
   const result = await pool.query<{ has_been_shared: boolean | null; }>(
     `update monthly_recaps
      set has_been_shared = true
@@ -186,23 +334,23 @@ export async function markRecapShared(profileId: string, recapId: number): Promi
      returning has_been_shared`,
     [recapId, profileId],
   );
-  
+
   const wasFirstShare = (result.rowCount ?? 0) > 0;
-  
+
   if (wasFirstShare) {
     // Award coins for first share
     const settings = await addCoins(profileId, SHARE_REWARD_COINS);
     return { newBalance: settings.coins, wasFirstShare: true };
   }
-  
+
   // Return current balance (no change)
   const currentBalance = await pool.query<{ coins: number }>(
     `select coins from user_settings where profile_id = $1`,
     [profileId],
   );
-  
-  return { 
-    newBalance: currentBalance.rows[0]?.coins ?? 0, 
-    wasFirstShare: false 
+
+  return {
+    newBalance: currentBalance.rows[0]?.coins ?? 0,
+    wasFirstShare: false,
   };
 }

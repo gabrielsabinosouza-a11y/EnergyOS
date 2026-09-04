@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage, type EnergyType } from "@/lib/energy-assets";
 import type { GardenEntry } from "@/lib/db/focus";
@@ -11,31 +11,45 @@ interface IsometricGardenProps {
   className?: string;
 }
 
-const TILE_WIDTH = 116;
-const TILE_HEIGHT = 78;
-const X_STEP = TILE_WIDTH / 2;
-const Y_STEP = TILE_HEIGHT / 2;
-const ICON_SIZE = 54;
+const TILE_W = 96;
+const TILE_H = 68;
+const X_STEP = 102;
+const Y_STEP = 50;
+const PAD_X = 30;
+const PAD_Y = 26;
+
+/** Quantas plantas por linha cabem na largura disponível do terreno. */
+function columnsForWidth(width: number): number {
+  if (width >= 640) return 6;
+  if (width >= 520) return 5;
+  if (width >= 400) return 4;
+  return 3;
+}
 
 export function IsometricGarden({ entries, onEntryClick, className = "" }: IsometricGardenProps) {
-  const layout = useMemo(() => {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
-    const cols = Math.min(isMobile ? 3 : 5, Math.max(1, Math.ceil(Math.sqrt(entries.length))));
-    const rows = Math.ceil(entries.length / cols);
-    const span = rows + cols - 2;
+  const terrainRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(6);
 
-    return {
-      cols,
-      rows,
-      width: span * X_STEP + TILE_WIDTH,
-      height: span * Y_STEP + TILE_HEIGHT,
-      items: entries.map((entry, index) => ({
-        entry,
-        row: Math.floor(index / cols),
-        col: index % cols,
-      })),
+  useEffect(() => {
+    const el = terrainRef.current;
+    if (!el) return;
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      setCols(columnsForWidth(avail));
     };
-  }, [entries]);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const terrainWidth = useMemo(() => cols * X_STEP - 6 + PAD_X * 2, [cols]);
+
+  const rows = Math.max(1, Math.ceil(entries.length / cols));
+  const terrainHeight = Math.max(180, (rows - 1) * Y_STEP + TILE_H + PAD_Y * 2);
+
+  const slots = useMemo(() => entries.map((entry, index) => ({ entry, index })), [entries]);
 
   if (entries.length === 0) {
     return (
@@ -49,18 +63,33 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
 
   return (
     <div
-      className={`panel w-full overflow-auto p-3 sm:p-5 ${className}`}
+      ref={terrainRef}
+      className={`panel overflow-y-auto overflow-x-hidden p-3 sm:p-5 ${className}`}
       style={{ maxHeight: "min(62vh, 560px)" }}
     >
       <div
-        className="relative mx-auto"
+        className="relative mx-auto overflow-hidden rounded-2xl"
         style={{
-          width: layout.width,
-          height: layout.height,
-          minWidth: "100%",
+          width: "100%",
+          maxWidth: terrainWidth,
+          height: terrainHeight,
+          background:
+            "linear-gradient(180deg, #23271f 0%, #1d211a 45%, #161a14 100%)",
+          boxShadow: "inset 0 2px 0 rgba(255,255,255,0.06), inset 0 -18px 28px -18px rgba(0,0,0,0.6)",
         }}
       >
-        {layout.items.map(({ entry, row, col }, index) => {
+        {/* Faint grid of the terrain plots */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
+            backgroundSize: `${X_STEP}px ${Y_STEP * 2}px`,
+          }}
+        />
+
+        {slots.map(({ entry, index }) => {
           const cfg = ENERGY_CONFIGS[entry.energyType as EnergyType];
           if (!cfg) {
             if (process.env.NODE_ENV !== "production") {
@@ -69,11 +98,13 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             return null;
           }
 
+          const row = Math.floor(index / cols);
+          const col = index % cols;
           const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
           const isWithered = entry.status === "withered";
           const isGrowing = entry.status === "growing";
-          const left = (col - row) * X_STEP + (layout.rows - 1) * X_STEP;
-          const top = (col + row) * Y_STEP;
+          const left = PAD_X + col * X_STEP;
+          const top = PAD_Y + row * Y_STEP;
           const delay = index * 0.04;
 
           return (
@@ -88,13 +119,13 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
               style={{
                 left,
                 top,
-                width: TILE_WIDTH,
-                height: TILE_HEIGHT,
+                width: TILE_W,
+                height: TILE_H,
                 cursor: onEntryClick ? "pointer" : "default",
-                zIndex: row + col + 1,
               }}
               onClick={() => onEntryClick?.(entry)}
             >
+              {/* Diamond plot */}
               <span
                 aria-hidden="true"
                 className="absolute inset-0"
@@ -102,12 +133,15 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                   clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                   background: isWithered
                     ? "linear-gradient(135deg, #4a4a4a, #292929)"
-                    : `linear-gradient(135deg, ${cfg.glow}66, ${cfg.glow}18)`,
-                  border: `1px solid ${isWithered ? "#555" : cfg.accent}66`,
-                  boxShadow: `0 8px 16px ${isWithered ? "rgba(0,0,0,.28)" : cfg.glow}`,
+                    : isGrowing
+                      ? `linear-gradient(135deg, ${cfg.glow}, ${cfg.glow}26)`
+                      : `linear-gradient(135deg, ${cfg.glow}88, ${cfg.glow}26)`,
+                  border: `1px solid ${isWithered ? "#555" : cfg.accent}88`,
+                  boxShadow: `0 8px 16px ${isWithered ? "rgba(0,0,0,.28)" : `${cfg.glow}55`}`,
                 }}
               />
 
+              {/* Ground shadow */}
               <span
                 aria-hidden="true"
                 className="absolute rounded-[50%]"
@@ -124,24 +158,23 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
               <motion.span
                 aria-hidden="true"
                 className="absolute left-1/2 flex items-end justify-center"
-                animate={isGrowing ? { scale: [1, 1.04, 1] } : undefined}
+                animate={isGrowing ? { scale: [1, 1.06, 1] } : undefined}
                 transition={isGrowing ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : undefined}
                 style={{
-                  width: ICON_SIZE,
-                  height: ICON_SIZE,
-                  left: `calc(50% - ${ICON_SIZE / 2}px)`,
-                  bottom: "18%",
+                  width: 56,
+                  height: 56,
+                  left: "calc(50% - 28px)",
+                  bottom: "16%",
                   transform: "translateY(-18px)",
-                  opacity: isWithered ? 0.45 : isGrowing ? 0.75 : 1,
+                  opacity: isWithered ? 0.45 : isGrowing ? 0.8 : 1,
                   filter: isWithered ? "grayscale(100%) brightness(.7)" : "none",
                 }}
               >
-                {/* Fixed bounds keep source canvases, including Flame, visually consistent. */}
                 <img
                   src={cfg.assets[energyStage]}
                   alt=""
-                  width={ICON_SIZE}
-                  height={ICON_SIZE}
+                  width={56}
+                  height={56}
                   draggable={false}
                   style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 />
@@ -150,11 +183,34 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
               {isGrowing && (
                 <span
                   aria-hidden="true"
-                  className="absolute right-[18%] top-[18%] h-2.5 w-2.5 rounded-full"
+                  className="absolute right-[16%] top-[16%] h-2.5 w-2.5 rounded-full"
                   style={{ background: cfg.accent, boxShadow: `0 0 8px ${cfg.accent}` }}
                 />
               )}
             </motion.button>
+          );
+        })}
+
+        {/* Empty plots fill the last row so the terrain looks like a cohesive bed */}
+        {Array.from({ length: cols * rows - entries.length }).map((_, i) => {
+          const index = entries.length + i;
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          return (
+            <span
+              key={`empty-${index}`}
+              aria-hidden="true"
+              className="absolute"
+              style={{
+                left: PAD_X + col * X_STEP,
+                top: PAD_Y + row * Y_STEP,
+                width: TILE_W,
+                height: TILE_H,
+                clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px dashed rgba(255,255,255,0.07)",
+              }}
+            />
           );
         })}
       </div>

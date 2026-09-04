@@ -41,6 +41,7 @@ import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
 import { ENERGYOS_LAUNCH_MONTH } from "@/types";
 import { formatStat } from "@/lib/format";
+import { todayIso } from "@/lib/db/dates";
 
 // Lê a imagem escolhida e a comprime para uma thumbnail compacta (data URL),
 // evitando depender de serviços externos de upload.
@@ -267,6 +268,7 @@ export default function PerfilPage() {
   }
 
   const displayName = user.displayName ?? "Usuário";
+  const currentRecapMonth = `${todayIso().slice(0, 7)}-01`;
   const avatarSrc = photoUrl ?? user.photoURL ?? undefined;
   const createdAt = user.metadata.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
@@ -799,6 +801,7 @@ export default function PerfilPage() {
                       gardenCount: recap.gardenCount,
                       hasBeenShared: recap.hasBeenShared,
                     }}
+                    isLive={recap.recapMonth === currentRecapMonth}
                     userName={displayName}
                     userPhotoUrl={user.photoURL ?? undefined}
                     onCoinsAwarded={(_amount, _newBalance) => {

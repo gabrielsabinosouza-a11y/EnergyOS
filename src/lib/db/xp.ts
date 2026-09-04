@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
 import type { UserXP } from "@/types";
 import { parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
@@ -46,7 +46,7 @@ export async function creditXP(
   source: string,
   sourceId: number | string,
   xp: number,
-  options?: { recordMission?: boolean; questDate?: string; db?: Pool | PoolClient },
+  options?: { recordMission?: boolean; questDate?: string; db?: PoolClient },
 ): Promise<number> {
   parseProfileId(profileId);
   if (!Number.isFinite(xp) || xp <= 0) return 0;
@@ -117,7 +117,7 @@ export async function awardKanbanXP(
   profileId: string,
   kanbanTaskId: number,
   baseXP = 15,
-  db?: Pool | PoolClient,
+  db?: PoolClient,
 ): Promise<number> {
   parseProfileId(profileId);
   // creditXP is idempotent (unique ledger row per source_id), so the extra

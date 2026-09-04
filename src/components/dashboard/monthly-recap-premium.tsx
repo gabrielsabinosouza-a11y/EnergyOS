@@ -31,6 +31,8 @@ interface MonthlyRecapPremiumProps {
   userPhotoUrl?: string;
   onShare?: (blob: Blob) => void;
   onCoinsAwarded?: (amount: number, newBalance: number) => void;
+  /** Recap do mês corrente (ainda em andamento) — dados atualizados ao vivo. */
+  isLive?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -813,6 +815,7 @@ export function MonthlyRecapPremium({
   userPhotoUrl,
   onShare: onExternalShare,
   onCoinsAwarded,
+  isLive,
 }: MonthlyRecapPremiumProps) {
   const [open, setOpen] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -980,12 +983,19 @@ export function MonthlyRecapPremium({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--text)]">Ver recap de {monthLabel}</p>
           <p className="truncate text-xs text-[var(--text-muted)]">
+            {isLive ? "Mês em andamento — dados atualizados até agora · " : ""}
             {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")} de sequência
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
-          Recap
-        </span>
+        {isLive ? (
+          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+            Ao vivo
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+            Recap
+          </span>
+        )}
       </motion.button>
 
       {/* Modal */}

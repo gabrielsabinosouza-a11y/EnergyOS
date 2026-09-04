@@ -114,9 +114,14 @@ export function streakIconSource(streak: number): string {
   return streak > 0 ? "/streak/streak_alive.png" : "/streak/streak_lost.png";
 }
 
-/** Map garden growth stage to energy visual stage */
+/** Map garden growth stage to energy visual stage.
+ *
+ * A plant whose session finished (status "alive") reached its final form and
+ * must render its own full-stage illustration ("Completo"). Only sessions still
+ * in progress ("growing") show the intermediate sprout/young visuals. */
 export function mapGrowthStageToEnergyStage(growthStage: GardenGrowthStage, status: GardenStatus): EnergyStage {
   if (status === "withered") return "extinguished";
+  if (status === "alive") return "full";
   if (growthStage === "sprout") return "spark";
   if (growthStage === "young") return "forming";
   return "full";

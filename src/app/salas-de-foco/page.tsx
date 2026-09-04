@@ -31,7 +31,7 @@ import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
 import { api } from "@/lib/api-client";
 import type { FocusRoom } from "@/lib/db/focus-rooms";
-import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType, type EnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, ENERGY_TYPES, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
 import { CircularDurationPicker, FocusDurationReadout } from "@/components/dashboard/circular-duration-picker";
 import {
   FOCUS_DURATION_DEFAULT_MINUTES,
@@ -70,13 +70,6 @@ function loadRoomSession(roomId: number): PersistedRoomSession | null {
 
 function formatTime(totalSeconds: number): string {
   return formatCountdownMmSs(totalSeconds);
-}
-
-function resolveStage(progress: number, isRunning: boolean): EnergyStage {
-  if (!isRunning) return "spark";
-  if (progress < 25) return "spark";
-  if (progress < 70) return "forming";
-  return "full";
 }
 
 // ─── Small avatar with optional energy badge ─────────────────────────────────
@@ -825,6 +818,7 @@ export default function FocusRoomsPage() {
               <EnergyRingCenter
                 energyType={selectedEnergyType}
                 ringSize={CREATE_RING_SIZE}
+                stage="full"
                 onPick={() => setShowEnergyPicker(true)}
               />
             </div>
@@ -876,6 +870,7 @@ export default function FocusRoomsPage() {
               <EnergyRingCenter
                 energyType={selectedEnergyType}
                 ringSize={JOIN_RING_SIZE}
+                stage="full"
                 onPick={() => setShowEnergyPicker(true)}
               />
             </div>
@@ -1019,7 +1014,7 @@ export default function FocusRoomsPage() {
               <EnergyRingCenter
                 energyType={myEnergy}
                 ringSize={RING_SIZE}
-                stage={myParticipant?.sessionStatus === "left" ? "extinguished" : resolveStage(myProgress, running)}
+                stage={myParticipant?.sessionStatus === "left" ? "extinguished" : "full"}
                 dimmed={running && myParticipant?.sessionStatus === "left"}
                 onPick={
                   room.status !== "completed" && myParticipant?.sessionStatus !== "left"

@@ -71,9 +71,51 @@ function mapGardenRow(row: GardenRow): GardenEntry {
   };
 }
 
-/** Busca as energias plantadas pelo usuário, da mais recente para a mais antiga. */
+/** Busca as energias plantadas pelo usuário, da mais recente para a mais antiga.
+ *
+ * Self-heals historical rows that never got finalized: entries whose focus
+ * session already ended are reconciled to their true state (alive/withered +
+ * stage), so a completed energy never renders as an eternal "Crescendo...". */
 export async function getGardenEntries(profileId: string): Promise<GardenEntry[]> {
   parseProfileId(profileId);
+
+  // Rows linked to a (non-room) session that already ended: resolve precisely.
+  await pool.query(
+    `update garden_entries ge
+     set status = case
+           when fs.duration_minutes >= fs.target_duration_minutes then 'alive'
+           else 'withered'
+         end,
+         growth_stage = case
+           when fs.duration_minutes >= 60 then 'mature'
+           when fs.duration_minutes >= 30 then 'young'
+           else 'sprout'
+         end,
+         duration_minutes = fs.duration_minutes
+     from focus_sessions fs
+     where ge.profile_id = $1
+       and ge.session_id = fs.id
+       and ge.status = 'growing'
+       and fs.ended_at is not null`,
+    [profileId],
+  );
+
+  // Legacy imports represent already-completed focus sessions — never "growing".
+  await pool.query(
+    `update garden_entries
+     set status = 'alive',
+         growth_stage = case
+           when duration_minutes >= 60 then 'mature'
+           when duration_minutes >= 30 then 'young'
+           else 'sprout'
+         end
+     where profile_id = $1
+       and status = 'growing'
+       and session_id is null
+       and legacy_key is not null`,
+    [profileId],
+  );
+
   const result = await pool.query<GardenRow>(
     `select id, profile_id, session_id, energy_type, duration_minutes, reward, planted_at, growth_stage, status
      from garden_entries where profile_id = $1 order by planted_at desc, id desc`,
@@ -109,12 +151,13 @@ export async function importGardenEntries(profileId: string, entries: ImportGard
     const reward = Number.isFinite(Number(e.reward)) ? Math.max(1, Number(e.reward)) : 1;
     const planted = e.plantedAt ? new Date(e.plantedAt) : new Date();
     const stamped = isNaN(planted.getTime()) ? new Date() : planted;
+    const growthStage = getGrowthStage(minutes);
     const result = await pool.query<ImportRow>(
-      `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward, planted_at, legacy_key)
-       values ($1, null, $2, $3, $4, $5, $6)
+      `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward, planted_at, legacy_key, growth_stage, status)
+       values ($1, null, $2, $3, $4, $5, $6, $7, 'alive')
        on conflict (profile_id, legacy_key) where legacy_key is not null do nothing
        returning id`,
-      [profileId, energy, minutes, reward, stamped, e.legacyKey],
+      [profileId, energy, minutes, reward, stamped, e.legacyKey, growthStage],
     );
     if (result.rowCount && result.rowCount > 0) inserted += 1;
   }
