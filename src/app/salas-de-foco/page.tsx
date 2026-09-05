@@ -337,13 +337,25 @@ export default function FocusRoomsPage() {
         const owned = data.ownedAuras?.length ? data.ownedAuras : ["flame", "water"];
         setOwnedAuras(owned);
         const def = resolveDefaultEnergy(owned);
-        setSelectedEnergyType((prev) => {
-          const next = owned.includes(prev) ? prev : def;
-          selectEnergyRef.current = next;
-          return next;
-        });
+        // Restaura a aura persistida (mesma precedência do dashboard): Neon →
+        // default. Sem isso a sala sempre iniciava em "flame", ignorando a
+        // escolha do usuário mesmo quando ela estava salva no banco.
+        api.getSettings()
+          .then((s) => {
+            const saved = s.lastSelectedAura as EnergyType | undefined;
+            const next = saved && owned.includes(saved) && ENERGY_CONFIGS[saved] ? saved : def;
+            setSelectedEnergyType(next);
+            selectEnergyRef.current = next;
+          })
+          .catch((err: unknown) => {
+            console.warn("[salas] falha ao carregar a aura persistida:", err);
+            setSelectedEnergyType(def);
+            selectEnergyRef.current = def;
+          });
       })
-      .catch(() => { /* default flame+water */ });
+      .catch((err: unknown) => {
+        console.warn("[salas] falha ao carregar auras owned:", err);
+      });
   }, [loading, user]);
 
   // Resolve this user's profile id (the hashed form the server stores in
@@ -1414,6 +1426,12 @@ export default function FocusRoomsPage() {
             current={energyPickerCurrent}
             ownedAuras={ownedAurasSet}
             onSelect={(type) => {
+              // Persiste a escolha GLOBALMENTE (Neon) além do escopo da sala —
+              // antes, seleção feita aqui valia só para a sessão atual e o
+              // dashboard voltava para flame no reload.
+              api.updateLastSelectedAura(type).catch((err: unknown) => {
+                console.warn("[salas] não foi possível persistir a aura escolhida:", err);
+              });
               if (pageState === "room" && currentRoom) {
                 void handleSelectEnergy(type);
               } else {

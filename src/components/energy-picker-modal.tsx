@@ -57,15 +57,20 @@ export function EnergyPickerModal({
 
   return (
     <Modal onClose={onClose} variant="bottom-sheet">
-      <div className="glass-card w-full max-w-sm overflow-hidden p-5">
-        <div className="flex items-center justify-between mb-4">
+      {/* Coluna flex com teto de altura: o grid rola no meio e o card da Loja
+          fica fixo no rodapé — nunca invade conteúdo fora do popup. */}
+      <div className="glass-card mx-auto flex max-h-[min(72dvh,560px)] w-full max-w-sm flex-col overflow-hidden p-5">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Escolher energia</span>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] transition">
             <X size={15} />
           </button>
         </div>
 
-        <div className="max-h-[62dvh] space-y-4 overflow-y-auto overscroll-contain pr-1 -mr-1">
+        {/* Grid rolável: flex-1 + min-h-0 = ocupa o espaço restante sem estourar
+            o teto do painel (substitui o antigo max-h-[62dvh], que deixava o
+            popup total passar de 85% da tela em viewports baixos). */}
+        <div className="-mr-1 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
           {groups.map(({ rarity, types }) => {
             const rarityColor = AURA_RARITY_COLORS[rarity];
             return (
@@ -168,7 +173,7 @@ export function EnergyPickerModal({
 
         <button
           onClick={handleStoreLink}
-          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/10 py-2 text-[10px] font-medium text-[var(--accent)] transition hover:bg-[var(--accent)]/20"
+          className="mt-4 flex w-full shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/10 py-2 text-[10px] font-medium text-[var(--accent)] transition hover:bg-[var(--accent)]/20"
         >
           <Store size={12} />
           Auras bloqueadas podem ser compradas na Loja

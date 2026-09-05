@@ -220,7 +220,12 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const selectEnergy = (type: EnergyType) => {
     setSelectedEnergy(type);
     selectedEnergyRef.current = type;
-    api.updateLastSelectedAura(type).catch(() => { /* offline/dev fallback: keep local choice */ });
+    // Falhas NÃO são mais silenciosas: escolhas que "sumiam" no reload eram
+    // invisíveis com o catch vazio (todas as linhas de last_selected_aura
+    // estavam null no banco sem nenhum sinal de erro).
+    api.updateLastSelectedAura(type).catch((err: unknown) => {
+      console.warn("[focus-timer] não foi possível persistir a aura escolhida:", err);
+    });
   };
   useEffect(() => {
     durationRef.current = duration;
@@ -379,20 +384,32 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           persisted.sessionId;
 
         if (hasActiveSession) return;
-        const fallback = resolveDefaultEnergy(owned);
+        // Precedência ao restaurar: (1) aura persistida no Neon; (2) última
+        // escolha LOCAL desta máquina (localStorage da sessão — cobre o caso de
+        // o PATCH ter falhado); (3) default (flame ou primeira owned). O fluxo
+        // anterior ignorava (2) e sobrescrevia a escolha do usuário com flame
+        // sempre que o banco ainda não tinha valor.
+        const localChoice = persisted?.selectedEnergy;
+        const localFallback =
+          localChoice && owned.includes(localChoice) && ENERGY_CONFIGS[localChoice]
+            ? localChoice
+            : resolveDefaultEnergy(owned);
         api.getSettings()
           .then((s) => {
             const saved = s.lastSelectedAura as EnergyType | undefined;
-            const next = saved && owned.includes(saved) && ENERGY_CONFIGS[saved] ? saved : fallback;
+            const next = saved && owned.includes(saved) && ENERGY_CONFIGS[saved] ? saved : localFallback;
             setSelectedEnergy(next);
             selectedEnergyRef.current = next;
           })
-          .catch(() => {
-            setSelectedEnergy(fallback);
-            selectedEnergyRef.current = fallback;
+          .catch((err: unknown) => {
+            console.warn("[focus-timer] falha ao carregar a aura persistida:", err);
+            setSelectedEnergy(localFallback);
+            selectedEnergyRef.current = localFallback;
           });
       })
-      .catch(() => { /* default owns flame+water */ });
+      .catch((err: unknown) => {
+        console.warn("[focus-timer] falha ao carregar auras owned:", err);
+      });
   }, []);
 
   // Check notification permission on mount
