@@ -16,6 +16,7 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   xp_olympian: [1000, 10000, 50000],
   social_spark: [1, 5, 20],
   rarest_aura: [1],
+  squad_leader: [3, 10, 20, 35],
 };
 
 const META: Record<string, { title: string; description: string; category: string }> = {
@@ -27,6 +28,7 @@ const META: Record<string, { title: string; description: string; category: strin
   xp_olympian: { title: "XP Olympian", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Social Spark", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
+  squad_leader: { title: "Squad Leader", description: "Tenha o maior grupo onde você é dono", category: "social" },
 };
 
 function tierFor(value: number, thresholds: number[]): number {
@@ -99,6 +101,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     perfectWeeks,
     social,
     rarest,
+    squadLeader,
   ] = await Promise.all([
     pool.query<{ current_streak: number; longest_streak: number }>(
       `select current_streak, longest_streak from profiles where id = $1`,
@@ -139,6 +142,15 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
        where profile_id = $1 and achievement_id = 'rarest_aura'`,
       [profileId],
     ),
+    pool.query<{ largest: string | number }>(
+      `select max(cnt) as largest from (
+         select gm.group_id, count(*) as cnt
+         from group_members gm
+         where gm.profile_id = $1 and gm.role = 'OWNER' and gm.is_banned = false
+         group by gm.group_id
+       ) owned`,
+      [profileId],
+    ),
   ]);
 
   const longestStreak = Math.max(
@@ -155,6 +167,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     xp_olympian: userXP.totalXP,
     social_spark: Number(social.rows[0]?.friends ?? 0) + Number(social.rows[0]?.groups ?? 0),
     rarest_aura: rarest.rows[0]?.unlocked_tier ? 1 : 0,
+    squad_leader: Number(squadLeader.rows[0]?.largest ?? 0),
   };
 }
 

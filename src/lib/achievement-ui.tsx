@@ -1,6 +1,6 @@
 "use client";
 
-import { Trophy, Lock, X, Plus } from "lucide-react";
+import { Trophy, Lock, X, Plus, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
@@ -55,7 +55,9 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
   rarest_aura: ["/achievements/Top_1/top1.png"],
 };
 
-export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {};
+export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {
+  squad_leader: Users,
+};
 
 export const DEFAULT_ICON = Trophy;
 

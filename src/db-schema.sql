@@ -662,7 +662,8 @@ insert into achievements (id, title, description, category) values
   ('consistency_king', 'Consistency King','Semanas perfeitas de check-in',                'checkin'),
   ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
-  ('rarest_aura',      'Top 1 Global',   'Termine no topo da Liga Lendários',                'league')
+  ('rarest_aura',      'Top 1 Global',   'Termine no topo da Liga Lendários',                'league'),
+  ('squad_leader',     'Squad Leader',   'Tenha o maior grupo onde você é dono',             'social')
 on conflict (id) do nothing;
 
 -- Idempotency ledger for achievement rewards. Each (profile, achievement, tier)

@@ -330,7 +330,6 @@ function MessageBubble({
           className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
             isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"
           }`}
-          data-bubble
           onTouchStart={startLongPress}
           onTouchEnd={cancelLongPress}
           onTouchMove={cancelLongPress}
@@ -416,26 +415,8 @@ function MessageBubble({
           ) : null}
 
           {/* Hover menu trigger (desktop, always visible) */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = (
-                e.currentTarget.closest("[data-bubble]") ??
-                e.currentTarget.parentElement
-              )?.getBoundingClientRect();
-              if (rect) {
-                onContextMenu(
-                  { clientX: rect.right - 8, clientY: rect.top } as React.MouseEvent,
-                  msg,
-                );
-              }
-            }}
-            className={`absolute ${
-              isMe ? "left-1" : "right-1"
-            } top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex`}
-          >
-            <span className="text-[10px]">⋯</span>
-          </button>
+          {/* (moved out of the bubble — now rendered in the row wrapper,
+              outside the overflow-hidden bubble, so it never covers text) */}
         </div>
 
         {reactions.length > 0 && (
@@ -545,6 +526,7 @@ export function ChatThread({
     y: number;
     msg: ChatMessage;
   } | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -904,6 +886,9 @@ export function ChatThread({
             <div
               key={item.key}
               ref={(node) => { messageRefs.current[msg.id] = node; }}
+              onMouseEnter={() => setHoveredId(msg.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              className="group/message relative"
             >
             <MessageBubble
               msg={msg}
@@ -916,6 +901,26 @@ export function ChatThread({
               onReaction={toggleReaction}
               onQuoteClick={jumpToMessage}
             />
+            {/* Floating action trigger: rendered in the row's outer corner
+                (never over the bubble text), shown on hover (desktop). */}
+            {hoveredId === msg.id && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  handleContextMenu(
+                    { clientX: rect.right, clientY: rect.bottom + 4 } as React.MouseEvent,
+                    msg,
+                  );
+                }}
+                className={`absolute ${
+                  isMe ? "left-2" : "right-2"
+                } top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex`}
+              >
+                <span className="text-[10px]">⋯</span>
+              </button>
+            )}
             </div>
           );
         })}

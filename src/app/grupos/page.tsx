@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import {
-  ArrowLeft, ArrowUp, ArrowDown, Check, Crown, Loader2,
+  ArrowLeft, ArrowUp, ArrowDown, Check, Loader2,
   MessageCircle, Plus, Send, Timer, Trophy,
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
-  Sticker, ShieldCheck, Trash2, UserMinus,
+  Sticker, Trash2, UserMinus,
   ArrowRightLeft, VolumeX, Ban, MoreVertical,
   Sparkles,
 } from "lucide-react";
@@ -1437,6 +1437,7 @@ function GroupDetailPanel({
 
       {/* Chat tab */}
       {tab === "chat" && (
+        <div className="flex min-h-0 flex-1 flex-col">
         <ChatThread
           messages={chatMessages}
           currentUserId={currentUserId}
@@ -1522,6 +1523,7 @@ function GroupDetailPanel({
             </div>
           }
         />
+        </div>
       )}
 
       {/* Members tab */}
@@ -1551,8 +1553,8 @@ function GroupDetailPanel({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>
-                      {m.role === "OWNER" && <Crown size={13} className="shrink-0 text-[var(--orange)]" />}
-                      {m.role === "ADMIN" && <ShieldCheck size={13} className="shrink-0 text-[var(--accent)]" />}
+                      {m.role === "OWNER" && <Image src="/tags/owner.png" alt="Dono do grupo" width={14} height={14} className="h-[14px] w-auto shrink-0 object-contain" unoptimized />}
+                      {m.role === "ADMIN" && <Image src="/tags/admin.png" alt="Administrador" width={14} height={14} className="h-[14px] w-auto shrink-0 object-contain" unoptimized />}
                       {m.id === currentUserId && <span className="text-[9px] text-[var(--text-faint)]">(você)</span>}
                     </div>
                     {m.username && <p className="truncate text-xs text-[var(--text-muted)]">@{m.username}</p>}
