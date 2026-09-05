@@ -1,12 +1,21 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { getSettings, saveSettings, type SaveSettingsInput } from "@/lib/db/settings";
+import { getSettings, saveSettings, setLastSelectedAura, type SaveSettingsInput } from "@/lib/db/settings";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     return jsonOk(await getSettings(profileId));
+  });
+}
+
+export async function PATCH(request: NextRequest) {
+  return handleRoute(async () => {
+    const { profileId } = await requireAuth(request);
+    const body = await readJsonBody(request);
+    const auraType = body.lastSelectedAura === undefined ? null : (body.lastSelectedAura as string | null);
+    return jsonOk(await setLastSelectedAura(profileId, auraType));
   });
 }
 

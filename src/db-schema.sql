@@ -85,6 +85,10 @@ create table if not exists user_settings (
 -- Upgrade existing installs (idempotent; new installs already have the column)
 alter table user_settings add column if not exists sound_notifications_enabled boolean not null default true;
 
+-- Última aura/energia escolhida pelo usuário para sessões de foco, persistida
+-- entre dispositivos (fallback seguro para 'flame' quando indisponível).
+alter table user_settings add column if not exists last_selected_aura text;
+
 create index if not exists goals_profile_idx on goals(profile_id);
 create index if not exists habits_goal_idx on habits(goal_id);
 

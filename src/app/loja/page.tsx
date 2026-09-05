@@ -746,6 +746,21 @@ export default function LojaPage() {
     return Math.max(0, Math.floor((new Date(store.xpBoost.expiresAt).getTime() - Date.now()) / 1000));
   }, [store?.xpBoost?.expiresAt, boostTick]);
 
+  // Deep-link para uma seção (ex.: "?section=auras" ao tocar numa aura
+  // bloqueada no seletor de energia). Roda assim que a loja carrega, já que
+  // as seções só existem após o `store` ser resolvido.
+  const hasScrolledToSectionRef = useRef(false);
+  useEffect(() => {
+    if (!store || hasScrolledToSectionRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("section") !== "auras") return;
+    hasScrolledToSectionRef.current = true;
+    const target = document.getElementById("loja-auras");
+    if (target) {
+      requestAnimationFrame(() => target.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }, [store]);
+
   if (authLoading || loading || !store) {
     return (
       <AppShell>
@@ -1283,6 +1298,7 @@ export default function LojaPage() {
 
           {/* ─── Section 4: Auras ─────────────── */}
           <motion.section
+            id="loja-auras"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.3 }}

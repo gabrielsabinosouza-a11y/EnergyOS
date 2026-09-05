@@ -213,6 +213,15 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { selectedEnergyRef.current = selectedEnergy; }, [selectedEnergy]);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
+  // Pick a new aura: update the timer state immediately and persist the choice
+  // (fire-and-forget) so the next visit restores the same aura — ownership is
+  // already guaranteed by the picker, which disables non-owned types.
+  const selectEnergy = (type: EnergyType) => {
+    setSelectedEnergy(type);
+    selectedEnergyRef.current = type;
+    api.updateLastSelectedAura(type).catch(() => { /* offline/dev fallback: keep local choice */ });
+  };
   useEffect(() => {
     durationRef.current = duration;
     if (state === "idle") {
@@ -354,7 +363,9 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     }
   }, [state]);
 
-  // Load owned auras + equipped default from profile
+  // Load owned auras + equipped default from profile. Zero-in on the user's
+  // persisted last-picked aura when it's still owned/available; otherwise fall
+  // back to the default (flame or first owned) so the screen never breaks.
   useEffect(() => {
     api.getStore()
       .then((data) => {
@@ -367,11 +378,19 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           (persisted.status === "running" || persisted.status === "paused") &&
           persisted.sessionId;
 
-        if (!hasActiveSession) {
-          const def = resolveDefaultEnergy(owned);
-          setSelectedEnergy(def);
-          selectedEnergyRef.current = def;
-        }
+        if (hasActiveSession) return;
+        const fallback = resolveDefaultEnergy(owned);
+        api.getSettings()
+          .then((s) => {
+            const saved = s.lastSelectedAura as EnergyType | undefined;
+            const next = saved && owned.includes(saved) && ENERGY_CONFIGS[saved] ? saved : fallback;
+            setSelectedEnergy(next);
+            selectedEnergyRef.current = next;
+          })
+          .catch(() => {
+            setSelectedEnergy(fallback);
+            selectedEnergyRef.current = fallback;
+          });
       })
       .catch(() => { /* default owns flame+water */ });
   }, []);
@@ -804,7 +823,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
         <EnergyPickerModal
           current={selectedEnergy}
           ownedAuras={new Set(ownedAuras)}
-          onSelect={setSelectedEnergy}
+          onSelect={selectEnergy}
           onClose={() => setShowPicker(false)}
         />
       )}

@@ -402,6 +402,55 @@ export async function computeStreak(profileId: string, today: string): Promise<S
 }
 
 /**
+ * Historia real por dia para o calendario de sequencia: mapeia cada dia de um
+ * mes para o estado correspondente do streak, reutilizando o MESMO predicado de
+ * `computeStreak` (sessao de foco qualificada OR dia protegido por escudo).
+ * Nao recalcula o streak — so consulta o historico ja existente.
+ */
+export async function getStreakCalendar(
+  profileId: string,
+  year: number,
+  month: number,
+): Promise<Record<string, StreakDayStatus>> {
+  parseProfileId(profileId);
+
+  const fromDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const nextYear = month === 11 ? year + 1 : year;
+  const toDateExclusive = `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-01`;
+
+  // Dia "vivo" por sessao de foco qualificada (mesmo predicado do streak).
+  const sessions = await pool.query<{ day: string }>(
+    `select to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day
+       from focus_sessions
+      where profile_id = $2
+        and ended_at is not null
+        and duration_minutes * 1.0 >= target_duration_minutes * $4
+        and (ended_at at time zone $1)::date >= $3::date
+        and (ended_at at time zone $1)::date < $5::date`,
+    [APP_TIMEZONE, profileId, fromDate, STREAK_COMPLETION_THRESHOLD, toDateExclusive],
+  );
+
+  const byDate: Record<string, StreakDayStatus> = {};
+  for (const row of sessions.rows) byDate[row.day] = "success";
+
+  // Dia protegido por escudo (sobrescreve apenas onde nao houve sessao).
+  const protectedRes = await pool.query<{ day: string }>(
+    `select to_char(used_on_date, 'YYYY-MM-DD') as day
+       from streak_shield_usage
+      where profile_id = $1
+        and used_on_date >= $2::date
+        and used_on_date < $3::date`,
+    [profileId, fromDate, toDateExclusive],
+  );
+  for (const row of protectedRes.rows) {
+    if (!byDate[row.day]) byDate[row.day] = "protected";
+  }
+
+  return byDate;
+}
+
+/**
  * Real-time streak hook, fired by focus.ts right after a session completes with
  * its full target duration reached. On the FIRST qualifying session of the day
  * it re-runs the streak evaluation so the current streak (profile row, day log

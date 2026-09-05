@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -74,6 +74,8 @@ export interface HabitCompletionResult {
 export const api = {
   // Dashboard
   getDashboard: () => request<DashboardSnapshot>("/api/dashboard"),
+  getStreakCalendar: (year: number, month: number) =>
+    request<{ year: number; month: number; days: Record<string, StreakDayStatus> }>(`/api/streak-calendar?year=${year}&month=${month}`),
 
   // Perfil
   getProfile: () => request<{ user: User }>("/api/profile"),
@@ -130,6 +132,10 @@ export const api = {
   getSettings: () => request<UserSettings>("/api/settings"),
   saveSettings: (input: Partial<Omit<UserSettings, "profileId">>) =>
     request<UserSettings>("/api/settings", { method: "PUT", body: JSON.stringify(input) }),
+  // Aura/energia escolhida por último para o foco — upsert pontual, sem tocar
+  // nas demais preferências.
+  updateLastSelectedAura: (auraType: string | null) =>
+    request<UserSettings>("/api/settings", { method: "PATCH", body: JSON.stringify({ lastSelectedAura: auraType }) }),
 
   // Insights
   getInsights: (weekStart?: string) => request<{ insights: Insight[] }>(`/api/insights${weekStart ? `?weekStart=${weekStart}` : ""}`),

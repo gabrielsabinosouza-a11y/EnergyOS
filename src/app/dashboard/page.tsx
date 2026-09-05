@@ -21,6 +21,7 @@ import { XpBoostIndicator } from "@/components/xp-boost/xp-boost-indicator";
 import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
+import { StreakCalendarModal } from "@/components/dashboard/streak-calendar-modal";
 
 import type { Variants } from "framer-motion";
 
@@ -111,6 +112,7 @@ function DashboardContent() {
   const [checkinSaved, setCheckinSaved] = useState(false);
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
   const [streakPop, setStreakPop] = useState(false);
+  const [streakCalendarOpen, setStreakCalendarOpen] = useState(false);
   const prevStreakRef = useRef(0);
 
   useEffect(() => {
@@ -543,6 +545,7 @@ function DashboardContent() {
                   shieldCount={snapshot?.streak?.shieldCount ?? 0}
                   shouldPop={streakPop}
                   equippedShieldIconUrl={snapshot?.streak?.equippedShieldIconUrl}
+                  onOpen={() => setStreakCalendarOpen(true)}
                 />
               )}
             </div>
@@ -653,6 +656,13 @@ function DashboardContent() {
       </AnimatePresence>
 
       <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
+
+      <StreakCalendarModal
+        open={streakCalendarOpen}
+        streak={snapshot?.streak?.currentStreak ?? persistedStreak.current}
+        shieldCount={snapshot?.streak?.shieldCount ?? 0}
+        onClose={() => setStreakCalendarOpen(false)}
+      />
     </AppShell>
   );
 }
@@ -667,6 +677,7 @@ function StreakBadge({
   shieldCount,
   shouldPop,
   equippedShieldIconUrl,
+  onOpen,
 }: {
   streak: number;
   todayQualified: boolean;
@@ -675,6 +686,7 @@ function StreakBadge({
   shieldCount: number;
   shouldPop: boolean;
   equippedShieldIconUrl?: string;
+  onOpen?: () => void;
 }) {
   const progress = Math.min(streak / 30, 1);
   const circumference = 2 * Math.PI * 19;
@@ -750,6 +762,16 @@ function StreakBadge({
         ref={badgeRef}
         className={`streak-badge state-${state} ${atRisk ? "state-at-risk" : ""} ${shouldPop ? "pop" : ""}`}
         tabIndex={0}
+        role="button"
+        aria-label={onOpen ? "Abrir calendário da sequência" : undefined}
+        onClick={onOpen ? () => onOpen() : undefined}
+        onKeyDown={onOpen ? (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        } : undefined}
+        style={{ cursor: onOpen ? "pointer" : "default" }}
         onPointerEnter={open}
         onPointerLeave={() => setTipPos(null)}
         onFocus={open}

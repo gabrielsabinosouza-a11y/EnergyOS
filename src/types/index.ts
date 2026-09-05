@@ -396,6 +396,7 @@ export interface UserSettings {
   focusTime?: string;
   coins: number;
   soundNotificationsEnabled: boolean;
+  lastSelectedAura?: string;
 }
 
 export interface Metric {
