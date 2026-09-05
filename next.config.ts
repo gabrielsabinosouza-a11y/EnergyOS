@@ -4,11 +4,12 @@ import type { NextConfig } from "next";
 // Cloudinary; blocks framing, object embeds and form action hijacking.
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://apis.google.com https://accounts.google.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://*.cloudinary.com https://www.google-analytics.com https://*.google-analytics.com wss://*.firebaseio.com",
+  `frame-src 'self' https://accounts.google.com https://${process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN?.replace(/^https?:\/\//, '') ?? "energyos-bb7fd.firebaseapp.com"}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
