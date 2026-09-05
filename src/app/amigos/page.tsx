@@ -111,6 +111,7 @@ export default function AmigosPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* DM Chat */
@@ -145,11 +146,6 @@ export default function AmigosPage() {
     setSearchQuery(q);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const normalizedQuery = q.trim().replace(/^@+/, "");
-    if (normalizedQuery.length < 2) {
-      setSearchResults([]);
-      setSearching(false);
-      return;
-    }
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
@@ -259,13 +255,18 @@ export default function AmigosPage() {
               placeholder="Buscar usuarios..."
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() => {
+                setSearchFocused(true);
+                if (!searchQuery) handleSearch("");
+              }}
+              onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
               className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
             />
             {searching && <Loader2 size={16} className="shrink-0 animate-spin text-[var(--accent)]" />}
           </div>
 
           <AnimatePresence>
-            {searchResults.length > 0 && (
+            {searchFocused && searchResults.length > 0 && (
               <motion.div
                 variants={stagger}
                 initial="hidden"
@@ -273,6 +274,9 @@ export default function AmigosPage() {
                 exit="hidden"
                 className="mt-3 space-y-2"
               >
+                <p className="px-1 text-[10px] uppercase tracking-widest text-[var(--text-faint)]">
+                  {searchQuery.trim() ? "Sugestões de usuários" : "Usuários para conhecer"}
+                </p>
                 {searchResults.map((r) => (
                   <motion.div
                     key={r.id}

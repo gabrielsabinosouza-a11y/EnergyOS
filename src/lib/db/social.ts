@@ -30,8 +30,10 @@ function mapLite(row: ProfileLiteRow) {
 export async function searchUsers(profileId: string, query: string): Promise<UserSearchResult[]> {
   parseProfileId(profileId);
   const q = query.trim().replace(/^@+/, "");
-  if (q.length < 2) throw new ValidationError("Digite pelo menos 2 caracteres para buscar.");
   if (q.length > 80) throw new ValidationError("Busca muito longa.");
+  if (q.length === 1 && !/^[\p{L}\p{N}_-]$/u.test(q)) {
+    throw new ValidationError("Busca inválida.");
+  }
 
   const result = await pool.query<
     ProfileLiteRow & {
@@ -49,12 +51,18 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
        and greatest(f.requester_id, f.addressee_id) = greatest(p.id, $1))
      where p.id <> $1
        and (
-         lower(p.display_name) like lower($2)
-         or lower(coalesce(p.username, '')) like lower($2)
+         lower(p.display_name) like lower($3)
+         or lower(coalesce(p.username, '')) like lower($3)
        )
-     order by p.display_name asc
+     order by
+       case when lower(coalesce(p.username, '')) = lower($2) then 0
+            when lower(coalesce(p.username, '')) like lower($2) || '%' then 1
+            when lower(p.display_name) like lower($2) || '%' then 2
+            else 3 end,
+       p.last_active_at desc nulls last,
+       p.display_name asc
      limit 20`,
-    [profileId, `%${q}%`],
+    [profileId, q, q ? `%${q}%` : "%"],
   );
 
   return result.rows.map((row) => {
@@ -309,7 +317,7 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
     equippedDecorationId: row.equipped_decoration_id ?? undefined,
     hasCustomBanner: row.has_custom_banner ?? false,
     bannerImageUrl: row.banner_image_url ?? undefined,
-    achievements: [],
+    achievements,
     featuredAchievements: featured,
     isFriend: false,
     isOwner: false,
