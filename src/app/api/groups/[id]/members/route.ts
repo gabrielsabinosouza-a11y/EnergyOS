@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
-import { removeMember, setMemberMuted, updateMemberRole } from "@/lib/db/groups";
+import { removeMember, setMemberMuted, setMemberBanned, updateMemberRole } from "@/lib/db/groups";
 import type { GroupRole } from "@/types";
 
 type Period = "WEEK" | "MONTH" | "YEAR" | "ALL_TIME";
@@ -50,6 +50,10 @@ export async function PATCH(
     }
     if (body.muted !== undefined) {
       await setMemberMuted(profileId, Number(id), targetProfileId, Boolean(body.muted));
+      return NextResponse.json({ success: true });
+    }
+    if (body.banned !== undefined) {
+      await setMemberBanned(profileId, Number(id), targetProfileId, Boolean(body.banned));
       return NextResponse.json({ success: true });
     }
     if (!ROLES.includes(role as GroupRole)) {

@@ -31,6 +31,7 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
   const [editingPlan, setEditingPlan] = useState<WeeklyPlan | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCategoryId, setEditCategoryId] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const selectedCategoryId = newCategoryId || firstCategoryId;
 
@@ -162,23 +163,17 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
                     key={plan.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className={`group relative rounded-lg p-1.5 text-[10px] leading-tight cursor-pointer ${plan.completedAt ? "line-through opacity-50" : ""}`}
+                    className={`cursor-pointer rounded-lg p-1.5 text-[10px] leading-tight ${plan.completedAt ? "line-through opacity-50" : ""}`}
                     style={{ borderLeft: `2px solid ${plan.category.color}` }}
                     onClick={() => {
                       setEditingPlan(plan);
                       setEditTitle(plan.title);
                       setEditCategoryId(plan.categoryId);
+                      setConfirmDelete(false);
                     }}
                     title={`${plan.title} · ${plan.category.name}`}
                   >
                     <span className="text-[var(--text)] block truncate">{plan.title}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(plan.id); }}
-                      aria-label={`Excluir plano ${plan.title}`}
-                      className="tap absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500/80 text-white"
-                    >
-                      <X size={8} />
-                    </button>
                   </motion.div>
                 ))}
               </div>
@@ -252,12 +247,20 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
               <button
                 type="button"
                 onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    return;
+                  }
                   onDelete(editingPlan.id);
                   setEditingPlan(null);
                 }}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-400/10 rounded-lg transition-colors cursor-pointer"
+                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                  confirmDelete
+                    ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                    : "text-red-400 hover:bg-red-400/10"
+                }`}
               >
-                <X size={13} /> Excluir
+                <X size={13} /> {confirmDelete ? "Confirmar exclusão?" : "Excluir"}
               </button>
 
               <button

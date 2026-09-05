@@ -381,6 +381,8 @@ create table if not exists group_members (
   primary key (group_id, profile_id)
 );
 alter table group_members add column if not exists is_muted boolean not null default false;
+alter table group_members add column if not exists is_banned boolean not null default false;
+create index if not exists group_members_banned_idx on group_members(group_id) where is_banned;
 
 -- Migrate existing groups role data (lowercase old values -> uppercase new set),
 -- and swap the single-column check constraint. Drop the old constraint first so

@@ -313,6 +313,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ profileId, role }),
     }),
+  setGroupMemberBanned: (id: number, profileId: string, banned: boolean) =>
+    request<{ success: true }>(`/api/groups/${id}/members`, {
+      method: "PATCH",
+      body: JSON.stringify({ profileId, banned }),
+    }),
   removeGroupMember: (id: number, profileId: string) =>
     request<{ success: true }>(`/api/groups/${id}/members`, {
       method: "DELETE",

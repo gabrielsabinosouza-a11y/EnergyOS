@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
   Sticker, Shield, ShieldCheck, Trash2, UserMinus,
-  ArrowRightLeft, VolumeX,
+  ArrowRightLeft, VolumeX, Ban,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -18,7 +18,7 @@ import { groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
-import type { FriendSummary, GroupDetail, GroupMessage, GroupSummary } from "@/types";
+import type { FriendSummary, GroupDetail, GroupMessage, GroupSummary, GroupMember } from "@/types";
 import type { GroupLeaderboardEntry, MemberContribution } from "@/lib/db/group-leaderboard";
 import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/group-milestones";
 
@@ -46,6 +46,64 @@ function fmtMinutes(m: number): string {
   const h = Math.floor(m / 60);
   const rem = m % 60;
   return rem > 0 ? `${h}h ${rem}min` : `${h}h`;
+}
+
+type MemberAction =
+  | { type: "ban"; member: GroupMember }
+  | { type: "kick"; member: GroupMember }
+  | { type: "promote"; member: GroupMember }
+  | { type: "demote"; member: GroupMember }
+  | { type: "mute"; member: GroupMember }
+  | { type: "transfer"; member: GroupMember };
+
+function MemberActionMenu({
+  anchor, actions, busy, onAction, onClose,
+}: {
+  anchor: { x: number; y: number };
+  actions: MemberAction[];
+  busy: boolean;
+  onAction: (a: MemberAction) => void;
+  onClose: () => void;
+}) {
+  const icons: Record<MemberAction["type"], React.ReactNode> = {
+    ban: <Ban size={13} />,
+    kick: <UserMinus size={13} />,
+    promote: <ArrowUp size={13} />,
+    demote: <ArrowDown size={13} />,
+    mute: <VolumeX size={13} />,
+    transfer: <ArrowRightLeft size={13} />,
+  };
+  const labels: Record<MemberAction["type"], string> = {
+    ban: "Banir do grupo",
+    kick: "Expulsar",
+    promote: "Promover a admin",
+    demote: "Rebaixar a membro",
+    mute: "Silenciar",
+    transfer: "Transferir propriedade",
+  };
+  return (
+    <>
+      <div className="fixed inset-0 z-50" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass-card fixed z-50 w-52 overflow-hidden rounded-xl border-[var(--border)] p-1 shadow-xl"
+        style={{ left: anchor.x, top: anchor.y }}
+      >
+        {actions.map((a) => (
+          <button
+            key={a.type}
+            disabled={busy}
+            onClick={() => onAction(a)}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--text)] transition hover:bg-[var(--accent-bg)] disabled:opacity-40"
+          >
+            {icons[a.type]}
+            {labels[a.type]}
+          </button>
+        ))}
+      </motion.div>
+    </>
+  );
 }
 
 function UserAvatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: string }; size?: number }) {
@@ -565,8 +623,23 @@ export default function GruposPage() {
   /* Detail view */
   const [activeGroup, setActiveGroup] = useState<GroupDetail | null>(null);
 
+  /* Current user's app-level profile id (parseProfileId(uid)). All ownership
+     comparisons (member.id, senderId, etc.) must use this, NEVER user.uid. */
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+
+  const currentUserId = myProfileId ?? user?.uid ?? "";
+
   /* Conversation list context menu */
   const [listMenu, setListMenu] = useState<{ x: number; y: number; group: GroupSummary } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api.getProfile()
+      .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [user]);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -675,7 +748,7 @@ export default function GruposPage() {
             <GroupDetailPanel
               key={`detail-${activeGroup.id}`}
               group={activeGroup}
-              currentUserId={user.uid}
+              currentUserId={currentUserId}
               reduced={reduced}
               onBack={() => setActiveGroup(null)}
               onRead={(groupId) => setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, unreadCount: 0 } : g))}
@@ -906,6 +979,7 @@ function GroupDetailPanel({
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingIcon, setSavingIcon] = useState(false);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const [memberMenu, setMemberMenu] = useState<{ x: number; y: number; member: GroupMember } | null>(null);
   const [confirmAction, setConfirmAction] = useState<"leave" | "delete" | null>(null);
   const [inviteIds, setInviteIds] = useState<string[]>([]);
   const [friends, setFriends] = useState<FriendSummary[]>([]);
@@ -1176,6 +1250,38 @@ function GroupDetailPanel({
     } finally {
       setBusyMemberId(null);
     }
+  }
+
+  async function runMemberAction(action: MemberAction) {
+    setMemberMenu(null);
+    if (busyMemberId) return;
+    const m = action.member;
+    setBusyMemberId(m.id);
+    setMessageError("");
+    try {
+      if (action.type === "ban") {
+        await api.setGroupMemberBanned(group.id, m.id, true);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isBanned: true } : x) } : g);
+      } else if (action.type === "kick") {
+        await api.removeGroupMember(group.id, m.id);
+        setGroup((g) => g ? { ...g, members: g.members.filter((x) => x.id !== m.id) } : g);
+      } else if (action.type === "promote" || action.type === "demote") {
+        const role = action.type === "promote" ? "ADMIN" : "MEMBER";
+        await api.updateGroupMemberRole(group.id, m.id, role);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, role } : x) } : g);
+      } else if (action.type === "mute") {
+        await api.setGroupMemberMuted(group.id, m.id, !m.isMuted);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: !m.isMuted } : x) } : g);
+      } else if (action.type === "transfer") {
+        await api.groupAction(group.id, "transfer", { targetProfileId: m.id });
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, role: "OWNER" } : x.id === currentUserId ? { ...x, role: "ADMIN" } : x) } : g);
+      }
+    } catch (e) {
+      setMessageError(e instanceof Error ? e.message : "Operação falhou.");
+    } finally {
+      setBusyMemberId(null);
+    }
+    onRefresh?.();
   }
 
   async function saveSettings() {

@@ -10,6 +10,67 @@ import { getGroupTotalMinutes, getGroupMemberContributions, getGroupGlobalRank, 
 
 const GROUP_EMOJIS = new Set(["⚡", "🔥", "✨", "💎", "🌙", "☀️", "🌊", "🌿", "🎯", "💜", "🌀", "⭐", "🚀", "🧠"]);
 
+/** Role hierarchy: higher rank = more authority. Used to gate moderation. */
+const ROLE_HIERARCHY: Record<GroupRole, number> = { OWNER: 3, ADMIN: 2, MEMBER: 1 };
+
+/** Helper to resolve a group membership's role + ban state in one query. */
+async function resolveMember(
+  groupId: number,
+  profileId: string,
+): Promise<{ role: GroupRole; isBanned: boolean } | null> {
+  const result = await pool.query<{ role: string; is_banned: boolean }>(
+    `select role, coalesce(is_banned, false) as is_banned from group_members where group_id = $1 and profile_id = $2`,
+    [groupId, profileId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { role: row.role as GroupRole, isBanned: row.is_banned };
+}
+
+/** Can the actor promote/demote the target to the requested role? Only owner. */
+export function canPromote(
+  actorRole: GroupRole | null,
+  targetRole: GroupRole,
+  requestedRole: GroupRole,
+): boolean {
+  if (actorRole !== "OWNER") return false;
+  if (targetRole === "OWNER") return false; // owner cannot be re-role'd
+  if (requestedRole === "OWNER") return false; // ownership via transfer only
+  if (requestedRole === targetRole) return false;
+  return true;
+}
+
+/** Can the actor ban the target? Owner bans anyone except self; admin bans members only. */
+export function canBan(actorRole: GroupRole | null, targetProfileId: string, actorProfileId: string, targetRole: GroupRole): boolean {
+  if (!actorRole) return false;
+  if (actorProfileId === targetProfileId) return false; // cannot ban self
+  if (actorRole === "OWNER") return true;
+  if (actorRole === "ADMIN") return targetRole === "MEMBER";
+  return false;
+}
+
+/** Can the actor kick (remove) the target? Owner only. */
+export function canKick(actorRole: GroupRole | null, actorProfileId: string, targetProfileId: string, targetRole: GroupRole): boolean {
+  if (!actorRole || actorRole !== "OWNER") return false;
+  if (actorProfileId === targetProfileId) return false; // cannot kick self
+  if (targetRole === "OWNER") return false; // owner is protected
+  return true;
+}
+
+/** Can the actor edit group settings (description / icon)? Owner only. */
+export function canEditGroupSettings(actorRole: GroupRole | null): boolean {
+  return actorRole === "OWNER";
+}
+
+/** Can the actor delete a message sent by the target role? Owner deletes anyone; admin deletes members only. */
+export function canDeleteMessageGroup(actorRole: GroupRole | null, messageSenderId: string, actorProfileId: string, senderRole: GroupRole): boolean {
+  if (!actorRole) return false;
+  if (actorProfileId === messageSenderId) return true; // always allowed to delete own message
+  if (actorRole === "OWNER") return true;
+  if (actorRole === "ADMIN") return senderRole === "MEMBER";
+  return false;
+}
+
 /** Detect whether a column exists on a table (cached, so we don't pay on every call). */
 const columnCache = new Map<string, Promise<boolean>>();
 function hasColumn(table: string, column: string): Promise<boolean> {
@@ -71,6 +132,32 @@ async function assertMember(groupId: number, profileId: string): Promise<void> {
     [groupId, profileId],
   );
   if (!result.rows[0]) throw new ForbiddenError("Você não faz parte deste grupo.");
+}
+
+/** Ban or unban a member. Owner can ban anyone; admin can ban members only. */
+export async function setMemberBanned(
+  profileId: string,
+  groupId: number,
+  targetProfileId: string,
+  banned: boolean,
+): Promise<void> {
+  parseProfileId(profileId);
+  parseProfileId(targetProfileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
+
+  const actor = await resolveMember(groupId, profileId);
+  if (!actor) throw new ForbiddenError("Você não faz parte deste grupo.");
+  const target = await resolveMember(groupId, targetProfileId);
+  if (!target) throw new NotFoundError("Membro não encontrado.");
+
+  if (!canBan(actor.role, targetProfileId, profileId, target.role)) {
+    throw new ForbiddenError("Você não tem permissão para banir este membro.");
+  }
+
+  await pool.query(
+    `update group_members set is_banned = $1 where group_id = $2 and profile_id = $3`,
+    [banned, groupId, targetProfileId],
+  );
 }
 
 function normalizeReactions(value: unknown): MessageReactionSummary[] {
@@ -305,10 +392,11 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
       photo_url: string | null;
       role: "OWNER" | "ADMIN" | "MEMBER";
       is_muted: boolean;
+      is_banned: boolean;
       current_streak: number | null;
     }
   >(
-    `select p.id, p.display_name, p.username, p.photo_url, m.role, m.is_muted, p.current_streak
+    `select p.id, p.display_name, p.username, p.photo_url, m.role, m.is_muted, m.is_banned, p.current_streak
      from group_members m
      join profiles p on p.id = m.profile_id
      where m.group_id = $1
@@ -331,6 +419,7 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
     photoUrl: row.photo_url ?? undefined,
     role: row.role,
     isMuted: row.is_muted,
+    isBanned: row.is_banned,
     currentStreak: row.current_streak ?? 0,
   }));
 
@@ -516,10 +605,11 @@ export async function sendGroupMessage(
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   await assertMember(groupId, profileId);
-  const membership = await pool.query<{ is_muted: boolean }>(
-    `select is_muted from group_members where group_id = $1 and profile_id = $2`,
+  const membership = await pool.query<{ is_muted: boolean; is_banned: boolean }>(
+    `select is_muted, coalesce(is_banned, false) as is_banned from group_members where group_id = $1 and profile_id = $2`,
     [groupId, profileId],
   );
+  if (membership.rows[0]?.is_banned) throw new ForbiddenError("Você está banido deste grupo.");
   if (membership.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
 
   const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
@@ -679,10 +769,24 @@ export async function deleteGroupMessage(
 ): Promise<void> {
   parseProfileId(profileId);
   await assertMember(groupId, profileId);
+  const message = await pool.query<{ sender_id: string }>(
+    `select sender_id from group_messages where id = $1 and group_id = $2`,
+    [messageId, groupId],
+  );
+  const row = message.rows[0];
+  if (!row) throw new NotFoundError("Mensagem não encontrada.");
+
+  // Owner can delete any message; admin can delete member messages; anyone
+  // can delete their own. Owner/admin messages are protected from admins.
+  const senderRole = (await getMemberRole(row.sender_id, groupId)) ?? "MEMBER";
+  const actor = await resolveMember(groupId, profileId);
+  if (!canDeleteMessageGroup(actor?.role ?? null, row.sender_id, profileId, senderRole)) {
+    throw new ForbiddenError("Você não tem permissão para apagar esta mensagem.");
+  }
+
   const result = await pool.query(
-    `delete from group_messages
-     where id = $1 and group_id = $2 and sender_id = $3`,
-    [messageId, groupId, profileId],
+    `delete from group_messages where id = $1 and group_id = $2`,
+    [messageId, groupId],
   );
   if (result.rowCount === 0) throw new NotFoundError("Mensagem não encontrada.");
 }
@@ -790,11 +894,10 @@ export async function updateGroupAvatar(profileId: string, groupId: number, avat
   } else if (avatarUrl.length > 2000) {
     throw new ValidationError("URL do avatar inválida.");
   }
-  const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
-    [groupId, profileId],
-  );
-  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar o avatar.");
+  const actor = await resolveMember(groupId, profileId);
+  if (!actor || !canEditGroupSettings(actor.role)) {
+    throw new ForbiddenError("Só o dono do grupo pode alterar o avatar.");
+  }
   const result = await pool.query(`update groups set avatar_url = $2 where id = $1`, [groupId, avatarUrl]);
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Grupo não encontrado.");
 }
@@ -807,11 +910,10 @@ export async function updateGroupDetails(
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   
-  const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
-    [groupId, profileId],
-  );
-  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar os detalhes.");
+  const actor = await resolveMember(groupId, profileId);
+  if (!actor || !canEditGroupSettings(actor.role)) {
+    throw new ForbiddenError("Só o dono do grupo pode alterar os detalhes.");
+  }
 
   const setClauses: string[] = [];
   const params: unknown[] = [groupId];
@@ -929,20 +1031,18 @@ export async function updateMemberRole(
 
   const actorRole = await getMemberRole(profileId, groupId);
   if (!actorRole) throw new ForbiddenError("Você não faz parte deste grupo.");
-  if (!['OWNER', 'ADMIN'].includes(actorRole)) throw new ForbiddenError("Só dono ou administrador do grupo pode alterar funções.");
+  if (actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode promover ou rebaixar membros.");
 
   if (targetProfileId === profileId) throw new ValidationError("Você não pode alterar sua própria função.");
 
   const targetRole = await getMemberRole(targetProfileId, groupId);
   if (!targetRole) throw new NotFoundError("Membro não encontrado.");
 
-  const actorRank = ROLE_RANK[actorRole];
   const targetRank = ROLE_RANK[targetRole];
   const requestedRank = ROLE_RANK[newRole];
   if (targetRank === 3) throw new ValidationError("O dono não pode ter a função alterada.");
   if (newRole === 'OWNER') throw new ValidationError("Conceda a propriedade usando a transferência.");
-  if (requestedRank > actorRank) throw new ValidationError("Você não pode conceder uma função superior à sua.");
-  if (requestedRank === 3) throw new ValidationError("Você não pode conceder a propriedade a outro membro.");
+  if (requestedRank > ROLE_RANK.OWNER) throw new ValidationError("Você não pode conceder a propriedade a outro membro.");
 
   await pool.query(
     `update group_members set role = $1 where group_id = $2 and profile_id = $3`,
@@ -968,12 +1068,8 @@ export async function removeMember(
   if (!targetRole) throw new NotFoundError("Membro não encontrado.");
   if (targetRole === 'OWNER') throw new ValidationError("Não é possível remover o dono do grupo.");
 
-  if (actorRole === 'OWNER') {
-    // Owner can remove admins and members.
-  } else if (actorRole === 'ADMIN' && (targetRole === 'MEMBER' || targetRole === 'ADMIN')) {
-    // Admin can remove members and other admins (but not the owner).
-  } else {
-    throw new ForbiddenError("Você não tem permissão para remover membros.");
+  if (!canKick(actorRole, profileId, targetProfileId, targetRole)) {
+    throw new ForbiddenError("Só o dono do grupo pode remover membros.");
   }
 
   await pool.query(

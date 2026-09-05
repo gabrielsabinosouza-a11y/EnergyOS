@@ -368,8 +368,9 @@ function DashboardContent() {
     setWeeklyPlans((ps) => ps.filter((p) => p.id !== id));
     try {
       await api.deleteWeeklyPlan(id);
-    } catch {
+    } catch (error) {
       setWeeklyPlans(prev);
+      showError(error instanceof Error ? error.message : "Não foi possível excluir o plano.");
     }
   }
 

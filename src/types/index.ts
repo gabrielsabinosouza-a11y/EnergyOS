@@ -264,6 +264,7 @@ export interface GroupMember {
   role: GroupRole;
   currentStreak: number;
   isMuted?: boolean;
+  isBanned?: boolean;
 }
 
 export interface GroupDetail {
