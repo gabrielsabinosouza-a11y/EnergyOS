@@ -144,7 +144,8 @@ export default function AmigosPage() {
   const handleSearch = useCallback((q: string) => {
     setSearchQuery(q);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (q.length < 2) {
+    const normalizedQuery = q.trim().replace(/^@+/, "");
+    if (normalizedQuery.length < 2) {
       setSearchResults([]);
       setSearching(false);
       return;
@@ -152,7 +153,7 @@ export default function AmigosPage() {
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const { results } = await api.searchUsers(q);
+        const { results } = await api.searchUsers(normalizedQuery);
         setSearchResults(results);
       } catch {
         setSearchResults([]);

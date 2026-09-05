@@ -29,7 +29,7 @@ function mapLite(row: ProfileLiteRow) {
 
 export async function searchUsers(profileId: string, query: string): Promise<UserSearchResult[]> {
   parseProfileId(profileId);
-  const q = query.trim();
+  const q = query.trim().replace(/^@+/, "");
   if (q.length < 2) throw new ValidationError("Digite pelo menos 2 caracteres para buscar.");
   if (q.length > 80) throw new ValidationError("Busca muito longa.");
 
@@ -49,8 +49,8 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
        and greatest(f.requester_id, f.addressee_id) = greatest(p.id, $1))
      where p.id <> $1
        and (
-         p.display_name ilike $2
-         or coalesce(p.username, '') ilike $2
+         lower(p.display_name) like lower($2)
+         or lower(coalesce(p.username, '')) like lower($2)
        )
      order by p.display_name asc
      limit 20`,
