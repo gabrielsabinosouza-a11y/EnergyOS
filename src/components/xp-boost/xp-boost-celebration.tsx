@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Zap } from "lucide-react";
 import Image from "next/image";
+import { XpIcon } from "@/components/xp-icon";
 import { XP_BOOST_ITEM, XP_BOOST_DURATION_MS } from "@/lib/xp-boost";
 
 function minutesUntil(expiresAt: string): number {
@@ -81,9 +81,8 @@ export function XpBoostCelebration({
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
-            <Zap size={40} className="absolute text-[#b69cff]" style={{ display: "none" }} />
           </div>
-          <Zap size={22} className="absolute -right-1 -top-1 text-[#ffb86b]" fill="currentColor" />
+          <XpIcon size={22} variant="double" className="absolute -right-1 -top-1" />
         </motion.div>
 
         <h3 className="relative font-display text-xl text-[var(--text)]">

@@ -273,7 +273,20 @@ export async function endFocusSession(
     [profileId, sessionId],
   );
   if (!session.rows[0]) throw new NotFoundError("Sessão não encontrada.");
-  if (session.rows[0].ended_at) throw new ValidationError("Sessão já finalizada.");
+
+  // Idempotent: a repeated end (e.g. a focus room auto-completing a session
+  // the client also tries to end, or a timer re-firing on a stale persisted
+  // session) is not an error. Reward the already-finalized values exactly once.
+  if (session.rows[0].ended_at) {
+    const storedDuration = Math.max(0, Number(session.rows[0].duration_minutes) || 0);
+    const coinsAwarded = Math.floor(storedDuration / 10) * FOCUS_COINS_PER_10_MIN;
+    return {
+      session: mapFocus(session.rows[0]),
+      xpAwarded: Number(session.rows[0].xp_earned) || 0,
+      coinsAwarded,
+      questsUpdated: 0,
+    };
+  }
 
   // SECURITY: the reported duration is clamped server-side. A client could
   // otherwise claim hours of focus for a 25-minute session and farm XP/coins,

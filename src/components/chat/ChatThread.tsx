@@ -8,7 +8,6 @@ import {
   CheckCheck,
   Copy,
   Pin,
-  SmilePlus,
   MessageCircleReply,
   Pencil,
   Trash2,
@@ -88,11 +87,13 @@ function ContextMenu({
   x,
   y,
   actions,
+  reactions,
   onClose,
 }: {
   x: number;
   y: number;
   actions: ContextMenuAction[];
+  reactions?: { onSelect: (emoji: string) => void };
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -136,6 +137,26 @@ function ContextMenu({
         className="fixed min-w-[160px] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shadow-2xl backdrop-blur-xl"
         style={{ left: pos.x, top: pos.y }}
       >
+        {reactions && (
+          <>
+            <div className="flex items-center justify-center gap-1 border-b border-[var(--border-subtle)] px-2 pb-1.5">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => {
+                    reactions.onSelect(emoji);
+                    onClose();
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:bg-[var(--accent-bg)]"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <div className="p-1" />
+          </>
+        )}
         {actions
           .filter((a) => !a.hidden)
           .map((action, i) => (
@@ -280,7 +301,7 @@ function MessageBubble({
       transition={{ duration: 0.2 }}
       className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
     >
-      {showAvatar && (
+      {showAvatar && !isMe && (
         <div className="mt-0.5 shrink-0">
           <AvatarWithFrame name={msg.senderName} photoUrl={msg.senderPhotoUrl} size={32} />
         </div>
@@ -288,7 +309,7 @@ function MessageBubble({
       <div
         className={`max-w-[75%] ${showAvatar ? "" : isMe ? "ml-[42px]" : "mr-[42px]"} ${
           isMe ? "items-end" : "items-start"
-        } group/message flex flex-col`}
+        } flex flex-col`}
       >
         {showSenderName && !isMe && (
           <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">
@@ -296,57 +317,7 @@ function MessageBubble({
           </p>
         )}
 
-        {/* Reply quote */}
-        {msg.replyToBody && (
-          <button
-            type="button"
-            onClick={() => msg.replyToId && onQuoteClick(msg.replyToId)}
-            className={`mb-1 flex items-start gap-1.5 rounded-t-lg border-l-2 px-2.5 py-1.5 text-[11px] ${
-              isMe
-                ? "border-black/30 bg-black/10"
-                : "border-[var(--accent)]/30 bg-[var(--accent-bg)]"
-            }`}
-          >
-            <MessageCircleReply
-              size={11}
-              className={`mt-0.5 shrink-0 ${isMe ? "text-black/50" : "text-[var(--accent)]"}`}
-            />
-            <div className="min-w-0">
-              <p
-                className={`font-medium ${
-                  isMe ? "text-black/70" : "text-[var(--accent)]"
-                }`}
-              >
-                {msg.replyToSenderName ?? "mensagem"}
-              </p>
-              <p
-                className={`truncate ${
-                  isMe ? "text-black/60" : "text-[var(--text-muted)]"
-                }`}
-              >
-                {msg.replyToBody}
-              </p>
-            </div>
-          </button>
-        )}
-
         {/* Bubble */}
-        <div
-          className={`mb-1 hidden items-center gap-0.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 py-0.5 shadow-lg group-hover/message:flex ${
-            isMe ? "self-end" : "self-start"
-          }`}
-        >
-          {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => onReaction(msg.id, emoji)}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-sm transition hover:bg-[var(--accent-bg)]"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
         <div
           onContextMenu={handleContextMenu}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
@@ -357,6 +328,36 @@ function MessageBubble({
           onTouchEnd={cancelLongPress}
           onTouchMove={cancelLongPress}
         >
+          {/* Compact reply quote (WhatsApp style, contained inside this bubble) */}
+          {msg.replyToBody && (
+            <button
+              type="button"
+              onClick={() => msg.replyToId && onQuoteClick(msg.replyToId)}
+              className={`mx-2 mt-2 flex max-w-[88%] items-center gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left transition ${
+                isMe
+                  ? "border-white/50 bg-black/10 hover:bg-black/20"
+                  : "border-[var(--accent)]/60 bg-[var(--accent-bg)] hover:bg-[var(--accent-bg)]/70"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`truncate text-[11px] font-semibold ${
+                    isMe ? "text-black/70" : "text-[var(--accent)]"
+                  }`}
+                >
+                  {msg.replyToSenderName ?? "mensagem"}
+                </p>
+                <p
+                  className={`truncate text-[11px] ${
+                    isMe ? "text-black/60" : "text-[var(--text-muted)]"
+                  }`}
+                >
+                  {msg.replyToBody}
+                </p>
+              </div>
+            </button>
+          )}
+
           {/* Media content */}
           {msg.messageType === "IMAGE" && msg.mediaUrl && (
             <button type="button" onClick={() => window.open(msg.mediaUrl, "_blank")} className="block">
@@ -407,7 +408,7 @@ function MessageBubble({
             </div>
           ) : null}
 
-          {/* Hover menu trigger (desktop) */}
+          {/* Hover menu trigger (desktop, always visible) */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -424,7 +425,7 @@ function MessageBubble({
             }}
             className={`absolute ${
               isMe ? "left-1" : "right-1"
-            } top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current opacity-0 backdrop-blur-sm transition group-hover:opacity-100`}
+            } top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex`}
           >
             <span className="text-[10px]">⋯</span>
           </button>
@@ -726,12 +727,6 @@ export function ChatThread({
         onClick: () => onReplyMessage?.(msg),
       },
       {
-        label: "Reagir",
-        icon: <SmilePlus size={14} />,
-        onClick: () => void toggleReaction(msg.id, "👍"),
-        hidden: !onReact,
-      },
-      {
         label: msg.isPinned ? "Desafixar" : "Fixar",
         icon: <Pin size={14} />,
         onClick: () => void togglePin(msg),
@@ -751,7 +746,7 @@ export function ChatThread({
         hidden: !isMe,
       },
     ];
-  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onReact, onTogglePin, togglePin, toggleReaction]);
+  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onTogglePin, togglePin]);
 
   /* ─── Render ───────────────────────────────────────────────────── */
 
@@ -973,6 +968,13 @@ export function ChatThread({
           x={contextMenu.x}
           y={contextMenu.y}
           actions={contextMenuActions}
+          reactions={
+            onReact
+              ? {
+                  onSelect: (emoji) => void toggleReaction(contextMenu.msg.id, emoji),
+                }
+              : undefined
+          }
           onClose={() => setContextMenu(null)}
         />
       )}

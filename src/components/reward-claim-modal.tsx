@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Sparkles, Zap } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
+import { XpIcon } from "@/components/xp-icon";
 
 export interface RewardClaimModalData {
   coins?: number;
@@ -71,7 +72,7 @@ export function RewardClaimModal({
               animate={{ scale: [0, 1.15, 1], rotate: 0 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
             >
-              {reward.coins ? <CoinIcon size={56} /> : <Zap size={56} fill="currentColor" />}
+              {reward.coins ? <CoinIcon size={56} /> : <XpIcon size={56} />}
             </motion.div>
             <p className="eyebrow mb-2 justify-center text-amber-300">RECOMPENSA RECEBIDA</p>
             <div className="space-y-1 text-lg font-bold text-[var(--text)]">

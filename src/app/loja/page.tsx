@@ -21,9 +21,9 @@ import {
   Lock,
   AlertCircle,
   FlaskConical,
-  Zap,
 } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
+import { XpIcon } from "@/components/xp-icon";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
@@ -1199,7 +1199,7 @@ export default function LojaPage() {
                   }}
                 />
                 <FlaskConical size={40} className="absolute text-[var(--text-faint)]" style={{ display: "none" }} />
-                <Zap size={16} className="absolute -right-1 -top-1 text-[#ffb86b]" fill="currentColor" />
+                <XpIcon size={16} variant="double" className="absolute -right-1 -top-1" />
               </div>
 
               <div className="min-w-0 flex-1">
@@ -1216,7 +1216,7 @@ export default function LojaPage() {
                       transition={{ duration: 2, repeat: Infinity }}
                       className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b69cff]"
                     >
-                      <Zap size={11} fill="currentColor" /> 2x XP ativo
+                      <XpIcon size={11} variant="double" /> 2x XP ativo
                       {boostRemaining > 0 && (
                         <span className="font-mono font-medium text-[#b69cff]/80">
                           · {formatRemaining(boostRemaining)}
@@ -1254,7 +1254,7 @@ export default function LojaPage() {
                     ) : xpBoostActive ? (
                       <>Poção já ativa</>
                     ) : (
-                      <><Zap size={14} /> Usar poção</>
+                      <><XpIcon size={14} /> Usar poção</>
                     )}
                   </button>
 

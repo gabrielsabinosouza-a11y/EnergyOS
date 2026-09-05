@@ -148,6 +148,36 @@ export async function createDailyTask(
 }
 
 /**
+ * Updates the title of a recurring daily task. Only the owner can edit it.
+ */
+export async function updateDailyTaskTitle(
+  profileId: string,
+  taskId: number,
+  title: string,
+): Promise<UserDailyTask> {
+  parseProfileId(profileId);
+  const trimmed = title.trim();
+  if (!trimmed) throw new ValidationError("Digite o nome da tarefa.");
+  if (trimmed.length > 120) throw new ValidationError("Tarefa muito longa (máx. 120 caracteres).");
+
+  const result = await pool.query<TemplateRow>(
+    `update profile_daily_tasks set title = $1 where id = $2 and profile_id = $3 and is_active = true
+     returning id, title`,
+    [trimmed, taskId, profileId],
+  );
+  if (!result.rows[0]) {
+    throw new NotFoundError("Tarefa diária não encontrada.");
+  }
+
+  return {
+    id: Number(result.rows[0].id),
+    title: result.rows[0].title,
+    taskDate: todayIso(),
+    isCompleted: false,
+  };
+}
+
+/**
  * Soft-archives a recurring daily task: the task row (and its completion
  * history) is kept with is_active = false — it just stops appearing in the
  * daily checklist. Use create/toggle to bring structure back if ever needed.

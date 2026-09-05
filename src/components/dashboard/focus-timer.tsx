@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Square, Timer, Bell, Zap } from "lucide-react";
+import { Play, Pause, Square, Timer, Bell } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
+import { XpIcon } from "@/components/xp-icon";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker, FocusDurationReadout } from "./circular-duration-picker";
 import {
@@ -158,7 +159,7 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostA
         <span className="font-mono font-bold text-[#ffb86b] text-lg">+{coins} moedas</span>
         {boostActive && (
           <span className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-bold text-[#b69cff]">
-            <Zap size={10} fill="currentColor" /> 2x XP
+            <XpIcon size={10} variant="double" /> 2x XP
           </span>
         )}
         {rewardCount > 1 && (

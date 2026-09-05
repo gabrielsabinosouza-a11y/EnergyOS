@@ -190,6 +190,8 @@ export const api = {
     request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify({ title }) }),
   toggleDailyTask: (id: number, completed: boolean) =>
     request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+  updateDailyTask: (id: number, title: string) =>
+    request<{ task: UserDailyTask }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   deleteDailyTask: (id: number) =>
     request<{ ok: boolean }>(`/api/daily-tasks/${id}`, { method: "DELETE" }),
 

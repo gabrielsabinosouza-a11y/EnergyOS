@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, ListTodo, Zap, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, ListTodo, Plus, Trash2 } from "lucide-react";
+import { XpIcon } from "@/components/xp-icon";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { CoinIcon } from "@/components/coin-icon";
@@ -192,7 +193,7 @@ export function DailyTasksWidget() {
                   >
                     {rewardFlash.xp > 0 && (
                       <span className="flex items-center gap-0.5 text-[#ffb86b]">
-                        <Zap size={10} fill="currentColor" />+{rewardFlash.xp}
+                        <XpIcon size={10} />+{rewardFlash.xp}
                       </span>
                     )}
 {rewardFlash.coins > 0 && (

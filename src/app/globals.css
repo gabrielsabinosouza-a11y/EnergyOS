@@ -198,6 +198,7 @@ button { cursor: pointer; font: inherit; }
 .sleep-pill:hover { background:var(--bg-surface-hover); color:var(--text-secondary); border-color:var(--border-strong); }
 .sleep-pill.selected { border-color:var(--accent); background:var(--accent-bg); color:var(--text); box-shadow:0 0 24px var(--accent-glow); }
 .sleep-pill .pill-icon { transition:transform .2s,filter .2s; }
+.sleep-pill .sleep-pill-icon { width:64px; height:64px; object-fit:contain; }
 .sleep-pill.selected .pill-icon { transform:scale(1.1); filter:drop-shadow(0 0 8px currentColor); }
 .sleep-pill .pill-label { font-size:11px; line-height:1.3; }
 .sleep-pill.selected .pill-label { color:var(--text); }
@@ -313,4 +314,23 @@ body { overflow-wrap: break-word; }
 /* Reduced-motion users also skip tab-bar entrance animation. */
 @media (prefers-reduced-motion: reduce) {
   .bottom-tabbar { animation: none; }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   GARDEN — view "Jardim" (grid do Meu jardim): vida ambiente do terreno.
+   Apenas transform/opacity, poucos elementos; desligado p/ reduced-motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes garden-float {
+  0% { transform: translate3d(0, 12px, 0); opacity: 0; }
+  18% { opacity: .5; }
+  82% { opacity: .5; }
+  100% { transform: translate3d(10px, -34px, 0); opacity: 0; }
+}
+@keyframes garden-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: .35; }
+  50% { transform: translate(-50%, -50%) scale(1.14); opacity: .75; }
+}
+.garden-float { animation: garden-float 10s ease-in-out infinite; }
+.garden-breathe { animation: garden-breathe 4.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .garden-float, .garden-breathe { animation: none; }
 }

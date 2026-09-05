@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Check, Loader2, Moon, MoonStar, Shield, Sparkles } from "lucide-react";
+import { Check, Loader2, Shield, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -40,10 +40,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 const SLEEP_OPTIONS = [
-  { label: "Menos de 6h", sublabel: "Descanso insuficiente", hours: 5, icon: Moon, color: "#f87171", bgColor: "rgba(248,113,113,.08)" },
-  { label: "6 a 7 horas", sublabel: "Pode melhorar", hours: 6.5, icon: Moon, color: "#fbbf24", bgColor: "rgba(251,191,36,.08)" },
-  { label: "7 a 8 horas", sublabel: "Ideal para foco", hours: 7.5, icon: MoonStar, color: "#71d4ff", bgColor: "rgba(113,212,255,.08)" },
-  { label: "Mais de 8h", sublabel: "Descanso completo", hours: 8.5, icon: MoonStar, color: "#b69cff", bgColor: "rgba(182,156,255,.08)" },
+  { label: "Menos de 6h", sublabel: "Descanso insuficiente", hours: 5, image: "/sleep/bad_sleep.png", color: "#f87171", bgColor: "rgba(248,113,113,.08)" },
+  { label: "6 a 7 horas", sublabel: "Pode melhorar", hours: 6.5, image: "/sleep/quite_sleep.png", color: "#fbbf24", bgColor: "rgba(251,191,36,.08)" },
+  { label: "7 a 8 horas", sublabel: "Ideal para foco", hours: 7.5, image: "/sleep/good_sleep.png", color: "#71d4ff", bgColor: "rgba(113,212,255,.08)" },
+  { label: "Mais de 8h", sublabel: "Descanso completo", hours: 8.5, image: "/sleep/very_good_sleep.png", color: "#b69cff", bgColor: "rgba(182,156,255,.08)" },
 ] as const;
 
 function todayLabel() {
@@ -552,7 +552,6 @@ function DashboardContent() {
             {/* 2×2 on phones (4-across gets too cramped at 375px), 4-up from lg */}
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 mb-5">
               {SLEEP_OPTIONS.map((opt) => {
-                const Icon = opt.icon;
                 const isSelected = sleepAnswer === opt.label;
                 return (
                   <motion.button
@@ -566,11 +565,10 @@ function DashboardContent() {
                   >
                     <motion.div
                       className="pill-icon"
-                      style={{ color: opt.color }}
                       animate={isSelected ? { scale: 1.15 } : { scale: 1 }}
                       transition={{ type: "spring", stiffness: 400, damping: 25 }}
                     >
-                      <Icon size={22} fill={isSelected ? "currentColor" : "none"} />
+                      <Image src={opt.image} alt={opt.label} width={64} height={64} className="sleep-pill-icon" />
                     </motion.div>
                     <span className="pill-label font-medium">{opt.label}</span>
                     <span className="text-[9px] text-[var(--text-faint)]">{opt.sublabel}</span>

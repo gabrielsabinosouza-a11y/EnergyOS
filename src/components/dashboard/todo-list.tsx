@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, X, Loader2, Pencil, Trash2, Zap, ListTodo } from "lucide-react";
+import { Check, Plus, X, Loader2, Pencil, Trash2, ListTodo } from "lucide-react";
+import { XpIcon } from "@/components/xp-icon";
 import type { Category, Task } from "@/types";
 import { sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
@@ -160,7 +161,7 @@ export function TodoList({ tasks, categories, onToggle, onDelete, onCreate, onUp
                       exit={{ opacity: 0, y: -8 }}
                       className="flex items-center gap-0.5 text-[10px] text-[#ffb86b] font-mono"
                     >
-                      <Zap size={10} fill="currentColor" />+10
+                      <XpIcon size={10} />+10
                     </motion.span>
                   )}
                 </AnimatePresence>

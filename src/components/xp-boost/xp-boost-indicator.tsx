@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Zap } from "lucide-react";
+import { XpIcon } from "@/components/xp-icon";
 
 function remainingSeconds(expiresAt: string): number {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
@@ -40,7 +40,7 @@ export function XpBoostIndicator({ expiresAt }: { expiresAt: string }) {
         transition={{ duration: 2, repeat: Infinity }}
         className="flex items-center gap-1 font-mono text-xs font-bold text-[#b69cff]"
       >
-        <Zap size={13} fill="currentColor" /> 2x XP
+        <XpIcon size={13} variant="double" /> 2x XP
       </motion.span>
       <span className="text-[var(--text-faint)]">·</span>
       <span className="font-mono text-xs text-[var(--text-muted)]">{formatRemaining(remaining)}</span>
@@ -61,7 +61,7 @@ export function XpBoostIndicatorFallback() {
         transition={{ duration: 2, repeat: Infinity }}
         className="flex items-center gap-1 font-mono text-xs font-bold text-[#b69cff]"
       >
-        <Zap size={13} fill="currentColor" /> 2x XP
+        <XpIcon size={13} variant="double" /> 2x XP
       </motion.span>
     </motion.div>
   );

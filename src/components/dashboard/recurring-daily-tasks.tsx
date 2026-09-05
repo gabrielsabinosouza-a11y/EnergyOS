@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, X, Loader2, Trash2, Zap, Repeat } from "lucide-react";
+import { Check, Plus, X, Loader2, Trash2, Repeat, Pencil } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
+import { XpIcon } from "@/components/xp-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
+import { Modal } from "@/components/modal";
 import {
   DAILY_TASK_LIMIT,
   DAILY_TASK_XP,
@@ -30,6 +32,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ id: number; xp: number; coins: number } | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
+  const [editingTask, setEditingTask] = useState<UserDailyTask | null>(null);
 
   const completed = tasks.filter((t) => t.isCompleted).length;
   const total = tasks.length;
@@ -107,6 +110,17 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     setTasks((ts) => ts.filter((t) => t.id !== id));
     try {
       await api.deleteDailyTask(id);
+    } catch {
+      setTasks(prev);
+    }
+  }
+
+  async function handleUpdate(task: UserDailyTask, title: string) {
+    const prev = tasks;
+    try {
+      const data = await api.updateDailyTask(task.id, title);
+      setTasks((ts) => ts.map((t) => (t.id === task.id ? data.task : t)));
+      setEditingTask(null);
     } catch {
       setTasks(prev);
     }
@@ -213,11 +227,18 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
                     exit={{ opacity: 0, y: -8 }}
                     className="flex items-center gap-1 font-mono text-[10px] text-[#ffb86b]"
                   >
-                    <Zap size={10} fill="currentColor" />+{feedback.xp} XP
+                    <XpIcon size={10} />+{feedback.xp} XP
                   </motion.span>
                 )}
             </AnimatePresence>
             <div className="flex gap-0.5 opacity-40 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+              <button
+                onClick={() => setEditingTask(task)}
+                className="icon-button small !h-6 !w-6 text-[var(--text-faint)] hover:text-[var(--text)]"
+                aria-label="Editar tarefa"
+              >
+                <Pencil size={10} />
+              </button>
               <button
                 onClick={() => handleDelete(task.id)}
                 className="icon-button small !h-6 !w-6 text-red-400/60 hover:text-red-400"
@@ -232,6 +253,131 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
 
       <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
     </div>
+
+    {editingTask && (
+      <EditDailyTaskModal
+        key={editingTask.id}
+        task={editingTask}
+        onClose={() => setEditingTask(null)}
+        onSave={(title) => void handleUpdate(editingTask, title)}
+      />
+    )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Modal de edição de tarefa diária — mesmo visual glass/LED do modal  */
+/*  "Editar Meta" (só muda o conteúdo interno).                          */
+/* ------------------------------------------------------------------ */
+
+function EditDailyTaskModal({
+  task,
+  onClose,
+  onSave,
+}: {
+  task: UserDailyTask;
+  onClose: () => void;
+  onSave: (title: string) => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const glowColor = "#71d4ff";
+
+  const handleSave = () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    setSaved(true);
+    window.setTimeout(() => onSave(title.trim()), 520);
+  };
+
+  return (
+    <Modal open onClose={onClose} panelClassName="max-w-md w-full">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 12 }}
+        transition={{ type: "spring", stiffness: 340, damping: 26 }}
+      >
+        <div
+          className="glass-card relative w-full overflow-hidden p-6"
+          style={{ border: `1px solid ${glowColor}30` }}
+        >
+          {/* brilho ambiente */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-20 left-1/2 h-44 w-80 -translate-x-1/2 rounded-full opacity-40"
+            style={{ background: `radial-gradient(ellipse, ${glowColor}55, transparent 70%)`, filter: "blur(22px)" }}
+          />
+          {/* partículas/faíscas ambientes */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+            {["12%", "78%", "85%", "20%"].map((left, i) => (
+              <motion.span
+                key={i}
+                className="absolute h-1 w-1 rounded-full"
+                style={{ left, background: glowColor, opacity: 0.35, boxShadow: `0 0 6px ${glowColor}` }}
+                animate={{ y: [0, -26, 0], opacity: [0, 0.6, 0] }}
+                transition={{ duration: 6 + i, repeat: Infinity, delay: i * 1.2, ease: "easeInOut" }}
+              />
+            ))}
+          </div>
+
+          {/* borda LED superior */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+            style={{ background: `linear-gradient(90deg, transparent, ${glowColor}99, transparent)`, boxShadow: `0 0 10px ${glowColor}66` }}
+          />
+
+          <div className="relative mb-5 flex items-center justify-between">
+            <span className="eyebrow" style={{ color: glowColor }}>EDITAR TAREFA</span>
+            <button onClick={onClose} className="icon-button small" aria-label="Fechar"><X size={14} /></button>
+          </div>
+
+          <div className="relative space-y-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Nome da tarefa</label>
+              <input
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                className="auth-input"
+                placeholder="Ex: Estudar 6 horas"
+                maxLength={120}
+              />
+            </div>
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={handleSave}
+              disabled={!title.trim() || saving}
+              style={{
+                background: glowColor,
+                color: "var(--bg-primary)",
+                boxShadow: `0 0 24px -8px ${glowColor}`,
+              }}
+              className="relative flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl text-xs font-bold transition-opacity disabled:opacity-40 cursor-pointer"
+            >
+              {saving ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : saved ? (
+                <motion.span
+                  initial={{ scale: 0.4, opacity: 0 }}
+                  animate={{ scale: [0.4, 1.3, 1], opacity: 1 }}
+                  transition={{ duration: 0.4 }}
+                  className="flex items-center gap-1.5"
+                >
+                  <Check size={15} strokeWidth={3} /> Salvo!
+                </motion.span>
+              ) : (
+                <><Check size={15} strokeWidth={3} /> Salvar alterações</>
+              )}
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </Modal>
   );
 }
