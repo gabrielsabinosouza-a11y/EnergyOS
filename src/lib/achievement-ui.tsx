@@ -53,6 +53,18 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/social_spark/social_spark2.png",
   ],
   rarest_aura: ["/achievements/Top_1/top1.png"],
+  focus_companion: [
+    "/achievements/focus_parser/focus_parser1.png",
+    "/achievements/focus_parser/focus_parser2.png",
+    "/achievements/focus_parser/focus_parser3.png",
+    "/achievements/focus_parser/focus_parser4.png",
+  ],
+  squad_leader: [
+    "/achievements/squad_leader/squad_leader1.png",
+    "/achievements/squad_leader/squad_leader2.png",
+    "/achievements/squad_leader/squa_leader3.png",
+    "/achievements/squad_leader/squad_leader4.png",
+  ],
 };
 
 export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {

@@ -245,6 +245,7 @@ create index if not exists weekly_plans_profile_date_idx on weekly_plans(profile
 create table if not exists focus_sessions (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
+  room_id bigint references focus_rooms(id) on delete set null,
   duration_minutes integer not null default 0,
   target_duration_minutes integer not null default 25,
   started_at timestamptz not null default now(),
@@ -253,9 +254,11 @@ create table if not exists focus_sessions (
   xp_earned integer not null default 0
 );
 
+alter table focus_sessions add column if not exists room_id bigint references focus_rooms(id) on delete set null;
 alter table focus_sessions add column if not exists energy_type text;
 
 create index if not exists focus_sessions_profile_idx on focus_sessions(profile_id, started_at desc);
+create index if not exists focus_sessions_room_idx on focus_sessions(room_id);
 
 -- ── Garden (Meu Jardim) ─────────────────────────────────────────────────────
 -- Each row is one "planted energy" earned by a completed focus session. A single

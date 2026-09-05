@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     if (action === "start") {
       const targetDurationMinutes = Number(body.targetDurationMinutes) || 25;
       const energyType = body.energyType as string | undefined;
-      const session = await startFocusSession(profileId, targetDurationMinutes, body.taskId as number | undefined, energyType);
+      const roomId = body.roomId === undefined ? undefined : Number(body.roomId);
+      const session = await startFocusSession(profileId, targetDurationMinutes, body.taskId as number | undefined, energyType, roomId);
       return jsonOk({ session }, 201);
     }
 

@@ -467,6 +467,7 @@ export interface WeeklyPlan {
 export interface FocusSession {
   id: number;
   profileId: string;
+  roomId?: number;
   durationMinutes: number;
   targetDurationMinutes: number;
   startedAt: string;

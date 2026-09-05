@@ -209,6 +209,7 @@ export async function finalizeGardenEntries(
 interface FocusRow {
   id: string | number;
   profile_id: string;
+  room_id: string | number | null;
   duration_minutes: number;
   target_duration_minutes: number;
   started_at: Date | string;
@@ -222,6 +223,7 @@ function mapFocus(row: FocusRow): FocusSession {
   return {
     id: Number(row.id),
     profileId: row.profile_id,
+    roomId: row.room_id == null ? undefined : Number(row.room_id),
     durationMinutes: row.duration_minutes,
     targetDurationMinutes: row.target_duration_minutes ?? 25,
     startedAt: typeof row.started_at === "string" ? row.started_at : row.started_at.toISOString(),
@@ -236,16 +238,24 @@ export async function startFocusSession(
   targetDurationMinutes: number,
   taskId?: number,
   energyType?: string,
+  roomId?: number,
 ): Promise<FocusSession> {
   parseProfileId(profileId);
   if (!Number.isInteger(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > FOCUS_DURATION_MAX_MINUTES) {
     throw new ValidationError("Duração inválida.");
   }
   const energy = energyType && (GARDEN_ENERGY_TYPES as readonly string[]).includes(energyType) ? energyType : null;
+  if (roomId !== undefined) {
+    const participant = await pool.query(
+      `select 1 from room_participants where room_id = $1 and profile_id = $2`,
+      [roomId, profileId],
+    );
+    if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
+  }
   const result = await pool.query<FocusRow>(
-    `insert into focus_sessions (profile_id, task_id, duration_minutes, target_duration_minutes, energy_type) values ($1, $2, 0, $3, $4)
-     returning id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, taskId ?? null, targetDurationMinutes, energy],
+    `insert into focus_sessions (profile_id, room_id, task_id, duration_minutes, target_duration_minutes, energy_type) values ($1, $2, $3, 0, $4, $5)
+     returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
+    [profileId, roomId ?? null, taskId ?? null, targetDurationMinutes, energy],
   );
   const session = mapFocus(result.rows[0]);
 
@@ -269,7 +279,7 @@ export async function endFocusSession(
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
 
   const session = await pool.query<FocusRow>(
-    `select id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type
+    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type
      from focus_sessions where profile_id = $1 and id = $2`,
     [profileId, sessionId],
   );
@@ -305,7 +315,7 @@ export async function endFocusSession(
   const updated = await pool.query<FocusRow>(
     `update focus_sessions set duration_minutes = $3, ended_at = now(), xp_earned = $4
      where profile_id = $1 and id = $2
-     returning id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
+     returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
     [profileId, sessionId, durationMinutes, xpAwarded],
   );
 
@@ -383,7 +393,7 @@ export async function endFocusSession(
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {
   parseProfileId(profileId);
   const result = await pool.query<FocusRow>(
-    `select id, profile_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
      from focus_sessions where profile_id = $1 and ended_at is not null
      order by started_at desc limit 30`,
     [profileId],

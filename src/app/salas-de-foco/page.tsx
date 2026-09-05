@@ -441,7 +441,7 @@ export default function FocusRoomsPage() {
     // Create my session for XP/quest crediting, driven by the room startedAt
     sessionCreatingRef.current = true;
     let cancelled = false;
-    api.startFocus(currentRoom.durationMinutes, undefined, selectEnergyRef.current)
+    api.startFocus(currentRoom.durationMinutes, undefined, selectEnergyRef.current, currentRoom.id)
       .then(({ session }) => {
         if (cancelled) return;
         const created = new Date().toISOString();

@@ -5,7 +5,7 @@ import { NotFoundError } from "../errors";
 import { getLifetimeFocusMinutes } from "./focus";
 import { getUserXP, creditXP } from "./xp";
 import { addCoins } from "./settings";
-import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK } from "../daily-limits";
+import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
@@ -17,6 +17,7 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   social_spark: [1, 5, 20],
   rarest_aura: [1],
   squad_leader: [3, 10, 20, 35],
+  focus_companion: [1, 5, 10, 30],
 };
 
 const META: Record<string, { title: string; description: string; category: string }> = {
@@ -29,6 +30,7 @@ const META: Record<string, { title: string; description: string; category: strin
   social_spark: { title: "Social Spark", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
   squad_leader: { title: "Squad Leader", description: "Tenha o maior grupo onde você é dono", category: "social" },
+  focus_companion: { title: "Companheiro de Foco", description: "Conclua sessões focando com outras pessoas", category: "focus" },
 };
 
 function tierFor(value: number, thresholds: number[]): number {
@@ -102,6 +104,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     social,
     rarest,
     squadLeader,
+    focusCompanion,
   ] = await Promise.all([
     pool.query<{ current_streak: number; longest_streak: number }>(
       `select current_streak, longest_streak from profiles where id = $1`,
@@ -151,6 +154,22 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
        ) owned`,
       [profileId],
     ),
+    pool.query<{ count: string | number }>(
+      `select count(*)::int as count
+       from focus_sessions fs
+       where fs.profile_id = $1
+         and fs.room_id is not null
+         and fs.ended_at is not null
+         and fs.duration_minutes >= fs.target_duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
+         and (
+           select count(*)
+           from room_participants rp
+           where rp.room_id = fs.room_id
+             and rp.joined_at < fs.ended_at
+             and coalesce(rp.completed_at, rp.gave_up_at, now()) > fs.started_at
+         ) >= 2`,
+      [profileId],
+    ),
   ]);
 
   const longestStreak = Math.max(
@@ -168,6 +187,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     social_spark: Number(social.rows[0]?.friends ?? 0) + Number(social.rows[0]?.groups ?? 0),
     rarest_aura: rarest.rows[0]?.unlocked_tier ? 1 : 0,
     squad_leader: Number(squadLeader.rows[0]?.largest ?? 0),
+    focus_companion: Number(focusCompanion.rows[0]?.count ?? 0),
   };
 }
 
