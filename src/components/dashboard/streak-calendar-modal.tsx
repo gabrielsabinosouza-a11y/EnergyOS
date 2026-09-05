@@ -146,7 +146,7 @@ export function StreakCalendarModal({
               className="icon-button small"
               aria-label="Mês anterior"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={18} />
             </button>
             <span className="text-sm font-semibold capitalize text-[var(--text)]">{monthLabel}</span>
             <button
@@ -154,7 +154,7 @@ export function StreakCalendarModal({
               className="icon-button small"
               aria-label="Próximo mês"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={18} />
             </button>
           </div>
 
@@ -190,19 +190,19 @@ export function StreakCalendarModal({
                 >
                   {(kind === "success") && (
                     <span
-                      className="flex h-6 w-6 items-center justify-center rounded-full"
-                      style={{ background: `${glowColor}1f`, boxShadow: `0 0 12px ${glowColor}45` }}
+                      className="flex h-11 w-11 items-center justify-center rounded-full"
+                      style={{ background: `${glowColor}1f`, boxShadow: `0 0 14px ${glowColor}50` }}
                     >
-                      <StreakIcon size={16} variant="saved" />
+                      <StreakIcon size={28} variant="saved" />
                     </span>
                   )}
                   {kind === "protected" && (
                     <span
-                      className="flex h-6 w-6 items-center justify-center rounded-full"
+                      className="flex h-11 w-11 items-center justify-center rounded-full"
                       title="Protegido por escudo"
-                      style={{ background: "#71d4ff1f", boxShadow: `0 0 12px #71d4ff50` }}
+                      style={{ background: "#71d4ff1f", boxShadow: `0 0 14px #71d4ff50` }}
                     >
-                      <ShieldIcon size={16} />
+                      <ShieldIcon size={28} />
                     </span>
                   )}
                   {kind === "none" && (
@@ -219,10 +219,10 @@ export function StreakCalendarModal({
           {/* Legenda */}
           <div className="relative mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--border-subtle)] pt-3 text-[10px] text-[var(--text-faint)]">
             <span className="flex items-center gap-1.5">
-              <StreakIcon size={13} variant="saved" /> Foco completo
+              <StreakIcon size={15} variant="saved" /> Foco completo
             </span>
             <span className="flex items-center gap-1.5">
-              <ShieldIcon size={13} /> Protegido
+              <ShieldIcon size={15} /> Protegido
             </span>
             <span className="flex items-center gap-1.5">
               <span className="block h-1 w-1 rounded-full bg-[var(--text-faint)]/50" /> Sem streak

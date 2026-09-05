@@ -282,7 +282,7 @@ function GlobalLeaderboard({
     }
   }, []);
 
-  useEffect(() => { void load(period); }, [period, load]);
+  useEffect(() => { Promise.resolve().then(() => void load(period)); }, [period, load]);
 
   const userEntry = entries.find((e) => userGroupIds.includes(e.groupId));
 
@@ -584,7 +584,7 @@ export default function GruposPage() {
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
-    loadGroups().then(() => { if (cancelled) return; });
+    Promise.resolve().then(loadGroups).then(() => { if (cancelled) return; });
     return () => { cancelled = true; };
   }, [authLoading, user?.uid, loadGroups]);
 

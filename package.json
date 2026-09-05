@@ -8,6 +8,7 @@
     "start": "next start",
     "db:init": "node scripts/init-db.mjs",
     "db:seed-admin": "node scripts/seed-admin.mjs",
+    "db:reset-messages": "node scripts/reset-messages.mjs",
     "lint": "eslint"
   },
   "dependencies": {

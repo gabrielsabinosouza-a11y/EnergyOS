@@ -136,7 +136,7 @@ export default function AmigosPage() {
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
-    loadData().then(() => { if (cancelled) return; });
+    Promise.resolve().then(loadData).then(() => { if (cancelled) return; });
     return () => { cancelled = true; };
   }, [authLoading, user?.uid, loadData]);
 
@@ -479,6 +479,7 @@ export default function AmigosPage() {
         {/* -------------------------------------------------------------- */}
         {activeChat && (
           <ChatPanel
+            key={activeChat.id}
             friend={activeChat}
             currentUserId={user.uid}
             reduced={!!reduced}

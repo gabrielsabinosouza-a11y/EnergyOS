@@ -231,19 +231,26 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-/* ─── "New messages" pill ──────────────────────────────────────────── */
+/* ─── "Old messages" pill ──────────────────────────────────────────── */
 
 function NewMessagesPill({ count, onClick }: { count: number; onClick: () => void }) {
+  const label =
+    count > 1
+      ? `${count} novas mensagens — voltar para as recentes`
+      : count === 1
+        ? "1 nova mensagem — voltar para as recentes"
+        : "Você está vendo mensagens antigas — voltar para as recentes";
+
   return (
     <motion.button
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
       onClick={onClick}
-      className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-black shadow-lg transition hover:brightness-110"
+      className="absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-black shadow-lg transition hover:brightness-110"
     >
-      <ArrowDown size={12} />
-      {count > 1 ? `${count} novas mensagens` : "Nova mensagem"}
+      <ArrowDown size={12} className="shrink-0" />
+      <span className="truncate">{label}</span>
     </motion.button>
   );
 }
@@ -522,6 +529,7 @@ export function ChatThread({
   replyingTo,
   onCancelReply,
   onReplyMessage,
+  onNewMessagesClick,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -566,13 +574,25 @@ export function ChatThread({
     });
   }, []);
 
-  // Initial scroll to bottom after the first batch has loaded. The message
-  // list is often populated after this component mounts.
+  // Pin the viewport to the newest message when the chat opens. The list is
+  // usually populated asynchronously after mount, and late-rendering media can
+  // change the scroll height, so retry until the bottom is actually reached.
   useEffect(() => {
-    if (messages.length > 0 && !initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true;
-      scrollToBottom(false);
-    }
+    if (initialScrollDoneRef.current || messages.length === 0) return;
+    initialScrollDoneRef.current = true;
+    const el = scrollRef.current;
+    let retries = 8;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const pin = () => {
+      if (!el || retries-- <= 0) return;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distFromBottom > SCROLL_BOTTOM_THRESHOLD) scrollToBottom(false);
+      timer = setTimeout(pin, 120);
+    };
+    pin();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [messages.length, scrollToBottom]);
 
   // Track new messages
@@ -593,7 +613,8 @@ export function ChatThread({
   const handlePillClick = useCallback(() => {
     setPendingCount(0);
     scrollToBottom(true);
-  }, [scrollToBottom]);
+    onNewMessagesClick?.();
+  }, [scrollToBottom, onNewMessagesClick]);
 
   const toggleReaction = useCallback(async (messageId: number, emoji: string) => {
     if (!onReact) return;
@@ -795,10 +816,11 @@ export function ChatThread({
         </div>
       )}
 
+      <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
+        className="h-full space-y-3 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
       >
         {messages.length === 0 && (
           <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
@@ -894,12 +916,13 @@ export function ChatThread({
         })}
       </div>
 
-      {/* "New messages" pill */}
-      <AnimatePresence>
-        {!isNearBottom && (
-          <NewMessagesPill count={pendingCount} onClick={handlePillClick} />
-        )}
-      </AnimatePresence>
+        {/* "Novas mensagens / mensagens antigas" pill */}
+        <AnimatePresence>
+          {!isNearBottom && (
+            <NewMessagesPill count={pendingCount} onClick={handlePillClick} />
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Reply preview */}
       <AnimatePresence>
