@@ -1553,8 +1553,8 @@ function GroupDetailPanel({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>
-                      {m.role === "OWNER" && <Image src="/tags/owner.png" alt="Dono do grupo" width={18} height={18} className="h-[18px] w-auto shrink-0 object-contain" unoptimized />}
-                      {m.role === "ADMIN" && <Image src="/tags/admin.png" alt="Administrador" width={18} height={18} className="h-[18px] w-auto shrink-0 object-contain" unoptimized />}
+                      {m.role === "OWNER" && <Image src="/tags/owner.png" alt="Dono do grupo" width={28} height={28} className="h-7 w-7 shrink-0 object-contain" unoptimized />}
+                      {m.role === "ADMIN" && <Image src="/tags/admin.png" alt="Administrador" width={28} height={28} className="h-7 w-7 shrink-0 object-contain" unoptimized />}
                       {m.id === currentUserId && <span className="text-[9px] text-[var(--text-faint)]">(você)</span>}
                     </div>
                     {m.username && <p className="truncate text-xs text-[var(--text-muted)]">@{m.username}</p>}
