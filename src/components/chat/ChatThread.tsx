@@ -495,6 +495,10 @@ export interface ChatThreadProps {
   onReact?: (messageId: number, emoji: string) => Promise<void>;
   onTogglePin?: (messageId: number) => Promise<void>;
 
+  /** Sender roles whose messages the CURRENT user may delete (moderation).
+   *  Own messages are always deletable regardless. Only used for groups. */
+  deleteSenderRoles?: import("@/types").GroupRole[];
+
   /** Read status tracking: message IDs that the other party has read */
   readMessageIds?: Set<number>;
 
@@ -530,6 +534,7 @@ export function ChatThread({
   onCancelReply,
   onReplyMessage,
   onNewMessagesClick,
+  deleteSenderRoles,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -764,10 +769,10 @@ export function ChatThread({
         icon: <Trash2 size={14} />,
         onClick: () => handleContextMenuAction("delete", msg),
         variant: "danger" as const,
-        hidden: !isMe,
+        hidden: !isMe && !(deleteSenderRoles?.includes(msg.senderRole as import("@/types").GroupRole)),
       },
     ];
-  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onTogglePin, togglePin]);
+  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onTogglePin, togglePin, deleteSenderRoles]);
 
   /* ─── Render ───────────────────────────────────────────────────── */
 

@@ -54,7 +54,9 @@ function AchievementModal({
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
-  const currentIdx = isEarned ? Math.min(achievement.unlockedTier - 1, achievement.thresholds.length - 1) : 0;
+  // Active tier is the first not-yet-completed one (where live progress shows);
+  // when the achievement is maxed out, fall back to the last tier.
+  const activeIdx = Math.min(achievement.unlockedTier, achievement.thresholds.length - 1);
 
   return (
     <Modal onClose={onClose}>
@@ -92,7 +94,8 @@ function AchievementModal({
           <div className="mb-2 text-xs uppercase tracking-widest text-[var(--text-faint)]">Progresso</div>
           {achievement.thresholds.map((threshold, i) => {
             const unlocked = i < achievement.unlockedTier;
-            const isCurrent = i === currentIdx;
+            const isLive = i === achievement.unlockedTier;
+            const isCurrent = i === activeIdx;
             return (
               <div
                 key={i}
@@ -106,8 +109,13 @@ function AchievementModal({
                 <span className={unlocked ? "text-[var(--text)]" : "text-[var(--text-faint)]"}>
                   {threshold}
                 </span>
-                {isCurrent && (
-                  <span className="ml-auto text-[10px]" style={{ color: unlocked ? colors.primary : "var(--text-faint)" }}>
+                {unlocked && (
+                  <span className="ml-auto text-[10px]" style={{ color: colors.primary }}>
+                    {threshold}/{threshold}
+                  </span>
+                )}
+                {isLive && (
+                  <span className="ml-auto text-[10px]" style={{ color: "var(--text-faint)" }}>
                     {achievement.currentValue}/{threshold}
                   </span>
                 )}

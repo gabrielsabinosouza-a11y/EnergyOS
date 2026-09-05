@@ -188,6 +188,7 @@ export interface ChatMessage {
   senderId: string;
   senderName?: string;
   senderPhotoUrl?: string;
+  senderRole?: GroupRole;
   body?: string;
   messageType?: string;
   mediaUrl?: string;
@@ -223,11 +224,13 @@ export function dmToChatMessage(dm: DirectMessage, currentUserId: string): ChatM
 
 /** Convert a GroupMessage to the unified ChatMessage format */
 export function groupToChatMessage(gm: GroupMessage): ChatMessage {
+  const g = gm as GroupMessage & { senderRole?: GroupRole };
   return {
     id: gm.id,
     senderId: gm.senderId,
     senderName: gm.senderName,
     senderPhotoUrl: gm.senderPhotoUrl,
+    senderRole: g.senderRole,
     body: gm.body,
     messageType: gm.messageType,
     mediaUrl: gm.mediaUrl,
@@ -288,6 +291,7 @@ export interface GroupMessage {
   senderId: string;
   senderName: string;
   senderPhotoUrl?: string;
+  senderRole?: GroupRole;
   body?: string;
   messageType: GroupMessageType;
   mediaUrl?: string;

@@ -591,6 +591,29 @@ create table if not exists group_weekly_quest_claims (
   unique (group_id, profile_id, week_start)
 );
 
+-- ── Group achievements ───────────────────────────────────────────────────────
+-- Group-level achievements (as opposed to the profile-level `achievements`
+-- table). Currently only "Sincronia": unlocked when MIN_GROUP_SYNCHRONY members
+-- of the same group were focusing simultaneously in the same focus room.
+create table if not exists group_achievements (
+  id text not null check (id in ('sincronia')),
+  group_id bigint not null references groups(id) on delete cascade,
+  unlocked_at timestamptz not null default now(),
+  primary key (id, group_id)
+);
+
+-- Idempotency ledger: one row per (achievement, group member) exactly once, so
+-- coins are minted once per member even if the unlock check is replayed.
+create table if not exists group_achievement_claims (
+  id bigserial primary key,
+  achievement_id text not null,
+  group_id bigint not null references groups(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  coins_awarded integer not null default 0,
+  claimed_at timestamptz not null default now(),
+  unique (achievement_id, group_id, profile_id)
+);
+
 -- ── Weekly league ───────────────────────────────────────────────────────────
 create table if not exists league_standings (
   profile_id text primary key references profiles(id) on delete cascade,

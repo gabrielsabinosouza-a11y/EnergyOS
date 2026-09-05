@@ -8,8 +8,9 @@ import {
   MessageCircle, Plus, Send, Timer, Trophy,
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
-  Sticker, Shield, ShieldCheck, Trash2, UserMinus,
-  ArrowRightLeft, VolumeX, Ban,
+  Sticker, ShieldCheck, Trash2, UserMinus,
+  ArrowRightLeft, VolumeX, Ban, MoreVertical,
+  Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -21,6 +22,7 @@ import { api } from "@/lib/api-client";
 import type { FriendSummary, GroupDetail, GroupMessage, GroupSummary, GroupMember } from "@/types";
 import type { GroupLeaderboardEntry, MemberContribution } from "@/lib/db/group-leaderboard";
 import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/group-milestones";
+import type { GroupSynchronyStatus } from "@/lib/db/group-synchrony";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -560,6 +562,50 @@ function WeeklyQuestWidget({ groupId }: { groupId: number }) {
       )}
 
       {error && <p className="mt-1 text-[10px] text-[var(--red)]">{error}</p>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Group achievement: Sincronia                                        */
+/* ------------------------------------------------------------------ */
+
+function SynchronyWidget({ groupId }: { groupId: number }) {
+  const [status, setStatus] = useState<GroupSynchronyStatus | null>(null);
+
+  useEffect(() => {
+    api.getGroupSynchrony(groupId)
+      .then((d) => setStatus(d.synchrony))
+      .catch(() => { /* silent */ });
+  }, [groupId]);
+
+  if (!status) return null;
+
+  const unlocked = !!status.unlockedAt;
+
+  return (
+    <div className={`glass-card p-4 ${unlocked ? "border-[var(--accent)]/40" : ""}`}>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} className={unlocked ? "text-[var(--accent)]" : "text-[var(--text-muted)]"} />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+            Conquista de Grupo
+          </span>
+        </div>
+        {unlocked && <Check size={14} className="text-green-400" />}
+      </div>
+
+      <p className="mb-1 text-xs font-medium text-[var(--text)]">{status.title}</p>
+      <p className="text-[10px] text-[var(--text-faint)]">{status.description}</p>
+      <p className="mt-2 text-[10px]">
+        {unlocked ? (
+          <span className="text-[var(--accent)]">
+            Conquistada! +{status.coinsPerMember} moedas por membro 🎉
+          </span>
+        ) : (
+          <span className="text-[var(--text-muted)]">🔒 {status.requirement}</span>
+        )}
+      </p>
     </div>
   );
 }
@@ -1226,32 +1272,6 @@ function GroupDetailPanel({
   }
 
   /* Members */
-  async function performMemberOp(op: "role" | "remove" | "transfer", targetId: string, role?: string) {
-    if (busyMemberId) return;
-    setBusyMemberId(targetId);
-    setMessageError("");
-    try {
-      if (op === "role") {
-        await api.updateGroupMemberRole(group.id, targetId, role as import("@/types").GroupRole);
-      } else if (op === "remove") {
-        await api.removeGroupMember(group.id, targetId);
-      } else {
-        await api.groupAction(group.id, "transfer", { targetProfileId: targetId });
-      }
-      setGroup((g) => g ? { ...g, members: g.members.filter((m) => m.id !== (op === "remove" ? targetId : undefined)) } : g);
-      if (op === "role") {
-        setGroup((g) => g ? { ...g, members: g.members.map((m) => m.id === targetId ? { ...m, role: role as import("@/types").GroupRole } : m) } : g);
-      }
-      if (op === "transfer") {
-        setGroup((g) => g ? { ...g, members: g.members.map((m) => m.id === targetId ? { ...m, role: "OWNER" } : m.id === currentUserId ? { ...m, role: "ADMIN" } : m) } : g);
-      }
-    } catch (e) {
-      setMessageError(e instanceof Error ? e.message : "Operação falhou.");
-    } finally {
-      setBusyMemberId(null);
-    }
-  }
-
   async function runMemberAction(action: MemberAction) {
     setMemberMenu(null);
     if (busyMemberId) return;
@@ -1281,7 +1301,25 @@ function GroupDetailPanel({
     } finally {
       setBusyMemberId(null);
     }
-    onRefresh?.();
+  }
+
+  function actionsFor(m: GroupMember): MemberAction[] {
+    if (m.id === currentUserId || m.role === "OWNER") return [];
+    const actions: MemberAction[] = [];
+    // Banned members can't send, so only offer unmuting/toggling by kicking.
+    if (m.isBanned) {
+      if (isOwner) actions.push({ type: "kick", member: m });
+      return actions;
+    }
+    if (m.role === "ADMIN" || m.role === "MEMBER") {
+      if (!m.isMuted) actions.push({ type: "mute", member: m });
+    }
+    if (isOwner) {
+      if (m.role === "ADMIN") actions.push({ type: "demote", member: m }, { type: "ban", member: m });
+      if (m.role === "MEMBER") actions.push({ type: "promote", member: m }, { type: "ban", member: m });
+      actions.push({ type: "transfer", member: m });
+    }
+    return actions;
   }
 
   async function saveSettings() {
@@ -1405,6 +1443,11 @@ function GroupDetailPanel({
           reduced={reduced}
           showAvatar
           showSenderName
+          deleteSenderRoles={isOwner
+            ? (["OWNER", "ADMIN", "MEMBER"] as const)
+            : isAdmin
+              ? (["MEMBER"] as const)
+              : undefined}
           onSend={handleSend}
           onReply={handleReply}
           onEdit={handleEditMessage}
@@ -1502,12 +1545,6 @@ function GroupDetailPanel({
           </div>
           <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-2">
             {sortedMembers.map((m) => {
-              const canManageThis = isOwner
-                ? m.role !== "OWNER"
-                : isAdmin && m.role !== "OWNER" && m.id !== currentUserId;
-              const canToggleRole = isOwner
-                ? m.role !== "OWNER"
-                : isAdmin && m.role !== "OWNER" && m.id !== currentUserId;
               return (
                 <motion.div key={m.id} variants={fadeUp} className="glass-card flex items-center gap-3 px-4 py-3">
                   <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={40} />
@@ -1524,47 +1561,23 @@ function GroupDetailPanel({
                     <Image src={streakIconSource(m.currentStreak)} alt="streak" width={12} height={12} style={{ objectFit: "contain" }} unoptimized />
                     {m.currentStreak}
                   </div>
-                  {canManageThis && (
-                    <div className="flex items-center gap-1">
-                      {isOwner && m.role !== "OWNER" && (
-                        <button title="Transferir propriedade" disabled={busyMemberId === m.id}
-                          onClick={() => performMemberOp("transfer", m.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <ArrowRightLeft size={14} />}
-                        </button>
-                      )}
-                      {canToggleRole && (
-                        <button title={m.role === "ADMIN" ? "Rebaixar para membro" : "Promover a admin"}
-                          onClick={() => performMemberOp("role", m.id, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
-                          disabled={busyMemberId === m.id}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Shield size={14} />}
-                        </button>
-                      )}
-                      {m.role === "MEMBER" && (
-                        <button title={m.isMuted ? "Remover silêncio" : "Silenciar membro"}
-                          onClick={async () => {
-                            setBusyMemberId(m.id);
-                            try {
-                              await api.setGroupMemberMuted(group.id, m.id, !m.isMuted);
-                              setGroup((g) => g ? { ...g, members: g.members.map((member) => member.id === m.id ? { ...member, isMuted: !m.isMuted } : member) } : g);
-                            } catch (e) {
-                              setMessageError(e instanceof Error ? e.message : "Não foi possível alterar o silêncio.");
-                            } finally {
-                              setBusyMemberId(null);
-                            }
-                          }}
-                          disabled={busyMemberId === m.id}
-                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition disabled:opacity-30 ${m.isMuted ? "bg-[var(--red-bg)] text-[var(--red)]" : "text-[var(--text-muted)] hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"}`}>
-                          {busyMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <VolumeX size={14} />}
-                        </button>
-                      )}
-                      <button title="Remover" onClick={() => performMemberOp("remove", m.id)}
-                        disabled={busyMemberId === m.id}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--red-bg)] hover:text-[var(--red)] disabled:opacity-30">
-                        <UserMinus size={14} />
-                      </button>
-                    </div>
+                  {m.isBanned && (
+                    <span className="rounded-full bg-[var(--red-bg)] px-2 py-0.5 text-[9px] font-medium text-[var(--red)]">
+                      banido
+                    </span>
+                  )}
+                  {actionsFor(m).length > 0 && (
+                    <button
+                      title="Ações"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMemberMenu({ x: rect.right - 208, y: rect.bottom + 4, member: m });
+                      }}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+                    >
+                      <MoreVertical size={15} />
+                    </button>
                   )}
                 </motion.div>
               );
@@ -1577,6 +1590,7 @@ function GroupDetailPanel({
       {tab === "stats" && (
         <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
           <WeeklyQuestWidget groupId={group.id} />
+          <SynchronyWidget groupId={group.id} />
           {milestones.length > 0 && <MilestoneBar milestones={milestones} totalMinutes={totalMinutes} />}
           <div className="glass-card p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -1610,7 +1624,7 @@ function GroupDetailPanel({
               <p className="text-sm font-medium text-[var(--text)]">Ícone do grupo</p>
               <p className="text-xs text-[var(--text-faint)]">Envie uma imagem (até 7 MB)</p>
             </div>
-            {(isOwner || isAdmin) && (
+            {isOwner && (
               <>
                 <input ref={iconRef} type="file" accept="image/*" className="hidden" onChange={handleIconUpload} />
                 <button onClick={() => iconRef.current?.click()} disabled={savingIcon}
@@ -1622,7 +1636,7 @@ function GroupDetailPanel({
             )}
           </div>
 
-          {(isOwner || isAdmin) && (
+          {isOwner && (
             <>
               {/* Name / description / privacy */}
               <div className="glass-card space-y-4 p-5">
@@ -1743,6 +1757,16 @@ function GroupDetailPanel({
             )}
           </AnimatePresence>
         </div>
+      )}
+
+      {memberMenu && (
+        <MemberActionMenu
+          anchor={memberMenu}
+          actions={actionsFor(memberMenu.member)}
+          busy={busyMemberId !== null}
+          onAction={runMemberAction}
+          onClose={() => setMemberMenu(null)}
+        />
       )}
     </motion.div>
   );

@@ -10,9 +10,6 @@ import { getGroupTotalMinutes, getGroupMemberContributions, getGroupGlobalRank, 
 
 const GROUP_EMOJIS = new Set(["⚡", "🔥", "✨", "💎", "🌙", "☀️", "🌊", "🌿", "🎯", "💜", "🌀", "⭐", "🚀", "🧠"]);
 
-/** Role hierarchy: higher rank = more authority. Used to gate moderation. */
-const ROLE_HIERARCHY: Record<GroupRole, number> = { OWNER: 3, ADMIN: 2, MEMBER: 1 };
-
 /** Helper to resolve a group membership's role + ban state in one query. */
 async function resolveMember(
   groupId: number,
@@ -486,6 +483,7 @@ export async function listGroupMessages(
     edited_at: Date | string | null;
     display_name: string;
     photo_url: string | null;
+    sender_role: string | null;
     reactions: unknown;
     is_pinned: boolean | null;
     pinned_at: Date | string | null;
@@ -496,6 +494,7 @@ export async function listGroupMessages(
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
      gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url,
+     gmsender.role as sender_role,
      reactions.reactions, (pinned.message_id is not null) as is_pinned,
      pinned.created_at as pinned_at, pinned.pinned_by`;
   const replyColumns = hasReplyCols
@@ -510,6 +509,7 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join group_members gmsender on gmsender.group_id = gm.group_id and gmsender.profile_id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
          left join lateral (
@@ -543,6 +543,7 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join group_members gmsender on gmsender.group_id = gm.group_id and gmsender.profile_id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
          left join lateral (
@@ -580,6 +581,7 @@ export async function listGroupMessages(
     senderId: row.sender_id,
     senderName: row.display_name,
     senderPhotoUrl: row.photo_url ?? undefined,
+    senderRole: row.sender_role ? (row.sender_role as GroupRole) : undefined,
     body: row.body ?? undefined,
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
     mediaUrl: row.media_url ?? undefined,

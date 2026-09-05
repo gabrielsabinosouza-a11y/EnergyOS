@@ -9,6 +9,7 @@ import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
 import { checkAndUnlockMilestones } from "./group-milestones";
+import { checkGroupSynchrony } from "./group-synchrony";
 import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
 import { FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
@@ -370,6 +371,7 @@ export async function endFocusSession(
       );
       for (const { group_id } of groups.rows) {
         checkAndUnlockMilestones(group_id).catch(() => {});
+        checkGroupSynchrony(group_id).catch(() => {});
       }
     }
   }
