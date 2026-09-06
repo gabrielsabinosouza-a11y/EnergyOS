@@ -32,7 +32,7 @@ const META: Record<string, { title: string; description: string; category: strin
   xp_olympian: { title: "Olimpiano de XP", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Faísca Social", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
-squad_leader: { title: "Líder de Esquadrão", description: "Tenha o maior grupo onde você é dono", category: "social" },
+  squad_leader: { title: "Líder de Esquadrão", description: "Tenha o maior grupo onde você é dono", category: "social" },
   focus_companion: { title: "Companheiro de Foco", description: "Conclua sessões focando com outras pessoas", category: "focus" },
   flow_state: { title: "Estado de Fluxo", description: "Complete uma sessão de foco ininterrupta", category: "focus" },
   aura_collector: { title: "Colecionador de Auras", description: "Colecione uma porcentagem das auras disponíveis", category: "aura" },
@@ -176,7 +176,11 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
       `select max(cnt) as largest from (
          select gm.group_id, count(*) as cnt
          from group_members gm
-         where gm.profile_id = $1 and gm.role = 'OWNER' and gm.is_banned = false
+         where coalesce(gm.is_banned, false) = false
+           and gm.group_id in (
+             select group_id from group_members
+             where profile_id = $1 and role = 'OWNER' and coalesce(is_banned, false) = false
+           )
          group by gm.group_id
        ) owned`,
       [profileId],

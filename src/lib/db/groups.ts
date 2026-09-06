@@ -1,6 +1,6 @@
 import pool from "../db";
-import type { GroupDetail, GroupMember, GroupMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
-import { ForbiddenError, NotFoundError } from "../errors";
+import type { GroupDetail, GroupMember, GroupMessage, GroupPinnedMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { parseEnum, parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
 import { areFriends } from "./social";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
@@ -488,15 +488,18 @@ export async function listGroupMessages(
     is_pinned: boolean | null;
     pinned_at: Date | string | null;
     pinned_by: string | null;
+    expires_at: Date | string | null;
   };
   // The reply/edit columns may not exist on older databases until the
   // migration runs; detect them so the query stays valid either way.
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
+  const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
      gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url,
      gmsender.role as sender_role,
      reactions.reactions, (pinned.message_id is not null) as is_pinned,
-     pinned.created_at as pinned_at, pinned.pinned_by`;
+     pinned.created_at as pinned_at, pinned.pinned_by,
+     ${hasExpiryCol ? "pinned.expires_at" : "null::timestamptz as expires_at"}`;
   const replyColumns = hasReplyCols
     ? `, gm.reply_to_id, gm.edited_at, rp.body as reply_to_body,
        rpname.display_name as reply_to_sender_name`
@@ -534,6 +537,7 @@ export async function listGroupMessages(
            on pinned.message_kind = 'GROUP'
           and pinned.conversation_id = gm.group_id::text
           and pinned.message_id = gm.id
+          ${hasExpiryCol ? "and (pinned.expires_at is null or pinned.expires_at > now())" : ""}
          where gm.group_id = $1 and gm.id > $2
          order by gm.created_at asc
          limit 100`,
@@ -568,6 +572,7 @@ export async function listGroupMessages(
            on pinned.message_kind = 'GROUP'
           and pinned.conversation_id = gm.group_id::text
           and pinned.message_id = gm.id
+          ${hasExpiryCol ? "and (pinned.expires_at is null or pinned.expires_at > now())" : ""}
          where gm.group_id = $1
          order by gm.created_at desc
          limit 80`,
@@ -594,6 +599,7 @@ export async function listGroupMessages(
     reactions: normalizeReactions(row.reactions),
     isPinned: Boolean(row.is_pinned),
     pinnedAt: row.pinned_at ? new Date(row.pinned_at).toISOString() : undefined,
+    pinnedUntil: row.expires_at ? new Date(row.expires_at).toISOString() : undefined,
     pinnedBy: row.pinned_by ?? undefined,
   }));
 }
@@ -842,9 +848,15 @@ export async function toggleGroupMessageReaction(
   return updated;
 }
 
+/** Max simultaneous pins per group conversation. */
+const MAX_GROUP_PINS = 3;
+/** Allowed pin durations (days), chosen at pin time. */
+const PIN_DURATION_DAYS = [7, 14, 30];
+
 export async function toggleGroupMessagePin(
   profileId: string,
   messageId: number,
+  opts?: { durationDays?: number },
 ): Promise<void> {
   const message = await assertGroupMessageParticipant(profileId, messageId);
   const conversationId = String(message.groupId);
@@ -861,19 +873,108 @@ export async function toggleGroupMessagePin(
     );
     return;
   }
-  await pool.query(
-    `delete from pinned_messages where message_kind = 'GROUP' and conversation_id = $1`,
+
+  const durationDays = opts?.durationDays;
+  let expiresAt: Date | null = null;
+  if (durationDays != null) {
+    if (!PIN_DURATION_DAYS.includes(durationDays)) {
+      throw new BadRequestError("Duração de fixação inválida (use 7, 14 ou 30 dias).");
+    }
+    expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  }
+
+  const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
+
+  // Lazy expiry: drop this conversation's lapsed pins before enforcing the cap.
+  if (hasExpiryCol) {
+    await pool.query(
+      `delete from pinned_messages
+       where message_kind = 'GROUP' and conversation_id = $1
+         and expires_at is not null and expires_at <= now()`,
+      [conversationId],
+    );
+  }
+
+  const count = await pool.query<{ count: string | number }>(
+    `select count(*) as count from pinned_messages
+     where message_kind = 'GROUP' and conversation_id = $1`,
     [conversationId],
   );
-  await pool.query(
-    `insert into pinned_messages (message_id, message_kind, conversation_id, pinned_by)
-     values ($1, 'GROUP', $2, $3)
-     on conflict (message_id, message_kind) do update
-     set conversation_id = excluded.conversation_id,
-         pinned_by = excluded.pinned_by,
-         created_at = now()`,
-    [messageId, conversationId, profileId],
+  if (Number(count.rows[0]?.count ?? 0) >= MAX_GROUP_PINS) {
+    throw new ConflictError("Limite de 3 pins — remova um antes de adicionar outro.");
+  }
+
+  if (hasExpiryCol) {
+    await pool.query(
+      `insert into pinned_messages (message_id, message_kind, conversation_id, pinned_by, expires_at)
+       values ($1, 'GROUP', $2, $3, $4)
+       on conflict (message_id, message_kind) do update
+       set conversation_id = excluded.conversation_id,
+           pinned_by = excluded.pinned_by,
+           created_at = now(),
+           expires_at = excluded.expires_at`,
+      [messageId, conversationId, profileId, expiresAt],
+    );
+  } else {
+    await pool.query(
+      `insert into pinned_messages (message_id, message_kind, conversation_id, pinned_by)
+       values ($1, 'GROUP', $2, $3)
+       on conflict (message_id, message_kind) do update
+       set conversation_id = excluded.conversation_id,
+           pinned_by = excluded.pinned_by,
+           created_at = now()`,
+      [messageId, conversationId, profileId],
+    );
+  }
+}
+
+/** Active pins for a group (max 3, oldest pin first), for the pinned banner. */
+export async function getGroupPinnedMessages(
+  profileId: string,
+  groupId: number,
+): Promise<GroupPinnedMessage[]> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new NotFoundError("Grupo não encontrado.");
+  await assertMember(groupId, profileId);
+
+  const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
+  const result = await pool.query<{
+    id: string | number;
+    body: string | null;
+    message_type: string;
+    media_url: string | null;
+    created_at: Date | string;
+    display_name: string | null;
+    pinned_at: Date | string;
+    expires_at: Date | string | null;
+    pinned_by: string | null;
+  }>(
+    `select gm.id, gm.body, gm.message_type, gm.media_url, gm.created_at,
+            p.display_name, pinned.created_at as pinned_at,
+            ${hasExpiryCol ? "pinned.expires_at" : "null::timestamptz as expires_at"},
+            pinned.pinned_by
+     from pinned_messages pinned
+     join group_messages gm on gm.id = pinned.message_id
+     join profiles p on p.id = gm.sender_id
+     where pinned.message_kind = 'GROUP'
+       and pinned.conversation_id = $1
+       ${hasExpiryCol ? "and (pinned.expires_at is null or pinned.expires_at > now())" : ""}
+     order by pinned.created_at asc
+     limit ${MAX_GROUP_PINS}`,
+    [String(groupId)],
   );
+
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    body: row.body ?? undefined,
+    messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
+    mediaUrl: row.media_url ?? undefined,
+    senderName: row.display_name ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    pinnedAt: new Date(row.pinned_at).toISOString(),
+    pinnedUntil: row.expires_at ? new Date(row.expires_at).toISOString() : undefined,
+    pinnedBy: row.pinned_by ?? undefined,
+  }));
 }
 
 export async function markGroupRead(profileId: string, groupId: number): Promise<void> {

@@ -10,7 +10,9 @@ export async function POST(
   try {
     const { profileId } = await requireAuth(request);
     const { messageId } = await params;
-    await toggleGroupMessagePin(profileId, Number(messageId));
+    // Body is optional: absent = toggle/unpin. When pinning, durationDays (7/14/30) sets expiry.
+    const body = (await request.json().catch(() => null)) as { durationDays?: number } | null;
+    await toggleGroupMessagePin(profileId, Number(messageId), { durationDays: body?.durationDays });
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof AppError) {

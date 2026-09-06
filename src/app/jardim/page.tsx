@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer, Grid3X3, List } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -161,33 +161,56 @@ function formatMinutes(total: number): string {
   return `${h}h ${m}m`;
 }
 
+/** Formato estendido pt-BR para valores de um único dia: "55 minutos", "1 hora", "1 hora 5 minutos", "5 horas 45 minutos". */
+function formatMinutesLong(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return m === 1 ? "1 minuto" : `${m} minutos`;
+  const hours = h === 1 ? "1 hora" : `${h} horas`;
+  if (m === 0) return hours;
+  return `${hours} ${m === 1 ? "1 minuto" : `${m} minutos`}`;
+}
+
 // ── Bar chart ─────────────────────────────────────────────────────────────────
 
 function DistributionChart({ data, labelStep, height = 168 }: { data: BarDatum[]; labelStep: number; height?: number }) {
-  const max = Math.max(1, ...data.map((d) => d.minutes));
+  const reduced = useReducedMotion() ?? false;
+  const maxMinutes = Math.max(1, ...data.map((d) => d.minutes));
+  const peakIndex = data.findIndex((d) => d.minutes === maxMinutes);
+
   return (
     <div className="flex flex-col">
       <div className="flex items-end gap-[2px] sm:gap-1" style={{ height }}>
         {data.map((d, i) => {
-          const pct = (d.minutes / max) * 100;
+          const pct = (d.minutes / maxMinutes) * 100;
+          const isActive = d.minutes > 0;
+          const isPeak = isActive && i === peakIndex;
+          // LED accent: peak bar glows amber (same hue as the focus-total badge), the rest cyan.
+          const accent = isPeak ? "#ffb86b" : "#71d4ff";
+          const glowRGB = isPeak ? "255,184,107" : "113,212,255";
+          const background = `linear-gradient(180deg, ${accent} 0%, rgba(${glowRGB},.55) 45%, rgba(${glowRGB},.12) 100%)`;
+          const baseShadow = `0 0 14px -3px rgba(${glowRGB},.55), 0 10px 18px -10px rgba(6,16,32,.85), inset 0 1px 0 rgba(255,255,255,.25)`;
+          const hoverShadow = `0 0 26px -2px rgba(${glowRGB},.75), 0 16px 26px -12px rgba(6,16,32,.9), inset 0 1px 0 rgba(255,255,255,.35)`;
           return (
             <div key={`${i}-${d.label}`} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                <span className="font-semibold text-[var(--text)]">
-                  {d.fullLabel}: {d.minutes}min
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2 py-1 text-[10px] opacity-0 shadow-xl backdrop-blur-md transition-all duration-200 group-hover:opacity-100 motion-reduce:transition-none">
+                <span className="block origin-bottom scale-90 transition-transform duration-200 group-hover:scale-100 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                  <span className="font-semibold" style={{ color: isActive ? accent : undefined }}>{d.fullLabel}</span>
+                  <span className="ml-1 font-normal text-[var(--text-muted)]">{formatMinutesLong(d.minutes)}</span>
                 </span>
               </div>
               <motion.div
                 key={`${i}-${d.label}`}
-                initial={{ height: 0 }}
+                initial={reduced ? { height: `${pct}%` } : { height: 0 }}
                 animate={{ height: `${pct}%` }}
-                transition={{ type: "spring", stiffness: 320, damping: 32 }}
-                className="w-full max-w-[26px] rounded-t-[3px]"
+                transition={reduced ? undefined : { type: "spring", stiffness: 320, damping: 30, delay: i * 0.03 }}
+                whileHover={reduced || !isActive ? undefined : { scaleX: 1.06, y: -2, boxShadow: hoverShadow }}
+                className={`w-full max-w-[26px] rounded-t-[3px] ${isActive ? "cursor-pointer" : ""}`}
                 style={{
-                  background: "linear-gradient(180deg, #71d4ff 0%, rgba(113,212,255,.28) 100%)",
-                  opacity: d.minutes === 0 ? 0.12 : 0.92,
-                  boxShadow: d.minutes > 0 ? "0 0 12px -2px rgba(113,212,255,.5)" : "none",
-                  minHeight: d.minutes > 0 ? 6 : 0,
+                  background,
+                  opacity: isActive ? 1 : 0.12,
+                  boxShadow: isActive ? baseShadow : "none",
+                  minHeight: isActive ? 6 : 0,
                 }}
               />
             </div>
@@ -486,8 +509,16 @@ export default function JardimPage() {
 
           {/* Focused time distribution */}
           <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-            <div className="panel p-5 sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <div
+              className="panel relative p-5 sm:p-6"
+              style={{ boxShadow: "0 0 40px -16px rgba(113,212,255,.4), 0 0 0 1px rgba(113,212,255,.08)" }}
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{ background: "radial-gradient(ellipse at 85% 0%, rgba(113,212,255,.1), transparent 55%)", borderRadius: "inherit" }}
+              />
+              <div className="relative mb-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Timer size={15} className="text-[var(--accent)]" />
                   <span className="eyebrow">DISTRIBUIÇÃO DE TEMPO FOCADO</span>
@@ -497,16 +528,18 @@ export default function JardimPage() {
                   <span className="font-mono text-[10px] font-bold text-[#ffb86b]">{formatMinutes(totalMinutes)}</span>
                 </div>
               </div>
-              <DistributionChart data={chartData} labelStep={chartLabelStep} />
-              <p className="mt-3 text-center text-[10px] text-[var(--text-faint)]">
-                {period === "day"
-                  ? "Minutos de foco por hora do dia"
-                  : period === "week"
-                    ? "Minutos de foco por dia da semana"
-                    : period === "month"
-                      ? "Minutos de foco por dia do mês"
-                      : "Minutos de foco por mês"}
-              </p>
+              <div className="relative">
+                <DistributionChart data={chartData} labelStep={chartLabelStep} />
+                <p className="mt-3 text-center text-[10px] text-[var(--text-faint)]">
+                  {period === "day"
+                    ? "Minutos de foco por hora do dia"
+                    : period === "week"
+                      ? "Minutos de foco por dia da semana"
+                      : period === "month"
+                        ? "Minutos de foco por dia do mês"
+                        : "Minutos de foco por mês"}
+                </p>
+              </div>
             </div>
           </motion.section>
             </>

@@ -545,13 +545,15 @@ create table if not exists pinned_messages (
 );
 
 alter table pinned_messages add column if not exists conversation_id text;
+-- Pin expiration: chosen at pin time (7/14/30 days). null = never expires.
+alter table pinned_messages add column if not exists expires_at timestamptz;
 
 create index if not exists pinned_messages_kind_idx
   on pinned_messages(message_kind, message_id);
 
-create unique index if not exists pinned_messages_one_per_conversation_idx
-  on pinned_messages(message_kind, conversation_id)
-  where conversation_id is not null;
+-- Up to 3 pins per conversation are allowed (enforced in application code);
+-- the previous one-pin-per-conversation unique index is removed.
+drop index if exists pinned_messages_one_per_conversation_idx;
 
 -- ── Group milestones & weekly quest ──────────────────────────────────────────
 -- Lifetime combined-minute milestones for each group.
@@ -669,7 +671,7 @@ insert into achievements (id, title, description, category) values
   ('social_spark',     'Faísca Social',        'Faça amigos e entre em grupos',                 'social'),
   ('rarest_aura',      'Top 1 Global',         'Termine no topo da Liga Lendários',                'league'),
   ('squad_leader',     'Líder de Esquadrão',   'Tenha o maior grupo onde você é dono',             'social'),
-('focus_companion',  'Companheiro de Foco', 'Conclua sessões focando com outras pessoas',  'focus'),
+  ('focus_companion',  'Companheiro de Foco', 'Conclua sessões focando com outras pessoas',  'focus'),
   ('flow_state',       'Estado de Fluxo',     'Complete uma sessão de foco ininterrupta',      'focus'),
   ('aura_collector',   'Colecionador de Auras','Colecione uma porcentagem das auras disponíveis','aura')
  on conflict (id) do nothing;

@@ -269,6 +269,8 @@ function MessageBubble({
   read,
   onReaction,
   onQuoteClick,
+  showActionTrigger,
+  onActionTrigger,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -279,6 +281,10 @@ function MessageBubble({
   read?: boolean;
   onReaction: (messageId: number, emoji: string) => void;
   onQuoteClick: (messageId: number) => void;
+  /** Whether the ⋯ trigger should be shown (row is hovered). */
+  showActionTrigger: boolean;
+  /** Click on the ⋯ trigger (opens the context menu anchored to this bubble). */
+  onActionTrigger: (e: React.MouseEvent) => void;
 }) {
   const reactions = msg.reactions ?? [];
   const handleContextMenu = useCallback(
@@ -324,16 +330,18 @@ function MessageBubble({
           </p>
         )}
 
-        {/* Bubble */}
-        <div
-          onContextMenu={handleContextMenu}
-          className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
-            isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"
-          }`}
-          onTouchStart={startLongPress}
-          onTouchEnd={cancelLongPress}
-          onTouchMove={cancelLongPress}
-        >
+        {/* Bubble — wrapped in a shrink-to-fit relative container so the ⋯
+            trigger anchors to the bubble's own edge (never the row edge). */}
+        <div className="relative">
+          <div
+            onContextMenu={handleContextMenu}
+            className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
+              isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"
+            }`}
+            onTouchStart={startLongPress}
+            onTouchEnd={cancelLongPress}
+            onTouchMove={cancelLongPress}
+          >
           {/* Compact reply quote (WhatsApp style, contained inside this bubble) */}
           {msg.replyToBody && (
             <button
@@ -413,10 +421,24 @@ function MessageBubble({
               {msg.body}
             </div>
           ) : null}
+          </div>
 
-          {/* Hover menu trigger (desktop, always visible) */}
-          {/* (moved out of the bubble — now rendered in the row wrapper,
-              outside the overflow-hidden bubble, so it never covers text) */}
+          {/* Floating action trigger: anchored to THIS bubble's outer edge —
+              left of own (right-aligned) bubbles, right of others' bubbles —
+              shown on hover of the row (desktop). Rendered as a sibling of
+              the bubble (not inside it) so overflow-hidden can't clip it. */}
+          {showActionTrigger && (
+            <button
+              type="button"
+              onClick={onActionTrigger}
+              aria-label="Ações da mensagem"
+              className={`absolute top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex ${
+                isMe ? "right-full mr-1" : "left-full ml-1"
+              }`}
+            >
+              <span className="text-[10px]">⋯</span>
+            </button>
+          )}
         </div>
 
         {reactions.length > 0 && (
@@ -900,27 +922,16 @@ export function ChatThread({
               read={readMessageIds?.has(msg.id)}
               onReaction={toggleReaction}
               onQuoteClick={jumpToMessage}
+              showActionTrigger={hoveredId === msg.id}
+              onActionTrigger={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                handleContextMenu(
+                  { clientX: rect.right, clientY: rect.bottom + 4 } as React.MouseEvent,
+                  msg,
+                );
+              }}
             />
-            {/* Floating action trigger: rendered in the row's outer corner
-                (never over the bubble text), shown on hover (desktop). */}
-            {hoveredId === msg.id && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  handleContextMenu(
-                    { clientX: rect.right, clientY: rect.bottom + 4 } as React.MouseEvent,
-                    msg,
-                  );
-                }}
-                className={`absolute ${
-                  isMe ? "left-2" : "right-2"
-                } top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex`}
-              >
-                <span className="text-[10px]">⋯</span>
-              </button>
-            )}
             </div>
           );
         })}

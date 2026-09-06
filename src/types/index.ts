@@ -201,6 +201,7 @@ export interface ChatMessage {
   reactions?: MessageReactionSummary[];
   isPinned?: boolean;
   pinnedAt?: string;
+  pinnedUntil?: string;
   pinnedBy?: string;
 }
 
@@ -243,7 +244,41 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     reactions: gm.reactions,
     isPinned: gm.isPinned,
     pinnedAt: gm.pinnedAt,
+    pinnedUntil: gm.pinnedUntil,
     pinnedBy: gm.pinnedBy,
+  };
+}
+
+/** Allowed pin durations (days), chosen at pin time. */
+export type PinDurationDays = 7 | 14 | 30;
+
+/** A message currently pinned in a group (server-filtered for expiry, max 3). */
+export interface GroupPinnedMessage {
+  id: number;
+  body?: string;
+  messageType: GroupMessageType;
+  mediaUrl?: string;
+  senderName?: string;
+  createdAt: string;
+  pinnedAt: string;
+  pinnedUntil?: string;
+  pinnedBy?: string;
+}
+
+/** Convert a pinned-message summary to the unified ChatMessage format (for the banner). */
+export function groupPinnedToChatMessage(p: GroupPinnedMessage): ChatMessage {
+  return {
+    id: p.id,
+    senderId: p.pinnedBy ?? "",
+    senderName: p.senderName,
+    body: p.body,
+    messageType: p.messageType,
+    mediaUrl: p.mediaUrl,
+    createdAt: p.createdAt,
+    isPinned: true,
+    pinnedAt: p.pinnedAt,
+    pinnedUntil: p.pinnedUntil,
+    pinnedBy: p.pinnedBy,
   };
 }
 
@@ -304,6 +339,7 @@ export interface GroupMessage {
   reactions?: MessageReactionSummary[];
   isPinned?: boolean;
   pinnedAt?: string;
+  pinnedUntil?: string;
   pinnedBy?: string;
 }
 
