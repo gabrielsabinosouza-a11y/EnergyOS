@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage, type EnergyType } from "@/lib/energy-assets";
 import type { GardenEntry } from "@/lib/db/focus";
 
@@ -20,6 +20,20 @@ const PAD_X = 36;
 const PAD_Y = 30;
 /** Meia-célula: linhas alternadas deslocadas — empacotamento orgânico, sem colunas rígidas. */
 const STAGGER_X = X_STEP / 2;
+
+// ── Density scaling (Forest-style) ────────────────────────────────────────────
+// O terreno mantém altura fixa; gridScale encolhe passos e sprites conforme o nº
+// de itens cresce, para o jardim inteiro caber sem rolagem no caso normal.
+/** Largura base do sprite de energia (na densidade mínima). */
+const ICON_BASE = 58;
+/** Menor tamanho legível do sprite. Abaixo disso o terreno estoura o cap e a rolagem assume. */
+const MIN_ICON = 24;
+/** Altura-alvo fixa do terreno (mantida dentro do cap de 640px do invólucro). */
+const TERRAIN_H_TARGET = 560;
+/** Fator máximo de profundidade por linha — evita que linhas distantes "zoomen" com muitas linhas. */
+const MAX_DEPTH = 1.06;
+/** Acima deste nº de itens ativa o modo denso: fade único do container, sem springs por item. */
+const DENSE_THRESHOLD = 25;
 
 /** Quantas plantas por linha cabem na largura disponível do terreno. */
 function columnsForWidth(width: number): number {
@@ -66,10 +80,23 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
     [entries],
   );
 
-  // O terreno cresce junto com o jardim: mais linhas → mais espaço, sem comprimir.
-  const rows = Math.max(1, Math.ceil(planted.length / cols));
-  const terrainWidth = cols * X_STEP + STAGGER_X + PAD_X * 2;
-  const terrainHeight = Math.max(200, (rows - 1) * Y_STEP + TILE_H + PAD_Y * 2 + 24);
+  const reduced = useReducedMotion() ?? false;
+  const n = planted.length;
+
+  // Altura "natural" (escala 1) da grade; gridScale reduz passos/sprites para
+  // caberem todos no terreno de altura fixa.
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const baseH = (rows - 1) * Y_STEP + TILE_H + PAD_Y * 2;
+  const s = Math.min(1, (TERRAIN_H_TARGET - 24) / baseH);
+  // Nunca abaixo do mínimo legível. Se o mínimo for atingido, o terreno cresce
+  // além do cap e o overflow-y-auto do invólucro assume (fallback raro).
+  const gridScale = Math.max(s, MIN_ICON / ICON_BASE);
+  const terrainWidth = (cols * X_STEP + STAGGER_X + PAD_X * 2) * gridScale;
+  const terrainHeight = Math.max(200, baseH * gridScale + 24);
+  // Modo denso: sem springs/motion por item — o container inteiro faz um único
+  // fade-in e as plantas ficam estáticas (hover via CSS) para não travar em densidades altas.
+  const dense = n > DENSE_THRESHOLD;
+  const animate = !dense && !reduced;
 
   // Partículas ambientais — poucas, leves e determinísticas (animadas via CSS).
   const particles = useMemo(() => {
@@ -102,8 +129,11 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
       style={{ maxHeight: "min(72vh, 640px)" }}
     >
       {/* Terreno único: uma "clareira" iluminada ao centro, escurecendo até as bordas. */}
-      <div
+      <motion.div
         className="relative mx-auto overflow-hidden rounded-[26px]"
+        initial={dense && !reduced ? { opacity: 0 } : false}
+        animate={dense && !reduced ? { opacity: 1 } : undefined}
+        transition={{ duration: 0.35 }}
         style={{
           width: "100%",
           maxWidth: terrainWidth,
@@ -197,36 +227,59 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
           const isFullLife = entry.status === "alive" && energyStage === "full";
 
-          // Jitter orgânico determinístico: cada planta ocupa seu lugar no canteiro.
-          const jx = (hash01(entry.id * 17 + 1) - 0.5) * 18;
-          const jy = (hash01(entry.id * 29 + 2) - 0.5) * 10;
-          const scale =
-            (STAGE_SCALE[energyStage] ?? 1) * (1 + row * 0.014) * (0.95 + hash01(entry.id * 41 + 4) * 0.1);
+          // Tudo escala junto com a densidade (gridScale) para caber no terreno fixo.
+          const jx = (hash01(entry.id * 17 + 1) - 0.5) * 18 * gridScale;
+          const jy = (hash01(entry.id * 29 + 2) - 0.5) * 10 * gridScale;
+          // Profundidade por linha é limitada: com muitas linhas o antigo "zoom ao
+          // fundo" deixaria plantas distantes maiores que as do primeiro plano.
+          const depth = Math.min(1 + row * 0.014, MAX_DEPTH);
+          const plantScale =
+            (STAGE_SCALE[energyStage] ?? 1) * depth * (0.95 + hash01(entry.id * 41 + 4) * 0.1);
 
-          const left = PAD_X + col * X_STEP + (row % 2 === 1 ? STAGGER_X : 0) + jx;
-          const top = PAD_Y + row * Y_STEP + jy;
+          const left = PAD_X * gridScale + col * X_STEP * gridScale + (row % 2 === 1 ? STAGGER_X * gridScale : 0) + jx;
+          const top = PAD_Y * gridScale + row * Y_STEP * gridScale + jy;
+          const icon = ICON_BASE * gridScale * plantScale;
           const delay = index * 0.035;
 
-          return (
-            <motion.button
-              key={entry.id}
-              type="button"
-              aria-label={`${cfg.label} — ${entry.durationMinutes} minutos`}
-              initial={{ opacity: 0, scale: 0.85, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              whileHover={{ y: -4 }}
-              transition={{ delay, type: "spring", stiffness: 260, damping: 22 }}
-              className="absolute border-0 bg-transparent p-0"
-              style={{
-                left,
-                top,
-                width: TILE_W,
-                height: TILE_H,
-                zIndex: 10 + row,
-                cursor: onEntryClick ? "pointer" : "default",
-              }}
-              onClick={() => onEntryClick?.(entry)}
-            >
+          const sharedProps = {
+            type: "button" as const,
+            "aria-label": `${cfg.label} — ${entry.durationMinutes} minutos`,
+            className: "absolute border-0 bg-transparent p-0",
+            style: {
+              left,
+              top,
+              width: TILE_W * gridScale,
+              height: TILE_H * gridScale,
+              zIndex: 10 + row,
+              cursor: onEntryClick ? "pointer" : "default",
+            },
+            onClick: () => onEntryClick?.(entry),
+          };
+
+          const spriteStyle = {
+            width: icon,
+            height: icon,
+            left: `calc(50% - ${(icon / 2).toFixed(1)}px)`,
+            bottom: 12 * gridScale,
+            opacity: isWithered ? 0.45 : isGrowing ? 0.9 : 1,
+            filter: isWithered
+              ? "grayscale(100%) brightness(.7)"
+              : `drop-shadow(0 10px 7px rgba(0,0,0,0.45)) drop-shadow(0 0 10px ${cfg.glow})`,
+          };
+
+          const spriteImg = (
+            <img
+              src={cfg.assets[energyStage]}
+              alt=""
+              width={Math.round(icon)}
+              height={Math.round(icon)}
+              draggable={false}
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            />
+          );
+
+          const content = (
+            <>
               {/* Aura pulsante — apenas energias vivas em nível máximo "respiram". */}
               {isFullLife && (
                 <span
@@ -235,8 +288,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                   style={{
                     left: "50%",
                     top: "50%",
-                    width: 92,
-                    height: 62,
+                    width: 92 * gridScale,
+                    height: 62 * gridScale,
                     opacity: 0.4,
                     background: `radial-gradient(50% 50% at 50% 50%, ${cfg.glow} 0%, transparent 72%)`,
                     animationDelay: `${((entry.id % 8) * 0.5).toFixed(2)}s`,
@@ -251,8 +304,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 style={{
                   left: "50%",
                   top: "50%",
-                  width: 64 * scale,
-                  height: 21 * scale,
+                  width: 64 * gridScale * plantScale,
+                  height: 21 * gridScale * plantScale,
                   transform: "translate(-50%, -50%)",
                   background: isWithered
                     ? "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 75%)"
@@ -266,9 +319,9 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 className="absolute rounded-[50%]"
                 style={{
                   left: "50%",
-                  bottom: 6,
-                  width: 46 * scale,
-                  height: 9 * scale,
+                  bottom: 6 * gridScale,
+                  width: 46 * gridScale * plantScale,
+                  height: 9 * gridScale * plantScale,
                   transform: "translateX(-50%)",
                   background: "rgba(0,0,0,0.5)",
                   filter: "blur(4px)",
@@ -276,35 +329,46 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
               />
 
               {/* A energia: drop-shadow atrás (profundidade) + glow suave da própria cor. */}
-              <motion.span
-                aria-hidden="true"
-                className="absolute flex items-end justify-center"
-                animate={isGrowing ? { scale: [1, 1.05, 1] } : undefined}
-                transition={isGrowing ? { duration: 2.2, repeat: Infinity, ease: "easeInOut" } : undefined}
-                style={{
-                  width: 58 * scale,
-                  height: 58 * scale,
-                  left: `calc(50% - ${(29 * scale).toFixed(1)}px)`,
-                  bottom: 12,
-                  opacity: isWithered ? 0.45 : isGrowing ? 0.9 : 1,
-                  filter: isWithered
-                    ? "grayscale(100%) brightness(.7)"
-                    : `drop-shadow(0 10px 7px rgba(0,0,0,0.45)) drop-shadow(0 0 10px ${cfg.glow})`,
-                }}
-              >
-                <img
-                  src={cfg.assets[energyStage]}
-                  alt=""
-                  width={Math.round(58 * scale)}
-                  height={Math.round(58 * scale)}
-                  draggable={false}
-                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                />
-              </motion.span>
+              {isGrowing && animate ? (
+                <motion.span
+                  aria-hidden="true"
+                  className="absolute flex items-end justify-center"
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                  style={spriteStyle}
+                >
+                  {spriteImg}
+                </motion.span>
+              ) : (
+                <span aria-hidden="true" className="absolute flex items-end justify-center" style={spriteStyle}>
+                  {spriteImg}
+                </span>
+              )}
+            </>
+          );
+
+          return animate ? (
+            <motion.button
+              key={entry.id}
+              {...sharedProps}
+              initial={{ opacity: 0, scale: 0.85, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              whileHover={{ y: -4 }}
+              transition={{ delay, type: "spring", stiffness: 260, damping: 22 }}
+            >
+              {content}
             </motion.button>
+          ) : (
+            <button
+              key={entry.id}
+              {...sharedProps}
+              className="absolute border-0 bg-transparent p-0 transition-transform duration-200 hover:-translate-y-1"
+            >
+              {content}
+            </button>
           );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 }

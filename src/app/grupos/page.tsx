@@ -793,8 +793,8 @@ export default function GruposPage() {
 
   return (
     <AppShell>
-      <main className="relative min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
-        <Header eyebrow="Comunidade" title="Grupos" />
+      <main className={`relative min-h-screen ${activeGroup ? "flex flex-col px-5 sm:px-8 lg:px-12" : "px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
+        {!activeGroup && <Header eyebrow="Comunidade" title="Grupos" />}
 
         {error && (
           <div className="glass-card mb-8 border-[var(--red)]/20 bg-[var(--red-bg)] p-4 text-sm text-[var(--red)]">
@@ -1423,7 +1423,7 @@ function GroupDetailPanel({
 
   return (
     <motion.div variants={slideLeft} initial="hidden" animate="visible" exit="exit"
-            className="-mx-5 -my-7 flex h-[100dvh] min-h-[100dvh] flex-col sm:-mx-8 lg:-mx-12 lg:-my-10">
+            className="-mx-5 flex min-h-0 flex-1 flex-col overflow-hidden sm:-mx-8 lg:-mx-12">
 
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
