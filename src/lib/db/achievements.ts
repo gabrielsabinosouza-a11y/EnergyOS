@@ -218,19 +218,22 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     ),
     safeQuery("focus_companion", () =>
       pool.query<{ count: string | number }>(
-        `select count(*)::int as count
+        `select count(distinct fs.room_id)::int as count
          from focus_sessions fs
          join focus_rooms fr on fr.id = fs.room_id
          where fs.profile_id = $1
            and fs.ended_at is not null
-           and fs.duration_minutes >= fs.target_duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
+           and fr.status = 'completed'
+           and fr.started_at is not null
+           and fr.ended_at is not null
+           and fs.duration_minutes >= fr.duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
            and (
              select count(*)
              from room_participants rp
              where rp.room_id = fs.room_id
-             and rp.joined_at < coalesce(fr.ended_at, fs.ended_at)
+             and rp.joined_at < fr.ended_at
              and rp.session_status in ('focusing', 'completed', 'left')
-             and coalesce(rp.completed_at, rp.gave_up_at, fr.ended_at, fs.ended_at) > coalesce(fr.started_at, fs.started_at)
+             and coalesce(rp.completed_at, rp.gave_up_at, fr.ended_at) > fr.started_at
            ) >= 2`,
         [profileId],
       ),
