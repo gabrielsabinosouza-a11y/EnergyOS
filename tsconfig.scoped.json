@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "src/components/navigation.tsx",
+    "src/components/modal.tsx",
+    "src/app/dashboard/page.tsx",
+    "src/app/grupos/page.tsx",
+    "src/lib/auth-context.tsx",
+    "src/components/app-shell.tsx"
+  ]
+}

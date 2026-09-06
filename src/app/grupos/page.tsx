@@ -779,7 +779,7 @@ export default function GruposPage() {
 
   return (
     <AppShell>
-      <main className={`relative min-h-screen ${activeGroup ? "flex flex-col px-5 sm:px-8 lg:px-12" : "px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
+      <main className={`relative ${activeGroup ? "flex h-[calc(100dvh-126px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col px-5 sm:px-8 lg:h-auto lg:min-h-screen lg:px-12" : "min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
         {!activeGroup && <Header eyebrow="Comunidade" title="Grupos" />}
 
         {error && (

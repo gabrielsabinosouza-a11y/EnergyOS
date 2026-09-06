@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "db:init": "node scripts/init-db.mjs",
+    "db:migrate-group-invites": "node scripts/migrate-group-invites.mjs",
     "db:seed-admin": "node scripts/seed-admin.mjs",
     "db:reset-messages": "node scripts/reset-messages.mjs",
     "lint": "eslint"

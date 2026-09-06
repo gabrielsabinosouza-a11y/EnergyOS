@@ -203,7 +203,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
                 type="button"
                 onClick={() => setShowMore(false)}
                 aria-label="Fechar"
-                className="tap flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-faint)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+                className="tap flex h-11 w-11 items-center justify-center rounded-lg text-[var(--text-faint)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
               >
                 <X size={18} />
               </button>

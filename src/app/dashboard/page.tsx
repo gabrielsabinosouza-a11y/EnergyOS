@@ -532,8 +532,8 @@ function DashboardContent() {
     <AppShell>
       <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
         {/* Header */}
-        <header className="mb-8 flex items-start justify-between">
-          <motion.div variants={fadeUp} initial="hidden" animate="visible">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-2">
+          <motion.div variants={fadeUp} initial="hidden" animate="visible" className="min-w-0">
             <p className="mb-2 text-[10px] uppercase tracking-[.2em] text-[var(--accent)]">{todayLabel()}</p>
             <h1 className="font-display text-2xl tracking-[-.04em] sm:text-3xl text-[var(--text)]">
               {greeting(displayName)}<span className="text-[var(--orange)]">.</span>
@@ -553,8 +553,8 @@ function DashboardContent() {
           {/* Ambient glow */}
           <span aria-hidden className="ambient-glow" style={{ width: 300, height: 300, top: -100, right: -60, background: "rgba(113,212,255,.12)" }} />
           <div className="relative z-10">
-            <div className="flex items-start justify-between mb-5">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+              <div className="min-w-0">
                 <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIARIO</span>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">Isso nos ajuda a ajustar suas metas de foco hoje</p>
               </div>

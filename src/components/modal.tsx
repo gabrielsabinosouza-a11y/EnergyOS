@@ -33,7 +33,7 @@ export function Modal({
   const isSide = variant === "side-right";
 
   const wrapperClassName = isSide
-    ? "fixed inset-0 flex h-full items-stretch justify-end"
+    ? "fixed inset-x-0 top-0 flex h-[100dvh] items-stretch justify-end"
     : isBottom
       ? "fixed inset-0 flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
       // Center modals become full-width bottom sheets on <sm viewports
