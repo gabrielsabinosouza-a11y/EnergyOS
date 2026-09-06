@@ -197,6 +197,23 @@ create table if not exists room_participants (
 create index if not exists room_participants_room_idx on room_participants(room_id);
 create index if not exists room_participants_profile_idx on room_participants(profile_id);
 
+create table if not exists room_join_requests (
+  id bigserial primary key,
+  room_id bigint not null references focus_rooms(id) on delete cascade,
+  requester_profile_id text not null references profiles(id) on delete cascade,
+  selected_energy_type text,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  requested_at timestamptz not null default now(),
+  responded_at timestamptz,
+  responded_by_profile_id text references profiles(id) on delete set null
+);
+
+create index if not exists room_join_requests_room_idx on room_join_requests(room_id);
+create index if not exists room_join_requests_requester_idx on room_join_requests(requester_profile_id);
+create index if not exists room_join_requests_status_idx on room_join_requests(status);
+create unique index if not exists room_join_requests_pending_unique_idx
+  on room_join_requests(room_id, requester_profile_id) where status = 'pending';
+
 -- League System
 do $$ begin
   create type league_tier as enum ('BRONZE', 'PRATA', 'OURO', 'DIAMANTE', 'LENDAS');

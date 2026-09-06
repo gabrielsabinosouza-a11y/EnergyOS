@@ -8,6 +8,7 @@ import {
   findFocusRoomByCode,
   endFocusRoom,
   addParticipantToRoom,
+  createJoinRequest,
   deleteFocusRoom,
 } from "@/lib/db/focus-rooms";
 
@@ -51,14 +52,12 @@ export async function POST(
       : await findFocusRoomByCode(roomId);
 
     if (!room) return notFound("Room not found");
-    if (room.status !== "waiting") return badRequest("Cannot join a room that has already started or completed");
-
-    await addParticipantToRoom(room.id, profileId, body.energyType as string | undefined);
-    const updated = isNumeric(roomId)
-      ? await getFocusRoomById(profileId, Number(roomId))
-      : await findFocusRoomByCode(roomId);
-
-    return jsonOk({ room: updated, message: "Joined successfully" });
+    const energyType = body.energyType as string | undefined;
+    if (room.participants.some((participant) => participant.profileId === profileId)) {
+      await addParticipantToRoom(room.id, profileId, energyType);
+      return jsonOk({ room: await getFocusRoomById(profileId, room.id), message: "Joined successfully" });
+    }
+    return jsonOk({ request: await createJoinRequest(room.id, profileId, energyType), message: "Solicitação enviada ao anfitrião." });
   });
 }
 

@@ -62,6 +62,20 @@ export interface RoomParticipant {
   gaveUpAt?: string;
 }
 
+export type RoomJoinRequestStatus = "pending" | "accepted" | "rejected";
+export interface RoomJoinRequest {
+  id: number;
+  roomId: number;
+  roomCode: string;
+  requesterProfileId: string;
+  requester?: { id: string; displayName: string; photoUrl?: string };
+  selectedEnergyType: string | null;
+  status: RoomJoinRequestStatus;
+  requestedAt: string;
+  respondedAt?: string;
+  respondedByProfileId?: string;
+}
+
 // Helper to map database row to domain object
 function mapFocusRoom(row: FocusRoomRow, participants: RoomParticipant[] = []): FocusRoom {
   return {
@@ -195,6 +209,134 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
   return mapFocusRoom(row, participants);
 }
 
+    function mapJoinRequest(row: {
+      id: string | number; room_id: string | number; room_code: string;
+      requester_profile_id: string; display_name: string; photo_url: string | null;
+      selected_energy_type: string | null; status: RoomJoinRequestStatus;
+      requested_at: Date | string; responded_at: Date | string | null;
+      responded_by_profile_id: string | null;
+    }): RoomJoinRequest {
+      return {
+        id: Number(row.id), roomId: Number(row.room_id), roomCode: row.room_code,
+        requesterProfileId: row.requester_profile_id,
+        requester: { id: row.requester_profile_id, displayName: row.display_name || "Anônimo", photoUrl: row.photo_url ?? undefined },
+        selectedEnergyType: row.selected_energy_type,
+        status: row.status,
+        requestedAt: typeof row.requested_at === "string" ? row.requested_at : row.requested_at.toISOString(),
+        respondedAt: row.responded_at ? (typeof row.responded_at === "string" ? row.responded_at : row.responded_at.toISOString()) : undefined,
+        respondedByProfileId: row.responded_by_profile_id ?? undefined,
+      };
+    }
+
+    const joinRequestSelect = `select r.id, r.room_id, fr.code as room_code, r.requester_profile_id,
+      p.display_name, p.photo_url, r.selected_energy_type, r.status, r.requested_at,
+      r.responded_at, r.responded_by_profile_id
+      from room_join_requests r join focus_rooms fr on fr.id = r.room_id
+      left join profiles p on p.id = r.requester_profile_id`;
+
+    async function closePendingJoinRequests(roomId: number): Promise<void> {
+      await pool.query(`update room_join_requests set status = 'rejected', responded_at = coalesce(responded_at, now())
+        where room_id = $1 and status = 'pending'`, [roomId]);
+    }
+
+    export async function getOwnPendingJoinRequests(profileId: string): Promise<RoomJoinRequest[]> {
+      parseProfileId(profileId);
+      const result = await pool.query(joinRequestSelect + ` where r.requester_profile_id = $1 and r.status = 'pending' order by r.requested_at desc`, [profileId]);
+      return result.rows.map(mapJoinRequest);
+    }
+
+    export async function getJoinRequestStatus(profileId: string, requestId: number): Promise<RoomJoinRequest | null> {
+      parseProfileId(profileId);
+      const result = await pool.query(joinRequestSelect + ` where r.id = $1 and r.requester_profile_id = $2`, [requestId, profileId]);
+      return result.rows[0] ? mapJoinRequest(result.rows[0]) : null;
+    }
+
+    export async function getOwnerPendingJoinRequests(profileId: string, roomId: number): Promise<RoomJoinRequest[]> {
+      parseProfileId(profileId);
+      const result = await pool.query(joinRequestSelect + ` where r.room_id = $1 and fr.host_profile_id = $2 and r.status = 'pending' order by r.requested_at`, [roomId, profileId]);
+      return result.rows.map(mapJoinRequest);
+    }
+
+    export async function createJoinRequest(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomJoinRequest> {
+      parseProfileId(profileId);
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const room = await client.query<{ status: RoomStatus; duration_minutes: number; elapsed_seconds: number; last_resumed_at: Date | string | null }>(
+          `select status, duration_minutes, elapsed_seconds, last_resumed_at from focus_rooms where id = $1 for update`, [roomId]);
+        if (!room.rows[0]) throw new NotFoundError("Room not found");
+        const state = room.rows[0];
+        if (!["waiting", "active", "paused"].includes(state.status)) throw new ConflictError("Cannot join a room that has already started or completed");
+        if (state.status === "active" || state.status === "paused") {
+          let elapsed = state.elapsed_seconds ?? 0;
+          if (state.status === "active" && state.last_resumed_at) elapsed += Math.max(0, Math.floor((Date.now() - new Date(state.last_resumed_at).getTime()) / 1000));
+          if (Math.max(0, state.duration_minutes * 60 - elapsed) < state.duration_minutes * 30) throw new ConflictError("O tempo está muito curto para focar, tente outra sala");
+        }
+        const existing = await client.query<{ id: string | number }>(`select id from room_participants where room_id = $1 and profile_id = $2`, [roomId, profileId]);
+        if (existing.rows[0]) {
+          throw new ConflictError("Você já participa desta sala.");
+        }
+        const admitted = await client.query<{ count: string }>(`select count(*)::int as count from room_participants where room_id = $1`, [roomId]);
+        if (Number(admitted.rows[0]?.count ?? 0) >= 10) throw new ConflictError("Esta sala está cheia, tente outra ou crie a sua");
+        await client.query(`insert into room_join_requests (room_id, requester_profile_id, selected_energy_type)
+          values ($1, $2, $3) on conflict (room_id, requester_profile_id) where status = 'pending'
+          do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_join_requests.selected_energy_type)
+          returning id`, [roomId, profileId, selectedEnergyType ?? null]);
+        await client.query("commit");
+        const request = await pool.query(joinRequestSelect + ` where r.room_id = $1 and r.requester_profile_id = $2 and r.status = 'pending'`, [roomId, profileId]);
+        return mapJoinRequest(request.rows[0]);
+      } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
+    }
+
+    export async function respondToJoinRequest(requestId: number, ownerProfileId: string, accept: boolean): Promise<RoomJoinRequest> {
+      parseProfileId(ownerProfileId);
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const found = await client.query<{ room_id: string | number; host_profile_id: string; status: RoomJoinRequestStatus; duration_minutes: number; room_status: RoomStatus; elapsed_seconds: number; last_resumed_at: Date | string | null }>(
+          `select r.room_id, fr.host_profile_id, r.status, fr.duration_minutes, fr.status as room_status, fr.elapsed_seconds, fr.last_resumed_at
+           from room_join_requests r join focus_rooms fr on fr.id = r.room_id where r.id = $1 for update`, [requestId]);
+        if (!found.rows[0]) throw new NotFoundError("Solicitação não encontrada.");
+        const row = found.rows[0];
+        if (row.host_profile_id !== ownerProfileId) throw new ForbiddenError("Somente o anfitrião pode decidir.");
+        if (row.status !== "pending") {
+          const current = await client.query(joinRequestSelect + ` where r.id = $1`, [requestId]);
+          await client.query("commit"); return mapJoinRequest(current.rows[0]);
+        }
+        if (!accept) {
+          await client.query(`update room_join_requests set status = 'rejected', responded_at = now(), responded_by_profile_id = $2 where id = $1`, [requestId, ownerProfileId]);
+        } else {
+          if (!["waiting", "active", "paused"].includes(row.room_status)) {
+            await client.query(`update room_join_requests set status = 'rejected', responded_at = now(), responded_by_profile_id = $2 where id = $1`, [requestId, ownerProfileId]);
+            await client.query("commit");
+            throw new ConflictError("A sala não está mais disponível.");
+          }
+          const count = await client.query<{ count: string }>(`select count(*)::int as count from room_participants where room_id = $1`, [row.room_id]);
+          if (Number(count.rows[0]?.count ?? 0) >= 10) {
+            await client.query(`update room_join_requests set status = 'rejected', responded_at = now(), responded_by_profile_id = $2 where id = $1`, [requestId, ownerProfileId]);
+            await client.query("commit");
+            throw new ConflictError("Esta sala está cheia, tente outra ou crie a sua");
+          }
+          if (row.room_status === "active" || row.room_status === "paused") {
+            let elapsed = row.elapsed_seconds ?? 0;
+            if (row.room_status === "active" && row.last_resumed_at) elapsed += Math.max(0, Math.floor((Date.now() - new Date(row.last_resumed_at).getTime()) / 1000));
+            if (Math.max(0, row.duration_minutes * 60 - elapsed) < row.duration_minutes * 30) {
+              await client.query(`update room_join_requests set status = 'rejected', responded_at = now(), responded_by_profile_id = $2 where id = $1`, [requestId, ownerProfileId]);
+              await client.query("commit");
+              throw new ConflictError("O tempo está muito curto para focar, tente outra sala");
+            }
+          }
+          const req = await client.query<{ requester_profile_id: string; selected_energy_type: string | null }>(`select requester_profile_id, selected_energy_type from room_join_requests where id = $1`, [requestId]);
+          const participantStatus = row.room_status === "waiting" ? "waiting" : "focusing";
+          await client.query(`insert into room_participants (room_id, profile_id, session_status, selected_energy_type) values ($1, $2, $3, $4) on conflict (room_id, profile_id) do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_participants.selected_energy_type)`, [row.room_id, req.rows[0].requester_profile_id, participantStatus, req.rows[0].selected_energy_type]);
+          await client.query(`update room_join_requests set status = 'accepted', responded_at = now(), responded_by_profile_id = $2 where id = $1`, [requestId, ownerProfileId]);
+        }
+        const result = await client.query(joinRequestSelect + ` where r.id = $1`, [requestId]);
+        await client.query("commit");
+        return mapJoinRequest(result.rows[0]);
+      } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
+    }
+
 // Look up a room by its 6-character code WITHOUT the membership authorization
 // check. Used by the join flows, which must add a brand-new participant to the
 // room BEFORE any auth gate runs — otherwise first-time joiners would always be
@@ -303,34 +445,80 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
 // their selected energy type if one was provided.
 export async function addParticipantToRoom(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomParticipant> {
   parseProfileId(profileId);
-  
-  // Check room status
-  const room = await pool.query<{ status: string }>(
-    `select status from focus_rooms where id = $1`,
-    [roomId]
-  );
 
-  if (!room.rows[0]) {
-    throw new NotFoundError("Room not found");
+  // Lock the room row so concurrent join attempts cannot both pass the
+  // capacity check and admit an eleventh participant.
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    const room = await client.query<{
+      status: RoomStatus;
+      duration_minutes: number;
+      elapsed_seconds: number;
+      last_resumed_at: Date | string | null;
+    }>(
+      `select status, duration_minutes, elapsed_seconds, last_resumed_at
+       from focus_rooms where id = $1 for update`,
+      [roomId]
+    );
+
+    if (!room.rows[0]) {
+      throw new NotFoundError("Room not found");
+    }
+
+    const roomState = room.rows[0];
+    if (roomState.status === "active" || roomState.status === "paused") {
+      const totalSeconds = roomState.duration_minutes * 60;
+      let elapsedSeconds = roomState.elapsed_seconds ?? 0;
+      if (roomState.status === "active" && roomState.last_resumed_at) {
+        const resumedAt = new Date(roomState.last_resumed_at).getTime();
+        elapsedSeconds += Math.max(0, Math.floor((Date.now() - resumedAt) / 1000));
+      }
+
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      if (remainingSeconds < totalSeconds / 2) {
+        throw new ConflictError("O tempo está muito curto para focar, tente outra sala");
+      }
+    }
+
+    if (roomState.status !== "waiting") {
+      throw new ConflictError("Cannot join a room that has already started or completed");
+    }
+
+    const existing = await client.query<{ id: string | number }>(
+      `select id from room_participants where room_id = $1 and profile_id = $2`,
+      [roomId, profileId]
+    );
+    if (existing.rows.length === 0) {
+      const count = await client.query<{ count: string }>(
+        `select count(*)::int as count from room_participants where room_id = $1`,
+        [roomId]
+      );
+      if (Number(count.rows[0]?.count ?? 0) >= 10) {
+        throw new ConflictError("Esta sala está cheia, tente outra ou crie a sua");
+      }
+    }
+
+    // Upsert: if the user is already a participant, just update their
+    // selected energy type.
+    const result = await client.query<RoomParticipantRow>(
+      `insert into room_participants (room_id, profile_id, session_status, selected_energy_type)
+       values ($1, $2, $3, $4)
+       on conflict (room_id, profile_id)
+       do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_participants.selected_energy_type)
+       returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
+      [roomId, profileId, "waiting", selectedEnergyType ?? null]
+    );
+
+    await client.query("commit");
+    return mapRoomParticipant(result.rows[0]);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (room.rows[0].status !== "waiting") {
-    throw new ConflictError("Cannot join a room that has already started or completed");
-  }
-
-  // Upsert: if the user is already a participant, just update their selected
-  // energy type and return the existing row (relies on the
-  // room_participants_room_id_profile_id_key unique constraint).
-  const result = await pool.query<RoomParticipantRow>(
-    `insert into room_participants (room_id, profile_id, session_status, selected_energy_type)
-     values ($1, $2, $3, $4)
-     on conflict (room_id, profile_id)
-     do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_participants.selected_energy_type)
-     returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
-    [roomId, profileId, "waiting", selectedEnergyType ?? null]
-  );
-
-  return mapRoomParticipant(result.rows[0]);
 }
 
 // Remove a participant from a room
@@ -501,6 +689,7 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
     `update focus_rooms set status = 'completed', ended_at = $1 where id = $2 and status in ('active', 'paused')`,
     [now, roomId]
   );
+  await closePendingJoinRequests(roomId);
 
   // Update participants who are still focusing to completed
   await pool.query(
@@ -710,6 +899,7 @@ export async function expireFocusRoom(roomId: number): Promise<boolean> {
      returning id`,
     [roomId],
   );
+  if (result.rows[0]) await closePendingJoinRequests(roomId);
   return Boolean(result.rows[0]);
 }
 
@@ -744,6 +934,7 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
   const transitioned = Boolean(transition.rows[0]);
 
   if (transitioned) {
+    await closePendingJoinRequests(roomId);
     await pool.query(
       `update room_participants
        set session_status = 'completed', completed_at = coalesce(completed_at, $1)
@@ -823,6 +1014,8 @@ export async function cleanupStaleRooms(
      where status = 'waiting' and created_at < $1`,
     [waitingCutoff],
   );
+  await pool.query(`update room_join_requests r set status = 'rejected', responded_at = coalesce(responded_at, now())
+    from focus_rooms f where r.room_id = f.id and f.status = 'expired' and r.status = 'pending'`);
 
   const del = await pool.query(
     `delete from focus_rooms

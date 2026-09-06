@@ -27,7 +27,8 @@ const STAGGER_X = X_STEP / 2;
 /** Largura base do sprite de energia (na densidade mínima). */
 const ICON_BASE = 58;
 /** Menor tamanho legível do sprite. Abaixo disso o terreno estoura o cap e a rolagem assume. */
-const MIN_ICON = 24;
+const MIN_ICON = 20;
+const REFERENCE_COUNT = 12;
 /** Altura-alvo fixa do terreno (mantida dentro do cap de 640px do invólucro). */
 const TERRAIN_H_TARGET = 560;
 /** Fator máximo de profundidade por linha — evita que linhas distantes "zoomen" com muitas linhas. */
@@ -83,16 +84,21 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   const reduced = useReducedMotion() ?? false;
   const n = planted.length;
 
-  // Altura "natural" (escala 1) da grade; gridScale reduz passos/sprites para
-  // caberem todos no terreno de altura fixa.
-  const rows = Math.max(1, Math.ceil(n / cols));
-  const baseH = (rows - 1) * Y_STEP + TILE_H + PAD_Y * 2;
-  const s = Math.min(1, (TERRAIN_H_TARGET - 24) / baseH);
-  // Nunca abaixo do mínimo legível. Se o mínimo for atingido, o terreno cresce
-  // além do cap e o overflow-y-auto do invólucro assume (fallback raro).
-  const gridScale = Math.max(s, MIN_ICON / ICON_BASE);
-  const terrainWidth = (cols * X_STEP + STAGGER_X + PAD_X * 2) * gridScale;
-  const terrainHeight = Math.max(200, baseH * gridScale + 24);
+  const iconSize = Math.min(
+    ICON_BASE,
+    Math.max(MIN_ICON, ICON_BASE * Math.sqrt(REFERENCE_COUNT / Math.max(1, n))),
+  );
+  const gridScale = iconSize / ICON_BASE;
+  const availableWidth = Math.max(1, terrainRef.current?.clientWidth ?? 748);
+  const currentColumnWidth = Math.max(1, (availableWidth - 40) / cols);
+  const cellWidth = currentColumnWidth * gridScale;
+  const cellHeight = Math.max(iconSize * 1.25, TILE_H * gridScale);
+  const layoutCols = Math.max(1, Math.floor(availableWidth / cellWidth));
+  const rows = Math.max(1, Math.ceil(n / layoutCols));
+  const contentHeight = rows * cellHeight + 32;
+  const needsScroll = iconSize <= MIN_ICON && contentHeight > TERRAIN_H_TARGET;
+  const terrainWidth = Math.min(748, Math.max(200, availableWidth));
+  const terrainHeight = TERRAIN_H_TARGET;
   // Modo denso: sem springs/motion por item — o container inteiro faz um único
   // fade-in e as plantas ficam estáticas (hover via CSS) para não travar em densidades altas.
   const dense = n > DENSE_THRESHOLD;
@@ -125,12 +131,12 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   return (
     <div
       ref={terrainRef}
-      className={`panel overflow-y-auto overflow-x-hidden p-3 sm:p-5 ${className}`}
+      className={`panel overflow-x-hidden p-3 sm:p-5 ${needsScroll ? "overflow-y-auto" : "overflow-y-hidden"} ${className}`}
       style={{ maxHeight: "min(72vh, 640px)" }}
     >
       {/* Terreno único: uma "clareira" iluminada ao centro, escurecendo até as bordas. */}
       <motion.div
-        className="relative mx-auto overflow-hidden rounded-[26px]"
+        className="relative mx-auto overflow-visible rounded-[26px]"
         initial={dense && !reduced ? { opacity: 0 } : false}
         animate={dense && !reduced ? { opacity: 1 } : undefined}
         transition={{ duration: 0.35 }}
@@ -210,6 +216,14 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           />
         ))}
 
+        <div
+          className="absolute inset-0 grid content-start justify-items-center"
+          style={{
+            padding: 16,
+            gridTemplateColumns: `repeat(auto-fill, minmax(${cellWidth}px, 1fr))`,
+            gridAutoRows: cellHeight,
+          }}
+        >
         {planted.map((entry, index) => {
           const cfg = ENERGY_CONFIGS[entry.energyType as EnergyType];
           if (!cfg) {
@@ -219,11 +233,10 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             return null;
           }
 
-          const row = Math.floor(index / cols);
-          const col = index % cols;
           const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
           const isWithered = entry.status === "withered";
           const isGrowing = entry.status === "growing";
+          const row = Math.floor(index / layoutCols);
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
           const isFullLife = entry.status === "alive" && energyStage === "full";
 
@@ -236,21 +249,18 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           const plantScale =
             (STAGE_SCALE[energyStage] ?? 1) * depth * (0.95 + hash01(entry.id * 41 + 4) * 0.1);
 
-          const left = PAD_X * gridScale + col * X_STEP * gridScale + (row % 2 === 1 ? STAGGER_X * gridScale : 0) + jx;
-          const top = PAD_Y * gridScale + row * Y_STEP * gridScale + jy;
-          const icon = ICON_BASE * gridScale * plantScale;
+          const icon = iconSize * plantScale;
           const delay = index * 0.035;
 
           const sharedProps = {
             type: "button" as const,
             "aria-label": `${cfg.label} — ${entry.durationMinutes} minutos`,
-            className: "absolute border-0 bg-transparent p-0",
+            className: "relative border-0 bg-transparent p-0",
             style: {
-              left,
-              top,
-              width: TILE_W * gridScale,
-              height: TILE_H * gridScale,
-              zIndex: 10 + row,
+              width: "100%",
+              height: cellHeight,
+              transform: `translate(${jx}px, ${jy}px)`,
+              zIndex: 10 + index,
               cursor: onEntryClick ? "pointer" : "default",
             },
             onClick: () => onEntryClick?.(entry),
@@ -368,6 +378,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             </button>
           );
         })}
+        </div>
       </motion.div>
     </div>
   );

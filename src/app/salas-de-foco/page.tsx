@@ -274,6 +274,8 @@ export default function FocusRoomsPage() {
   const [roomToDelete, setRoomToDelete] = useState<FocusRoom | null>(null);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [pendingJoinRequest, setPendingJoinRequest] = useState<import("@/lib/db/focus-rooms").RoomJoinRequest | null>(null);
+  const [ownerRequests, setOwnerRequests] = useState<import("@/lib/db/focus-rooms").RoomJoinRequest[]>([]);
 
   // Countdown clock
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -396,6 +398,41 @@ export default function FocusRoomsPage() {
     const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
+
+  useEffect(() => {
+    if (!user) return;
+    const poll = async () => {
+      try {
+        const data = pendingJoinRequest
+          ? { requests: [pendingJoinRequest] }
+          : await api.getMyFocusRoomRequests();
+        const request = data.requests[0];
+        if (!request) { setPendingJoinRequest(null); return; }
+        const status = (await api.getFocusRoomRequest(request.id)).request;
+        if (status.status === "accepted") {
+          const room = await api.getFocusRoomById(request.roomId);
+          setCurrentRoom(room.room);
+          setPageState("room");
+          setSuccessMessage("Sua entrada foi aceita!");
+          setPendingJoinRequest(null);
+        } else if (status.status === "rejected") {
+          setPendingJoinRequest(null);
+          setSuccessMessage("O ADM recusou sua entrada nesta sala.");
+        } else setPendingJoinRequest(status);
+      } catch { /* transient polling failure */ }
+    };
+    poll();
+    const id = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [user, pendingJoinRequest]);
+
+  useEffect(() => {
+    if (pageState !== "room" || !currentRoom || !myProfileId || currentRoom.hostProfileId !== myProfileId) return;
+    const poll = () => api.getFocusRoomPendingRequests(currentRoom.id).then((data) => setOwnerRequests(data.requests)).catch(() => {});
+    poll();
+    const id = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [pageState, currentRoom?.id, currentRoom?.hostProfileId, myProfileId]);
 
   // 1-second clock for the shared countdown while the session is running.
   // The countdown itself is always wall-clock derived (see sharedRemainingMs),
@@ -570,9 +607,8 @@ export default function FocusRoomsPage() {
     try {
       selectEnergyRef.current = selectedEnergyType;
       const result = await api.joinFocusRoom(roomCode, selectedEnergyType);
-      setCurrentRoom(result.room);
-      setPageState("room");
-      setSuccessMessage("Você entrou na sala!");
+      setPendingJoinRequest(result.request ?? null);
+      setSuccessMessage("Solicitação enviada ao anfitrião.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao entrar na sala");
     } finally {
@@ -1102,6 +1138,22 @@ export default function FocusRoomsPage() {
               )}
             </div>
           </div>
+
+          {isHost && ownerRequests.length > 0 && (
+            <div className="mb-6 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Solicitações de entrada</span>
+              <div className="space-y-2">
+                {ownerRequests.map((joinRequest) => (
+                  <div key={joinRequest.id} className="flex items-center gap-3">
+                    <RoomAvatar profile={joinRequest.requester} size={34} />
+                    <span className="text-sm text-[var(--text)] flex-1 truncate">{joinRequest.requester?.displayName || "Anônimo"}</span>
+                    <button onClick={() => api.respondToFocusRoomRequest(room.id, joinRequest.id, "accept").then(() => setOwnerRequests((items) => items.filter((item) => item.id !== joinRequest.id))).catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao aceitar"))} className="rounded-lg bg-green-500/15 px-3 py-1.5 text-xs text-green-400">Aceitar</button>
+                    <button onClick={() => api.respondToFocusRoomRequest(room.id, joinRequest.id, "reject").then(() => setOwnerRequests((items) => items.filter((item) => item.id !== joinRequest.id))).catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao recusar"))} className="rounded-lg bg-red-500/15 px-3 py-1.5 text-xs text-red-400">Recusar</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Shared circle */}
           <div className="flex flex-col items-center">

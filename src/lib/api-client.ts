@@ -212,7 +212,15 @@ export const api = {
   getFocusRoomById: (id: number) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${id}`),
   getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${code}`),
   joinFocusRoom: (code: string, energyType?: string) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
+    request<{ room?: import("@/lib/db/focus-rooms").FocusRoom; request?: import("@/lib/db/focus-rooms").RoomJoinRequest; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
+  getMyFocusRoomRequests: () =>
+    request<{ requests: import("@/lib/db/focus-rooms").RoomJoinRequest[] }>("/api/focus-rooms/requests"),
+  getFocusRoomRequest: (requestId: number) =>
+    request<{ request: import("@/lib/db/focus-rooms").RoomJoinRequest }>(`/api/focus-rooms/requests/${requestId}`),
+  getFocusRoomPendingRequests: (roomId: number) =>
+    request<{ requests: import("@/lib/db/focus-rooms").RoomJoinRequest[] }>(`/api/focus-rooms/${roomId}/requests`),
+  respondToFocusRoomRequest: (roomId: number, requestId: number, action: "accept" | "reject") =>
+    request<{ request: import("@/lib/db/focus-rooms").RoomJoinRequest }>(`/api/focus-rooms/${roomId}/requests/${requestId}`, { method: "PATCH", body: JSON.stringify({ action }) }),
   startFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/start`, { method: "POST" }),
   pauseFocusRoom: (roomId: number) =>

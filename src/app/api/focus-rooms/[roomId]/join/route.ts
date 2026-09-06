@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
-import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
-import { findFocusRoomByCode, addParticipantToRoom, getFocusRoomById } from "@/lib/db/focus-rooms";
+import { handleRoute, jsonOk, readJsonBody, notFound } from "@/lib/http";
+import { findFocusRoomByCode, addParticipantToRoom, createJoinRequest, getFocusRoomById } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/join — join a room by its code
 export async function POST(
@@ -23,17 +23,13 @@ export async function POST(
       return notFound("Room not found - check the code and try again");
     }
 
-    if (room.status !== "waiting") {
-      return badRequest("Cannot join a room that has already started or completed");
-    }
-
-    // Add participant with their selected energy type
     const energyType = body.energyType as string | undefined;
-    await addParticipantToRoom(room.id, profileId, energyType);
-
-    // Fetch updated room to return
-    const updated = await getFocusRoomById(profileId, room.id);
-
-    return jsonOk({ room: updated, message: "Joined successfully" });
+    const isParticipant = room.participants.some((participant) => participant.profileId === profileId);
+    if (isParticipant) {
+      await addParticipantToRoom(room.id, profileId, energyType);
+      return jsonOk({ room: await getFocusRoomById(profileId, room.id), message: "Joined successfully" });
+    }
+    const joinRequest = await createJoinRequest(room.id, profileId, energyType);
+    return jsonOk({ request: joinRequest, message: "Solicitação enviada ao anfitrião." });
   });
 }
