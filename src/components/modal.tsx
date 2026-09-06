@@ -32,8 +32,8 @@ export function Modal({
   const isBottom = variant === "bottom-sheet";
   const isSide = variant === "side-right";
 
-  const wrapperClassName = isSide
-    ? "fixed inset-0 flex justify-end"
+    const wrapperClassName = isSide
+    ? "fixed inset-0 flex h-full items-stretch justify-end"
     : isBottom
       ? "fixed inset-0 flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
       // Center modals become full-width bottom sheets on <sm viewports
@@ -44,12 +44,10 @@ export function Modal({
     ? { opacity: 0, x: "100%" }
     : { opacity: 0, scale: reduced ? 1 : 0.95, y: reduced ? 0 : 24 };
 
-  const panelDefaultClass = isSide
+    const panelDefaultClass = isSide
     ? "h-full w-full max-w-md sm:max-w-lg"
     : isBottom
       ? "w-full max-w-md"
-      // Mobile sheet: full-width, height-capped and scrollable; desktop keeps
-      // the caller's own sizing untouched.
       : "max-sm:w-full max-sm:max-h-[92dvh] max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:rounded-b-none!";
 
   useEffect(() => {

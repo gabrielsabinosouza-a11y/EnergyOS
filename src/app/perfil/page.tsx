@@ -76,7 +76,7 @@ const fadeUp = {
 
 const FEATURED_SIZE = 92;
 const GRID_SIZE = 104;
-const MAX_FEATURED_ACHIEVEMENTS = 5;
+const MAX_FEATURED_ACHIEVEMENTS = 6;
 
 /* ------------------------------------------------------------------ */
 /*  Achievement detail modal                                          */

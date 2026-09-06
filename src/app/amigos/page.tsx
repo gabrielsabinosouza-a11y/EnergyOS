@@ -701,7 +701,7 @@ function ChatPanel({
           onCancelReply={() => setReplyingTo(null)}
         />
         ) : (
-        <div className="flex-1 min-h-0 flex items-center justify-center">
+                <div className="flex-1 min-h-0 flex h-full items-center justify-center">
           <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
         </div>
         )}

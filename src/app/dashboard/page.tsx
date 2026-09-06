@@ -211,6 +211,10 @@ function DashboardContent() {
   }, [snapshot]);
 
   async function saveCheckin() {
+    if (checkinSaved) {
+      showError("Você já salvou seu check-in de sono hoje.");
+      return;
+    }
     const opt = SLEEP_OPTIONS.find((o) => o.label === sleepAnswer);
     const sleepHours = opt?.hours ?? 7.5;
     setCheckinSaving(true);
@@ -578,6 +582,7 @@ function DashboardContent() {
                   <motion.button
                     key={opt.label}
                     onClick={() => setSleepAnswer(opt.label)}
+                    disabled={checkinSaved}
                     whileTap={reduced ? undefined : { scale: 0.97 }}
                     whileHover={reduced ? undefined : { y: -1 }}
                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
