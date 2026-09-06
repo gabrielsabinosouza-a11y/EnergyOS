@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -298,6 +298,9 @@ export const api = {
     request<{ success: true }>(`/api/groups/${id}/members`, { method: "PATCH", body: JSON.stringify({ profileId, muted }) }),
   inviteToGroup: (id: number, inviteIds: string[]) =>
     request<{ success: true }>(`/api/groups/${id}/invite`, { method: "POST", body: JSON.stringify({ inviteIds }) }),
+  getGroupInvites: () => request<{ invites: GroupInvite[] }>("/api/groups/invites"),
+  respondToGroupInvite: (id: number, response: "accepted" | "rejected") =>
+    request<{ success: true }>(`/api/groups/invites/${id}`, { method: "PATCH", body: JSON.stringify({ response }) }),
   getGroupMessages: (id: number, afterId?: number) => {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: GroupMessage[] }>(`/api/groups/${id}/messages${query}`);

@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { GroupDetail, GroupMember, GroupMessage, GroupPinnedMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
+import type { GroupDetail, GroupInvite, GroupMember, GroupMessage, GroupPinnedMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { parseEnum, parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
 import { areFriends } from "./social";
@@ -272,9 +272,10 @@ export async function createGroup(
     );
     for (const id of inviteIds) {
       await client.query(
-        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
-         on conflict do nothing`,
-        [group.id, id],
+        `insert into group_invites (group_id, invited_profile_id, invited_by_profile_id)
+         values ($1, $2, $3)
+         on conflict (group_id, invited_profile_id) where status = 'pending' do nothing`,
+        [group.id, id, profileId],
       );
     }
     await client.query("commit");
@@ -356,9 +357,10 @@ export async function createGroupWithUsernames(
     );
     for (const id of inviteIds) {
       await client.query(
-        `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
-         on conflict do nothing`,
-        [group.id, id],
+        `insert into group_invites (group_id, invited_profile_id, invited_by_profile_id)
+         values ($1, $2, $3)
+         on conflict (group_id, invited_profile_id) where status = 'pending' do nothing`,
+        [group.id, id, profileId],
       );
     }
     await client.query("commit");
@@ -1062,11 +1064,14 @@ export async function inviteToGroup(profileId: string, groupId: number, inviteId
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
   
-  const owner = await pool.query(
-    `select 1 from group_members where group_id = $1 and profile_id = $2 and role in ('OWNER', 'ADMIN')`,
+  const member = await pool.query(
+    `select 1
+       from group_members
+      where group_id = $1 and profile_id = $2
+        and coalesce(is_banned, false) = false`,
     [groupId, profileId],
   );
-  if (!owner.rows[0]) throw new ForbiddenError("Só dono ou administrador do grupo pode convidar membros.");
+  if (!member.rows[0]) throw new ForbiddenError("Você não faz parte deste grupo.");
 
   const uniqueIds = [...new Set(inviteIds.map((id) => parseProfileId(id)))].filter((id) => id !== profileId);
   
@@ -1078,10 +1083,92 @@ export async function inviteToGroup(profileId: string, groupId: number, inviteId
 
   for (const id of uniqueIds) {
     await pool.query(
-      `insert into group_members (group_id, profile_id, role) values ($1, $2, 'MEMBER')
-       on conflict do nothing`,
-      [groupId, id],
+      `insert into group_invites (group_id, invited_profile_id, invited_by_profile_id)
+       select $1, $2, $3
+       where not exists (
+         select 1 from group_members
+          where group_id = $1 and profile_id = $2
+       )
+       on conflict (group_id, invited_profile_id) where status = 'pending' do nothing`,
+      [groupId, id, profileId],
     );
+  }
+}
+
+export async function listGroupInvites(profileId: string): Promise<GroupInvite[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<{
+    id: string | number;
+    group_id: string | number;
+    group_name: string;
+    group_avatar_emoji: string;
+    group_avatar_url: string | null;
+    inviter_id: string;
+    inviter_name: string;
+    inviter_photo_url: string | null;
+    created_at: Date | string;
+  }>(
+    `select gi.id, gi.group_id, g.name as group_name, g.avatar_emoji as group_avatar_emoji,
+            g.avatar_url as group_avatar_url, p.id as inviter_id,
+            p.display_name as inviter_name, p.photo_url as inviter_photo_url, gi.created_at
+       from group_invites gi
+       join groups g on g.id = gi.group_id
+       join profiles p on p.id = gi.invited_by_profile_id
+      where gi.invited_profile_id = $1 and gi.status = 'pending'
+      order by gi.created_at desc`,
+    [profileId],
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    groupId: Number(row.group_id),
+    groupName: row.group_name,
+    groupAvatarEmoji: row.group_avatar_emoji,
+    groupAvatarUrl: row.group_avatar_url ?? undefined,
+    invitedBy: {
+      id: row.inviter_id,
+      displayName: row.inviter_name,
+      photoUrl: row.inviter_photo_url ?? undefined,
+    },
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
+}
+
+export async function respondToGroupInvite(
+  profileId: string,
+  inviteId: number,
+  response: "accepted" | "rejected",
+): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(inviteId) || inviteId <= 0) throw new ValidationError("Convite inválido.");
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const invite = await client.query<{ group_id: string | number }>(
+      `select group_id from group_invites
+        where id = $1 and invited_profile_id = $2 and status = 'pending'
+        for update`,
+      [inviteId, profileId],
+    );
+    if (!invite.rows[0]) throw new NotFoundError("Convite não encontrado.");
+    const groupId = Number(invite.rows[0].group_id);
+    if (response === "accepted") {
+      await client.query(
+        `insert into group_members (group_id, profile_id, role)
+         values ($1, $2, 'MEMBER')
+         on conflict (group_id, profile_id) do nothing`,
+        [groupId, profileId],
+      );
+    }
+    await client.query(
+      `update group_invites set status = $1, responded_at = now() where id = $2`,
+      [response, inviteId],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
 }
 

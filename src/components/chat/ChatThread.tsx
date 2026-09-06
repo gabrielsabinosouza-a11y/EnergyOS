@@ -142,6 +142,7 @@ interface ContextMenuAction {
   onClick: () => void;
   variant?: "danger";
   hidden?: boolean;
+  keepOpen?: boolean;
 }
 
 function ContextMenu({
@@ -225,7 +226,7 @@ function ContextMenu({
               key={i}
               onClick={() => {
                 action.onClick();
-                onClose();
+                if (!action.keepOpen) onClose();
               }}
               className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition ${
                 action.variant === "danger"
@@ -873,6 +874,7 @@ export function ChatThread({
           else setPinPickerFor(msg.id);
         },
         hidden: !onTogglePin,
+        keepOpen: !msg.isPinned,
       },
       {
         label: "Editar",

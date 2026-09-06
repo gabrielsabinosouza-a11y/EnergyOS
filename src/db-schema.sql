@@ -434,6 +434,23 @@ exception when others then null; end $$;
 
 create index if not exists group_members_profile_idx on group_members(profile_id);
 
+create table if not exists group_invites (
+  id bigserial primary key,
+  group_id bigint not null references groups(id) on delete cascade,
+  invited_profile_id text not null references profiles(id) on delete cascade,
+  invited_by_profile_id text not null references profiles(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  created_at timestamptz not null default now(),
+  responded_at timestamptz
+);
+
+create index if not exists group_invites_invited_profile_idx
+  on group_invites(invited_profile_id, status);
+create index if not exists group_invites_group_idx
+  on group_invites(group_id, status);
+create unique index if not exists group_invites_pending_unique_idx
+  on group_invites(group_id, invited_profile_id) where status = 'pending';
+
 -- ── Group Focus Contributions ───────────────────────────────────────────────
 -- Tracks focus session contributions to groups for leaderboard calculations
 create table if not exists group_focus_contributions (

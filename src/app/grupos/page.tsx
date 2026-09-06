@@ -10,7 +10,7 @@ import {
   Image as ImageIcon,
   Trash2, UserMinus,
   VolumeX, Ban, MoreVertical, Volume2, UserCheck,
-  Sparkles,
+  Sparkles, Mail,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
@@ -19,7 +19,7 @@ import { groupPinnedToChatMessage, groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
-import type { FriendSummary, GroupDetail, GroupMessage, GroupPinnedMessage, GroupSummary, GroupMember } from "@/types";
+import type { FriendSummary, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, GroupMember } from "@/types";
 import type { GroupLeaderboardEntry, MemberContribution } from "@/lib/db/group-leaderboard";
 import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/group-milestones";
 import type { GroupAchievementStatus } from "@/lib/db/group-achievements";
@@ -621,7 +621,9 @@ export default function GruposPage() {
   const [userGroupIds, setUserGroupIds] = useState<number[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"meus" | "ranking">("meus");
+  const [tab, setTab] = useState<"meus" | "ranking" | "inbox">("meus");
+  const [invites, setInvites] = useState<GroupInvite[]>([]);
+  const [respondingInvite, setRespondingInvite] = useState<number | null>(null);
 
   /* Create form */
   const [showCreate, setShowCreate] = useState(false);
@@ -670,12 +672,35 @@ export default function GruposPage() {
     }
   }, []);
 
+  const loadInvites = useCallback(async () => {
+    try {
+      const { invites: pending } = await api.getGroupInvites();
+      setInvites(pending);
+    } catch {
+      setError("Não foi possível carregar os convites.");
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
-    Promise.resolve().then(loadGroups).then(() => { if (cancelled) return; });
+    Promise.all([loadGroups(), loadInvites()]).then(() => { if (cancelled) return; });
     return () => { cancelled = true; };
-  }, [authLoading, user?.uid, loadGroups]);
+  }, [authLoading, user?.uid, loadGroups, loadInvites]);
+
+  async function respondToInvite(invite: GroupInvite, response: "accepted" | "rejected") {
+    if (respondingInvite) return;
+    setRespondingInvite(invite.id);
+    try {
+      await api.respondToGroupInvite(invite.id, response);
+      setInvites((prev) => prev.filter((item) => item.id !== invite.id));
+      if (response === "accepted") await loadGroups();
+    } catch {
+      setError("Não foi possível responder ao convite.");
+    } finally {
+      setRespondingInvite(null);
+    }
+  }
 
   useEffect(() => {
     if (!showCreate || friends.length > 0) return;
@@ -781,10 +806,14 @@ export default function GruposPage() {
               {/* Top bar with tabs */}
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex overflow-hidden rounded-xl border border-[var(--border-subtle)]">
-                  {(["meus", "ranking"] as const).map((t) => (
+                  {(["meus", "inbox", "ranking"] as const).map((t) => (
                     <button key={t} onClick={() => setTab(t)}
                       className={`px-4 py-2 text-sm transition ${t === tab ? "bg-[var(--accent-bg)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text)]"}`}>
-                      {t === "meus" ? "Meus grupos" : "🏆 Ranking"}
+                      {t === "meus" ? "Meus grupos" : t === "inbox" ? (
+                        <span className="inline-flex items-center gap-1.5">Caixa de Entrada
+                          {invites.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-bold text-black">{invites.length > 99 ? "99+" : invites.length}</span>}
+                        </span>
+                      ) : "🏆 Ranking"}
                     </button>
                   ))}
                 </div>
@@ -800,6 +829,32 @@ export default function GruposPage() {
               {/* Ranking tab */}
               {tab === "ranking" && (
                 <GlobalLeaderboard userGroupIds={userGroupIds} onOpenGroup={openGroup} />
+              )}
+
+              {tab === "inbox" && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Mail size={18} className="text-[var(--accent)]" />
+                    <h2 className="font-display text-lg font-semibold text-[var(--text)]">Caixa de Entrada</h2>
+                  </div>
+                  {invites.length === 0 ? (
+                    <div className="glass-card p-10 text-center text-sm text-[var(--text-muted)]">Nenhum convite pendente.</div>
+                  ) : invites.map((invite) => (
+                    <div key={invite.id} className="glass-card flex items-center gap-3 p-4">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--accent-bg)] text-2xl">
+                        {invite.groupAvatarUrl ? <img src={invite.groupAvatarUrl} alt={invite.groupName} className="h-full w-full object-cover" /> : invite.groupAvatarEmoji}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-[var(--text)]">{invite.groupName}</p>
+                        <p className="text-xs text-[var(--text-muted)]">Convite de {invite.invitedBy.displayName}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button onClick={() => respondToInvite(invite, "rejected")} disabled={respondingInvite === invite.id} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--text-muted)] disabled:opacity-40">Recusar</button>
+                        <button onClick={() => respondToInvite(invite, "accepted")} disabled={respondingInvite === invite.id} className="btn-primary px-3 py-2 text-xs disabled:opacity-40">{respondingInvite === invite.id ? <Loader2 size={14} className="animate-spin" /> : "Aceitar"}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {/* Meus grupos tab */}
@@ -1662,7 +1717,7 @@ function GroupDetailPanel({
           )}
 
           {/* Invite */}
-          {(isOwner || isAdmin) && (
+          {me && !me.isBanned && (
             <div className="glass-card space-y-3 p-5">
               <p className="text-sm font-medium text-[var(--text)]">Convidar amigos</p>
               {friends.length === 0 ? (

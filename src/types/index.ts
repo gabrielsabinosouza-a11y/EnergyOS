@@ -301,6 +301,20 @@ export interface GroupSummary {
   unreadCount: number;
 }
 
+export interface GroupInvite {
+  id: number;
+  groupId: number;
+  groupName: string;
+  groupAvatarEmoji: string;
+  groupAvatarUrl?: string;
+  invitedBy: {
+    id: string;
+    displayName: string;
+    photoUrl?: string;
+  };
+  createdAt: string;
+}
+
 export type GroupRole = "OWNER" | "ADMIN" | "MEMBER";
 
 export interface GroupMember {
