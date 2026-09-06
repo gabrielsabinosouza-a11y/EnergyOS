@@ -46,7 +46,8 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiError;
-    throw new ApiRequestError(body.error || "Não foi possível concluir a solicitação.", response.status);
+    const message = body.error || `Não foi possível concluir a solicitação. (status ${response.status})`;
+    throw new ApiRequestError(message, response.status);
   }
   return response.json() as Promise<T>;
 }

@@ -205,8 +205,11 @@ export interface ChatMessage {
   pinnedBy?: string;
 }
 
-/** Convert a DirectMessage to the unified ChatMessage format */
-export function dmToChatMessage(dm: DirectMessage, currentUserId: string): ChatMessage {
+/** Convert a DirectMessage to the unified ChatMessage format.
+ *  Sender identity (senderId) is preserved as-is; ChatThread compares it
+ *  against the current user's PROFILE id (never the Firebase uid) — see
+ *  amigos/page.tsx myProfileId. */
+export function dmToChatMessage(dm: DirectMessage): ChatMessage {
   return {
     id: dm.id,
     senderId: dm.senderId,

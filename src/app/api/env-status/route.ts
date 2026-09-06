@@ -1,4 +1,4 @@
-import { jsonOk } from "@/lib/http";
+import { handleRoute, jsonOk } from "@/lib/http";
 import { requireAdmin } from "@/lib/server-auth";
 import { NextRequest } from "next/server";
 
@@ -19,20 +19,22 @@ const KEY_GROUPS: { label: string; keys: string[] }[] = [
 ];
 
 export async function GET(request: NextRequest) {
-  // Role-based gate (DB-backed) instead of a hardcoded email address.
-  const auth = await requireAdmin(request);
+  return handleRoute(async () => {
+    // Role-based gate (DB-backed) instead of a hardcoded email address.
+    await requireAdmin(request);
 
-  const groups = KEY_GROUPS.map((group) => ({
-    label: group.label,
-    vars: group.keys.map((key) => {
-      const isSecret = SECRET_KEYS.has(key) || key.startsWith("NEXT_PUBLIC_");
-      return {
-        key,
-        set: Boolean(process.env[key]),
-        value: key === "NODE_ENV" && !isSecret ? process.env[key] : undefined,
-      };
-    }),
-  }));
-  const allSet = groups.every((g) => g.vars.every((v) => v.set));
-  return jsonOk({ groups, allSet });
+    const groups = KEY_GROUPS.map((group) => ({
+      label: group.label,
+      vars: group.keys.map((key) => {
+        const isSecret = SECRET_KEYS.has(key) || key.startsWith("NEXT_PUBLIC_");
+        return {
+          key,
+          set: Boolean(process.env[key]),
+          value: key === "NODE_ENV" && !isSecret ? process.env[key] : undefined,
+        };
+      }),
+    }));
+    const allSet = groups.every((g) => g.vars.every((v) => v.set));
+    return jsonOk({ groups, allSet });
+  });
 }

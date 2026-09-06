@@ -386,43 +386,60 @@ export async function startFocusRoom(roomId: number, hostProfileId: string): Pro
 // Pause an active focus room (host only)
 export async function pauseFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  
-  const room = await pool.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null }>(
-    `select host_profile_id, status, last_resumed_at from focus_rooms where id = $1`,
-    [roomId]
-  );
 
-  if (!room.rows[0]) {
-    throw new NotFoundError("Room not found");
+  // Transaction with a row lock: two concurrent pauses can no longer both pass
+  // the 'active' guard and each add their elapsed segment (double-counting).
+  // The lock serializes them — the loser re-reads status='paused' and throws.
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null }>(
+      `select host_profile_id, status, last_resumed_at from focus_rooms where id = $1 for update`,
+      [roomId]
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Room not found");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can pause the room");
+    }
+
+    if (room.rows[0].status !== "active") {
+      await client.query("rollback");
+      throw new ConflictError("Room is not in an active state");
+    }
+
+    const now = Date.now();
+    const lastResumed = room.rows[0].last_resumed_at
+      ? new Date(
+          typeof room.rows[0].last_resumed_at === "string"
+            ? room.rows[0].last_resumed_at
+            : room.rows[0].last_resumed_at.toISOString()
+        ).getTime()
+      : now;
+
+    const currentSegment = Math.max(0, Math.round((now - lastResumed) / 1000));
+
+    await client.query(
+      `update focus_rooms
+         set status = 'paused',
+             elapsed_seconds = elapsed_seconds + $1,
+             last_resumed_at = null
+       where id = $2`,
+      [currentSegment, roomId]
+    );
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new ForbiddenError("Only the host can pause the room");
-  }
-
-  if (room.rows[0].status !== "active") {
-    throw new ConflictError("Room is not in an active state");
-  }
-
-  const now = Date.now();
-  const lastResumed = room.rows[0].last_resumed_at
-    ? new Date(
-        typeof room.rows[0].last_resumed_at === "string"
-          ? room.rows[0].last_resumed_at
-          : room.rows[0].last_resumed_at.toISOString()
-      ).getTime()
-    : now;
-
-  const currentSegment = Math.max(0, Math.round((now - lastResumed) / 1000));
-
-  await pool.query(
-    `update focus_rooms
-       set status = 'paused',
-           elapsed_seconds = elapsed_seconds + $1,
-           last_resumed_at = null
-     where id = $2`,
-    [currentSegment, roomId]
-  );
 
   const pausedRoom = await getFocusRoomById(hostProfileId, roomId);
   return pausedRoom!;
@@ -431,30 +448,46 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
 // Resume a paused focus room (host only)
 export async function resumeFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  
-  const room = await pool.query<{ host_profile_id: string; status: string }>(
-    `select host_profile_id, status from focus_rooms where id = $1`,
-    [roomId]
-  );
 
-  if (!room.rows[0]) {
-    throw new NotFoundError("Room not found");
+  // Same row-lock pattern as pause: guards pause→resume and resume→resume
+  // interleavings so `last_resumed_at` can't be written out of order.
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: string }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId]
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Room not found");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can resume the room");
+    }
+
+    if (room.rows[0].status !== "paused") {
+      await client.query("rollback");
+      throw new ConflictError("Room is not paused");
+    }
+
+    const now = new Date().toISOString();
+
+    await client.query(
+      `update focus_rooms set status = 'active', last_resumed_at = $1 where id = $2`,
+      [now, roomId]
+    );
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new ForbiddenError("Only the host can resume the room");
-  }
-
-  if (room.rows[0].status !== "paused") {
-    throw new ConflictError("Room is not paused");
-  }
-
-  const now = new Date().toISOString();
-
-  await pool.query(
-    `update focus_rooms set status = 'active', last_resumed_at = $1 where id = $2`,
-    [now, roomId]
-  );
 
   const resumedRoom = await getFocusRoomById(hostProfileId, roomId);
   return resumedRoom!;
@@ -623,6 +656,16 @@ export async function getActiveRoomsForUser(profileId: string): Promise<FocusRoo
   }
 
   return rooms;
+}
+
+// Get a room's current status (no auth, no participant fetch). Used by
+// status-sensitive helpers such as the leave route.
+export async function getFocusRoomStatus(roomId: number): Promise<RoomStatus | null> {
+  const result = await pool.query<{ status: RoomStatus }>(
+    `select status from focus_rooms where id = $1`,
+    [roomId],
+  );
+  return result.rows[0]?.status ?? null;
 }
 
 // Permanently delete a focus room and its participants (cascade).

@@ -193,6 +193,23 @@ function DashboardContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user?.uid]);
 
+  // The check-in state is authoritative on the server. Re-derive the button
+  // ("Check-in salvo") and the selected sleep option from the snapshot so a
+  // reload keeps showing today's saved check-in instead of resetting it.
+  useEffect(() => {
+    if (!snapshot) return;
+    const todays = snapshot.checkins.find((c) => c.checkinDate === todayIso());
+    if (todays) {
+      setCheckinSaved(true);
+      if (todays.sleepHours !== undefined) {
+        const match = SLEEP_OPTIONS.find((o) => Math.abs(o.hours - todays.sleepHours!) < 0.75);
+        if (match) setSleepAnswer(match.label);
+      }
+    } else {
+      setCheckinSaved(false);
+    }
+  }, [snapshot]);
+
   async function saveCheckin() {
     const opt = SLEEP_OPTIONS.find((o) => o.label === sleepAnswer);
     const sleepHours = opt?.hours ?? 7.5;

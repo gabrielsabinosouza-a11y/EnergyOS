@@ -641,14 +641,14 @@ function ChatPanel({
   /* Convert to unified type */
   const chatMessages = useMemo(
     () => messages.map((m) => {
-      const chatMessage = dmToChatMessage(m, currentUserId);
+      const chatMessage = dmToChatMessage(m);
       if (m.senderId === friend.id) {
         chatMessage.senderName = friend.displayName;
         chatMessage.senderPhotoUrl = friend.photoUrl;
       }
       return chatMessage;
     }),
-    [messages, currentUserId, friend.displayName, friend.id, friend.photoUrl],
+    [messages, friend.displayName, friend.id, friend.photoUrl],
   );
 
   return (
@@ -686,7 +686,7 @@ function ChatPanel({
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);
           }}
-          replyingTo={replyingTo ? dmToChatMessage(replyingTo, currentUserId) : null}
+          replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
         />
       </div>

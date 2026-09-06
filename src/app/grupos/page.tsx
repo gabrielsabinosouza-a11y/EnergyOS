@@ -1400,7 +1400,7 @@ function GroupDetailPanel({
 
   return (
     <motion.div variants={slideLeft} initial="hidden" animate="visible" exit="exit"
-      className="-mx-5 -my-7 flex min-h-[100dvh] flex-col sm:-mx-8 lg:-mx-12 lg:-my-10">
+      className="-mx-5 -my-7 flex h-[100dvh] flex-col sm:-mx-8 lg:-mx-12 lg:-my-10">
 
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
