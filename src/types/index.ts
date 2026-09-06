@@ -163,7 +163,10 @@ export interface DirectMessage {
   id: number;
   senderId: string;
   recipientId: string;
-  body: string;
+  body?: string;
+  messageType?: string;
+  mediaUrl?: string;
+  mediaDurationSeconds?: number;
   createdAt: string;
   replyToId?: number;
   replyToBody?: string;
@@ -214,6 +217,9 @@ export function dmToChatMessage(dm: DirectMessage): ChatMessage {
     id: dm.id,
     senderId: dm.senderId,
     body: dm.body,
+    messageType: dm.messageType,
+    mediaUrl: dm.mediaUrl,
+    mediaDurationSeconds: dm.mediaDurationSeconds,
     createdAt: dm.createdAt,
     replyToId: dm.replyToId,
     replyToBody: dm.replyToBody,

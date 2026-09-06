@@ -5,16 +5,16 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import {
   ArrowLeft, ArrowUp, ArrowDown, Check, Loader2,
-  MessageCircle, Plus, Send, Timer, Trophy,
+  MessageCircle, Plus, Timer, Trophy,
   TrendingUp, Users, X as XIcon, Zap, Settings,
-  Image as ImageIcon, Mic, Square,
-  Sticker, Trash2, UserMinus,
+  Image as ImageIcon,
+  Trash2, UserMinus,
   VolumeX, Ban, MoreVertical, Volume2, UserCheck,
   Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
-import { ChatThread, ConversationContextMenu, convActions } from "@/components/chat";
+import { ChatThread, ChatComposer, ConversationContextMenu, convActions } from "@/components/chat";
 import { groupPinnedToChatMessage, groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
@@ -171,51 +171,6 @@ function readAsDataUrl(file: File): Promise<string> {
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
     img.src = url;
-  });
-}
-
-/** Upload a media file to Cloudinary and return its secure URL (+ optional duration). */
-async function uploadToCloudinary(file: File): Promise<{ secureUrl: string; durationSeconds: number | undefined }> {
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-  if (!cloudName || !uploadPreset) throw new Error("Cloudinary não configurado.");
-
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", uploadPreset);
-
-  // Imagens usam o endpoint de imagem; áudio e vídeo usam o de vídeo/raw.
-  const isImage = file.type.startsWith("image/");
-  const endpoint = isImage
-    ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
-    : `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
-
-  const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Falha no upload.");
-  const data = await res.json();
-  const duration = Number(data.duration);
-  return {
-    secureUrl: data.secure_url as string,
-    durationSeconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : undefined,
-  };
-}
-
-/** Reads a video's duration in seconds (0 if it can't be determined). */
-async function readVideoDuration(file: File): Promise<number> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      const d = Number.isFinite(video.duration) ? video.duration : 0;
-      URL.revokeObjectURL(url);
-      resolve(Math.round(d));
-    };
-    video.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(0);
-    };
-    video.src = url;
   });
 }
 
@@ -1058,19 +1013,8 @@ function GroupDetailPanel({
   /* Chat state */
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<GroupPinnedMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [mentionIndex, setMentionIndex] = useState(0);
-  const [mentionOpen, setMentionOpen] = useState(false);
-  const [showStickers, setShowStickers] = useState(false);
-  const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [recording, setRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<GroupMessage | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
 
   /* Settings state */
   const [editName, setEditName] = useState(group.name);
@@ -1142,11 +1086,9 @@ function GroupDetailPanel({
     api.getFriends().then(({ friends: f }) => setFriends(f)).catch(() => {});
   }, [tab, friends.length]);
 
-  useEffect(() => {
-    if (!showStickers || stickers.length > 0) return;
-    api.getGroupStickers().then((d) => setStickers(d.stickers)).catch(() => {});
-  }, [showStickers, stickers.length]);
-
+  /* Composer persistence — the composer UI (upload + mic) lives in the shared
+     ChatComposer; these wrappers persist to the group API and surface failures
+     by rethrowing so the composer can restore input + show an error. */
   function appendMessage(message: GroupMessage) {
     setMessages((prev) => [...prev, message]);
     lastIdRef.current = message.id;
@@ -1155,45 +1097,30 @@ function GroupDetailPanel({
   const chatMessages = messages.map((m) => groupToChatMessage(m));
   const pinnedChatMessages = pinnedMessages.map(groupPinnedToChatMessage);
 
-  async function sendMediaMessage(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
-    setSending(true);
-    try {
-      const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
-        messageType: opts.messageType,
-        mediaUrl: opts.mediaUrl,
-        mediaDurationSeconds: opts.mediaDurationSeconds,
-      });
-      appendMessage(message);
-    } catch {
-      setMessageError("Não foi possível enviar a mídia.");
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function handleSend(body: string) {
-    if (!body.trim() || sending) return;
-    setInput("");
-    setSending(true);
-    setMessageError("");
-    try {
-      const { message } = await api.sendGroupMessage(group.id, body);
-      appendMessage(message);
-    } catch { setInput(body); }
-    finally { setSending(false); }
+    const { message } = await api.sendGroupMessage(group.id, body);
+    appendMessage(message);
   }
 
   async function handleReply(body: string, replyToId: number) {
-    if (!body.trim() || sending) return;
-    setInput("");
-    setSending(true);
+    const { message } = await api.sendGroupMessage(group.id, body, { replyToId });
+    appendMessage(message);
+    setReplyingTo(null);
+  }
+
+  async function handleComposerSend(body: string) {
     setMessageError("");
-    try {
-      const { message } = await api.sendGroupMessage(group.id, body, { replyToId });
-      appendMessage(message);
-      setReplyingTo(null);
-    } catch { setInput(body); }
-    finally { setSending(false); }
+    if (replyingTo) await handleReply(body, replyingTo.id);
+    else await handleSend(body);
+  }
+
+  async function handleComposerSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
+    const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
+      messageType: opts.messageType,
+      mediaUrl: opts.mediaUrl,
+      mediaDurationSeconds: opts.mediaDurationSeconds,
+    });
+    appendMessage(message);
   }
 
   async function handleEditMessage(messageId: number, newBody: string) {
@@ -1237,105 +1164,6 @@ function GroupDetailPanel({
     } catch (e) {
       setMessageError(e instanceof Error && e.message ? e.message : "Não foi possível fixar a mensagem.");
     }
-  }
-
-  async function handleSendImage(file: File) {
-    if (uploadingMedia) return;
-    setUploadingMedia(true);
-    setMessageError("");
-    try {
-      const { secureUrl } = await uploadToCloudinary(file);
-      await sendMediaMessage({ messageType: "IMAGE", mediaUrl: secureUrl });
-    } catch {
-      setMessageError("Não foi possível enviar a imagem.");
-    } finally {
-      setUploadingMedia(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  const MAX_VIDEO_SECONDS = 30;
-
-  async function handleSendVideo(file: File) {
-    if (uploadingMedia) return;
-    setUploadingMedia(true);
-    setMessageError("");
-    try {
-      const durationSeconds = await readVideoDuration(file);
-      if (durationSeconds > 0 && durationSeconds > MAX_VIDEO_SECONDS) {
-        setMessageError(`Vídeos devem ter no máximo ${MAX_VIDEO_SECONDS}s.`);
-        return;
-      }
-      const { secureUrl } = await uploadToCloudinary(file);
-      await sendMediaMessage({ messageType: "VIDEO", mediaUrl: secureUrl, mediaDurationSeconds: durationSeconds || undefined });
-    } catch {
-      setMessageError("Não foi possível enviar o vídeo.");
-    } finally {
-      setUploadingMedia(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.type.startsWith("image/")) await handleSendImage(file);
-    else if (file.type.startsWith("video/")) await handleSendVideo(file);
-    else setMessageError("Formato de arquivo não suportado.");
-  }
-
-  async function handleSendSticker(emoji: string) {
-    if (sending) return;
-    setShowStickers(false);
-    await sendMediaMessage({ messageType: "STICKER", body: emoji });
-  }
-
-  async function handleSendVoice(blob: Blob) {
-    if (sending) return;
-    setMessageError("");
-    try {
-      setUploadingMedia(true);
-      const file = new File([blob], "voice.webm", { type: "audio/webm" });
-      const { secureUrl, durationSeconds } = await uploadToCloudinary(file);
-      await sendMediaMessage({
-        messageType: "AUDIO",
-        mediaUrl: secureUrl,
-        mediaDurationSeconds: durationSeconds ?? Math.round(blob.size / 16000),
-      });
-    } catch {
-      setMessageError("Não foi possível enviar o áudio.");
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  async function startRecording() {
-    setMessageError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      recordingChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
-        recordingChunksRef.current = [];
-        if (blob.size > 0) await handleSendVoice(blob);
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setRecording(true);
-    } catch {
-      setMessageError("Microfone não disponível.");
-    }
-  }
-
-  function stopRecording() {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    setRecording(false);
   }
 
   /* Members */

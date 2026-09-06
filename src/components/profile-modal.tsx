@@ -49,7 +49,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
 
   return (
     <Modal onClose={onClose}>
-      <div className="glass-card relative w-full max-w-sm overflow-hidden">
+      <div className="glass-card relative w-full max-w-md overflow-hidden">
         <button
           onClick={onClose}
           className={`absolute right-3 top-3 z-10 rounded-lg p-1.5 transition ${
@@ -135,7 +135,7 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
               {profile.featuredAchievements.length > 0 && (
                 <motion.div variants={fadeUp}>
                   <p className="text-[10px] uppercase tracking-widest text-[var(--text-faint)] mb-3">Conquistas em destaque</p>
-                  <div className="flex gap-3 flex-wrap">
+                  <div className="flex gap-3 flex-nowrap">
                     {profile.featuredAchievements.map((ach) => (
                       <div key={ach.id} className="flex flex-col items-center gap-1">
                         <AchievementBadge achievement={ach} size={40} />

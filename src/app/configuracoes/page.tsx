@@ -100,6 +100,11 @@ export default function ConfiguracoesPage() {
 
   async function handleLogout() {
     await logout();
+    // Safe to use the client router now: `logout()` only resolves after the
+    // Firebase null-user has propagated into the shared auth context, so the
+    // landing page can never render with a stale signed-in user (the race
+    // that previously bounced logged-out users from "/" back to "/dashboard"
+    // and left them on an endless spinner).
     router.push("/");
   }
 

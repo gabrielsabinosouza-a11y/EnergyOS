@@ -32,12 +32,12 @@ export async function POST(
     rateLimitForProfile(profileId, "dm-send", 20, 60_000);
     const { friendId } = await params;
     const body = await readJsonBody(request);
-    const message = await sendDirectMessage(
-      profileId,
-      friendId,
-      body.body as string,
-      body.replyToId ? Number(body.replyToId) : undefined,
-    );
+    const message = await sendDirectMessage(profileId, friendId, body.body as string, {
+      messageType: body.messageType as string | undefined,
+      mediaUrl: body.mediaUrl as string | undefined,
+      mediaDurationSeconds: body.mediaDurationSeconds as number | undefined,
+      replyToId: body.replyToId != null ? Number(body.replyToId) : undefined,
+    });
     return NextResponse.json({ message });
   } catch (error) {
     if (error instanceof AppError) {

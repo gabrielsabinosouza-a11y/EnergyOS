@@ -29,8 +29,11 @@ interface DmRow {
   id: string | number;
   sender_id: string;
   recipient_id: string;
-  body: string;
+  body: string | null;
   created_at: Date | string;
+  message_type?: string | null;
+  media_url?: string | null;
+  media_duration_seconds?: string | number | null;
   reply_to_id?: string | number | null;
   reply_to_body?: string | null;
   reply_to_sender_name?: string | null;
@@ -68,7 +71,11 @@ function mapDm(row: DmRow): DirectMessage {
     id: Number(row.id),
     senderId: row.sender_id,
     recipientId: row.recipient_id,
-    body: row.body,
+    body: row.body ?? "",
+    messageType: row.message_type ? (row.message_type as DirectMessage["messageType"]) : undefined,
+    mediaUrl: row.media_url ?? undefined,
+    mediaDurationSeconds:
+      row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
     replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
     replyToBody: row.reply_to_body ?? undefined,
@@ -109,6 +116,7 @@ const DM_INTERACTION_SELECT = `left join lateral (
    and pinned.message_id = dm.id`;
 
 const DM_SELECT = `select dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at, dm.edited_at,
+  dm.message_type, dm.media_url, dm.media_duration_seconds,
   dm.reply_to_id, rp.body as reply_to_body, rp.sender_id as reply_sender_id,
   p.display_name as reply_to_sender_name,
   reactions.reactions, (pinned.message_id is not null) as is_pinned,
@@ -127,14 +135,18 @@ export async function listDirectMessages(
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
 
-  // The reply/edit columns may not exist on older databases until the
+  // The reply/edit/media columns may not exist on older databases until the
   // migration runs; detect them so the query stays valid either way.
   const hasReplyCols = await hasDmColumn("reply_to_id");
+  const hasMediaCols = await hasDmColumn("media_url");
   const baseColumns = `dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at,
     reactions.reactions, (pinned.message_id is not null) as is_pinned, pinned.created_at as pinned_at, pinned.pinned_by`;
   const replyColumns = hasReplyCols
     ? `, dm.edited_at, dm.reply_to_id, rp.body as reply_to_body, p.display_name as reply_to_sender_name`
     : `, null::timestamptz as edited_at, null::bigint as reply_to_id, null::text as reply_to_body, null::text as reply_to_sender_name`;
+  const mediaColumns = hasMediaCols
+    ? `, dm.message_type, dm.media_url, dm.media_duration_seconds`
+    : `, null::text as message_type, null::text as media_url, null::int as media_duration_seconds`;
   const FROM = hasReplyCols
     ? ` from direct_messages dm
         left join direct_messages rp on rp.id = dm.reply_to_id
@@ -145,7 +157,7 @@ export async function listDirectMessages(
 
   const result = afterId
     ? await pool.query<DmRow>(
-        `select ${baseColumns}${replyColumns}
+        `select ${baseColumns}${replyColumns}${mediaColumns}
          ${FROM}
          where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
            and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
@@ -155,7 +167,7 @@ export async function listDirectMessages(
         [profileId, other, afterId],
       )
     : await pool.query<DmRow>(
-        `select ${baseColumns}${replyColumns}
+        `select ${baseColumns}${replyColumns}${mediaColumns}
          ${FROM}
          where least(dm.sender_id, dm.recipient_id) = least($1::text, $2::text)
            and greatest(dm.sender_id, dm.recipient_id) = greatest($1::text, $2::text)
@@ -191,16 +203,43 @@ export async function sendDirectMessage(
   profileId: string,
   otherId: string,
   body: string,
-  replyToId?: number,
+  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number },
 ): Promise<DirectMessage> {
   parseProfileId(profileId);
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
-  const text = parseMessage(body);
 
+  const messageType = (opts?.messageType ?? "TEXT") as DirectMessage["messageType"] | "TEXT";
+  const allowed = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"] as const;
+  if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
+
+  let text: string | null = null;
+  if (messageType === "TEXT") {
+    text = parseMessage(body);
+  } else if (body && body.trim()) {
+    text = body.trim().slice(0, 1000);
+  }
+
+  const mediaUrl = opts?.mediaUrl?.trim() || null;
+  if (mediaUrl && mediaUrl.length > 2000) throw new ValidationError("URL de mídia inválida.");
+  if (messageType !== "TEXT" && messageType !== "STICKER" && !mediaUrl) {
+    throw new ValidationError("Mensagem de mídia requer uma URL.");
+  }
+
+  const mediaDurationSeconds =
+    opts?.mediaDurationSeconds != null && Number.isFinite(opts.mediaDurationSeconds)
+      ? Math.max(0, Math.round(opts.mediaDurationSeconds))
+      : null;
+  if ((messageType === "VIDEO" || messageType === "AUDIO") && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
+    throw new ValidationError("Vídeos e áudios devem ter no máximo 30 segundos.");
+  }
+  if (messageType === "STICKER" && !text) {
+    text = opts?.mediaUrl?.trim() || null;
+  }
+
+  // Reply columns may not exist on older DBs until migration runs.
   const hasReplyCols = await hasDmColumn("reply_to_id");
-  // If reply columns haven't been migrated yet, fall back to plain text sends.
-  const effectiveReplyId = hasReplyCols ? replyToId : undefined;
+  const effectiveReplyId = hasReplyCols ? opts?.replyToId : undefined;
   if (effectiveReplyId != null) {
     const reply = await assertDmMessageParticipant(profileId, effectiveReplyId);
     const isSameConversation =
@@ -208,19 +247,31 @@ export async function sendDirectMessage(
     if (!isSameConversation) throw new ValidationError("Mensagem respondida inválida.");
   }
 
+  const hasMediaCols = await hasDmColumn("media_url");
+  const hasMedia = messageType !== "TEXT";
+  if (hasMedia && !hasMediaCols) throw new ValidationError("Mensagens de mídia indisponíveis.");
+
   const result = await pool.query<DmRow>(
-    hasReplyCols
-      ? `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
-         values ($1, $2, $3, $4)
-         returning id, sender_id, recipient_id, body, created_at, reply_to_id`
-      : `insert into direct_messages (sender_id, recipient_id, body)
-         values ($1, $2, $3)
-         returning id, sender_id, recipient_id, body, created_at`,
-    [profileId, other, text, effectiveReplyId ?? null],
+    hasReplyCols && hasMediaCols
+      ? `insert into direct_messages (sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning id, sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id`
+      : hasReplyCols
+        ? `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
+           values ($1, $2, $3, $4)
+           returning id, sender_id, recipient_id, body, created_at, reply_to_id`
+        : `insert into direct_messages (sender_id, recipient_id, body)
+           values ($1, $2, $3)
+           returning id, sender_id, recipient_id, body, created_at`,
+    hasReplyCols && hasMediaCols
+      ? [profileId, other, text, messageType, mediaUrl, mediaDurationSeconds, effectiveReplyId ?? null]
+      : hasReplyCols
+        ? [profileId, other, text, effectiveReplyId ?? null]
+        : [profileId, other, text],
   );
   const row = result.rows[0];
   // Fetch join info for reply
-  if (hasReplyCols && effectiveReplyId != null && row.reply_to_id != null) {
+  if (hasReplyCols && hasMediaCols && effectiveReplyId != null && row.reply_to_id != null) {
     const full = await pool.query<DmRow>(
       `${DM_SELECT}
        where dm.id = $2`,

@@ -506,6 +506,13 @@ do $$ begin
   alter table direct_messages add column if not exists edited_at timestamptz;
 exception when others then null; end $$;
 
+-- Media columns (image/video/audio/sticker DMs, mirrors group_messages)
+do $$ begin
+  alter table direct_messages add column if not exists message_type text not null default 'TEXT';
+  alter table direct_messages add column if not exists media_url text;
+  alter table direct_messages add column if not exists media_duration_seconds integer;
+exception when others then null; end $$;
+
 create index if not exists dm_pair_idx on direct_messages (
   least(sender_id, recipient_id),
   greatest(sender_id, recipient_id),
