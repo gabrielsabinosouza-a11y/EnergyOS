@@ -178,8 +178,8 @@ export const api = {
   getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP; lifetimeFocusMinutes: number }>("/api/focus"),
   startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string, roomId?: number) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType, roomId }) }),
-  endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false) =>
-    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession }) }),
+  endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false, pausedCount: number = 0) =>
+    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount }) }),
 
   // Garden (Meu Jardim)
   getGarden: () => request<{ entries: import("@/lib/db/focus").GardenEntry[] }>("/api/garden"),
@@ -323,7 +323,7 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ profileId }),
     }),
-  groupAction: (id: number, action: "leave" | "transfer" | "delete", payload?: { targetProfileId?: string }) =>
+  groupAction: (id: number, action: "leave" | "delete", payload?: { targetProfileId?: string }) =>
     request<{ success: true }>(`/api/groups/${id}/settings`, {
       method: "POST",
       body: JSON.stringify({ action, ...payload }),

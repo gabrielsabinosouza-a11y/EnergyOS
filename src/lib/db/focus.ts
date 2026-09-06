@@ -273,10 +273,12 @@ export async function endFocusSession(
   sessionId: number,
   focusedSeconds: number,
   isRoomSession: boolean = false,
+  pausedCount: number = 0,
 ): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
+  if (!Number.isFinite(pausedCount) || pausedCount < 0) pausedCount = 0;
 
   const session = await pool.query<FocusRow>(
     `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type
@@ -313,10 +315,10 @@ export async function endFocusSession(
   const xpAwarded = baseXP > 0 ? await creditXP(profileId, "focus", sessionId, baseXP) : 0;
 
   const updated = await pool.query<FocusRow>(
-    `update focus_sessions set duration_minutes = $3, ended_at = now(), xp_earned = $4
+    `update focus_sessions set duration_minutes = $3, ended_at = now(), xp_earned = $4, paused_count = $5
      where profile_id = $1 and id = $2
      returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, sessionId, durationMinutes, xpAwarded],
+    [profileId, sessionId, durationMinutes, xpAwarded, pausedCount],
   );
 
   if (coins > 0) {

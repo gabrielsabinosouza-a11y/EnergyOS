@@ -1,6 +1,6 @@
 "use client";
 
-import { Trophy, Lock, X, Plus, Users } from "lucide-react";
+import { Trophy, Lock, X, Plus, Users, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
@@ -12,6 +12,7 @@ export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow
   sleep: { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" },
   social: { primary: "#f472b6", bg: "rgba(244,114,182,0.12)", glow: "rgba(244,114,182,0.4)" },
   league: { primary: "#ffd76b", bg: "rgba(255,215,107,0.12)", glow: "rgba(255,215,107,0.4)" },
+  aura: { primary: "#818CF8", bg: "rgba(129,140,248,0.12)", glow: "rgba(129,140,248,0.4)" },
 };
 
 /**
@@ -65,10 +66,15 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/squad_leader/squa_leader3.png",
     "/achievements/squad_leader/squad_leader4.png",
   ],
+  flow_state: [
+    "/achievements/flow_state/flow_state1.png",
+    "/achievements/flow_state/flow_state2.png",
+  ],
 };
 
 export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {
   squad_leader: Users,
+  aura_collector: Sparkles,
 };
 
 export const DEFAULT_ICON = Trophy;

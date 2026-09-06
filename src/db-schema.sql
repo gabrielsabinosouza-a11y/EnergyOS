@@ -251,11 +251,13 @@ create table if not exists focus_sessions (
   started_at timestamptz not null default now(),
   ended_at timestamptz,
   task_id bigint references tasks(id) on delete set null,
-  xp_earned integer not null default 0
+  xp_earned integer not null default 0,
+  paused_count integer
 );
 
 alter table focus_sessions add column if not exists room_id bigint references focus_rooms(id) on delete set null;
 alter table focus_sessions add column if not exists energy_type text;
+alter table focus_sessions add column if not exists paused_count integer;
 
 create index if not exists focus_sessions_profile_idx on focus_sessions(profile_id, started_at desc);
 create index if not exists focus_sessions_room_idx on focus_sessions(room_id);
@@ -658,17 +660,19 @@ create table if not exists user_achievement_progress (
 );
 
 insert into achievements (id, title, description, category) values
-  ('streak_master',    'Streak Master',  'Mantenha sequências de consistência',           'streak'),
-  ('deep_focus',       'Deep Focus',     'Complete sessões longas de foco',               'focus'),
-  ('early_riser',      'Early Riser',    'Faça check-in antes das 7h',                    'checkin'),
-  ('sleep_champion',   'Sleep Champion', 'Durma 7 horas ou mais',                         'sleep'),
-  ('consistency_king', 'Consistency King','Semanas perfeitas de check-in',                'checkin'),
-  ('xp_olympian',      'XP Olympian',    'Acumule minutos de foco ao longo da vida',      'focus'),
-  ('social_spark',     'Social Spark',   'Faça amigos e entre em grupos',                 'social'),
-  ('rarest_aura',      'Top 1 Global',   'Termine no topo da Liga Lendários',                'league'),
-  ('squad_leader',     'Squad Leader',   'Tenha o maior grupo onde você é dono',             'social'),
-  ('focus_companion',  'Companheiro de Foco', 'Conclua sessões focando com outras pessoas',  'focus')
-on conflict (id) do nothing;
+  ('streak_master',    'Mestre da Sequência',  'Mantenha sequências de consistência',           'streak'),
+  ('deep_focus',       'Foco Profundo',        'Complete sessões longas de foco',               'focus'),
+  ('early_riser',      'Madrugador',           'Faça check-in antes das 7h',                    'checkin'),
+  ('sleep_champion',   'Campeão do Sono',      'Durma 7 horas ou mais',                         'sleep'),
+  ('consistency_king', 'Rei da Consistência',  'Semanas perfeitas de check-in',                'checkin'),
+  ('xp_olympian',      'Olimpiano de XP',      'Acumule minutos de foco ao longo da vida',      'focus'),
+  ('social_spark',     'Faísca Social',        'Faça amigos e entre em grupos',                 'social'),
+  ('rarest_aura',      'Top 1 Global',         'Termine no topo da Liga Lendários',                'league'),
+  ('squad_leader',     'Líder de Esquadrão',   'Tenha o maior grupo onde você é dono',             'social'),
+('focus_companion',  'Companheiro de Foco', 'Conclua sessões focando com outras pessoas',  'focus'),
+  ('flow_state',       'Estado de Fluxo',     'Complete uma sessão de foco ininterrupta',      'focus'),
+  ('aura_collector',   'Colecionador de Auras','Colecione uma porcentagem das auras disponíveis','aura')
+ on conflict (id) do nothing;
 
 -- Idempotency ledger for achievement rewards. Each (profile, achievement, tier)
 -- row is minted exactly once, so coins + XP are never granted twice even if

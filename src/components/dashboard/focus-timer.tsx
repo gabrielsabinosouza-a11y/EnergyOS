@@ -41,6 +41,7 @@ interface PersistedSession {
   runningSince: number | null; // timestamp in ms when the current running segment began (null while paused)
   status: PersistedSessionState;
   lastUpdatedAt: number; // timestamp in ms
+  pausedCount: number; // number of times the user paused this session
 }
 
 const STORAGE_KEY = "energyos_focus_session";
@@ -102,7 +103,7 @@ interface FocusTimerProps {
   history: FocusSession[];
   boostActive: boolean;
   onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
-  onEnd: (sessionId: number, focusedSeconds: number) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
+  onEnd: (sessionId: number, focusedSeconds: number, pausedCount?: number) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
 }
 
 type TimerState = "idle" | "running" | "paused";
@@ -208,6 +209,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const durationRef = useRef(FOCUS_DURATION_DEFAULT_MINUTES);
   const completedRef = useRef(false);
   const soundEnabledRef = useRef(true);
+  const pausedCountRef = useRef(0);
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -259,6 +261,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     // Handle running/paused sessions
     if ((persisted.status === "running" || persisted.status === "paused") && persisted.sessionId) {
       const now = Date.now();
+      pausedCountRef.current = typeof persisted.pausedCount === "number" ? persisted.pausedCount : 0;
       let remainingMs: number;
       if (typeof persisted.remainingMs === "number" && persisted.remainingMs > 0) {
         remainingMs = persisted.remainingMs;
@@ -298,7 +301,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
         const handleCompletedWhileClosed = async (sessionId: number, durationMinutes: number) => {
           try {
             const focusedSeconds = durationMinutes * 60;
-            const result = await onEnd(sessionId, focusedSeconds);
+            const result = await onEnd(sessionId, focusedSeconds, pausedCountRef.current);
             
             setLastCoins(result.xpAwarded);
             setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
@@ -356,6 +359,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
       runningSince: runningSinceRef.current,
       status: stateRef.current as PersistedSessionState,
       lastUpdatedAt: Date.now(),
+      pausedCount: pausedCountRef.current,
     };
 
     saveSessionState(sessionState);
@@ -521,7 +525,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     const focusedMinutes = durationRef.current;
 
     try {
-      const result = await onEnd(sess.id, focusedSeconds);
+      const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
       setLastCoins(result.xpAwarded);
       setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
 
@@ -563,6 +567,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
       const totalSec = duration * 60;
       completedRef.current = false;
+      pausedCountRef.current = 0;
       remainingMsRef.current = totalSec * 1000;
       runningSinceRef.current = Date.now();
       remainingRef.current = totalSec;
@@ -585,6 +590,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     // Freeze the remaining time at this instant; the run segment is over.
     remainingMsRef.current = computeRemainingMs();
     runningSinceRef.current = null;
+    pausedCountRef.current += 1;
     setState("paused");
     stateRef.current = "paused";
   }
@@ -613,7 +619,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     runningSinceRef.current = null;
 
     try {
-      const result = await onEnd(sess.id, focusedSeconds);
+      const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
       if (!giveUp) {
         setLastCoins(result.xpAwarded);
         setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });

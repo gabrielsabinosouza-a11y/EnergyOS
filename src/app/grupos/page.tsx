@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
   Sticker, Trash2, UserMinus,
-  ArrowRightLeft, VolumeX, Ban, MoreVertical,
+  VolumeX, Ban, MoreVertical,
   Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -55,8 +55,7 @@ type MemberAction =
   | { type: "kick"; member: GroupMember }
   | { type: "promote"; member: GroupMember }
   | { type: "demote"; member: GroupMember }
-  | { type: "mute"; member: GroupMember }
-  | { type: "transfer"; member: GroupMember };
+  | { type: "mute"; member: GroupMember };
 
 function MemberActionMenu({
   anchor, actions, busy, onAction, onClose,
@@ -73,7 +72,6 @@ function MemberActionMenu({
     promote: <ArrowUp size={13} />,
     demote: <ArrowDown size={13} />,
     mute: <VolumeX size={13} />,
-    transfer: <ArrowRightLeft size={13} />,
   };
   const labels: Record<MemberAction["type"], string> = {
     ban: "Banir do grupo",
@@ -81,7 +79,6 @@ function MemberActionMenu({
     promote: "Promover a admin",
     demote: "Rebaixar a membro",
     mute: "Silenciar",
-    transfer: "Transferir propriedade",
   };
   return (
     <>
@@ -1292,9 +1289,6 @@ function GroupDetailPanel({
       } else if (action.type === "mute") {
         await api.setGroupMemberMuted(group.id, m.id, !m.isMuted);
         setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: !m.isMuted } : x) } : g);
-      } else if (action.type === "transfer") {
-        await api.groupAction(group.id, "transfer", { targetProfileId: m.id });
-        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, role: "OWNER" } : x.id === currentUserId ? { ...x, role: "ADMIN" } : x) } : g);
       }
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Operação falhou.");
@@ -1317,7 +1311,6 @@ function GroupDetailPanel({
     if (isOwner) {
       if (m.role === "ADMIN") actions.push({ type: "demote", member: m }, { type: "ban", member: m });
       if (m.role === "MEMBER") actions.push({ type: "promote", member: m }, { type: "ban", member: m });
-      actions.push({ type: "transfer", member: m });
     }
     return actions;
   }
@@ -1717,7 +1710,7 @@ function GroupDetailPanel({
             {isOwner && (
               <>
                 <p className="text-xs text-[var(--text-faint)]">
-                  O dono não pode sair sem transferir a propriedade. Use o botão de transferência na aba Membros e depois exclua o grupo se desejar.
+                  O dono não pode sair do grupo nem transferir a propriedade para outro membro.
                 </p>
                 <button onClick={() => setConfirmAction("delete")}
                   className="flex w-full items-center justify-between rounded-xl border border-[var(--red)]/30 px-4 py-3 text-sm text-[var(--red)] transition hover:bg-[var(--red-bg)]">

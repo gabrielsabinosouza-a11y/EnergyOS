@@ -6,6 +6,8 @@ import { getLifetimeFocusMinutes } from "./focus";
 import { getUserXP, creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
+import { ENERGY_TYPES } from "../energy-assets";
+import { getOwnedAuras } from "./store";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
@@ -18,20 +20,43 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   rarest_aura: [1],
   squad_leader: [3, 10, 20, 35],
   focus_companion: [1, 5, 10, 30],
+  flow_state: [90, 120],
 };
 
 const META: Record<string, { title: string; description: string; category: string }> = {
-  streak_master: { title: "Streak Master", description: "Mantenha sequências de consistência", category: "streak" },
-  deep_focus: { title: "Deep Focus", description: "Acumule minutos de foco totais", category: "focus" },
-  early_riser: { title: "Early Riser", description: "Faça check-in antes das 7h", category: "checkin" },
-  sleep_champion: { title: "Sleep Champion", description: "Durma 7 horas ou mais", category: "sleep" },
-  consistency_king: { title: "Consistency King", description: "Semanas perfeitas de check-in", category: "checkin" },
-  xp_olympian: { title: "XP Olympian", description: "Acumule XP ao longo da vida", category: "focus" },
-  social_spark: { title: "Social Spark", description: "Faça amigos e entre em grupos", category: "social" },
+  streak_master: { title: "Mestre da Sequência", description: "Mantenha sequências de consistência", category: "streak" },
+  deep_focus: { title: "Foco Profundo", description: "Acumule minutos de foco totais", category: "focus" },
+  early_riser: { title: "Madrugador", description: "Faça check-in antes das 7h", category: "checkin" },
+  sleep_champion: { title: "Campeão do Sono", description: "Durma 7 horas ou mais", category: "sleep" },
+  consistency_king: { title: "Rei da Consistência", description: "Semanas perfeitas de check-in", category: "checkin" },
+  xp_olympian: { title: "Olimpiano de XP", description: "Acumule XP ao longo da vida", category: "focus" },
+  social_spark: { title: "Faísca Social", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
-  squad_leader: { title: "Squad Leader", description: "Tenha o maior grupo onde você é dono", category: "social" },
+squad_leader: { title: "Líder de Esquadrão", description: "Tenha o maior grupo onde você é dono", category: "social" },
   focus_companion: { title: "Companheiro de Foco", description: "Conclua sessões focando com outras pessoas", category: "focus" },
+  flow_state: { title: "Estado de Fluxo", description: "Complete uma sessão de foco ininterrupta", category: "focus" },
+  aura_collector: { title: "Colecionador de Auras", description: "Colecione uma porcentagem das auras disponíveis", category: "aura" },
 };
+
+const AURA_COLLECTOR_ID = "aura_collector";
+
+/** Total de auras que existem no jogo hoje — lido ao vivo a cada avaliação, para que adicionar auras no futuro não exija mudanças aqui. */
+function totalAvailableAuras(): number {
+  return ENERGY_TYPES.length;
+}
+
+/** 25% / 50% / 100% do total de auras vigente, sempre arredondado para cima (para os degraus nunca ficarem fáceis demais). */
+function auraCollectorThresholds(): number[] {
+  const total = totalAvailableAuras();
+  return [Math.ceil(total * 0.25), Math.ceil(total * 0.5), total];
+}
+
+/** Todos os ids de conquistas, incluindo o colecionador de auras com degraus dinâmicos. */
+const ALL_ACHIEVEMENT_IDS = [...Object.keys(ACHIEVEMENT_THRESHOLDS), AURA_COLLECTOR_ID];
+
+function thresholdsFor(id: string): number[] {
+  return id === AURA_COLLECTOR_ID ? auraCollectorThresholds() : ACHIEVEMENT_THRESHOLDS[id];
+}
 
 function tierFor(value: number, thresholds: number[]): number {
   let tier = 0;
@@ -67,8 +92,8 @@ export async function awardAchievementRewards(
   );
   const claimedKeys = new Set(claimed.rows.map((r) => `${r.achievement_id}:${r.tier}`));
 
-  for (const id of Object.keys(ACHIEVEMENT_THRESHOLDS)) {
-    const unlockedTier = tierFor(values[id] ?? 0, ACHIEVEMENT_THRESHOLDS[id]);
+  for (const id of ALL_ACHIEVEMENT_IDS) {
+    const unlockedTier = tierFor(values[id] ?? 0, thresholdsFor(id));
     for (let tier = 1; tier <= unlockedTier; tier += 1) {
       if (claimedKeys.has(`${id}:${tier}`)) continue;
       const { xp, coins } = rewardForTier(tier);
@@ -105,6 +130,8 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     rarest,
     squadLeader,
     focusCompanion,
+    flowState,
+    ownedAuras,
   ] = await Promise.all([
     pool.query<{ current_streak: number; longest_streak: number }>(
       `select current_streak, longest_streak from profiles where id = $1`,
@@ -170,12 +197,24 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
          ) >= 2`,
       [profileId],
     ),
+    pool.query<{ longest: string | number }>(
+      `select coalesce(max(duration_minutes), 0) as longest
+       from focus_sessions
+       where profile_id = $1
+         and ended_at is not null
+         and paused_count is not null
+         and paused_count = 0`,
+      [profileId],
+    ),
+    getOwnedAuras(profileId),
   ]);
 
   const longestStreak = Math.max(
     streakRow.rows[0]?.longest_streak ?? 0,
     streakRow.rows[0]?.current_streak ?? 0,
   );
+
+  const knownAuraTypes = new Set<string>(ENERGY_TYPES);
 
   return {
     streak_master: longestStreak,
@@ -188,6 +227,8 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     rarest_aura: rarest.rows[0]?.unlocked_tier ? 1 : 0,
     squad_leader: Number(squadLeader.rows[0]?.largest ?? 0),
     focus_companion: Number(focusCompanion.rows[0]?.count ?? 0),
+    flow_state: Number(flowState.rows[0]?.longest ?? 0),
+    aura_collector: ownedAuras.filter((type) => knownAuraTypes.has(type)).length,
   };
 }
 
@@ -215,8 +256,8 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
   const byId = new Map(existing.rows.map((row) => [row.achievement_id, row]));
 
   const items: AchievementProgress[] = [];
-  for (const id of Object.keys(ACHIEVEMENT_THRESHOLDS)) {
-    const thresholds = ACHIEVEMENT_THRESHOLDS[id];
+  for (const id of ALL_ACHIEVEMENT_IDS) {
+    const thresholds = thresholdsFor(id);
     const meta = META[id];
     const currentValue = values[id] ?? 0;
     const unlockedTier = tierFor(currentValue, thresholds);
@@ -270,7 +311,7 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
 
 export async function markAchievementSeen(profileId: string, achievementId: string): Promise<void> {
   parseProfileId(profileId);
-  if (!ACHIEVEMENT_THRESHOLDS[achievementId]) throw new ValidationError("Conquista inválida.");
+  if (!META[achievementId]) throw new ValidationError("Conquista inválida.");
   const result = await pool.query(
     `update user_achievement_progress set seen_at = now()
      where profile_id = $1 and achievement_id = $2`,
@@ -299,7 +340,7 @@ export async function toggleFeaturedAchievement(
   achievementId: string,
 ): Promise<{ isFeatured: boolean; featuredOrder?: number }> {
   parseProfileId(profileId);
-  if (!ACHIEVEMENT_THRESHOLDS[achievementId]) throw new ValidationError("Conquista inválida.");
+  if (!META[achievementId]) throw new ValidationError("Conquista inválida.");
 
   const current = await pool.query<{
     is_featured: boolean;

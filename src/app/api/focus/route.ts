@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
     if (action === "end") {
       const focusedSeconds = Number(body.focusedSeconds) || 0;
       const isRoomSession = body.isRoomSession === true;
-      const { session, xpAwarded, coinsAwarded, questsUpdated } = await endFocusSession(profileId, Number(body.sessionId), focusedSeconds, isRoomSession);
+      const pausedCount = Number(body.pausedCount);
+      const { session, xpAwarded, coinsAwarded, questsUpdated } = await endFocusSession(profileId, Number(body.sessionId), focusedSeconds, isRoomSession, Number.isFinite(pausedCount) && pausedCount >= 0 ? pausedCount : 0);
       return jsonOk({ session, xpAwarded, coinsAwarded, questsUpdated });
     }
 

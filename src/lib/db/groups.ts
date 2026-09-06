@@ -1080,38 +1080,12 @@ export async function removeMember(
   );
 }
 
-/** Transfer group ownership to another member (owner only). */
-export async function transferOwnership(profileId: string, groupId: number, targetProfileId: string): Promise<void> {
-  parseProfileId(profileId);
-  parseProfileId(targetProfileId);
-  if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
-
-  const actorRole = await getMemberRole(profileId, groupId);
-  if (actorRole !== 'OWNER') throw new ForbiddenError("Só o dono do grupo pode transferir a propriedade.");
-  if (targetProfileId === profileId) throw new ValidationError("Você já é o dono do grupo.");
-
-  const targetRole = await getMemberRole(targetProfileId, groupId);
-  if (!targetRole) throw new NotFoundError("Membro não encontrado.");
-
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    await client.query(
-      `update group_members set role = 'OWNER' where group_id = $1 and profile_id = $2`,
-      [groupId, targetProfileId],
-    );
-    await client.query(
-      `update group_members set role = 'ADMIN' where group_id = $1 and profile_id = $2 and role = 'OWNER'`,
-      [groupId, profileId],
-    );
-    await client.query(`update groups set created_by = $2 where id = $1`, [groupId, targetProfileId]);
-    await client.query("commit");
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
+/**
+ * Ownership transfer is permanently disabled: the owner cannot hand over
+ * group power to anyone else. This call always fails.
+ */
+export async function transferOwnership(_profileId: string, _groupId: number, _targetProfileId: string): Promise<void> {
+  throw new ForbiddenError("A propriedade do grupo não pode ser transferida para outra pessoa.");
 }
 
 /** Delete a group entirely (owner only). Cascades to members/messages/read-state. */

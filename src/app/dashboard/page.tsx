@@ -388,7 +388,7 @@ function DashboardContent() {
     return result;
   }
 
-  async function endFocus(sessionId: number, focusedSeconds: number) {
+  async function endFocus(sessionId: number, focusedSeconds: number, pausedCount = 0) {
     // Optimistic: advance the focus-related missions in the SAME interaction —
     // the missões diárias progress bars update instantly and the claim-ready
     // glow appears the moment a mission completes. The server records the same
@@ -399,7 +399,7 @@ function DashboardContent() {
     applyMetric("TOTAL_MINUTES", { incrementBy: minutes });
     if (minutes >= 60) applyMetric("LONG_SESSION_60", { incrementBy: 1 });
     try {
-      const result = await api.endFocus(sessionId, focusedSeconds);
+      const result = await api.endFocus(sessionId, focusedSeconds, false, pausedCount);
       void refreshQuests();
       api.getFocusData().then((f) => setFocusData(f));
       // Re-pull the snapshot so the streak badge reflects the (possibly new)
