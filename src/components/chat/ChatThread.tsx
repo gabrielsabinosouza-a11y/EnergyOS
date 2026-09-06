@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
@@ -50,6 +50,59 @@ function differentDays(a: string, b: string): boolean {
     da.getFullYear() !== db.getFullYear() ||
     da.getMonth() !== db.getMonth() ||
     da.getDate() !== db.getDate()
+  );
+}
+
+/* ─── @mention rendering ─────────────────────────────────────────── */
+
+export interface MentionMember {
+  id: string;
+  displayName: string;
+  username?: string;
+}
+
+/** Render message text, highlighting "@handle" tokens that exactly match a
+ *  member (groups only — pass `mentionMembers`). Non-matching "@" text (e.g.
+ *  email prefixes or casual use) stays plain. DMs pass no members → plain. */
+function MentionText({
+  text,
+  members,
+  isMe,
+}: {
+  text: string;
+  members: MentionMember[];
+  isMe: boolean;
+}) {
+  const parts = useMemo(() => text.split(/(@[^\s]+)/g), [text]);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) return <Fragment key={i}>{part}</Fragment>;
+        const token = part.slice(1);
+        const stripped = token.replace(/[.,;:!?…"'()\[\]{}]+$/, "");
+        const isMember = stripped.length > 0 && members.some(
+          (m) =>
+            (m.username ?? "").toLowerCase() === stripped.toLowerCase() ||
+            m.displayName.toLowerCase() === stripped.toLowerCase(),
+        );
+        if (!isMember) return <Fragment key={i}>{part}</Fragment>;
+        const trailing = token.slice(stripped.length);
+        return (
+          <Fragment key={i}>
+            <span
+              className={
+                isMe
+                  ? "rounded bg-black/10 px-1 font-medium text-black/80"
+                  : "rounded bg-[var(--accent-bg)] px-1 font-medium text-[var(--accent)]"
+              }
+            >
+              @{stripped}
+            </span>
+            {trailing}
+          </Fragment>
+        );
+      })}
+    </>
   );
 }
 
@@ -279,6 +332,7 @@ function MessageBubble({
   onQuoteClick,
   showActionTrigger,
   onActionTrigger,
+  mentionMembers,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -293,6 +347,8 @@ function MessageBubble({
   showActionTrigger: boolean;
   /** Click on the ⋯ trigger (opens the context menu anchored to this bubble). */
   onActionTrigger: (e: React.MouseEvent) => void;
+  /** Group members for @mention rendering (DMs pass nothing → plain text). */
+  mentionMembers?: MentionMember[];
 }) {
   const reactions = msg.reactions ?? [];
   const handleContextMenu = useCallback(
@@ -426,7 +482,9 @@ function MessageBubble({
                 isMe ? "text-black" : "text-[var(--text)]"
               }`}
             >
-              {msg.body}
+              {mentionMembers?.length
+                ? <MentionText text={msg.body ?? ""} members={mentionMembers} isMe={isMe} />
+                : msg.body}
             </div>
           ) : null}
           </div>
@@ -514,6 +572,10 @@ export interface ChatThreadProps {
    *  Own messages are always deletable regardless. Only used for groups. */
   deleteSenderRoles?: import("@/types").GroupRole[];
 
+  /** Members for @mention rendering. When provided, "@handle" tokens matching
+   *  a member are highlighted in the message body. DMs omit this → plain. */
+  mentionMembers?: MentionMember[];
+
   /** Read status tracking: message IDs that the other party has read */
   readMessageIds?: Set<number>;
 
@@ -551,6 +613,7 @@ export function ChatThread({
   onReplyMessage,
   onNewMessagesClick,
   deleteSenderRoles,
+  mentionMembers,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -997,6 +1060,7 @@ export function ChatThread({
                   msg,
                 );
               }}
+              mentionMembers={mentionMembers}
             />
             </div>
           );
