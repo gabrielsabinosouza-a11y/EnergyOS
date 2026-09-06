@@ -302,9 +302,13 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
   for (const id of ALL_ACHIEVEMENT_IDS) {
     const thresholds = thresholdsFor(id);
     const meta = META[id];
-    const currentValue = values[id] ?? 0;
-    const unlockedTier = tierFor(currentValue, thresholds);
     const prev = byId.get(id);
+    // Event-backed achievements are append-only. Never let a stale runtime
+    // calculation lower a value already persisted in the progress row.
+    const currentValue = id === "focus_companion"
+      ? Math.max(values[id] ?? 0, prev?.current_value ?? 0)
+      : values[id] ?? 0;
+    const unlockedTier = tierFor(currentValue, thresholds);
     const wasLocked = !prev || prev.unlocked_tier === 0;
     const justUnlocked = unlockedTier > 0 && (wasLocked || (prev && prev.unlocked_tier < unlockedTier && !prev.seen_at));
     const newlyUnlocked = unlockedTier > (prev?.unlocked_tier ?? 0);
