@@ -22,7 +22,7 @@ import { api } from "@/lib/api-client";
 import type { FriendSummary, GroupDetail, GroupMessage, GroupPinnedMessage, GroupSummary, GroupMember } from "@/types";
 import type { GroupLeaderboardEntry, MemberContribution } from "@/lib/db/group-leaderboard";
 import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/group-milestones";
-import type { GroupSynchronyStatus } from "@/lib/db/group-synchrony";
+import type { GroupAchievementStatus } from "@/lib/db/group-achievements";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -564,20 +564,28 @@ function WeeklyQuestWidget({ groupId }: { groupId: number }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Group achievement: Sincronia                                        */
+/*  Group achievements                                                  */
 /* ------------------------------------------------------------------ */
 
-function SynchronyWidget({ groupId }: { groupId: number }) {
-  const [status, setStatus] = useState<GroupSynchronyStatus | null>(null);
+function GroupAchievementsWidget({ groupId }: { groupId: number }) {
+  const [achievements, setAchievements] = useState<GroupAchievementStatus[] | null>(null);
 
   useEffect(() => {
-    api.getGroupSynchrony(groupId)
-      .then((d) => setStatus(d.synchrony))
+    api.getGroupAchievements(groupId)
+      .then((d) => setAchievements(d.achievements))
       .catch(() => { /* silent */ });
   }, [groupId]);
 
-  if (!status) return null;
+  if (!achievements || achievements.length === 0) return null;
 
+  return (
+    <div className="space-y-4">
+      {achievements.map((status) => <GroupAchievementCard key={status.id} status={status} />)}
+    </div>
+  );
+}
+
+function GroupAchievementCard({ status }: { status: GroupAchievementStatus }) {
   const unlocked = !!status.unlockedAt;
 
   return (
@@ -668,7 +676,8 @@ export default function GruposPage() {
 
   /* Current user's app-level profile id (parseProfileId(uid)). All ownership
      comparisons (member.id, senderId, etc.) must use this, NEVER user.uid. */
-  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+    const [myProfileId, setMyProfileId] = useState<string | null>(null);
+  const [profileIdReady, setProfileIdReady] = useState(false);
 
   const currentUserId = myProfileId ?? user?.uid ?? "";
 
@@ -678,9 +687,10 @@ export default function GruposPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    api.getProfile()
+        api.getProfile()
       .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (active) setProfileIdReady(true); });
     return () => { active = false; };
   }, [user]);
 
@@ -984,9 +994,9 @@ export default function GruposPage() {
 /* ------------------------------------------------------------------ */
 
 function GroupDetailPanel({
-  group: initialGroup, currentUserId, reduced, onBack, onRead,
+  group: initialGroup, currentUserId, profileIdReady, reduced, onBack, onRead,
 }: {
-  group: GroupDetail; currentUserId: string; reduced: boolean;
+  group: GroupDetail; currentUserId: string; profileIdReady: boolean; reduced: boolean;
   onBack: () => void; onRead: (groupId: number) => void;
 }) {
   const [group, setGroup] = useState<GroupDetail>(initialGroup);
@@ -1443,8 +1453,9 @@ function GroupDetailPanel({
       )}
 
       {/* Chat tab */}
-      {tab === "chat" && (
+            {tab === "chat" && (
         <div className="flex min-h-0 flex-1 flex-col">
+        {profileIdReady ? (
         <ChatThread
           messages={chatMessages}
           currentUserId={currentUserId}
@@ -1530,7 +1541,12 @@ function GroupDetailPanel({
               </div>
             </div>
           }
-        />
+                />
+        ) : (
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+        </div>
+        )}
         </div>
       )}
 
@@ -1600,7 +1616,7 @@ function GroupDetailPanel({
       {tab === "stats" && (
         <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
           <WeeklyQuestWidget groupId={group.id} />
-          <SynchronyWidget groupId={group.id} />
+          <GroupAchievementsWidget groupId={group.id} />
           {milestones.length > 0 && <MilestoneBar milestones={milestones} totalMinutes={totalMinutes} />}
           <div className="glass-card p-4">
             <div className="mb-3 flex items-center justify-between">

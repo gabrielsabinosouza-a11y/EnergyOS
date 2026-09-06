@@ -107,7 +107,12 @@ export default function AmigosPage() {
   /* Current user's app-level profile id (parseProfileId(uid)). All ownership
      comparisons (senderId, read receipts, isMe, etc.) must use this, NEVER the
      raw Firebase user.uid — the server stores the hashed UUID form. */
-  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+    const [myProfileId, setMyProfileId] = useState<string | null>(null);
+  /* Ownership comparisons (senderId === currentUserId) must use the app-level
+     profile id, never the raw user.uid. We also gate ChatThread rendering on
+     profileIdReady so the comparison never runs against the uid fallback
+     during the (brief) window before getProfile() settles. */
+  const [profileIdReady, setProfileIdReady] = useState(false);
   const currentUserId = myProfileId ?? user?.uid ?? "";
 
   /* Conversation list context menu */
@@ -150,9 +155,10 @@ export default function AmigosPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    api.getProfile()
+        api.getProfile()
       .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (active) setProfileIdReady(true); });
     return () => { active = false; };
   }, [user]);
 
@@ -501,7 +507,8 @@ export default function AmigosPage() {
           <ChatPanel
             key={activeChat.id}
             friend={activeChat}
-            currentUserId={currentUserId}
+                        currentUserId={currentUserId}
+            profileIdReady={profileIdReady}
             reduced={!!reduced}
             onClose={() => setActiveChat(null)}
             onRead={() => {
@@ -554,12 +561,14 @@ export default function AmigosPage() {
 function ChatPanel({
   friend,
   currentUserId,
+  profileIdReady,
   reduced,
   onClose,
   onRead,
 }: {
   friend: FriendSummary;
   currentUserId: string;
+  profileIdReady: boolean;
   reduced: boolean;
   onClose: () => void;
   onRead: () => void;
@@ -670,7 +679,9 @@ function ChatPanel({
           </button>
         </div>
 
-        {/* Shared ChatThread */}
+                {/* Shared ChatThread — gated on profile resolution to avoid transient
+            sender-mismatches during the uid-fallback window. */}
+        {profileIdReady ? (
         <ChatThread
           messages={chatMessages}
           currentUserId={currentUserId}
@@ -686,9 +697,14 @@ function ChatPanel({
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);
           }}
-          replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
+                    replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
         />
+        ) : (
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+        </div>
+        )}
       </div>
     </Modal>
   );

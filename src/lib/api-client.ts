@@ -349,8 +349,8 @@ export const api = {
     ),
   getGroupWeeklyQuest: (id: number) =>
     request<{ quest: import("@/lib/db/group-milestones").GroupWeeklyQuestStatus }>(`/api/groups/${id}/weekly-quest`),
-  getGroupSynchrony: (id: number) =>
-    request<{ synchrony: import("@/lib/db/group-synchrony").GroupSynchronyStatus }>(`/api/groups/${id}/synchrony`),
+  getGroupAchievements: (id: number) =>
+    request<{ achievements: import("@/lib/db/group-achievements").GroupAchievementStatus[] }>(`/api/groups/${id}/achievements`),
 
   // League
   getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
