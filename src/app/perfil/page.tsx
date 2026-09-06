@@ -398,7 +398,9 @@ export default function PerfilPage() {
           prev ? { ...prev, isFeatured: result.isFeatured, featuredOrder: result.featuredOrder } : prev,
         );
       }
-    } catch { /* silent */ }
+    } catch (error) {
+      console.error("[perfil] falha ao alterar destaque:", error);
+    }
   }
 
   async function handleGenerateRecap() {

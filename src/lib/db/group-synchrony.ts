@@ -1,6 +1,5 @@
 import pool from "../db";
 import { addCoins } from "./settings";
-import { parseProfileId } from "./validation";
 import { NotFoundError } from "../errors";
 
 /**
@@ -19,16 +18,6 @@ export const GROUP_ACHIEVEMENT_DEFS: Record<string, { title: string; description
     requirement: `${SYNCHRONY_MIN_MEMBERS}+ membros focando na mesma sala ao mesmo tempo`,
   },
 };
-
-export interface GroupSynchronyStatus {
-  id: string;
-  title: string;
-  description: string;
-  requirement: string;
-  minMembers: number;
-  coinsPerMember: number;
-  unlockedAt: string | null;
-}
 
 function assertGroupId(groupId: number): void {
   if (!Number.isInteger(groupId) || groupId <= 0) {
@@ -101,29 +90,4 @@ export async function checkGroupSynchrony(groupId: number): Promise<void> {
   if (!unlocked.rows[0]) return; // already unlocked — rewards already minted
 
   await creditSynchronyRewards(groupId);
-}
-
-export async function getGroupSynchronyStatus(
-  profileId: string,
-  groupId: number,
-): Promise<GroupSynchronyStatus> {
-  parseProfileId(profileId);
-  assertGroupId(groupId);
-
-  const row = await pool.query<{ unlocked_at: string }>(
-    `select unlocked_at::text from group_achievements
-     where id = $1 and group_id = $2`,
-    [SYNCHRONY_ID, groupId],
-  );
-
-  const def = GROUP_ACHIEVEMENT_DEFS[SYNCHRONY_ID];
-  return {
-    id: SYNCHRONY_ID,
-    title: def.title,
-    description: def.description,
-    requirement: def.requirement,
-    minMembers: SYNCHRONY_MIN_MEMBERS,
-    coinsPerMember: SYNCHRONY_COINS_PER_MEMBER,
-    unlockedAt: row.rows[0]?.unlocked_at ?? null,
-  };
 }

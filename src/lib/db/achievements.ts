@@ -410,18 +410,28 @@ export async function toggleFeaturedAchievement(
   }
 
   if (row.is_featured) {
-    await pool.query(
-      `update user_achievement_progress
-       set is_featured = false, featured_order = null
-       where profile_id = $1 and achievement_id = $2`,
-      [profileId, achievementId],
-    );
-    await pool.query(
-      `update user_achievement_progress
-       set featured_order = featured_order - 1
-       where profile_id = $1 and is_featured = true and featured_order > $3`,
-      [profileId, achievementId, row.featured_order ?? 0],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `update user_achievement_progress
+         set is_featured = false, featured_order = null
+         where profile_id = $1 and achievement_id = $2`,
+        [profileId, achievementId],
+      );
+      await client.query(
+        `update user_achievement_progress
+         set featured_order = featured_order - 1
+         where profile_id = $1 and is_featured = true and featured_order > $2`,
+        [profileId, row.featured_order ?? 0],
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
     return { isFeatured: false };
   }
 

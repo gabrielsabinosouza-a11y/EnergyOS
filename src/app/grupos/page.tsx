@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon, Mic, Square,
   Sticker, Trash2, UserMinus,
-  VolumeX, Ban, MoreVertical,
+  VolumeX, Ban, MoreVertical, Volume2, UserCheck,
   Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -52,10 +52,12 @@ function fmtMinutes(m: number): string {
 
 type MemberAction =
   | { type: "ban"; member: GroupMember }
+  | { type: "unban"; member: GroupMember }
   | { type: "kick"; member: GroupMember }
   | { type: "promote"; member: GroupMember }
   | { type: "demote"; member: GroupMember }
-  | { type: "mute"; member: GroupMember };
+  | { type: "mute"; member: GroupMember }
+  | { type: "unmute"; member: GroupMember };
 
 function MemberActionMenu({
   anchor, actions, busy, onAction, onClose,
@@ -68,17 +70,21 @@ function MemberActionMenu({
 }) {
   const icons: Record<MemberAction["type"], React.ReactNode> = {
     ban: <Ban size={13} />,
+    unban: <UserCheck size={13} />,
     kick: <UserMinus size={13} />,
     promote: <ArrowUp size={13} />,
     demote: <ArrowDown size={13} />,
     mute: <VolumeX size={13} />,
+    unmute: <Volume2 size={13} />,
   };
   const labels: Record<MemberAction["type"], string> = {
     ban: "Banir do grupo",
+    unban: "Desbanir",
     kick: "Expulsar",
     promote: "Promover a admin",
     demote: "Rebaixar a membro",
     mute: "Silenciar",
+    unmute: "Desilenciar",
   };
   return (
     <>
@@ -687,7 +693,7 @@ export default function GruposPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-        api.getProfile()
+    api.getProfile()
       .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
       .catch(() => {})
       .finally(() => { if (active) setProfileIdReady(true); });
@@ -802,6 +808,7 @@ export default function GruposPage() {
               key={`detail-${activeGroup.id}`}
               group={activeGroup}
               currentUserId={currentUserId}
+              profileIdReady={profileIdReady}
               reduced={reduced}
               onBack={() => setActiveGroup(null)}
               onRead={(groupId) => setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, unreadCount: 0 } : g))}
@@ -1303,6 +1310,9 @@ function GroupDetailPanel({
       if (action.type === "ban") {
         await api.setGroupMemberBanned(group.id, m.id, true);
         setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isBanned: true } : x) } : g);
+      } else if (action.type === "unban") {
+        await api.setGroupMemberBanned(group.id, m.id, false);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isBanned: false } : x) } : g);
       } else if (action.type === "kick") {
         await api.removeGroupMember(group.id, m.id);
         setGroup((g) => g ? { ...g, members: g.members.filter((x) => x.id !== m.id) } : g);
@@ -1311,8 +1321,11 @@ function GroupDetailPanel({
         await api.updateGroupMemberRole(group.id, m.id, role);
         setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, role } : x) } : g);
       } else if (action.type === "mute") {
-        await api.setGroupMemberMuted(group.id, m.id, !m.isMuted);
-        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: !m.isMuted } : x) } : g);
+        await api.setGroupMemberMuted(group.id, m.id, true);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: true } : x) } : g);
+      } else if (action.type === "unmute") {
+        await api.setGroupMemberMuted(group.id, m.id, false);
+        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: false } : x) } : g);
       }
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Operação falhou.");
@@ -1324,13 +1337,13 @@ function GroupDetailPanel({
   function actionsFor(m: GroupMember): MemberAction[] {
     if (m.id === currentUserId || m.role === "OWNER") return [];
     const actions: MemberAction[] = [];
-    // Banned members can't send, so only offer unmuting/toggling by kicking.
     if (m.isBanned) {
+      if (isOwner || (isAdmin && m.role === "MEMBER")) actions.push({ type: "unban", member: m });
       if (isOwner) actions.push({ type: "kick", member: m });
       return actions;
     }
-    if (m.role === "ADMIN" || m.role === "MEMBER") {
-      if (!m.isMuted) actions.push({ type: "mute", member: m });
+    if ((isOwner || isAdmin) && m.role === "MEMBER") {
+      actions.push(m.isMuted ? { type: "unmute", member: m } : { type: "mute", member: m });
     }
     if (isOwner) {
       if (m.role === "ADMIN") actions.push({ type: "demote", member: m }, { type: "ban", member: m });
@@ -1453,7 +1466,7 @@ function GroupDetailPanel({
       )}
 
       {/* Chat tab */}
-            {tab === "chat" && (
+      {tab === "chat" && (
         <div className="flex min-h-0 flex-1 flex-col">
         {profileIdReady ? (
         <ChatThread
@@ -1541,7 +1554,7 @@ function GroupDetailPanel({
               </div>
             </div>
           }
-                />
+          />
         ) : (
         <div className="flex-1 min-h-0 flex items-center justify-center">
           <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
@@ -1590,6 +1603,11 @@ function GroupDetailPanel({
                   {m.isBanned && (
                     <span className="rounded-full bg-[var(--red-bg)] px-2 py-0.5 text-[9px] font-medium text-[var(--red)]">
                       banido
+                    </span>
+                  )}
+                  {m.isMuted && (
+                    <span className="rounded-full bg-[var(--accent-bg)] px-2 py-0.5 text-[9px] font-medium text-[var(--accent)]">
+                      silenciado
                     </span>
                   )}
                   {actionsFor(m).length > 0 && (

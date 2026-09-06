@@ -107,7 +107,7 @@ export default function AmigosPage() {
   /* Current user's app-level profile id (parseProfileId(uid)). All ownership
      comparisons (senderId, read receipts, isMe, etc.) must use this, NEVER the
      raw Firebase user.uid — the server stores the hashed UUID form. */
-    const [myProfileId, setMyProfileId] = useState<string | null>(null);
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
   /* Ownership comparisons (senderId === currentUserId) must use the app-level
      profile id, never the raw user.uid. We also gate ChatThread rendering on
      profileIdReady so the comparison never runs against the uid fallback
@@ -155,7 +155,7 @@ export default function AmigosPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-        api.getProfile()
+    api.getProfile()
       .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
       .catch(() => {})
       .finally(() => { if (active) setProfileIdReady(true); });
@@ -507,7 +507,7 @@ export default function AmigosPage() {
           <ChatPanel
             key={activeChat.id}
             friend={activeChat}
-                        currentUserId={currentUserId}
+            currentUserId={currentUserId}
             profileIdReady={profileIdReady}
             reduced={!!reduced}
             onClose={() => setActiveChat(null)}
@@ -679,7 +679,7 @@ function ChatPanel({
           </button>
         </div>
 
-                {/* Shared ChatThread — gated on profile resolution to avoid transient
+        {/* Shared ChatThread — gated on profile resolution to avoid transient
             sender-mismatches during the uid-fallback window. */}
         {profileIdReady ? (
         <ChatThread
@@ -697,7 +697,7 @@ function ChatPanel({
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);
           }}
-                    replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
+          replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
         />
         ) : (

@@ -600,10 +600,13 @@ create table if not exists group_weekly_quest_claims (
 
 -- ── Group achievements ───────────────────────────────────────────────────────
 -- Group-level achievements (as opposed to the profile-level `achievements`
--- table). Currently only "Sincronia": unlocked when MIN_GROUP_SYNCHRONY members
--- of the same group were focusing simultaneously in the same focus room.
+-- table). "Sincronia": unlocked when MIN_GROUP_SYNCHRONY members of the same
+-- group were focusing simultaneously in the same focus room. "Esquadrão
+-- Completo": every active member focusing together at once. "Maratona Coletiva":
+-- MIN_GROUP_MARATHON_WEEK minutes combined in a single week. "Consistência de
+-- Equipe": MIN_GROUP_CONSISTENCY members focusing on consecutive days.
 create table if not exists group_achievements (
-  id text not null check (id in ('sincronia')),
+  id text not null check (id in ('sincronia', 'esquadrao_completo', 'maratona_coletiva', 'consistencia_de_equipe')),
   group_id bigint not null references groups(id) on delete cascade,
   unlocked_at timestamptz not null default now(),
   primary key (id, group_id)
