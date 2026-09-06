@@ -104,6 +104,12 @@ export default function AmigosPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* Current user's app-level profile id (parseProfileId(uid)). All ownership
+     comparisons (senderId, read receipts, isMe, etc.) must use this, NEVER the
+     raw Firebase user.uid — the server stores the hashed UUID form. */
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+  const currentUserId = myProfileId ?? user?.uid ?? "";
+
   /* Conversation list context menu */
   const [listMenu, setListMenu] = useState<{ x: number; y: number; friend: FriendSummary } | null>(null);
 
@@ -140,6 +146,15 @@ export default function AmigosPage() {
     Promise.resolve().then(loadData).then(() => { if (cancelled) return; });
     return () => { cancelled = true; };
   }, [authLoading, user?.uid, loadData]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api.getProfile()
+      .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [user]);
 
   /* Search debounce */
   const handleSearch = useCallback((q: string) => {
@@ -486,7 +501,7 @@ export default function AmigosPage() {
           <ChatPanel
             key={activeChat.id}
             friend={activeChat}
-            currentUserId={user.uid}
+            currentUserId={currentUserId}
             reduced={!!reduced}
             onClose={() => setActiveChat(null)}
             onRead={() => {

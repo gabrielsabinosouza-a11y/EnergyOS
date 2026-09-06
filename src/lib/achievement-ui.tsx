@@ -70,6 +70,11 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/flow_state/flow_state1.png",
     "/achievements/flow_state/flow_state2.png",
   ],
+  aura_collector: [
+    "/achievements/aura_collector/aura_collector1.png",
+    "/achievements/aura_collector/aura_collector2.png",
+    "/achievements/aura_collector/aura_collector3.png",
+  ],
 };
 
 export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {

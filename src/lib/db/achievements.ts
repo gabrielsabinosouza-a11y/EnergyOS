@@ -118,6 +118,23 @@ export async function awardAchievementRewards(
   }
 }
 
+/**
+ * Runs one achievement-value query in isolation. A single broken query (e.g. a
+ * column that hasn't been migrated in the live DB) must NEVER blank the whole
+ * achievements list — the failing achievement logs loudly and evaluates to 0,
+ * while every other achievement keeps working.
+ */
+async function safeQuery<T>(name: string, run: () => Promise<T>): Promise<T | null> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error(
+      `[achievements] Falha ao calcular "${name}": ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
 async function computeValues(profileId: string): Promise<Record<string, number>> {
   const [
     streakRow,
@@ -133,106 +150,124 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     flowState,
     ownedAuras,
   ] = await Promise.all([
-    pool.query<{ current_streak: number; longest_streak: number }>(
-      `select current_streak, longest_streak from profiles where id = $1`,
-      [profileId],
+    safeQuery("streak_master", () =>
+      pool.query<{ current_streak: number; longest_streak: number }>(
+        `select current_streak, longest_streak from profiles where id = $1`,
+        [profileId],
+      ),
     ),
-    getLifetimeFocusMinutes(profileId),
-    getUserXP(profileId),
-    pool.query<{ count: string | number }>(
-      `select count(*)::int as count from daily_checkins
-       where profile_id = $1
-         and extract(hour from created_at at time zone 'America/Sao_Paulo') < 7`,
-      [profileId],
-    ),
-    pool.query<{ count: string | number }>(
-      `select count(*)::int as count from daily_checkins
-       where profile_id = $1 and sleep_hours >= 7`,
-      [profileId],
-    ),
-    pool.query<{ count: string | number }>(
-      `select count(*)::int as count from (
-         select date_trunc('week', checkin_date)::date as week
-         from daily_checkins
+    safeQuery("deep_focus", () => getLifetimeFocusMinutes(profileId)),
+    safeQuery("xp_olympian", () => getUserXP(profileId)),
+    safeQuery("early_riser", () =>
+      pool.query<{ count: string | number }>(
+        `select count(*)::int as count from daily_checkins
          where profile_id = $1
-         group by 1
-         having count(distinct checkin_date) >= 7
-       ) weeks`,
-      [profileId],
+           and extract(hour from created_at at time zone 'America/Sao_Paulo') < 7`,
+        [profileId],
+      ),
     ),
-    pool.query<{ friends: string | number; groups: string | number }>(
-      `select
-         (select count(*) from friendships
-          where status = 'accepted' and (requester_id = $1 or addressee_id = $1)) as friends,
-         (select count(*) from group_members where profile_id = $1) as groups`,
-      [profileId],
+    safeQuery("sleep_champion", () =>
+      pool.query<{ count: string | number }>(
+        `select count(*)::int as count from daily_checkins
+         where profile_id = $1 and sleep_hours >= 7`,
+        [profileId],
+      ),
     ),
-    pool.query<{ unlocked_tier: number }>(
-      `select unlocked_tier from user_achievement_progress
-       where profile_id = $1 and achievement_id = 'rarest_aura'`,
-      [profileId],
+    safeQuery("consistency_king", () =>
+      pool.query<{ count: string | number }>(
+        `select count(*)::int as count from (
+           select date_trunc('week', checkin_date)::date as week
+           from daily_checkins
+           where profile_id = $1
+           group by 1
+           having count(distinct checkin_date) >= 7
+         ) weeks`,
+        [profileId],
+      ),
     ),
-    pool.query<{ largest: string | number }>(
-      `select max(cnt) as largest from (
-         select gm.group_id, count(*) as cnt
-         from group_members gm
-         where coalesce(gm.is_banned, false) = false
-           and gm.group_id in (
-             select group_id from group_members
-             where profile_id = $1 and role = 'OWNER' and coalesce(is_banned, false) = false
-           )
-         group by gm.group_id
-       ) owned`,
-      [profileId],
+    safeQuery("social_spark", () =>
+      pool.query<{ friends: string | number; groups: string | number }>(
+        `select
+           (select count(*) from friendships
+            where status = 'accepted' and (requester_id = $1 or addressee_id = $1)) as friends,
+           (select count(*) from group_members where profile_id = $1) as groups`,
+        [profileId],
+      ),
     ),
-    pool.query<{ count: string | number }>(
-      `select count(*)::int as count
-       from focus_sessions fs
-       where fs.profile_id = $1
-         and fs.room_id is not null
-         and fs.ended_at is not null
-         and fs.duration_minutes >= fs.target_duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
-         and (
-           select count(*)
-           from room_participants rp
-           where rp.room_id = fs.room_id
-             and rp.joined_at < fs.ended_at
-             and coalesce(rp.completed_at, rp.gave_up_at, now()) > fs.started_at
-         ) >= 2`,
-      [profileId],
+    safeQuery("rarest_aura", () =>
+      pool.query<{ unlocked_tier: number }>(
+        `select unlocked_tier from user_achievement_progress
+         where profile_id = $1 and achievement_id = 'rarest_aura'`,
+        [profileId],
+      ),
     ),
-    pool.query<{ longest: string | number }>(
-      `select coalesce(max(duration_minutes), 0) as longest
-       from focus_sessions
-       where profile_id = $1
-         and ended_at is not null
-         and paused_count is not null
-         and paused_count = 0`,
-      [profileId],
+    safeQuery("squad_leader", () =>
+      pool.query<{ largest: string | number }>(
+        `select max(cnt) as largest from (
+           select gm.group_id, count(*) as cnt
+           from group_members gm
+           where coalesce(gm.is_banned, false) = false
+             and gm.group_id in (
+               select group_id from group_members
+               where profile_id = $1 and role = 'OWNER' and coalesce(is_banned, false) = false
+             )
+           group by gm.group_id
+         ) owned`,
+        [profileId],
+      ),
     ),
-    getOwnedAuras(profileId),
+    safeQuery("focus_companion", () =>
+      pool.query<{ count: string | number }>(
+        `select count(*)::int as count
+         from focus_sessions fs
+         where fs.profile_id = $1
+           and fs.room_id is not null
+           and fs.ended_at is not null
+           and fs.duration_minutes >= fs.target_duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
+           and (
+             select count(*)
+             from room_participants rp
+             where rp.room_id = fs.room_id
+               and rp.joined_at < fs.ended_at
+               and coalesce(rp.completed_at, rp.gave_up_at, now()) > fs.started_at
+           ) >= 2`,
+        [profileId],
+      ),
+    ),
+    safeQuery("flow_state", () =>
+      pool.query<{ longest: string | number }>(
+        `select coalesce(max(duration_minutes), 0) as longest
+         from focus_sessions
+         where profile_id = $1
+           and ended_at is not null
+           and paused_count is not null
+           and paused_count = 0`,
+        [profileId],
+      ),
+    ),
+    safeQuery("aura_collector", () => getOwnedAuras(profileId)),
   ]);
 
   const longestStreak = Math.max(
-    streakRow.rows[0]?.longest_streak ?? 0,
-    streakRow.rows[0]?.current_streak ?? 0,
+    streakRow?.rows[0]?.longest_streak ?? 0,
+    streakRow?.rows[0]?.current_streak ?? 0,
   );
 
   const knownAuraTypes = new Set<string>(ENERGY_TYPES);
 
   return {
     streak_master: longestStreak,
-    deep_focus: lifetimeFocus,
-    early_riser: Number(earlyRiser.rows[0]?.count ?? 0),
-    sleep_champion: Number(sleepChampion.rows[0]?.count ?? 0),
-    consistency_king: Number(perfectWeeks.rows[0]?.count ?? 0),
-    xp_olympian: userXP.totalXP,
-    social_spark: Number(social.rows[0]?.friends ?? 0) + Number(social.rows[0]?.groups ?? 0),
-    rarest_aura: rarest.rows[0]?.unlocked_tier ? 1 : 0,
-    squad_leader: Number(squadLeader.rows[0]?.largest ?? 0),
-    focus_companion: Number(focusCompanion.rows[0]?.count ?? 0),
-    flow_state: Number(flowState.rows[0]?.longest ?? 0),
-    aura_collector: ownedAuras.filter((type) => knownAuraTypes.has(type)).length,
+    deep_focus: lifetimeFocus ?? 0,
+    early_riser: Number(earlyRiser?.rows[0]?.count ?? 0),
+    sleep_champion: Number(sleepChampion?.rows[0]?.count ?? 0),
+    consistency_king: Number(perfectWeeks?.rows[0]?.count ?? 0),
+    xp_olympian: userXP?.totalXP ?? 0,
+    social_spark: Number(social?.rows[0]?.friends ?? 0) + Number(social?.rows[0]?.groups ?? 0),
+    rarest_aura: rarest?.rows[0]?.unlocked_tier ? 1 : 0,
+    squad_leader: Number(squadLeader?.rows[0]?.largest ?? 0),
+    focus_companion: Number(focusCompanion?.rows[0]?.count ?? 0),
+    flow_state: Number(flowState?.rows[0]?.longest ?? 0),
+    aura_collector: (ownedAuras ?? []).filter((type) => knownAuraTypes.has(type)).length,
   };
 }
 
@@ -308,6 +343,18 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
       isFeatured: prev?.is_featured ?? false,
       featuredOrder: prev?.featured_order ?? undefined,
     });
+  }
+
+  // Loud guard: the achievement definitions are the source of truth. If the
+  // returned list is ever empty or shorter than defined, something went very
+  // wrong (dropped definition, broken query). Never let that ship silently.
+  if (items.length === 0) {
+    console.error("[achievements] Lista de conquistas VAZIA — há definições carregadas mas nenhuma retornou. Verifique ACHIEVEMENT_THRESHOLDS/META.");
+  } else if (items.length !== ALL_ACHIEVEMENT_IDS.length) {
+    const missing = ALL_ACHIEVEMENT_IDS.filter((id) => !items.some((i) => i.id === id));
+    console.error(
+      `[achievements] Lista incompleta: esperava ${ALL_ACHIEVEMENT_IDS.length} conquistas, retornou ${items.length}. Ausentes: ${missing.join(", ")}`,
+    );
   }
 
   return items;

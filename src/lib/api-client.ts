@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
@@ -304,8 +304,10 @@ export const api = {
     request<{ ok: true }>(`/api/groups/messages/${messageId}?groupId=${groupId}`, { method: "DELETE" }),
   reactToGroupMessage: (messageId: number, emoji: string) =>
     request<{ message: GroupMessage }>(`/api/groups/messages/${messageId}/react`, { method: "POST", body: JSON.stringify({ emoji }) }),
-  pinGroupMessage: (messageId: number) =>
-    request<{ ok: true }>(`/api/groups/messages/${messageId}/pin`, { method: "POST" }),
+  pinGroupMessage: (messageId: number, durationDays?: PinDurationDays) =>
+    request<{ ok: true }>(`/api/groups/messages/${messageId}/pin`, { method: "POST", body: JSON.stringify({ durationDays }) }),
+  getGroupPinnedMessages: (id: number) =>
+    request<{ pins: GroupPinnedMessage[] }>(`/api/groups/${id}/pins`),
   markGroupRead: (id: number) =>
     request<{ ok: true }>(`/api/groups/${id}/read`, { method: "POST" }),
   updateGroupMemberRole: (id: number, profileId: string, role: import("@/types").GroupRole) =>

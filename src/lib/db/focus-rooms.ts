@@ -195,10 +195,11 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
   return mapFocusRoom(row, participants);
 }
 
-// Get a focus room by code
-export async function getFocusRoomByCode(profileId: string, code: string): Promise<FocusRoom | null> {
-  const parsedProfileId = parseProfileId(profileId);
-  
+// Look up a room by its 6-character code WITHOUT the membership authorization
+// check. Used by the join flows, which must add a brand-new participant to the
+// room BEFORE any auth gate runs — otherwise first-time joiners would always be
+// rejected for not yet being participants.
+export async function findFocusRoomByCode(code: string): Promise<FocusRoom | null> {
   const result = await pool.query<FocusRoomRow>(
     `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
      from focus_rooms where code = $1`,
@@ -207,19 +208,26 @@ export async function getFocusRoomByCode(profileId: string, code: string): Promi
 
   if (!result.rows[0]) return null;
 
-  const row = result.rows[0];
+  const participants = await getRoomParticipants(Number(result.rows[0].id));
+  return mapFocusRoom(result.rows[0], participants);
+}
+
+// Get a focus room by code (auth-restricted: host or participant only)
+export async function getFocusRoomByCode(profileId: string, code: string): Promise<FocusRoom | null> {
+  const parsedProfileId = parseProfileId(profileId);
+  const room = await findFocusRoomByCode(code);
+
+  if (!room) return null;
   
   // Authorization check: user must be the host or a participant
-  if (row.host_profile_id !== parsedProfileId) {
-    const participants = await getRoomParticipants(Number(row.id));
-    const isParticipant = participants.some((p) => p.profileId === parsedProfileId);
+  if (room.hostProfileId !== parsedProfileId) {
+    const isParticipant = room.participants.some((p) => p.profileId === parsedProfileId);
     if (!isParticipant) {
       throw new ForbiddenError("Você não tem permissão para acessar esta sala.");
     }
   }
 
-  const participants = await getRoomParticipants(Number(row.id));
-  return mapFocusRoom(row, participants);
+  return room;
 }
 
 // Get all room participants

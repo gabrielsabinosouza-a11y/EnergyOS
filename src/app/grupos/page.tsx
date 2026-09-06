@@ -15,11 +15,11 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { ChatThread, ConversationContextMenu, convActions } from "@/components/chat";
-import { groupToChatMessage } from "@/types";
+import { groupPinnedToChatMessage, groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
 import { api } from "@/lib/api-client";
-import type { FriendSummary, GroupDetail, GroupMessage, GroupSummary, GroupMember } from "@/types";
+import type { FriendSummary, GroupDetail, GroupMessage, GroupPinnedMessage, GroupSummary, GroupMember } from "@/types";
 import type { GroupLeaderboardEntry, MemberContribution } from "@/lib/db/group-leaderboard";
 import type { GroupMilestoneStatus, GroupWeeklyQuestStatus } from "@/lib/db/group-milestones";
 import type { GroupSynchronyStatus } from "@/lib/db/group-synchrony";
@@ -1003,6 +1003,7 @@ function GroupDetailPanel({
 
   /* Chat state */
   const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<GroupPinnedMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
@@ -1045,6 +1046,9 @@ function GroupDetailPanel({
         lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
       })
       .catch(() => { if (!cancelled) setMessageError("Não foi possível carregar as mensagens."); });
+    api.getGroupPinnedMessages(group.id)
+      .then(({ pins }) => { if (!cancelled) setPinnedMessages(pins); })
+      .catch(() => { /* silent */ });
     return () => { cancelled = true; };
   }, [group.id]);
 
@@ -1057,13 +1061,17 @@ function GroupDetailPanel({
     }).catch(() => {});
   }, [tab, group.id]);
 
-  /* Poll messages */
+  /* Poll messages (and pins, so expired pins leave the banner automatically) */
   useEffect(() => {
     if (tab !== "chat") return;
     const interval = setInterval(async () => {
       try {
-        const { messages: msgs } = await api.getGroupMessages(group.id);
+        const [{ messages: msgs }, { pins }] = await Promise.all([
+          api.getGroupMessages(group.id),
+          api.getGroupPinnedMessages(group.id),
+        ]);
         setMessages(msgs);
+        setPinnedMessages(pins);
         if (msgs.length > 0) {
           lastIdRef.current = msgs[msgs.length - 1].id;
         }
@@ -1089,6 +1097,7 @@ function GroupDetailPanel({
   }
 
   const chatMessages = messages.map((m) => groupToChatMessage(m));
+  const pinnedChatMessages = pinnedMessages.map(groupPinnedToChatMessage);
 
   async function sendMediaMessage(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
     setSending(true);
@@ -1158,14 +1167,19 @@ function GroupDetailPanel({
     }
   }
 
-  async function handleTogglePin(messageId: number) {
+  async function handleTogglePin(messageId: number, durationDays?: 7 | 14 | 30) {
     try {
-      await api.pinGroupMessage(messageId);
-      const { messages: msgs } = await api.getGroupMessages(group.id);
+      await api.pinGroupMessage(messageId, durationDays);
+      const [{ messages: msgs }, { pins }] = await Promise.all([
+        api.getGroupMessages(group.id),
+        api.getGroupPinnedMessages(group.id),
+      ]);
       setMessages(msgs);
+      setPinnedMessages(pins);
       lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
-    } catch {
-      setMessageError("Não foi possível fixar a mensagem.");
+      setMessageError("");
+    } catch (e) {
+      setMessageError(e instanceof Error && e.message ? e.message : "Não foi possível fixar a mensagem.");
     }
   }
 
@@ -1448,6 +1462,7 @@ function GroupDetailPanel({
           onDelete={handleDeleteMessage}
           onReact={handleReactMessage}
           onTogglePin={handleTogglePin}
+          pinnedMessages={pinnedChatMessages}
           onReplyMessage={(m) => {
             const gm = messages.find((x) => x.id === m.id);
             if (gm) setReplyingTo(gm);

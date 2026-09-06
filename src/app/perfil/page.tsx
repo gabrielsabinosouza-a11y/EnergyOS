@@ -233,12 +233,12 @@ export default function PerfilPage() {
     if (!user) return;
     let active = true;
     Promise.all([
-      api.getDashboard().catch(() => null),
-      api.getAchievements().catch(() => null),
-      api.getRecaps().catch(() => null),
-      api.getProfile().catch(() => null),
-      api.getFocusData().catch(() => null),
-      user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch(() => null) : Promise.resolve(null),
+      api.getDashboard().catch((e) => { console.error("[perfil] falha ao carregar dashboard:", e); return null; }),
+      api.getAchievements().catch((e) => { console.error("[perfil] falha ao carregar conquistas:", e); return null; }),
+      api.getRecaps().catch((e) => { console.error("[perfil] falha ao carregar recaps:", e); return null; }),
+      api.getProfile().catch((e) => { console.error("[perfil] falha ao carregar perfil:", e); return null; }),
+      api.getFocusData().catch((e) => { console.error("[perfil] falha ao carregar foco:", e); return null; }),
+      user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch((e) => { console.error("[perfil] falha ao carregar env-status:", e); return null; }) : Promise.resolve(null),
     ]).then(([dash, ach, recapResult, profileResult, focusResult, env]) => {
       if (!active) return;
       if (dash) setDashboard(dash);

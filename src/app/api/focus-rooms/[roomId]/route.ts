@@ -5,6 +5,7 @@ import { ForbiddenError } from "@/lib/errors";
 import {
   getFocusRoomById,
   getFocusRoomByCode,
+  findFocusRoomByCode,
   endFocusRoom,
   addParticipantToRoom,
   deleteFocusRoom,
@@ -43,9 +44,11 @@ export async function POST(
     const { roomId } = await params;
     const body = await readJsonBody(request);
 
+    // Join by code uses the non-authorizing lookup so a brand-new participant
+    // can register before the membership gate would reject them.
     const room = isNumeric(roomId)
       ? await getFocusRoomById(profileId, Number(roomId))
-      : await getFocusRoomByCode(profileId, roomId);
+      : await findFocusRoomByCode(roomId);
 
     if (!room) return notFound("Room not found");
     if (room.status !== "waiting") return badRequest("Cannot join a room that has already started or completed");
@@ -53,7 +56,7 @@ export async function POST(
     await addParticipantToRoom(room.id, profileId, body.energyType as string | undefined);
     const updated = isNumeric(roomId)
       ? await getFocusRoomById(profileId, Number(roomId))
-      : await getFocusRoomByCode(profileId, roomId);
+      : await findFocusRoomByCode(roomId);
 
     return jsonOk({ room: updated, message: "Joined successfully" });
   });

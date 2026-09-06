@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, PinDurationDays } from "@/types";
 import { AvatarWithFrame } from "@/components/avatar";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
@@ -32,6 +32,14 @@ function fmtDuration(seconds?: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** "expira em 7 dias" / "expira hoje" for a pinned-until timestamp. */
+function formatPinExpiry(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return "expira hoje";
+  const days = Math.ceil(ms / 86_400_000);
+  return days <= 1 ? "expira hoje" : `expira em ${days} dias`;
 }
 
 /** Returns true if two ISO dates are on different days (in the user's timezone). */
@@ -496,7 +504,11 @@ export interface ChatThreadProps {
   onEdit?: (messageId: number, newBody: string) => Promise<void>;
   onDelete?: (messageId: number) => Promise<void>;
   onReact?: (messageId: number, emoji: string) => Promise<void>;
-  onTogglePin?: (messageId: number) => Promise<void>;
+  onTogglePin?: (messageId: number, durationDays?: PinDurationDays) => Promise<void>;
+
+  /** Authoritative pinned list (up to 3, server-filtered for expiry). When
+   *  omitted, falls back to messages flagged isPinned (single-pin DM chats). */
+  pinnedMessages?: ChatMessage[];
 
   /** Sender roles whose messages the CURRENT user may delete (moderation).
    *  Own messages are always deletable regardless. Only used for groups. */
@@ -531,6 +543,7 @@ export function ChatThread({
   onDelete,
   onReact,
   onTogglePin,
+  pinnedMessages,
   readMessageIds,
   inputSlot,
   replyingTo,
@@ -555,9 +568,15 @@ export function ChatThread({
   const [editText, setEditText] = useState("");
   const [busyReaction, setBusyReaction] = useState<string | null>(null);
   const [busyPinId, setBusyPinId] = useState<number | null>(null);
+  const [pinPickerFor, setPinPickerFor] = useState<number | null>(null);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
-  const pinned = useMemo(() => messages.find((message) => message.isPinned) ?? null, [messages]);
+  // Banner pins: prefer the authoritative server list (covers messages older
+  // than the fetched window); fall back to in-list flags for DM chats.
+  const pinnedList = useMemo(
+    () => pinnedMessages ?? messages.filter((message) => message.isPinned).slice(0, 3),
+    [pinnedMessages, messages],
+  );
 
   /* ─── Scroll management ────────────────────────────────────────── */
 
@@ -637,11 +656,11 @@ export function ChatThread({
     }
   }, [busyReaction, onReact]);
 
-  const togglePin = useCallback(async (message: ChatMessage) => {
+  const togglePin = useCallback(async (message: ChatMessage, durationDays?: PinDurationDays) => {
     if (!onTogglePin || busyPinId === message.id) return;
     setBusyPinId(message.id);
     try {
-      await onTogglePin(message.id);
+      await onTogglePin(message.id, durationDays);
     } finally {
       setBusyPinId(null);
     }
@@ -675,11 +694,11 @@ export function ChatThread({
           onDelete?.(msg.id);
           break;
         case "pin":
-          void togglePin(msg);
+          setPinPickerFor(msg.id);
           break;
       }
     },
-    [onCopy, onDelete, togglePin],
+    [onCopy, onDelete],
   );
 
   const handleContextMenu = useCallback(
@@ -744,6 +763,33 @@ export function ChatThread({
     if (!contextMenu) return [];
     const msg = contextMenu.msg;
     const isMe = msg.senderId === currentUserId;
+
+    // Pin duration picker mode: replaces the menu while choosing 7/14/30 days.
+    if (pinPickerFor === msg.id) {
+      return [
+        {
+          label: "Fixar por 7 dias",
+          icon: <Pin size={14} />,
+          onClick: () => void togglePin(msg, 7),
+        },
+        {
+          label: "Fixar por 14 dias",
+          icon: <Pin size={14} />,
+          onClick: () => void togglePin(msg, 14),
+        },
+        {
+          label: "Fixar por 30 dias",
+          icon: <Pin size={14} />,
+          onClick: () => void togglePin(msg, 30),
+        },
+        {
+          label: "Cancelar",
+          icon: <X size={14} />,
+          onClick: () => setPinPickerFor(null),
+        },
+      ];
+    }
+
     return [
       {
         label: "Copiar",
@@ -757,9 +803,12 @@ export function ChatThread({
         onClick: () => onReplyMessage?.(msg),
       },
       {
-        label: msg.isPinned ? "Desafixar" : "Fixar",
+        label: msg.isPinned ? "Desafixar" : "Fixar mensagem",
         icon: <Pin size={14} />,
-        onClick: () => void togglePin(msg),
+        onClick: () => {
+          if (msg.isPinned) void togglePin(msg);
+          else setPinPickerFor(msg.id);
+        },
         hidden: !onTogglePin,
       },
       {
@@ -776,7 +825,7 @@ export function ChatThread({
         hidden: !isMe && !(deleteSenderRoles?.includes(msg.senderRole as import("@/types").GroupRole)),
       },
     ];
-  }, [contextMenu, currentUserId, handleContextMenuAction, onReplyMessage, onTogglePin, togglePin, deleteSenderRoles]);
+  }, [contextMenu, pinPickerFor, currentUserId, handleContextMenuAction, onReplyMessage, onTogglePin, togglePin, deleteSenderRoles]);
 
   /* ─── Render ───────────────────────────────────────────────────── */
 
@@ -808,23 +857,40 @@ export function ChatThread({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Scrollable messages area */}
-      {pinned && (
-        <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-bg)]/60 px-4 py-2">
-          <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
-            <Pin size={12} className="text-[var(--accent)]" />
-            <span className="shrink-0">Mensagem fixada:</span>
-            <button
-              type="button"
-              onClick={() => jumpToMessage(pinned.id)}
-              className="min-w-0 flex-1 truncate text-left text-[var(--text)] hover:text-[var(--accent)]"
-            >
-              {pinned.body ?? "Mídia"}
-            </button>
-          </div>
+      {/* Pinned messages banner (up to 3; expired pins filtered server-side) */}
+      {pinnedList.length > 0 && (
+        <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-bg)]/60 px-4 py-1.5">
+          {pinnedList.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 py-1 text-[10px] text-[var(--text-muted)]">
+              <Pin size={12} className="shrink-0 text-[var(--accent)]" />
+              <span className="shrink-0">Fixada:</span>
+              <button
+                type="button"
+                onClick={() => jumpToMessage(p.id)}
+                className="min-w-0 flex-1 truncate text-left text-[var(--text)] hover:text-[var(--accent)]"
+              >
+                {p.body ?? "Mídia"}
+              </button>
+              {p.pinnedUntil && (
+                <span className="shrink-0 text-[var(--text-faint)]">{formatPinExpiry(p.pinnedUntil)}</span>
+              )}
+              {onTogglePin && (
+                <button
+                  type="button"
+                  onClick={() => void togglePin(p)}
+                  disabled={busyPinId === p.id}
+                  aria-label="Desafixar"
+                  className="shrink-0 rounded p-0.5 text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
+      {/* Scrollable messages area */}
       <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
@@ -1013,13 +1079,16 @@ export function ChatThread({
           y={contextMenu.y}
           actions={contextMenuActions}
           reactions={
-            onReact
+            onReact && pinPickerFor !== contextMenu.msg.id
               ? {
                   onSelect: (emoji) => void toggleReaction(contextMenu.msg.id, emoji),
                 }
               : undefined
           }
-          onClose={() => setContextMenu(null)}
+          onClose={() => {
+            setContextMenu(null);
+            setPinPickerFor(null);
+          }}
         />
       )}
     </div>

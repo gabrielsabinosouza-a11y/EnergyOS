@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
-import { getFocusRoomByCode, addParticipantToRoom, getFocusRoomById } from "@/lib/db/focus-rooms";
+import { findFocusRoomByCode, addParticipantToRoom, getFocusRoomById } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/join — join a room by its code
 export async function POST(
@@ -13,9 +13,11 @@ export async function POST(
     const { roomId } = await params;
     const body = await readJsonBody(request);
 
-    // Look up room by code (case-insensitive match)
+    // Look up room by code (case-insensitive match) WITHOUT the membership
+    // auth check — a brand-new joiner is by definition not a participant yet,
+    // and this route is what registers them as one.
     // Room codes are generated uppercase, but users might enter them in any case
-    const room = await getFocusRoomByCode(profileId, roomId.toUpperCase());
+    const room = await findFocusRoomByCode(roomId.toUpperCase());
 
     if (!room) {
       return notFound("Room not found - check the code and try again");
