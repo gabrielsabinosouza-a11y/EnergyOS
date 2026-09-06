@@ -322,8 +322,8 @@ export async function createGroupWithUsernames(
   
   if (usernames.length > 0) {
     const result = await pool.query<{ id: string; username: string }>(
-      `select id, username from profiles where lower(username) = any(lower($1::text[]))`,
-      [usernames],
+      `select id, username from profiles where lower(username) = any($1::text[])`,
+      [usernames.map((u) => u.toLowerCase())],
     );
     
     for (const row of result.rows) {

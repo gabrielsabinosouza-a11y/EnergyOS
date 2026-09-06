@@ -132,8 +132,8 @@ export async function getUsersByUsernames(usernames: string[]): Promise<
     username: string;
     photo_url: string | null;
   }>(
-    `select id, display_name, username, photo_url from profiles where lower(username) = any(lower($1::text[]))`,
-    [usernames],
+    `select id, display_name, username, photo_url from profiles where lower(username) = any($1::text[])`,
+    [usernames.map((u) => u.toLowerCase())],
   );
   
   return result.rows.map((row) => ({

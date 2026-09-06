@@ -675,6 +675,8 @@ export default function GruposPage() {
   const [createIconName, setCreateIconName] = useState("");
   const [inviteIds, setInviteIds] = useState<string[]>([]);
   const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [createMemberUsernames, setCreateMemberUsernames] = useState<string[]>([]);
+  const [usernameInput, setUsernameInput] = useState("");
   const [creating, setCreating] = useState(false);
 
   /* Detail view */
@@ -730,7 +732,9 @@ export default function GruposPage() {
     if (!name || creating) return;
     setCreating(true);
     try {
-      const { group } = await api.createGroup({ name, avatarUrl: createIcon ?? undefined, inviteIds });
+      const { group } = createMemberUsernames.length > 0
+        ? await api.createGroupWithUsernames({ name, avatarUrl: createIcon ?? undefined, memberUsernames: createMemberUsernames })
+        : await api.createGroup({ name, avatarUrl: createIcon ?? undefined, inviteIds });
       setGroups((prev) => [
         { id: group.id, name: group.name, avatarEmoji: group.avatarEmoji, avatarUrl: group.avatarUrl,
           memberCount: group.members.length, weeklyFocusMinutes: group.weeklyFocusMinutes, unreadCount: 0 },
@@ -743,12 +747,14 @@ export default function GruposPage() {
       setCreateIcon(null);
       setCreateIconName("");
       setInviteIds([]);
+      setCreateMemberUsernames([]);
+      setUsernameInput("");
     } catch {
       setError("Não foi possível criar o grupo.");
     } finally {
       setCreating(false);
     }
-  }, [createName, createIcon, inviteIds, creating]);
+  }, [createName, createIcon, inviteIds, createMemberUsernames, creating]);
 
   async function handleCreateIcon(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -828,7 +834,7 @@ export default function GruposPage() {
                   ))}
                 </div>
                 {tab === "meus" && (
-                  <button onClick={() => setShowCreate((v) => !v)}
+                  <button onClick={() => { setShowCreate((v) => !v); if (showCreate) { setCreateMemberUsernames([]); setUsernameInput(""); } }}
                     className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
                     {showCreate ? <XIcon size={16} /> : <Plus size={16} />}
                     {showCreate ? "Cancelar" : "Criar grupo"}
@@ -889,13 +895,44 @@ export default function GruposPage() {
                             </div>
                           </div>
                         )}
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Ou adicionar por @</label>
+                          {createMemberUsernames.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                              {createMemberUsernames.map((u) => (
+                                <span key={u}
+                                  className="inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-0.5 text-sm text-[var(--text)]">
+                                  @{u}
+                                  <button type="button" onClick={() => setCreateMemberUsernames((prev) => prev.filter((v) => v !== u))}
+                                    className="ml-0.5 rounded-full p-0.5 transition hover:bg-black/10">
+                                    <XIcon size={11} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <input type="text" placeholder="@usuario" value={usernameInput}
+                            onChange={(e) => setUsernameInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                const val = usernameInput.trim().replace(/^@/, "");
+                                if (val && !createMemberUsernames.includes(val)) {
+                                  setCreateMemberUsernames((prev) => [...prev, val]);
+                                }
+                                setUsernameInput("");
+                              }
+                            }}
+                            className="glass-card w-full px-4 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent)]/40" />
+                          <p className="mt-1 text-[11px] text-[var(--text-faint)]">Separe com espaço ou Enter. O servidor valida no momento da criação.</p>
+                        </div>
                         <div className="flex items-center gap-3 pt-2">
                           <button onClick={handleCreate} disabled={!createName.trim() || creating}
                             className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-30">
                             {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                             Criar
                           </button>
-                          <button onClick={() => setShowCreate(false)}
+                          <button onClick={() => { setShowCreate(false); setCreateMemberUsernames([]); setUsernameInput(""); }}
                             className="rounded-xl px-5 py-2.5 text-sm text-[var(--text-muted)] transition hover:text-[var(--text)]">
                             Cancelar
                           </button>
