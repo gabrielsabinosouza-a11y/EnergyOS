@@ -13,6 +13,7 @@ import { checkGroupSynchrony } from "./group-synchrony";
 import { checkGroupAchievements } from "./group-achievements";
 import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
 import { FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
+import { recordFocusCompanionProgress } from "./achievement-progress";
 
 export const GARDEN_ENERGY_TYPES = [
   "flame", "water", "earth", "wind", "thunder", "ice",
@@ -368,6 +369,23 @@ export async function endFocusSession(
   // become "withered" — mirroring the streak qualification rule.
   const completed = durationMinutes >= completedThreshold;
   await finalizeGardenEntries(profileId, sessionId, completed, durationMinutes);
+
+  // Co-focus credit is append-only and independent of the room's later
+  // deletion. Count participants while the room record is still available.
+  if (completed && session.rows[0].room_id) {
+    const participants = await pool.query<{ count: string | number }>(
+      `select count(*)::int as count
+       from room_participants
+       where room_id = $1
+         and joined_at <= $2
+         and session_status in ('focusing', 'completed', 'left')
+         and coalesce(completed_at, gave_up_at, now()) > $3`,
+      [session.rows[0].room_id, updated.rows[0].ended_at ?? new Date(), session.rows[0].started_at],
+    );
+    if (Number(participants.rows[0]?.count ?? 0) >= 2) {
+      await recordFocusCompanionProgress(profileId, sessionId);
+    }
+  }
 
   // Record group focus contributions for leaderboard
   // Only record contributions for completed sessions that reached target duration

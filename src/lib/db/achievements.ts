@@ -5,7 +5,7 @@ import { NotFoundError } from "../errors";
 import { getLifetimeFocusMinutes } from "./focus";
 import { getUserXP, creditXP } from "./xp";
 import { addCoins } from "./settings";
-import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
+import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK } from "../daily-limits";
 import { ENERGY_TYPES } from "../energy-assets";
 import { getOwnedAuras } from "./store";
 
@@ -217,24 +217,10 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
       ),
     ),
     safeQuery("focus_companion", () =>
-      pool.query<{ count: string | number }>(
-        `select count(distinct fs.room_id)::int as count
-         from focus_sessions fs
-         join focus_rooms fr on fr.id = fs.room_id
-         where fs.profile_id = $1
-           and fs.ended_at is not null
-           and fr.status = 'completed'
-           and fr.started_at is not null
-           and fr.ended_at is not null
-           and fs.duration_minutes >= fr.duration_minutes * ${STREAK_COMPLETION_THRESHOLD}
-           and (
-             select count(*)
-             from room_participants rp
-             where rp.room_id = fs.room_id
-             and rp.joined_at < fr.ended_at
-             and rp.session_status in ('focusing', 'completed', 'left')
-             and coalesce(rp.completed_at, rp.gave_up_at, fr.ended_at) > fr.started_at
-           ) >= 2`,
+      pool.query<{ current_value: number }>(
+        `select current_value
+         from user_achievement_progress
+         where profile_id = $1 and achievement_id = 'focus_companion'`,
         [profileId],
       ),
     ),
@@ -269,7 +255,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     social_spark: Number(social?.rows[0]?.friends ?? 0) + Number(social?.rows[0]?.groups ?? 0),
     rarest_aura: rarest?.rows[0]?.unlocked_tier ? 1 : 0,
     squad_leader: Number(squadLeader?.rows[0]?.largest ?? 0),
-    focus_companion: Number(focusCompanion?.rows[0]?.count ?? 0),
+    focus_companion: Number(focusCompanion?.rows[0]?.current_value ?? 0),
     flow_state: Number(flowState?.rows[0]?.longest ?? 0),
     aura_collector: (ownedAuras ?? []).filter((type) => knownAuraTypes.has(type)).length,
   };
@@ -282,6 +268,20 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
   // Award coin + XP rewards for any unlocked tiers not yet claimed (incl.
   // retroactive backfill for previously-reached requirements).
   await awardAchievementRewards(profileId, values);
+
+  const lockedIds = ALL_ACHIEVEMENT_IDS.filter(
+    (id) => tierFor(values[id] ?? 0, thresholdsFor(id)) === 0,
+  );
+  if (lockedIds.length > 0) {
+    await pool.query(
+      `update user_achievement_progress
+       set is_featured = false, featured_order = null
+       where profile_id = $1
+         and achievement_id = any($2::text[])
+         and is_featured = true`,
+      [profileId, lockedIds],
+    );
+  }
 
   const existing = await pool.query<{
     achievement_id: string;

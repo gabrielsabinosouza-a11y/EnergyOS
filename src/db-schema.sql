@@ -736,6 +736,20 @@ create table if not exists achievement_rewards (
 create index if not exists achievement_rewards_profile_idx
   on achievement_rewards(profile_id);
 
+-- Append-only ledger for achievements whose progress is earned by an event.
+-- Unlike room/session joins, these rows survive deletion of the source room.
+create table if not exists achievement_progress_events (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  achievement_id text not null references achievements(id) on delete cascade,
+  source_id bigint not null,
+  recorded_at timestamptz not null default now(),
+  unique (profile_id, achievement_id, source_id)
+);
+
+create index if not exists achievement_progress_events_profile_idx
+  on achievement_progress_events(profile_id, achievement_id);
+
 -- ========================================
 -- Daily Quests System
 -- ========================================

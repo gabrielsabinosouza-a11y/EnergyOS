@@ -291,7 +291,9 @@ export default function PerfilPage() {
   // Lifetime focus is sourced from completed focus sessions, not XP.
   const lifetimeFocusH = Math.floor(lifetimeFocusMinutes / 60);
 
-  const featured = achievements.filter((a) => a.isFeatured).sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0));
+  const featured = achievements
+    .filter((a) => a.isFeatured && a.unlockedTier > 0)
+    .sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0));
   const featuredIds = new Set(featured.map((f) => f.id));
   const unlocked = achievements.filter((a) => a.unlockedTier > 0);
   const locked = achievements.filter((a) => a.unlockedTier === 0);
