@@ -313,14 +313,40 @@ export async function endFocusSession(
   const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   const coins = Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
+
+  // Atomic claim. The room flow (a completed room finalizing a co-participant's
+  // open session) can race with that participant's own client calling endFocus.
+  // Only the request whose UPDATE actually flips ended_at from NULL to now()
+  // proceeds to award; any concurrent or late end returns the stored values.
+  // This keeps coins, missions, streak, garden and the event row exactly-once.
+  const updated = await pool.query<FocusRow>(
+    `update focus_sessions
+        set duration_minutes = $3, ended_at = now(), xp_earned = 0, paused_count = $4
+      where profile_id = $1 and id = $2 and ended_at is null
+      returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
+    [profileId, sessionId, durationMinutes, pausedCount],
+  );
+  if (!updated.rows[0]) {
+    const stored = await pool.query<FocusRow>(
+      `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+       from focus_sessions where profile_id = $1 and id = $2`,
+      [profileId, sessionId],
+    );
+    const row = stored.rows[0];
+    return {
+      session: mapFocus(row),
+      xpAwarded: Number(row.xp_earned) || 0,
+      coinsAwarded: Math.floor(Math.max(0, Number(row.duration_minutes) || 0) / 10) * FOCUS_COINS_PER_10_MIN,
+      questsUpdated: 0,
+    };
+  }
+
   // Coins stay at the base amount; XP may be doubled by an active 2x boost.
   const xpAwarded = baseXP > 0 ? await creditXP(profileId, "focus", sessionId, baseXP) : 0;
 
-  const updated = await pool.query<FocusRow>(
-    `update focus_sessions set duration_minutes = $3, ended_at = now(), xp_earned = $4, paused_count = $5
-     where profile_id = $1 and id = $2
-     returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, sessionId, durationMinutes, xpAwarded, pausedCount],
+  await pool.query(
+    `update focus_sessions set xp_earned = $3 where profile_id = $1 and id = $2`,
+    [profileId, sessionId, xpAwarded],
   );
 
   if (coins > 0) {
@@ -431,6 +457,7 @@ export async function endFocusSession(
   }
 
   const questsUpdated = 1;
+  updated.rows[0].xp_earned = xpAwarded;
   return { session: mapFocus(updated.rows[0]), xpAwarded, coinsAwarded: coins, questsUpdated };
 }
 
@@ -491,9 +518,9 @@ export async function getTodayFocusStats(profileId: string): Promise<{ minutesFo
   const today = todayIso();
   const result = await pool.query<{ minutes: string | number; coins: string | number }>(
     `select coalesce(sum(duration_minutes), 0) as minutes,
-            coalesce(sum(xp_earned), 0) as coins
+            coalesce(sum(floor(duration_minutes / 10) * $3), 0) as coins
      from focus_sessions where profile_id = $1 and ended_at is not null and started_at::date = $2::date`,
-    [profileId, today],
+    [profileId, today, FOCUS_COINS_PER_10_MIN],
   );
   return { minutesFocused: Number(result.rows[0]?.minutes ?? 0), coinsEarned: Number(result.rows[0]?.coins ?? 0) };
 }

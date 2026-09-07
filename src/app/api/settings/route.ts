@@ -29,6 +29,10 @@ export async function PUT(request: NextRequest) {
       sleepTime: body.sleepTime === undefined ? undefined : (body.sleepTime as string | null),
       focusTime: body.focusTime === undefined ? undefined : (body.focusTime as string | null),
       soundNotificationsEnabled: body.soundNotificationsEnabled === undefined ? undefined : (body.soundNotificationsEnabled as boolean),
+      onboardingCompleted: body.onboardingCompleted === undefined ? undefined : (body.onboardingCompleted as boolean),
+      reminderCheckinEnabled: body.reminderCheckinEnabled === undefined ? undefined : (body.reminderCheckinEnabled as boolean),
+      reminderFocusEnabled: body.reminderFocusEnabled === undefined ? undefined : (body.reminderFocusEnabled as boolean),
+      reminderSleepEnabled: body.reminderSleepEnabled === undefined ? undefined : (body.reminderSleepEnabled as boolean),
     };
     return jsonOk(await saveSettings(profileId, input));
   });

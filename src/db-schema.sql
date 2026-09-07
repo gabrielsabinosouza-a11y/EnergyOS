@@ -89,6 +89,12 @@ alter table user_settings add column if not exists sound_notifications_enabled b
 -- entre dispositivos (fallback seguro para 'flame' quando indisponível).
 alter table user_settings add column if not exists last_selected_aura text;
 
+-- Onboarding do primeiro acesso (tour guiado) + lembretes locais.
+alter table user_settings add column if not exists onboarding_completed boolean not null default false;
+alter table user_settings add column if not exists reminder_checkin_enabled boolean not null default false;
+alter table user_settings add column if not exists reminder_focus_enabled boolean not null default false;
+alter table user_settings add column if not exists reminder_sleep_enabled boolean not null default false;
+
 create index if not exists goals_profile_idx on goals(profile_id);
 create index if not exists habits_goal_idx on habits(goal_id);
 

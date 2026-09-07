@@ -534,7 +534,7 @@ export default function FocusRoomsPage() {
     finalizingRef.current = true;
     try {
       const end = await api.endFocus(sess.sessionId, focusedSeconds, true);
-      setLastCoins(end.xpAwarded);
+      setLastCoins(end.coinsAwarded);
 
       if (addGarden) {
         setShowCompletion(true);

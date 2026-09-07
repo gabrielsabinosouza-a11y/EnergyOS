@@ -688,6 +688,14 @@ export default function GruposPage() {
     return () => { cancelled = true; };
   }, [authLoading, user?.uid, loadGroups, loadInvites]);
 
+  // Live-refresh pending group invites so new invites appear in the Caixa de
+  // Entrada without the invitee having to reload the page.
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const id = setInterval(() => { loadInvites(); }, 8000);
+    return () => clearInterval(id);
+  }, [authLoading, user?.uid, loadInvites]);
+
   async function respondToInvite(invite: GroupInvite, response: "accepted" | "rejected") {
     if (respondingInvite) return;
     setRespondingInvite(invite.id);
@@ -1084,6 +1092,7 @@ function GroupDetailPanel({
   const [friends, setFriends] = useState<FriendSummary[]>([]);
   const [inviting, setInviting] = useState(false);
   const [messageError, setMessageError] = useState("");
+  const [messageSuccess, setMessageSuccess] = useState("");
   const iconRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1314,11 +1323,15 @@ function GroupDetailPanel({
     if (inviting || inviteIds.length === 0) return;
     setInviting(true);
     setMessageError("");
+    setMessageSuccess("");
     try {
+      const n = inviteIds.length;
       await api.inviteToGroup(group.id, inviteIds);
       const { group: fresh } = await api.getGroup(group.id, "WEEK");
       setGroup(fresh);
       setInviteIds([]);
+      setMessageSuccess(`Pedido enviado com sucesso${n > 1 ? ` (${n} amigos)` : ""}!`);
+      window.setTimeout(() => setMessageSuccess(""), 4000);
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Não foi possível convidar.");
     } finally {
@@ -1384,6 +1397,12 @@ function GroupDetailPanel({
       {messageError && (
         <div className="border-b border-[var(--red)]/20 bg-[var(--red-bg)] px-5 py-2 text-xs text-[var(--red)] sm:px-8 lg:px-12">
           {messageError}
+        </div>
+      )}
+      {/* Message success banner */}
+      {messageSuccess && (
+        <div className="border-b border-green-500/20 bg-green-500/10 px-5 py-2 text-xs text-green-400 sm:px-8 lg:px-12">
+          {messageSuccess}
         </div>
       )}
 

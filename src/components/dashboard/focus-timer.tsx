@@ -14,6 +14,7 @@ import {
   FOCUS_DURATION_SNAP_MINUTES,
   formatCountdownMmSs,
 } from "@/lib/focus-duration";
+import { FOCUS_COINS_PER_10_MIN } from "@/lib/daily-limits";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
@@ -88,8 +89,7 @@ const RING_SIZE = 260;
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
-  if (durationMinutes <= 60) return Math.round(9 + 16 * ((durationMinutes - 10) / 50));
-  return Math.round(25 + 25 * ((Math.min(durationMinutes, 120) - 60) / 60));
+  return Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -303,7 +303,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             const focusedSeconds = durationMinutes * 60;
             const result = await onEnd(sessionId, focusedSeconds, pausedCountRef.current);
             
-            setLastCoins(result.xpAwarded);
+            setLastCoins(result.coinsAwarded);
             setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
             const reward = getEnergyReward(durationMinutes);
             setRewardCount(reward);
@@ -526,7 +526,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
     try {
       const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
-      setLastCoins(result.xpAwarded);
+      setLastCoins(result.coinsAwarded);
       setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
 
       const reward = getEnergyReward(focusedMinutes);
@@ -621,7 +621,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     try {
       const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
       if (!giveUp) {
-        setLastCoins(result.xpAwarded);
+        setLastCoins(result.coinsAwarded);
         setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
         setRewardCount(getEnergyReward(Math.floor(focusedSeconds / 60)));
         setShowComplete(true);

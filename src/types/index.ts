@@ -477,6 +477,10 @@ export interface UserSettings {
   coins: number;
   soundNotificationsEnabled: boolean;
   lastSelectedAura?: string;
+  onboardingCompleted: boolean;
+  reminderCheckinEnabled: boolean;
+  reminderFocusEnabled: boolean;
+  reminderSleepEnabled: boolean;
 }
 
 export interface Metric {

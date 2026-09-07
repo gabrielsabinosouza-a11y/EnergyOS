@@ -3,7 +3,7 @@ import { NotFoundError, ConflictError, ForbiddenError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
-import { plantGardenEntries, getEnergyReward, type GardenGrowthStage } from "./focus";
+import { plantGardenEntries, getEnergyReward, endFocusSession, type GardenGrowthStage } from "./focus";
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
@@ -980,6 +980,33 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
         } catch {
           // If finalization fails, it will be handled via the normal flow
         }
+      }
+    }
+
+    // Finalize the individual open focus_sessions of every participant who just
+    // completed the room. Each participant creates their own session via
+    // startFocus when the room starts; normally their own client calls endFocus
+    // when the countdown hits zero. If that never ran (tab closed, missed
+    // tick), the session stays open (dur=0, ended_at null) and the participant
+    // gets no XP, coins, streak or focus event — so rooms silently never
+    // counted toward their streak. Billing those sessions at the full room
+    // duration gives every completing participant the same payout, and makes a
+    // single focus session — room or dashboard — advance the streak. Already
+    // finalized sessions are skipped by endFocusSession's atomic claim, so
+    // there is no double-award for the participant whose client ended first.
+    const unbilled = await pool.query<{ profile_id: string; id: string | number }>(
+      `select s.id, s.profile_id
+         from focus_sessions s
+         join room_participants rp
+           on rp.profile_id = s.profile_id and rp.room_id = s.room_id
+        where s.room_id = $1 and s.ended_at is null and rp.session_status = 'completed'`,
+      [roomId],
+    );
+    for (const s of unbilled.rows) {
+      try {
+        await endFocusSession(s.profile_id, Number(s.id), Math.round(durationMinutes * 60), true, 0);
+      } catch (err) {
+        console.error(`[completeFocusRoom] finalize open session ${s.id} for ${s.profile_id}:`, err);
       }
     }
   }

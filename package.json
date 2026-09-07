@@ -10,6 +10,7 @@
     "db:migrate-group-invites": "node scripts/migrate-group-invites.mjs",
     "db:seed-admin": "node scripts/seed-admin.mjs",
     "db:reset-messages": "node scripts/reset-messages.mjs",
+    "db:migrate-reminders": "node scripts/migrate-reminders.mjs",
     "lint": "eslint"
   },
   "dependencies": {
