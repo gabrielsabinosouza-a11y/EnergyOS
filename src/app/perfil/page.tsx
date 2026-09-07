@@ -31,8 +31,6 @@ import {
   Camera,
   Mail,
   CalendarDays,
-  Coins,
-  Zap,
 } from "lucide-react";
 import {
   CATEGORY_COLORS,
@@ -893,7 +891,7 @@ export default function PerfilPage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src="/bed_icon.png" alt={label} width={15} height={15} style={{ objectFit: "contain" }} />
                         ) : (
-                          <Icon size={15} />
+                          <BedDouble size={15} />
                         )}
                       </div>
                       <div>
