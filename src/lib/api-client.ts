@@ -245,6 +245,8 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/give-up`, { method: "POST" }),
   completeFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom | null; message: string }>(`/api/focus-rooms/${roomId}/complete`, { method: "POST" }),
+  restartFocusRoom: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart`, { method: "POST" }),
   cleanupFocusRooms: () =>
     request<{ ok: true; expired: number; deleted: number }>("/api/focus-rooms/cleanup", { method: "POST" }),
 

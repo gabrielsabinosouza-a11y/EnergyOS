@@ -385,16 +385,24 @@ export default function FocusRoomsPage() {
         setCurrentRoom(null);
         setPageState("list");
         fetchRooms();
+      } else if (currentRoom.status === "completed" && next.status === "active") {
+        // The host restarted a completed session → participants auto-transition
+        // into the fresh round (elapsed_seconds=0 resets the shared countdown).
+        setShowCompletion(false);
+        setLastCoins(0);
+        setSuccessMessage("O anfitrião iniciou outra sessão. Bora focar!");
       }
     } catch {
       // transient polling failure — ignore
     }
   }, [currentRoom, fetchRooms]);
 
-  // Poll while in a waiting, active or paused room view
+  // Poll while in a waiting, active, paused or completed room view. Completed
+  // rooms keep being polled so participants waiting for the host to restart
+  // ("Play Again") auto-transition into the new round.
   useEffect(() => {
     if (pageState !== "room" || !currentRoom) return;
-    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused") return;
+    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed") return;
     const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
@@ -770,6 +778,26 @@ export default function FocusRoomsPage() {
       setLoadingAction(null);
     }
   }, [currentRoom, finalizeSession]);
+
+  const handleRestartRoom = useCallback(async () => {
+    if (!currentRoom) return;
+    setLoadingAction("restarting");
+    setError(null);
+    try {
+      const result = await api.restartFocusRoom(currentRoom.id);
+      // Fresh round: status flips back to active, elapsed_seconds=0 resets the
+      // shared countdown, and every present participant is reset to "focusing".
+      setCurrentRoom(result.room);
+      setNowMs(Date.now());
+      setShowCompletion(false);
+      setLastCoins(0);
+      setSuccessMessage("Sessão reiniciada! Todos os participantes estão de volta.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao reiniciar a sala");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom]);
 
   // ═══════════════════════ VIEWS ═══════════════════════
   const renderListView = () => (
@@ -1315,6 +1343,37 @@ export default function FocusRoomsPage() {
                   </button>
                 )}
               </>
+            )}
+
+            {/* Completed → "Play Again". Only the host can restart; everyone
+                else waits for the admin and can leave the room. Everyone still
+                present gets reset to "focusing" when the host restarts, and the
+                timer restarts from the full duration. */}
+            {room.status === "completed" && myParticipant?.sessionStatus !== "left" && (
+              isHost ? (
+                <div className="space-y-2">
+                  <motion.button
+                    onClick={handleRestartRoom}
+                    disabled={loadingAction === "restarting"}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className="primary-button w-full"
+                  >
+                    {loadingAction === "restarting" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Jogar novamente</>}
+                  </motion.button>
+                  <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                    {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                    <Loader2 size={14} className="animate-spin" /> Aguardando o anfitrião iniciar outra sessão...
+                  </motion.div>
+                  <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                    {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
+                  </button>
+                </div>
+              )
             )}
 
             {/* Host-only room controls — Pausar/Retomar (shared countdown) and Parar

@@ -791,7 +791,7 @@ function EditGoalModal({
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {FREQ_OPTIONS.map((opt) => {
                 const selected = draft.frequency === opt.value;
                 return (
@@ -1155,7 +1155,7 @@ function CreateGoalModal({
                   <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                     Frequência
                   </label>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
                     {FREQ_OPTIONS.map((opt) => {
                       const selected = draft.frequency === opt.value;
                       return (

@@ -993,6 +993,69 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
   return getFocusRoomById(room.rows[0].host_profile_id, roomId);
 }
 
+// Restart a COMPLETED focus room for another round (host only, "Play Again").
+// The room is reset to an ACTIVE session with the same participants and a fresh
+// countdown (elapsed_seconds=0, last_resumed_at=now). Participants who left
+// earlier stay out. Each participant creates a brand-new focus session
+// client-side when the room flips back to active, so no session crediting is
+// done here.
+export async function restartFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+
+  // Transaction with a row lock: guards restart vs restart/complete races so
+  // the completed→active transition can't be double-applied.
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can restart the room");
+    }
+
+    if (room.rows[0].status !== "completed") {
+      await client.query("rollback");
+      throw new ConflictError("A sala só pode ser reiniciada após a conclusão");
+    }
+
+    const now = new Date().toISOString();
+
+    await client.query(
+      `update focus_rooms
+       set status = 'active', started_at = $1, ended_at = null, elapsed_seconds = 0, last_resumed_at = $1
+       where id = $2`,
+      [now, roomId],
+    );
+
+    // Reactivate everyone still in the room; participants who gave up stay "left".
+    await client.query(
+      `update room_participants
+       set session_status = 'focusing', completed_at = null, gave_up_at = null
+       where room_id = $1 and session_status <> 'left'`,
+      [roomId],
+    );
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const restartedRoom = await getFocusRoomById(hostProfileId, roomId);
+  return restartedRoom!;
+}
+
 /**
  * Clean up focus rooms:
  *  - WAITING rooms older than `waitingTimeoutMs` (default 45 min) are marked "expired"
