@@ -750,6 +750,28 @@ create table if not exists achievement_progress_events (
 create index if not exists achievement_progress_events_profile_idx
   on achievement_progress_events(profile_id, achievement_id);
 
+-- Never allow a stale live-room evaluator to lower append-only progress.
+create or replace function prevent_focus_companion_regression()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.achievement_id = 'focus_companion'
+     and tg_op = 'UPDATE'
+     and new.current_value < old.current_value then
+    new.current_value := old.current_value;
+    new.unlocked_tier := greatest(new.unlocked_tier, old.unlocked_tier);
+    new.unlocked_at := coalesce(old.unlocked_at, new.unlocked_at);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists focus_companion_progress_no_regression on user_achievement_progress;
+create trigger focus_companion_progress_no_regression
+before update on user_achievement_progress
+for each row execute function prevent_focus_companion_regression();
+
 -- ========================================
 -- Daily Quests System
 -- ========================================

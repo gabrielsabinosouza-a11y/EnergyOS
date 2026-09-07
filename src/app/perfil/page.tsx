@@ -679,7 +679,7 @@ export default function PerfilPage() {
               <span className="text-xs uppercase tracking-[0.15em] text-[var(--orange)]">Destaques</span>
             </div>
 
-            <div className="relative flex flex-wrap justify-center gap-4 sm:justify-start">
+            <div className="relative flex flex-wrap justify-center gap-4">
               {Array.from({ length: MAX_FEATURED_ACHIEVEMENTS }, (_, slot) => {
                 const ach = featured[slot];
                 if (!ach) {

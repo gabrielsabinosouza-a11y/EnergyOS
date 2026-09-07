@@ -218,9 +218,18 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     ),
     safeQuery("focus_companion", () =>
       pool.query<{ current_value: number }>(
-        `select current_value
-         from user_achievement_progress
-         where profile_id = $1 and achievement_id = 'focus_companion'`,
+        `select greatest(
+           coalesce((
+             select current_value
+             from user_achievement_progress
+             where profile_id = $1 and achievement_id = 'focus_companion'
+           ), 0),
+           coalesce((
+             select count(*)::int
+             from achievement_progress_events
+             where profile_id = $1 and achievement_id = 'focus_companion'
+           ), 0)
+         ) as current_value`,
         [profileId],
       ),
     ),

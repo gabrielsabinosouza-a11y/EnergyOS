@@ -12,14 +12,7 @@ interface IsometricGardenProps {
 }
 
 // ── Terrain metrics ───────────────────────────────────────────────────────────
-const TILE_W = 96;
 const TILE_H = 68;
-const X_STEP = 104;
-const Y_STEP = 54;
-const PAD_X = 36;
-const PAD_Y = 30;
-/** Meia-célula: linhas alternadas deslocadas — empacotamento orgânico, sem colunas rígidas. */
-const STAGGER_X = X_STEP / 2;
 
 // ── Density scaling (Forest-style) ────────────────────────────────────────────
 // O terreno mantém altura fixa; gridScale encolhe passos e sprites conforme o nº
@@ -31,8 +24,6 @@ const MIN_ICON = 20;
 const REFERENCE_COUNT = 12;
 /** Altura-alvo fixa do terreno (mantida dentro do cap de 640px do invólucro). */
 const TERRAIN_H_TARGET = 560;
-/** Fator máximo de profundidade por linha — evita que linhas distantes "zoomen" com muitas linhas. */
-const MAX_DEPTH = 1.06;
 /** Acima deste nº de itens ativa o modo denso: fade único do container, sem springs por item. */
 const DENSE_THRESHOLD = 25;
 
@@ -53,12 +44,10 @@ function hash01(seed: number): number {
   return (h >>> 0) / 0xffffffff;
 }
 
-/** Escala base por estágio visual — brotos menores, forma máxima em destaque. */
-const STAGE_SCALE: Record<string, number> = { spark: 0.82, forming: 0.92, full: 1, extinguished: 0.88 };
-
 export function IsometricGarden({ entries, onEntryClick, className = "" }: IsometricGardenProps) {
   const terrainRef = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(6);
+  const [availableWidth, setAvailableWidth] = useState(748);
 
   useEffect(() => {
     const el = terrainRef.current;
@@ -66,6 +55,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
     const measure = () => {
       const cs = getComputedStyle(el);
       const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      setAvailableWidth(Math.max(1, avail));
       setCols(columnsForWidth(avail));
     };
     measure();
@@ -89,7 +79,6 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
     Math.max(MIN_ICON, ICON_BASE * Math.sqrt(REFERENCE_COUNT / Math.max(1, n))),
   );
   const gridScale = iconSize / ICON_BASE;
-  const availableWidth = Math.max(1, terrainRef.current?.clientWidth ?? 748);
   const currentColumnWidth = Math.max(1, (availableWidth - 40) / cols);
   const cellWidth = currentColumnWidth * gridScale;
   const cellHeight = Math.max(iconSize * 1.25, TILE_H * gridScale);
@@ -236,30 +225,19 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
           const isWithered = entry.status === "withered";
           const isGrowing = entry.status === "growing";
-          const row = Math.floor(index / layoutCols);
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
           const isFullLife = entry.status === "alive" && energyStage === "full";
 
-          // Tudo escala junto com a densidade (gridScale) para caber no terreno fixo.
-          const jx = (hash01(entry.id * 17 + 1) - 0.5) * 18 * gridScale;
-          const jy = (hash01(entry.id * 29 + 2) - 0.5) * 10 * gridScale;
-          // Profundidade por linha é limitada: com muitas linhas o antigo "zoom ao
-          // fundo" deixaria plantas distantes maiores que as do primeiro plano.
-          const depth = Math.min(1 + row * 0.014, MAX_DEPTH);
-          const plantScale =
-            (STAGE_SCALE[energyStage] ?? 1) * depth * (0.95 + hash01(entry.id * 41 + 4) * 0.1);
-
-          const icon = iconSize * plantScale;
+          const icon = iconSize;
           const delay = index * 0.035;
 
           const sharedProps = {
             type: "button" as const,
             "aria-label": `${cfg.label} — ${entry.durationMinutes} minutos`,
-            className: "relative border-0 bg-transparent p-0",
+            className: "relative flex items-center justify-center border-0 bg-transparent p-0",
             style: {
               width: "100%",
               height: cellHeight,
-              transform: `translate(${jx}px, ${jy}px)`,
               zIndex: 10 + index,
               cursor: onEntryClick ? "pointer" : "default",
             },
@@ -269,8 +247,6 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           const spriteStyle = {
             width: icon,
             height: icon,
-            left: `calc(50% - ${(icon / 2).toFixed(1)}px)`,
-            bottom: 12 * gridScale,
             opacity: isWithered ? 0.45 : isGrowing ? 0.9 : 1,
             filter: isWithered
               ? "grayscale(100%) brightness(.7)"
@@ -314,8 +290,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 style={{
                   left: "50%",
                   top: "50%",
-                  width: 64 * gridScale * plantScale,
-                  height: 21 * gridScale * plantScale,
+                  width: 64 * gridScale,
+                  height: 21 * gridScale,
                   transform: "translate(-50%, -50%)",
                   background: isWithered
                     ? "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 75%)"
@@ -330,8 +306,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 style={{
                   left: "50%",
                   bottom: 6 * gridScale,
-                  width: 46 * gridScale * plantScale,
-                  height: 9 * gridScale * plantScale,
+                  width: 46 * gridScale,
+                  height: 9 * gridScale,
                   transform: "translateX(-50%)",
                   background: "rgba(0,0,0,0.5)",
                   filter: "blur(4px)",
@@ -342,7 +318,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
               {isGrowing && animate ? (
                 <motion.span
                   aria-hidden="true"
-                  className="absolute flex items-end justify-center"
+                  className="relative flex items-end justify-center"
                   animate={{ scale: [1, 1.05, 1] }}
                   transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
                   style={spriteStyle}
@@ -350,7 +326,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                   {spriteImg}
                 </motion.span>
               ) : (
-                <span aria-hidden="true" className="absolute flex items-end justify-center" style={spriteStyle}>
+                <span aria-hidden="true" className="relative flex items-end justify-center" style={spriteStyle}>
                   {spriteImg}
                 </span>
               )}
@@ -372,7 +348,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             <button
               key={entry.id}
               {...sharedProps}
-              className="absolute border-0 bg-transparent p-0 transition-transform duration-200 hover:-translate-y-1"
+              className="relative flex items-center justify-center border-0 bg-transparent p-0 transition-transform duration-200 hover:-translate-y-1"
             >
               {content}
             </button>
