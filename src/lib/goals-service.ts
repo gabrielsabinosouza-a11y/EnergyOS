@@ -4,7 +4,7 @@ import { assertCategoryForProfile, resolveDefaultCategoryId } from "./db/categor
 import type { Goal, Habit, UserSettings } from "@/types";
 import { parseProfileId } from "./db/validation";
 
-const GOAL_FREQUENCIES = ["daily", "weekly", "monthly"] as const;
+const GOAL_FREQUENCIES = ["daily", "weekly", "monthly", "unique"] as const;
 const HABIT_FREQUENCIES = ["daily", "weekly"] as const;
 const THEMES = ["system", "light", "dark"] as const;
 

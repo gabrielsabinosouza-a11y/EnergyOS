@@ -15,7 +15,7 @@ function goalCompletionReward(targetValue: number): { xp: number; coins: number 
     ?? GOAL_COMPLETION_TIERS[GOAL_COMPLETION_TIERS.length - 1];
 }
 
-export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly"] as const;
+export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly", "unique"] as const;
 export type GoalFrequency = (typeof GOAL_FREQUENCY_VALUES)[number];
 
 /** Colunas de goal + categoria resolvida (join com categories). */

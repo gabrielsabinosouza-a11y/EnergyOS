@@ -60,7 +60,7 @@ create table if not exists goals (
   category text not null check (category in ('sono','estudo','treino','saude','foco')),
   target_value numeric(8,2) not null,
   current_value numeric(8,2) not null default 0,
-  frequency text not null check (frequency in ('daily','weekly','monthly')),
+  frequency text not null check (frequency in ('daily','weekly','monthly','unique')),
   created_at timestamptz not null default now()
 );
 
@@ -1257,5 +1257,12 @@ on conflict do nothing;
 insert into user_auras (profile_id, aura_type)
 select p.id, 'water' from profiles p
 on conflict do nothing;
+
+-- ── Metas única (one-time/lifetime) ──────────────────────────────────────
+-- Habilita a frequência 'unique' em instalações existentes (metas que
+-- acontecem uma vez na vida, como "virar um navy seal" — não diária/semanal/mensal.
+
+alter table goals drop constraint if exists goals_frequency_check;
+alter table goals add constraint goals_frequency_check check (frequency in ('daily','weekly','monthly','unique'));
 
 create index if not exists user_auras_profile_idx on user_auras(profile_id);

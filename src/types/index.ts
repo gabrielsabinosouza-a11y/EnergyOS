@@ -457,7 +457,7 @@ export interface Goal {
   category: Category;
   targetValue: number;
   currentValue: number;
-  frequency: "daily" | "weekly" | "monthly";
+  frequency: "daily" | "weekly" | "monthly" | "unique";
 }
 
 export interface Habit {

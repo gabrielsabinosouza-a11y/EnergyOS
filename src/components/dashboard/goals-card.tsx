@@ -31,6 +31,7 @@ const FREQ_OPTIONS: { value: Goal["frequency"]; label: string }[] = [
   { value: "daily", label: "Diária" },
   { value: "weekly", label: "Semanal" },
   { value: "monthly", label: "Mensal" },
+  { value: "unique", label: "Única" },
 ];
 
 function withAlpha(hex: string, alpha: number): string {
