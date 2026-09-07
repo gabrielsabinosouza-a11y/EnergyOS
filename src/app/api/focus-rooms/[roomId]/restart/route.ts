@@ -5,9 +5,10 @@ import { ForbiddenError } from "@/lib/errors";
 import { getFocusRoomById, restartFocusRoom } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/restart — host "Play Again".
-// Only a COMPLETED room can be restarted: the same participants get a fresh
-// ACTIVE session with the countdown reset. Each participant creates a new focus
-// session client-side when they see the room flip back to active.
+// Only a COMPLETED room can be restarted. The room moves to 'restarting': every
+// still-present participant is prompted to confirm (join the next round) or
+// cancel (leave). The room actually restarts (flips to ACTIVE) once everyone
+// still in the room has confirmed — see restartFocusRoom / maybeFinalizeRestart.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -27,7 +28,12 @@ export async function POST(
       return badRequest("A sala só pode ser reiniciada após a conclusão");
     }
 
-    const restartedRoom = await restartFocusRoom(Number(roomId), profileId);
-    return jsonOk({ room: restartedRoom, message: "Sessão reiniciada" });
+    const restartingRoom = await restartFocusRoom(Number(roomId), profileId);
+    return jsonOk({
+      room: restartingRoom,
+      message: restartingRoom.status === "active"
+        ? "Sessão reiniciada!"
+        : "Todos os participantes serão notificados. Espera a confirmação para começar.",
+    });
   });
 }

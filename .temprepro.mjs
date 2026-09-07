@@ -1,48 +1,66 @@
 import { chromium } from "playwright";
 
-const BASE = process.env.BASE || "http://localhost:3001";
+const BASE = process.env.BASE || "http://localhost:3000";
 const email = `u${Date.now()}@x.co`;
 const logs = [];
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext();
+await ctx.grantPermissions(["notifications"], { origin: BASE });
 ctx.on("console", (m) => logs.push(`[console.${m.type()}] ${m.text()}`));
 const page = await ctx.newPage();
 page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}\n${e.stack || ""}`));
 
+const gotoSafe = async (url, sel, t = 200000) => {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: t });
+  await page.waitForSelector(sel, { timeout: t });
+  logs.push(`[ok] loaded ${url}`);
+};
+
 try {
-  await page.goto(`${BASE}/cadastro`, { waitUntil: "networkidle", timeout: 120000 });
+  await gotoSafe(`${BASE}/cadastro`, 'input[placeholder="Seu nome"]');
   await page.fill('input[placeholder="Seu nome"]', "Teste");
   await page.fill('input[placeholder="voce@email.com"]', email);
   await page.fill('input[placeholder="Mínimo 6 caracteres"]', "senha123");
   await page.fill('input[placeholder="Repita a senha"]', "senha123");
-  await page.click('button[type="submit"]').catch(async () => {
-    await page.locator("form button").first().click();
-  });
-  await page.waitForURL("**/dashboard", { timeout: 90000 });
+  await page.locator("form button").first().click();
+  await page.waitForURL("**/dashboard", { timeout: 180000 });
   logs.push("[ok] signed in, at dashboard");
 
-  await page.goto(`${BASE}/configuracoes`, { waitUntil: "networkidle", timeout: 90000 });
-  await page.locator('[role="switch"][aria-label="Lembrete de foco"]').waitFor({ timeout: 30000 });
-  logs.push("[ok] settings page rendered");
+  await page.waitForTimeout(1200);
+  // Dismiss the onboarding tour if it shows (covers skip propagation too).
+  const skipBtn = page.getByRole("button", { name: "Pular tour" });
+  if (await skipBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await skipBtn.click();
+    logs.push("[ok] clicked Pular tour");
+    await page.waitForTimeout(1500);
+  }
 
-  // Toggle the reminder switch a few times (granted/denied paths both).
-  const sw = page.locator('[role="switch"][aria-label="Lembrete de foco"]');
-  await sw.click();
-  await page.waitForTimeout(1200);
-  await sw.click();
-  await page.waitForTimeout(1200);
-  await sw.click();
+  await gotoSafe(`${BASE}/configuracoes`, '[role="switch"][aria-label="Lembrete de foco"]');
   await page.waitForTimeout(1500);
 
-  // Toggle the theme buttons too (another state path).
+  const sw = page.locator('[role="switch"][aria-label="Lembrete de foco"]');
+  await sw.click();
+  await page.waitForTimeout(1500);
+  await sw.click();
+  await page.waitForTimeout(1500);
+  await sw.click();
+  await page.waitForTimeout(1800);
+
+  await page.getByRole("switch", { name: "Lembrete de check-in" }).click();
+  await page.waitForTimeout(1200);
+
   await page.getByRole("button", { name: "Claro" }).click();
   await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Escuro" }).click();
   await page.waitForTimeout(500);
 
-  // Save.
   await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await page.waitForTimeout(3000);
+
+  // Reload the settings page to force a full re-render with saved state.
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
+  await page.waitForSelector('[role="switch"][aria-label="Lembrete de foco"]', { timeout: 120000 });
   await page.waitForTimeout(2500);
 
   logs.push("[ok] interactions finished");
@@ -50,8 +68,8 @@ try {
   logs.push(`[script-error] ${e.message}`);
 }
 
-const errs = logs.filter((l) => l.startsWith("[pageerror]") || l.includes("error"));
-console.log("===== ERROR-SIGNALING LINES =====");
+const errs = logs.filter((l) => l.includes("[pageerror]"));
+console.log("===== PAGE ERRORS =====");
 console.log(errs.length ? errs.join("\n\n") : "(none)");
 console.log("===== ALL LOGS =====");
 console.log(logs.join("\n"));

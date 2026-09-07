@@ -19,7 +19,10 @@ import {
   focusCoinsForDuration,
   STREAK_COMPLETION_THRESHOLD,
 } from "../daily-limits";
-import { FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
+import {
+  FOCUS_DURATION_MIN_MINUTES,
+  FOCUS_DURATION_MAX_MINUTES,
+} from "../focus-duration";
 import { recordFocusCompanionProgress } from "./achievement-progress";
 
 export const GARDEN_ENERGY_TYPES = [
@@ -537,9 +540,10 @@ export async function getTodayFocusStats(profileId: string): Promise<{ minutesFo
   const today = todayIso();
   const result = await pool.query<{ minutes: string | number; coins: string | number }>(
     `select coalesce(sum(duration_minutes), 0) as minutes,
-            coalesce(sum(least($4, greatest($3, round(duration_minutes * $5 / 60)))), 0) as coins
+            coalesce(sum(least($4, greatest(round(duration_minutes * $5 / 60),
+                            case when duration_minutes >= $6 then $3 else 0 end))), 0) as coins
      from focus_sessions where profile_id = $1 and ended_at is not null and started_at::date = $2::date`,
-    [profileId, today, FOCUS_COINS_MIN, FOCUS_COINS_CAP, FOCUS_COINS_PER_HOUR],
+    [profileId, today, FOCUS_COINS_MIN, FOCUS_COINS_CAP, FOCUS_COINS_PER_HOUR, FOCUS_DURATION_MIN_MINUTES],
   );
   return { minutesFocused: Number(result.rows[0]?.minutes ?? 0), coinsEarned: Number(result.rows[0]?.coins ?? 0) };
 }

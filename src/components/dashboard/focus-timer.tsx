@@ -88,7 +88,6 @@ const RING_SIZE = 260;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function calculateCoins(durationMinutes: number): number {
-  if (durationMinutes < 10) return 0;
   return focusCoinsForDuration(durationMinutes);
 }
 

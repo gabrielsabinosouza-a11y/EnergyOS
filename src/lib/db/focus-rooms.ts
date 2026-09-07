@@ -1257,6 +1257,9 @@ export async function cancelRestart(roomId: number, hostProfileId: string): Prom
  * Clean up focus rooms:
  *  - WAITING rooms older than `waitingTimeoutMs` (default 45 min) are marked "expired"
  *    so stale rooms that were never started don't accumulate.
+ *  - RESTARTING rooms are reverted to 'completed' after `waitingTimeoutMs`: a
+ *    restart nobody ever answered shouldn't block the room forever — the host
+ *    can simply ask again.
  *  - COMPLETED/EXPIRED rooms older than `retentionMs` (default 24h) are hard-deleted.
  *    (They are already hidden from the default list after `listRetentionMs`.)
  * Returns a summary for logging.
@@ -1276,6 +1279,14 @@ export async function cleanupStaleRooms(
   );
   await pool.query(`update room_join_requests r set status = 'rejected', responded_at = coalesce(responded_at, now())
     from focus_rooms f where r.room_id = f.id and f.status = 'expired' and r.status = 'pending'`);
+
+  // Unanswered restart requests are rolled back to the completed state.
+  await pool.query(
+    `update focus_rooms
+     set status = 'completed'
+     where status = 'restarting' and coalesce(ended_at, created_at) < $1`,
+    [waitingCutoff],
+  );
 
   const del = await pool.query(
     `delete from focus_rooms

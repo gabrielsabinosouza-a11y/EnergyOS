@@ -1,3 +1,5 @@
+import { FOCUS_DURATION_MIN_MINUTES } from "./focus-duration";
+
 /** Max daily missions shown per user (random pick from the pool). */
 export const DAILY_MISSION_LIMIT = 3;
 
@@ -64,12 +66,15 @@ export const STREAK_COMPLETION_THRESHOLD = 1.0;
 export const FOCUS_XP_PER_MIN = 1;
 
 // ── Reward de moedas por sessão de foco ─────────────────────────────────────
-// Regra: 25 moedas por hora focada (arredondado), com piso de 9 e teto de 50.
+// Regra: 25 moedas por hora focada (arredondado), com teto de 50.
+// O piso de 9 só vale a partir da duração mínima de sessão (10 min); abaixo
+// disso as moedas ficam proporcionais ao tempo, sem piso, para não dar para
+// farmar encerrando uma sessão de 120 min em 1 min.
 //  - 10 min   -> max(9, round(10*25/60)) = 9
 //  - 60 min   -> 25
 //  - 120 min  -> 50 (teto, equivale à duração máxima de 120 min)
 export const FOCUS_COINS_PER_HOUR = 25;
-/** Piso de moedas por sessão — sessões curtas continuam valendo a pena. */
+/** Piso de moedas por sessão (aplicado apenas a sessões de 10 min ou mais). */
 export const FOCUS_COINS_MIN = 9;
 /** Teto de moedas por sessão de foco (120 min * 25/60). */
 export const FOCUS_COINS_CAP = 50;
@@ -81,5 +86,7 @@ export const FOCUS_COINS_CAP = 50;
  */
 export function focusCoinsForDuration(minutes: number): number {
   const m = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
-  return Math.min(FOCUS_COINS_CAP, Math.max(FOCUS_COINS_MIN, Math.round((m / 60) * FOCUS_COINS_PER_HOUR)));
+  const rateCoins = Math.round((m / 60) * FOCUS_COINS_PER_HOUR);
+  const minCoins = m >= FOCUS_DURATION_MIN_MINUTES ? FOCUS_COINS_MIN : 0;
+  return Math.min(FOCUS_COINS_CAP, Math.max(minCoins, rateCoins));
 }
