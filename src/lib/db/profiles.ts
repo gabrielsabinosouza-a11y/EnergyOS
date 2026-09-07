@@ -18,9 +18,10 @@ interface ProfileRow {
   equipped_shield_design_id: string | null;
   has_custom_banner: boolean | null;
   banner_image_url: string | null;
+  featured_achievements: string[] | null;
 }
 
-const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role, equipped_decoration_id, equipped_shield_design_id, has_custom_banner, banner_image_url`;
+const PROFILE_COLUMNS = `id, display_name, email, username, photo_url, created_at, last_active_at, current_streak, longest_streak, role, equipped_decoration_id, equipped_shield_design_id, has_custom_banner, banner_image_url, featured_achievements`;
 
 function mapToUser(row: ProfileRow): User {
   return {
@@ -38,7 +39,52 @@ function mapToUser(row: ProfileRow): User {
     equippedShieldDesignId: row.equipped_shield_design_id ?? undefined,
     hasCustomBanner: row.has_custom_banner ?? false,
     bannerImageUrl: row.banner_image_url ?? undefined,
+    featuredAchievementIds: row.featured_achievements ?? undefined,
   };
+}
+
+export async function updateFeaturedAchievements(profileId: string, achievementIds: string[]): Promise<User> {
+  parseProfileId(profileId);
+  const ids = [...new Set(achievementIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length > 6) throw new ValidationError("Você pode destacar no máximo 6 conquistas.");
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const unlocked = await client.query<{ achievement_id: string }>(
+      `select achievement_id from user_achievement_progress
+       where profile_id = $1 and unlocked_tier > 0 and achievement_id = any($2::text[])`,
+      [profileId, ids],
+    );
+    const unlockedIds = new Set(unlocked.rows.map((row) => row.achievement_id));
+    if (unlockedIds.size !== ids.length) {
+      throw new ValidationError("Só é possível destacar conquistas desbloqueadas.");
+    }
+    await client.query(
+      `update profiles set featured_achievements = $2::text[] where id = $1`,
+      [profileId, ids],
+    );
+    await client.query(
+      `update user_achievement_progress
+       set is_featured = false, featured_order = null
+       where profile_id = $1`,
+      [profileId],
+    );
+    for (const [index, id] of ids.entries()) {
+      await client.query(
+        `update user_achievement_progress
+         set is_featured = true, featured_order = $3
+         where profile_id = $1 and achievement_id = $2`,
+        [profileId, id, index + 1],
+      );
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getProfile(profileId);
 }
 
 function slugifyName(name: string): string {

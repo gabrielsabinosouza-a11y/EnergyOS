@@ -31,7 +31,7 @@ async function main() {
              and coalesce(rp.completed_at, rp.gave_up_at, now()) > fs.started_at
          ), 1),
          fs.duration_minutes,
-         coalesce(fs.paused_count, 0),
+         fs.paused_count,
          fs.duration_minutes >= fs.target_duration_minutes,
          fs.ended_at,
          fs.ended_at
@@ -46,6 +46,32 @@ async function main() {
       console.log(`  ${id}: inserted ${result.rowCount} events`);
     }
   }
+
+  // Restore original paused_count on pre-existing rows (keeps NULL semantics:
+  // a NULL is "pause data untracked", which must NOT count as flow_state bonus).
+  const restored = await pool.query(
+    `update focus_session_events e
+       set paused_count = fs.paused_count
+     from focus_sessions fs
+     where e.session_id = fs.id and e.profile_id = fs.profile_id`,
+  );
+  console.log(`Restored original paused_count on ${restored.rowCount ?? 0} existing rows.`);
+
+  // Reconcile co-focus history that only survives in the legacy event ledger.
+  // Those rooms were deleted (room_id -> NULL, room_participants cascaded away),
+  // so participant_count can't be reconstructed from live room rows. The
+  // achievement_progress_events rows prove these sessions were co-focus
+  // completions — mark them as such so no earned progress is lost.
+  const reconciled = await pool.query(
+    `update focus_session_events e
+       set participant_count = greatest(e.participant_count, 2),
+           is_completed = true
+     from achievement_progress_events ap
+     where ap.achievement_id = 'focus_companion'
+       and ap.source_id = e.session_id
+       and ap.profile_id = e.profile_id`,
+  );
+  console.log(`Reconciled ${reconciled.rowCount ?? 0} legacy co-focus events.`);
 
   console.log(`Done. Total events inserted: ${totalInserted}`);
   await pool.end();

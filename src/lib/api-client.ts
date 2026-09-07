@@ -84,6 +84,8 @@ export const api = {
     request<{ user: User }>("/api/profile", { method: "PATCH", body: JSON.stringify({ displayName }) }),
   updatePhotoUrl: (photoUrl: string) =>
     request<{ user: User }>("/api/profile", { method: "PATCH", body: JSON.stringify({ photoUrl }) }),
+  updateFeaturedAchievements: (achievementIds: string[]) =>
+    request<{ user: User }>("/api/profile", { method: "PATCH", body: JSON.stringify({ featuredAchievements: achievementIds }) }),
 
   // Check-ins
   getCheckins: (from?: string, to?: string) => {

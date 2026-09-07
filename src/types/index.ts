@@ -31,6 +31,7 @@ export interface User {
   equippedDecorationId?: string;
   streakShieldCount?: number;
   equippedShieldDesignId?: string;
+  featuredAchievementIds?: string[];
   role?: UserRole;
 }
 

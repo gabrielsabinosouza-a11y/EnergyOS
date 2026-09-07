@@ -615,7 +615,7 @@ export default function JardimPage() {
                                   </span>
                                 )}
                                 {isWithered && (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400">
+                                  <span className="text-xs px-2 py-1 rounded-full bg-slate-500/20 text-slate-300">
                                     🥀 Murcha
                                   </span>
                                 )}

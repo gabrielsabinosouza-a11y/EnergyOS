@@ -38,6 +38,28 @@ async function backfill() {
   );
   console.log(`✓ Reconciled ${sessions.rowCount ?? 0} session-linked entries`);
 
+  // Sessions that were never finalized but whose timer demonstrably ran to the
+  // end: elapsed wall-clock >= target. These are sessions whose end-of-session
+  // save crashed (ended_at left null), so the garden entry was never reconciled.
+  // Treat them as completed → alive, at their full target duration. Actively
+  // running sessions (elapsed < target) are left growing.
+  const staleOpen = await pool.query(
+    `update garden_entries ge
+     set status = 'alive',
+         growth_stage = case
+           when fs.target_duration_minutes >= 60 then 'mature'
+           when fs.target_duration_minutes >= 30 then 'young'
+           else 'sprout'
+         end,
+         duration_minutes = fs.target_duration_minutes
+     from focus_sessions fs
+     where ge.session_id = fs.id
+       and ge.status = 'growing'
+       and fs.ended_at is null
+       and fs.started_at < now() - make_interval(mins => fs.target_duration_minutes)`,
+  );
+  console.log(`✓ Marked ${staleOpen.rowCount ?? 0} stale-open-session entries as alive`);
+
   // Legacy imports (session_id null + legacy_key set) are always completed.
   const legacy = await pool.query(
     `update garden_entries

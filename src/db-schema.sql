@@ -810,7 +810,7 @@ create table if not exists focus_session_events (
   room_id bigint,
   participant_count integer not null default 1,
   duration_minutes integer not null,
-  paused_count integer not null default 0,
+  paused_count integer,
   is_completed boolean not null default false,
   completed_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -949,6 +949,7 @@ create table if not exists daily_task_log (
 -- ── Store: Banner, Decorations, Shields ────────────────────────────────────
 alter table profiles add column if not exists has_custom_banner boolean not null default false;
 alter table profiles add column if not exists banner_image_url text;
+alter table profiles add column if not exists featured_achievements text[] not null default '{}';
 alter table profiles add column if not exists equipped_decoration_id text;
 alter table profiles drop column if exists equipped_energy_id;
 alter table profiles add column if not exists streak_shield_count integer not null default 0;

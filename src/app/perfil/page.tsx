@@ -218,6 +218,10 @@ export default function PerfilPage() {
   const [profileStreak, setProfileStreak] = useState<{ current: number; longest: number } | null>(null);
   const [lifetimeFocusMinutes, setLifetimeFocusMinutes] = useState(0);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
+  const [featuredAchievementIds, setFeaturedAchievementIds] = useState<string[]>([]);
+  const [savedFeaturedAchievementIds, setSavedFeaturedAchievementIds] = useState<string[]>([]);
+  const [featuredSaving, setFeaturedSaving] = useState(false);
+  const [featuredError, setFeaturedError] = useState("");
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [recaps, setRecaps] = useState<MonthlyRecapType[]>([]);
@@ -243,6 +247,17 @@ export default function PerfilPage() {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
+      if (ach) {
+        const persistedIds = profileResult?.user?.featuredAchievementIds;
+        const initialIds = persistedIds?.length
+          ? persistedIds
+          : ach.achievements
+              .filter((achievement) => achievement.isFeatured && achievement.unlockedTier > 0)
+              .sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0))
+              .map((achievement) => achievement.id);
+        setFeaturedAchievementIds(initialIds.slice(0, MAX_FEATURED_ACHIEVEMENTS));
+        setSavedFeaturedAchievementIds(initialIds.slice(0, MAX_FEATURED_ACHIEVEMENTS));
+      }
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
       if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
       if (profileResult?.user) {
@@ -291,10 +306,10 @@ export default function PerfilPage() {
   // Lifetime focus is sourced from completed focus sessions, not XP.
   const lifetimeFocusH = Math.floor(lifetimeFocusMinutes / 60);
 
-  const featured = achievements
-    .filter((a) => a.isFeatured && a.unlockedTier > 0)
-    .sort((a, b) => (a.featuredOrder ?? 0) - (b.featuredOrder ?? 0));
-  const featuredIds = new Set(featured.map((f) => f.id));
+  const featured = featuredAchievementIds
+    .map((id) => achievements.find((achievement) => achievement.id === id))
+    .filter((achievement): achievement is AchievementProgress => Boolean(achievement?.unlockedTier));
+  const featuredIds = new Set(featuredAchievementIds);
   const unlocked = achievements.filter((a) => a.unlockedTier > 0);
   const locked = achievements.filter((a) => a.unlockedTier === 0);
   const sorted = [...unlocked, ...locked];
@@ -385,23 +400,34 @@ export default function PerfilPage() {
   }
 
   async function handleToggleFeatured(achievementId: string) {
-    try {
-      const result = await api.toggleFeaturedAchievement(achievementId);
-      setAchievements((prev) =>
-        prev.map((a) => {
-          if (a.id === achievementId) {
-            return { ...a, isFeatured: result.isFeatured, featuredOrder: result.featuredOrder };
-          }
-          return a;
-        }),
-      );
-      if (selectedAchievement?.id === achievementId) {
-        setSelectedAchievement((prev) =>
-          prev ? { ...prev, isFeatured: result.isFeatured, featuredOrder: result.featuredOrder } : prev,
-        );
+    setFeaturedError("");
+    setFeaturedAchievementIds((current) => {
+      if (current.includes(achievementId)) return current.filter((id) => id !== achievementId);
+      if (current.length >= MAX_FEATURED_ACHIEVEMENTS) {
+        setFeaturedError("Você pode destacar no máximo 6 conquistas.");
+        return current;
       }
+      return [...current, achievementId];
+    });
+    setSelectedAchievement((current) =>
+      current?.id === achievementId ? { ...current, isFeatured: !current.isFeatured } : current,
+    );
+  }
+
+  async function saveFeaturedAchievements() {
+    setFeaturedSaving(true);
+    setFeaturedError("");
+    try {
+      const result = await api.updateFeaturedAchievements(featuredAchievementIds);
+      const savedIds = result.user.featuredAchievementIds ?? featuredAchievementIds;
+      setFeaturedAchievementIds(savedIds);
+      setSavedFeaturedAchievementIds(savedIds);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
     } catch (error) {
-      console.error("[perfil] falha ao alterar destaque:", error);
+      setFeaturedError(error instanceof Error ? error.message : "Não foi possível salvar os destaques.");
+    } finally {
+      setFeaturedSaving(false);
     }
   }
 
@@ -677,7 +703,18 @@ export default function PerfilPage() {
             <div className="relative mb-5 flex items-center gap-2">
               <Star size={16} className="text-[var(--orange)]" />
               <span className="text-xs uppercase tracking-[0.15em] text-[var(--orange)]">Destaques</span>
+              {JSON.stringify(featuredAchievementIds) !== JSON.stringify(savedFeaturedAchievementIds) && (
+                <button
+                  type="button"
+                  onClick={() => void saveFeaturedAchievements()}
+                  disabled={featuredSaving}
+                  className="ml-auto rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[11px] font-semibold text-black disabled:opacity-50"
+                >
+                  {featuredSaving ? "Salvando..." : "Salvar"}
+                </button>
+              )}
             </div>
+            {featuredError && <p className="relative mb-3 text-xs text-[var(--red)]">{featuredError}</p>}
 
             <div className="relative flex flex-wrap justify-center gap-4">
               {Array.from({ length: MAX_FEATURED_ACHIEVEMENTS }, (_, slot) => {
@@ -753,7 +790,7 @@ export default function PerfilPage() {
                       size={GRID_SIZE}
                       onClick={() => setSelectedAchievement(ach)}
                       reduced={!!reduced}
-                      feature={ach.isFeatured}
+                      feature={featuredIds.has(ach.id)}
                     />
                     <span className="line-clamp-2 text-center text-[10px] leading-tight text-[var(--text-secondary)]">
                       {ach.title}
