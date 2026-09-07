@@ -20,6 +20,9 @@ export function AchievementUnlockModal({
       bg: "rgba(113,212,255,0.12)",
       glow: "rgba(113,212,255,0.4)",
     };
+  // A tier that was already unlocked once and rose again is a level-up ("evolve"),
+  // not a first unlock — reflect that in the celebratory copy.
+  const isLevelUp = (achievement?.previousTier ?? 0) > 0;
 
   return (
     <Modal
@@ -91,11 +94,16 @@ export function AchievementUnlockModal({
               className="eyebrow mb-2 mt-4 justify-center"
               style={{ color: colors.primary }}
             >
-              CONQUISTA DESBLOQUEADA
+              {isLevelUp ? "CONQUISTA EVOLUÍDA" : "CONQUISTA DESBLOQUEADA"}
             </p>
             <h2 className="text-lg font-bold text-[var(--text)]">
               {achievement.title}
             </h2>
+            {achievement.unlockedTier > 1 && (
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                Nível {achievement.unlockedTier} alcançado
+              </p>
+            )}
             <p className="mt-1.5 text-sm leading-relaxed text-[var(--text-secondary)]">
               {achievement.description}
             </p>

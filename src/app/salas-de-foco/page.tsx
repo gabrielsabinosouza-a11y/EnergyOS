@@ -553,6 +553,10 @@ export default function FocusRoomsPage() {
       const end = await api.endFocus(sess.sessionId, focusedSeconds, true, undefined, endedAtIso);
       endFocusSucceeded = true;
       setLastCoins(end.coinsAwarded);
+      // Surface any achievement tier-up (e.g. Companheiro de Foco) immediately.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("energyos:achievements-changed"));
+      }
 
       if (addGarden) {
         setShowCompletion(true);

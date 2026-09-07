@@ -3,6 +3,12 @@ import pool from "../db";
 /**
  * Records one completed qualifying co-focus session for a profile.
  * The ledger makes retries and concurrent completion requests idempotent.
+ *
+ * Only the raw count is bumped here. The unlocked tier / unlocked_at / seen_at
+ * bookkeeping is left exclusively to `listAchievementProgress`, whose
+ * justUnlocked detection needs the persisted tier to be one step behind the
+ * freshly-computed tier so it can tell the client a level-up just happened
+ * (pre-bumping the tier here silently swallowed the unlock modal on level-ups).
  */
 export async function recordFocusCompanionProgress(
   profileId: string,
@@ -27,17 +33,10 @@ export async function recordFocusCompanionProgress(
 
     await client.query(
       `insert into user_achievement_progress
-         (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at)
-       values ($1, 'focus_companion', 1, 1, now())
+         (profile_id, achievement_id, current_value)
+       values ($1, 'focus_companion', 1)
        on conflict (profile_id, achievement_id) do update set
-         current_value = user_achievement_progress.current_value + 1,
-         unlocked_tier = case
-           when user_achievement_progress.current_value + 1 >= 30 then 4
-           when user_achievement_progress.current_value + 1 >= 10 then 3
-           when user_achievement_progress.current_value + 1 >= 5 then 2
-           else 1
-         end,
-         unlocked_at = coalesce(user_achievement_progress.unlocked_at, now())`,
+         current_value = user_achievement_progress.current_value + 1`,
       [profileId],
     );
 

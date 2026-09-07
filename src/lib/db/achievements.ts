@@ -4,16 +4,17 @@ import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
 import { getUserXP, creditXP } from "./xp";
 import { addCoins } from "./settings";
-import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK } from "../daily-limits";
+import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
 import { ENERGY_TYPES } from "../energy-assets";
 import { getOwnedAuras } from "./store";
+import { APP_TIMEZONE } from "./dates";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   streak_master: [7, 30, 100, 365],
   deep_focus: [60, 120, 240, 520],
   early_riser: [5, 25, 100],
   sleep_champion: [10, 50, 100],
-  consistency_king: [1, 10, 40],
+  consistency_king: [1, 10, 30],
   xp_olympian: [1000, 10000, 50000],
   social_spark: [1, 5, 20],
   rarest_aura: [1],
@@ -27,7 +28,7 @@ const META: Record<string, { title: string; description: string; category: strin
   deep_focus: { title: "Foco Profundo", description: "Acumule minutos de foco totais", category: "focus" },
   early_riser: { title: "Madrugador", description: "Faça check-in antes das 7h", category: "checkin" },
   sleep_champion: { title: "Campeão do Sono", description: "Durma 7 horas ou mais", category: "sleep" },
-  consistency_king: { title: "Rei da Consistência", description: "Semanas perfeitas de check-in", category: "checkin" },
+  consistency_king: { title: "Rei da Consistência", description: "Semanas perfeitas de foco", category: "checkin" },
   xp_olympian: { title: "Olimpiano de XP", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Faísca Social", description: "Faça amigos e entre em grupos", category: "social" },
   rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
@@ -181,13 +182,26 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     safeQuery("consistency_king", () =>
       pool.query<{ count: string | number }>(
         `select count(*)::int as count from (
-           select date_trunc('week', checkin_date)::date as week
-           from daily_checkins
-           where profile_id = $1
-           group by 1
-           having count(distinct checkin_date) >= 7
-         ) weeks`,
-        [profileId],
+           select week_start
+           from (
+             select (ended_at at time zone $2)::date as day,
+                    (ended_at at time zone $2)::date
+                      - extract(dow from (ended_at at time zone $2)::date)::int as week_start
+             from focus_sessions
+             where profile_id = $1
+               and ended_at is not null
+               and duration_minutes * 1.0 >= target_duration_minutes * $3
+           ) days
+           group by week_start
+           having count(distinct day) = 7
+              and not exists (
+                select 1 from streak_shield_usage u
+                where u.profile_id = $1
+                  and u.used_on_date >= week_start
+                  and u.used_on_date < week_start + 7
+              )
+         ) perfect_weeks`,
+        [profileId, APP_TIMEZONE, STREAK_COMPLETION_THRESHOLD],
       ),
     ),
     safeQuery("social_spark", () =>
@@ -326,9 +340,15 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
       ? Math.max(values[id] ?? 0, prev?.current_value ?? 0)
       : values[id] ?? 0;
     const unlockedTier = tierFor(currentValue, thresholds);
-    const wasLocked = !prev || prev.unlocked_tier === 0;
-    const justUnlocked = unlockedTier > 0 && (wasLocked || (prev && prev.unlocked_tier < unlockedTier && !prev.seen_at));
     const newlyUnlocked = unlockedTier > (prev?.unlocked_tier ?? 0);
+    // An achievement is surfaced in the unlock modal when its tier just rose in
+    // this evaluation — first unlock (0→1) OR a level-up of an already-seen tier
+    // (e.g. 2→3). The older guard `&& !prev.seen_at` silently swallowed level-ups
+    // because a previously-dismissed tier leaves seen_at set. The upsert below
+    // resets seen_at to null whenever the tier increases, so the new tier is
+    // surfaced exactly once; `!prev.seen_at` additionally re-surfaces a tier that
+    // was unlocked but never confirmed (e.g. tab refreshed before dismiss).
+    const justUnlocked = unlockedTier > 0 && (newlyUnlocked || !prev?.seen_at);
 
     if (!prev || prev.current_value !== currentValue || newlyUnlocked) {
       await pool.query(
@@ -359,7 +379,8 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
       thresholds,
       currentValue,
       unlockedTier,
-      justUnlocked: Boolean(justUnlocked && unlockedTier > 0 && !prev?.seen_at),
+      previousTier: prev?.unlocked_tier ?? 0,
+      justUnlocked: Boolean(justUnlocked && unlockedTier > 0),
       unlockedAt: prev?.unlocked_at
         ? new Date(prev.unlocked_at).toISOString()
         : newlyUnlocked && unlockedTier > 0

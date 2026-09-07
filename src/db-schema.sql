@@ -753,7 +753,7 @@ insert into achievements (id, title, description, category) values
   ('deep_focus',       'Foco Profundo',        'Complete sessões longas de foco',               'focus'),
   ('early_riser',      'Madrugador',           'Faça check-in antes das 7h',                    'checkin'),
   ('sleep_champion',   'Campeão do Sono',      'Durma 7 horas ou mais',                         'sleep'),
-  ('consistency_king', 'Rei da Consistência',  'Semanas perfeitas de check-in',                'checkin'),
+  ('consistency_king', 'Rei da Consistência',  'Semanas perfeitas de foco',                'checkin'),
   ('xp_olympian',      'Olimpiano de XP',      'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Faísca Social',        'Faça amigos e entre em grupos',                 'social'),
   ('rarest_aura',      'Top 1 Global',         'Termine no topo da Liga Lendários',                'league'),

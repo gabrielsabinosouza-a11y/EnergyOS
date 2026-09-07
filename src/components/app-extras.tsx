@@ -50,24 +50,31 @@ function useAchievementUnlocks(active: boolean) {
       }
     };
 
-    api
-      .getAchievements()
-      .then(({ achievements }) => consume(achievements))
-      .catch(() => {});
-
-    const onVisible = () => {
-      if (document.hidden) return;
+    const refresh = () => {
       api
         .getAchievements()
         .then(({ achievements }) => consume(achievements))
         .catch(() => {});
     };
+
+    refresh();
+
+    const onVisible = () => {
+      if (document.hidden) return;
+      refresh();
+    };
+    // Re-pull right after any focus session / room completion lands so a freshly
+    // earned achievement (or a level-up) pops immediately, without waiting for a
+    // tab switch. Dispatched by the dashboard timer and the focus-room flow.
+    const onAchievementsChanged = () => refresh();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
+    window.addEventListener("energyos:achievements-changed", onAchievementsChanged);
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
+      window.removeEventListener("energyos:achievements-changed", onAchievementsChanged);
     };
   }, [active]);
 

@@ -426,6 +426,11 @@ function DashboardContent() {
       // Re-pull the snapshot so the streak badge reflects the (possibly new)
       // streak right away — the server already ran the real-time evaluation.
       void fetchDashboard();
+      // Surface any achievement tier-up (e.g. XP Olympian, Focus Companion)
+      // immediately instead of waiting for the next tab switch.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("energyos:achievements-changed"));
+      }
       return result;
     } catch (error) {
       // Roll the optimistic mission bumps back to server truth.

@@ -421,6 +421,8 @@ export interface AchievementProgress {
   thresholds: number[];
   currentValue: number;
   unlockedTier: number;
+  /** Tier before this unlock (0 = first unlock; >0 = level-up). */
+  previousTier: number;
   justUnlocked: boolean;
   unlockedAt?: string;
   isFeatured: boolean;

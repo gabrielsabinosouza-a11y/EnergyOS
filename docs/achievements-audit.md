@@ -70,14 +70,14 @@ tags: [energyos, achievements, conquistas, badges, obsidian-checklist]
 
 ## 5. Consistency King
 - **ID:** `consistency_king`
-- **Title:** Consistency King — *"Semanas perfeitas de check-in"*
+- **Title:** Consistency King — *"Semanas perfeitas de foco"*
 - **Category:** `checkin` (green)
-- **Trigger/metric:** count of **perfect weeks** = weeks with 7 distinct check-in days (subquery grouping `daily_checkins` by week)
+- **Trigger/metric:** count of **perfect weeks** — a week (Sunday–Saturday) where the user completed **at least one qualifying focus session on each of the 7 days** (same predicate as the streak: `ended_at` set and `duration_minutes >= target`), **without using a Streak Freeze** (`streak_shield_usage`) in that week. Weeks are bucketed by Sunday (`date - extract(dow from date)`), not the Postgres default Monday.
 - **Unique/one-time badge?** No
 - **Tiers:**
   - [ ] Tier 1 — threshold: **1** perfect week
   - [ ] Tier 2 — threshold: **10** perfect weeks
-  - [ ] Tier 3 — threshold: **50** perfect weeks
+  - [ ] Tier 3 — threshold: **30** perfect weeks
 
 ## 6. XP Olympian
 - **ID:** `xp_olympian`

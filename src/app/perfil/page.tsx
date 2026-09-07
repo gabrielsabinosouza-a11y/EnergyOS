@@ -14,6 +14,8 @@ import type { DashboardSnapshot } from "@/lib/api-client";
 import type { AchievementProgress, User } from "@/types";
 import { AvatarWithFrame } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
+import { CoinIcon } from "@/components/coin-icon";
+import { XpIcon } from "@/components/xp-icon";
 import Image from "next/image";
 import {
   BedDouble,
@@ -476,7 +478,7 @@ export default function PerfilPage() {
   }
 
   const metrics = [
-    { icon: BedDouble, color: "#71d4ff", label: "Sono", kind: "sleep" as const, unit: "h" },
+    { icon: "bed", color: "#71d4ff", label: "Sono", kind: "sleep" as const, unit: "h" },
   ];
 
   const heroStats = [
@@ -880,13 +882,20 @@ export default function PerfilPage() {
             <div className="mb-6">
               <span className="eyebrow muted mb-4 block">MÉDIAS DA SEMANA</span>
               <div className="grid gap-3 sm:grid-cols-3">
-                {metrics.map(({ icon: Icon, color, label, kind, unit }) => {
+                {metrics.map(({ icon, color, label, kind, unit }) => {
                   const metric = dashboard?.metrics.find((m) => m.kind === kind);
                   const hasData = metric && metric.value >= 0;
                   const displayValue = hasData ? formatStat(metric.value, unit) : "Sem dados";
                   return (
                     <div key={label} className="metric-card flex items-center gap-3">
-                      <div className="metric-icon" style={{ color }}><Icon size={15} /></div>
+                      <div className="metric-icon" style={{ color }}>
+                        {icon === "bed" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src="/bed_icon.png" alt={label} width={15} height={15} style={{ objectFit: "contain" }} />
+                        ) : (
+                          <Icon size={15} />
+                        )}
+                      </div>
                       <div>
                         <div className="metric-caption">{label}</div>
                         <div className="font-display text-base text-[var(--text-secondary)]">
@@ -897,7 +906,7 @@ export default function PerfilPage() {
                   );
                 })}
                 <div className="metric-card flex items-center gap-3">
-                  <div className="metric-icon" style={{ color: "var(--purple)" }}><Zap size={15} /></div>
+                  <div className="metric-icon" style={{ color: "var(--purple)" }}><XpIcon size={15} /></div>
                   <div>
                     <div className="metric-caption">Foco</div>
                     <div className="font-display text-base text-[var(--text-secondary)]">
@@ -908,7 +917,7 @@ export default function PerfilPage() {
                   </div>
                 </div>
                 <div className="metric-card flex items-center gap-3">
-                  <div className="metric-icon" style={{ color: "var(--orange)" }}><Coins size={15} /></div>
+                  <div className="metric-icon" style={{ color: "var(--orange)" }}><CoinIcon size={15} /></div>
                   <div>
                     <div className="metric-caption">Moedas</div>
                     <div className="font-display text-base text-[var(--text-secondary)]">
