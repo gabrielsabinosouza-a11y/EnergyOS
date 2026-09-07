@@ -1169,7 +1169,7 @@ function GroupDetailPanel({
     else await handleSend(body);
   }
 
-  async function handleComposerSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number }) {
+  async function handleComposerSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
     const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
       messageType: opts.messageType,
       mediaUrl: opts.mediaUrl,
@@ -1343,47 +1343,6 @@ function GroupDetailPanel({
     (a, b) => (ROLE_ORDER[a.role] ?? 2) - (ROLE_ORDER[b.role] ?? 2) || a.displayName.localeCompare(b.displayName),
   );
 
-  /* @mention autocomplete (group chat only, DM chat untouched) */
-  const lastSpaceIdx = input.lastIndexOf(" ");
-  const activeWord = input.slice(lastSpaceIdx + 1);
-
-  // Auto-open/close when the last word of the composer starts with "@".
-  useEffect(() => {
-    const word = input.slice(input.lastIndexOf(" ") + 1);
-    setMentionOpen(word.startsWith("@"));
-  }, [input]);
-
-  const mentionQuery = activeWord.startsWith("@") ? activeWord.slice(1) : null;
-
-  const mentionResults = useMemo(() => {
-    if (mentionQuery === null) return [];
-    const q = mentionQuery.toLowerCase();
-    const matches = group.members.filter(
-      (m) => m.id !== currentUserId &&
-        (!q || (m.username ?? "").toLowerCase().includes(q) || m.displayName.toLowerCase().includes(q)),
-    );
-    const score = (m: GroupMember) => {
-      if (q && (m.username ?? "").toLowerCase().startsWith(q)) return 2;
-      if (q && m.displayName.toLowerCase().startsWith(q)) return 1;
-      return 0;
-    };
-    return matches
-      .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName))
-      .slice(0, 8);
-  }, [mentionQuery, group.members, currentUserId]);
-
-  useEffect(() => {
-    setMentionIndex(0);
-  }, [mentionQuery]);
-
-  function insertMention(m: GroupMember) {
-    const handle = m.username ?? m.displayName;
-    const prefix = lastSpaceIdx >= 0 ? input.slice(0, lastSpaceIdx + 1) : "";
-    setInput(`${prefix}@${handle} `);
-    setMentionOpen(false);
-    setMentionIndex(0);
-  }
-
   return (
     <motion.div variants={slideLeft} initial="hidden" animate="visible" exit="exit"
             className="-mx-5 flex min-h-0 flex-1 flex-col overflow-hidden sm:-mx-8 lg:-mx-12">
@@ -1458,103 +1417,13 @@ function GroupDetailPanel({
           replyingTo={replyingTo ? groupToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
           inputSlot={
-            <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
-              {messageError && (
-                <p className="mb-2 text-[11px] text-[var(--red)]">{messageError}</p>
-              )}
-              {/* Sticker picker */}
-              <AnimatePresence>
-                {showStickers && (
-                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                    className="mb-2 grid max-h-40 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2">
-                    {stickers.map((s) => (
-                      <button key={s.id} onClick={() => handleSendSticker(s.emoji)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:bg-[var(--accent-bg)]">
-                        {s.emoji}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {mentionOpen && mentionResults.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                className="mb-2 max-h-40 overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shadow-xl">
-                {mentionResults.map((m, i) => (
-                  <button key={m.id}
-                    onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}
-                    onMouseEnter={() => setMentionIndex(i)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${i === mentionIndex ? "bg-[var(--accent-bg)] text-[var(--accent)]" : "text-[var(--text)] hover:bg-[var(--bg-surface-hover)]"}`}>
-                    <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={26} />
-                    <span className="truncate font-medium">{m.displayName}</span>
-                    {m.username && <span className="text-[11px] text-[var(--text-muted)]">@{m.username}</span>}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-              <div className="glass-card flex items-center gap-1.5 px-2 py-2">
-                <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden"
-                  onChange={handleFileChange} />
-                <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || sending || recording}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                  {uploadingMedia ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={15} />}
-                </button>
-                <button onClick={() => setShowStickers((v) => !v)} disabled={recording}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                  <Sticker size={15} />
-                </button>
-                <input type="text" placeholder={replyingTo ? "Responder..." : "Mensagem..."} value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onBlur={() => setMentionOpen(false)}
-                  onKeyDown={(e) => {
-                    if (mentionResults.length > 0) {
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setMentionIndex((i) => (i + 1) % mentionResults.length);
-                        return;
-                      }
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setMentionIndex((i) => (i - 1 + mentionResults.length) % mentionResults.length);
-                        return;
-                      }
-                      if (e.key === "Enter" || e.key === "Tab") {
-                        e.preventDefault();
-                        insertMention(mentionResults[mentionIndex]);
-                        return;
-                      }
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        setMentionOpen(false);
-                        return;
-                      }
-                    }
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (replyingTo) handleReply(input, replyingTo.id);
-                      else handleSend(input);
-                    }
-                  }}
-                  className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none" />
-                {recording ? (
-                  <button onClick={stopRecording}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110">
-                    <Square size={13} />
-                  </button>
-                ) : (
-                  <button onClick={startRecording} disabled={uploadingMedia || sending}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30">
-                    <Mic size={15} />
-                  </button>
-                )}
-                <button onClick={() => {
-                  if (replyingTo) handleReply(input, replyingTo.id);
-                  else handleSend(input);
-                }} disabled={!input.trim() || sending || recording}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30">
-                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                </button>
-              </div>
-            </div>
+            <ChatComposer
+              replying={Boolean(replyingTo)}
+              mentionMembers={group.members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username, photoUrl: m.photoUrl }))}
+              currentUserId={currentUserId}
+              onSendText={handleComposerSend}
+              onSendMedia={handleComposerSendMedia}
+            />
           }
           />
         ) : (

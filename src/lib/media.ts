@@ -3,10 +3,24 @@
  *  chat surfaces stay in sync without server round-trips for the file blob. */
 
 export const MAX_VIDEO_SECONDS = 30;
+export const MAX_AUDIO_SECONDS = 120;
+export const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
+
+export function validateVideoFile(file: File): void {
+  if (file.type !== "video/mp4" && !/\.mp4$/i.test(file.name)) {
+    throw new Error("Vídeos devem estar no formato MP4.");
+  }
+  if (file.size > MAX_MEDIA_BYTES) throw new Error("Vídeos devem ter no máximo 20 MB.");
+}
+
+export function validateMediaSize(file: File): void {
+  if (file.size > MAX_MEDIA_BYTES) throw new Error("Arquivos devem ter no máximo 20 MB.");
+}
 
 /** Upload a media file to Cloudinary and return its secure URL (+ optional duration). */
 export async function uploadToCloudinary(
   file: File,
+  onProgress?: (percent: number) => void,
 ): Promise<{ secureUrl: string; durationSeconds: number | undefined }> {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
@@ -22,9 +36,20 @@ export async function uploadToCloudinary(
     ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
     : `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
 
-  const res = await fetch(endpoint, { method: "POST", body: formData });
-  if (!res.ok) throw new Error("Falha no upload.");
-  const data = await res.json();
+  const data = await new Promise<Record<string, unknown>>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", endpoint);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText) as Record<string, unknown>); } catch { reject(new Error("Resposta de upload inválida.")); }
+      } else reject(new Error("Falha no upload."));
+    };
+    xhr.onerror = () => reject(new Error("Falha no upload."));
+    xhr.send(formData);
+  });
   const duration = Number(data.duration);
   return {
     secureUrl: data.secure_url as string,

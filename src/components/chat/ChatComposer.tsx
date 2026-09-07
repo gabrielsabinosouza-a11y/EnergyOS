@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Image as ImageIcon,
+  FileText,
   Loader2,
   Mic,
   Send,
@@ -11,7 +12,7 @@ import {
   Sticker,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { MAX_VIDEO_SECONDS, readVideoDuration, uploadToCloudinary } from "@/lib/media";
+import { MAX_AUDIO_SECONDS, MAX_VIDEO_SECONDS, validateMediaSize, validateVideoFile, readVideoDuration, uploadToCloudinary } from "@/lib/media";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
 
@@ -31,6 +32,9 @@ export interface ChatComposerProps {
     mediaUrl?: string;
     body?: string;
     mediaDurationSeconds?: number;
+    mediaFileName?: string;
+    mediaMimeType?: string;
+    mediaSizeBytes?: number;
   }) => Promise<void>;
   /** Set while a reply is active (swaps the input placeholder). */
   replying?: boolean;
@@ -91,6 +95,7 @@ export function ChatComposer({
   const [showStickers, setShowStickers] = useState(false);
   const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionOpen, setMentionOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -126,6 +131,9 @@ export function ChatComposer({
     mediaUrl?: string;
     body?: string;
     mediaDurationSeconds?: number;
+    mediaFileName?: string;
+    mediaMimeType?: string;
+    mediaSizeBytes?: number;
   }) {
     setBusy(true);
     setLocalError(null);
@@ -141,10 +149,11 @@ export function ChatComposer({
     setUploadingMedia(true);
     setLocalError(null);
     try {
-      const { secureUrl } = await uploadToCloudinary(file);
-      await pushMedia({ messageType: "IMAGE", mediaUrl: secureUrl });
-    } catch {
-      setLocalError("Não foi possível enviar a imagem.");
+      validateMediaSize(file);
+      const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
+      await pushMedia({ messageType: "IMAGE", mediaUrl: secureUrl, mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size });
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Não foi possível enviar a imagem.");
     } finally {
       setUploadingMedia(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -156,19 +165,21 @@ export function ChatComposer({
     setUploadingMedia(true);
     setLocalError(null);
     try {
+      validateVideoFile(file);
       const durationSeconds = await readVideoDuration(file);
       if (durationSeconds > 0 && durationSeconds > MAX_VIDEO_SECONDS) {
         setLocalError(`Vídeos devem ter no máximo ${MAX_VIDEO_SECONDS}s.`);
         return;
       }
-      const { secureUrl } = await uploadToCloudinary(file);
+      const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
       await pushMedia({
         messageType: "VIDEO",
         mediaUrl: secureUrl,
         mediaDurationSeconds: durationSeconds || undefined,
+        mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size,
       });
-    } catch {
-      setLocalError("Não foi possível enviar o vídeo.");
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o vídeo.");
     } finally {
       setUploadingMedia(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -179,8 +190,20 @@ export function ChatComposer({
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.type.startsWith("image/")) await handleSendImage(file);
-    else if (file.type.startsWith("video/")) await handleSendVideo(file);
+    else if (file.type === "video/mp4" || /\.mp4$/i.test(file.name)) await handleSendVideo(file);
+    else if (file.type === "application/pdf" || file.type.startsWith("text/") || file.type.includes("word") || file.type.includes("excel")) await handleSendDocument(file);
     else setLocalError("Formato de arquivo não suportado.");
+  }
+
+  async function handleSendDocument(file: File) {
+    if (uploadingMedia || busy) return;
+    setUploadingMedia(true); setUploadProgress(0); setLocalError(null);
+    try {
+      validateMediaSize(file);
+      const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
+      await pushMedia({ messageType: "DOCUMENT", mediaUrl: secureUrl, mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size });
+    } catch (error) { setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o arquivo."); }
+    finally { setUploadingMedia(false); setUploadProgress(0); if (fileRef.current) fileRef.current.value = ""; }
   }
 
   async function handleSendSticker(emoji: string) {
@@ -200,11 +223,13 @@ export function ChatComposer({
     try {
       setUploadingMedia(true);
       const file = new File([blob], "voice.webm", { type: "audio/webm" });
-      const { secureUrl, durationSeconds } = await uploadToCloudinary(file);
+      const { secureUrl, durationSeconds } = await uploadToCloudinary(file, setUploadProgress);
+      if (durationSeconds && durationSeconds > MAX_AUDIO_SECONDS) throw new Error("Áudios devem ter no máximo 2 minutos.");
       await pushMedia({
         messageType: "AUDIO",
         mediaUrl: secureUrl,
         mediaDurationSeconds: durationSeconds ?? Math.round(blob.size / 16000),
+        mediaFileName: "voice.webm", mediaMimeType: "audio/webm", mediaSizeBytes: blob.size,
       });
     } catch {
       setLocalError("Não foi possível enviar o áudio.");
@@ -231,6 +256,9 @@ export function ChatComposer({
       recorder.start();
       mediaRecorderRef.current = recorder;
       setRecording(true);
+      window.setTimeout(() => {
+        if (mediaRecorderRef.current === recorder) stopRecording();
+      }, MAX_AUDIO_SECONDS * 1000);
     } catch {
       setLocalError("Microfone não disponível.");
     }
@@ -375,7 +403,7 @@ export function ChatComposer({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,video/*"
+          accept="image/*,video/mp4,.mp4,application/pdf,text/plain,.doc,.docx,.xls,.xlsx"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -383,10 +411,11 @@ export function ChatComposer({
           onClick={() => fileRef.current?.click()}
           disabled={uploadingMedia || busy || recording}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"
-          aria-label="Enviar imagem ou vídeo"
+          aria-label="Enviar imagem, vídeo ou arquivo"
         >
-          {uploadingMedia ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={15} />}
+          {uploadingMedia ? <span className="text-[9px]">{uploadProgress}%</span> : <ImageIcon size={15} />}
         </button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
         <button
           onClick={() => setShowStickers((v) => !v)}
           disabled={recording}

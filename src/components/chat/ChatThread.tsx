@@ -351,6 +351,7 @@ function MessageBubble({
   /** Group members for @mention rendering (DMs pass nothing → plain text). */
   mentionMembers?: MentionMember[];
 }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const reactions = msg.reactions ?? [];
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -439,7 +440,7 @@ function MessageBubble({
 
           {/* Media content */}
           {msg.messageType === "IMAGE" && msg.mediaUrl && (
-            <button type="button" onClick={() => window.open(msg.mediaUrl, "_blank")} className="block">
+            <button type="button" onClick={() => setLightboxOpen(true)} className="block">
             <img
               src={msg.mediaUrl}
               alt="imagem"
@@ -456,6 +457,9 @@ function MessageBubble({
           )}
           {msg.messageType === "AUDIO" && msg.mediaUrl && (
             <div className="px-3 py-2">
+              <div className="mb-1 flex items-center gap-1" aria-hidden="true">
+                {Array.from({ length: 24 }, (_, i) => <span key={i} className="w-1 rounded-full bg-current opacity-60" style={{ height: `${8 + ((i * 13) % 18)}px` }} />)}
+              </div>
               <audio src={msg.mediaUrl} controls className="w-64 max-w-full" />
               {msg.mediaDurationSeconds != null && (
                 <p
@@ -466,6 +470,17 @@ function MessageBubble({
                   {fmtDuration(msg.mediaDurationSeconds)}
                 </p>
               )}
+            </div>
+          )}
+          {msg.messageType === "DOCUMENT" && msg.mediaUrl && (
+            <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 px-3 py-3 text-sm ${isMe ? "text-black" : "text-[var(--text)]"}`}>
+              <span className="rounded bg-black/10 px-2 py-1 text-xs">DOC</span>
+              <span className="max-w-56 truncate">{msg.mediaFileName ?? "Documento"}</span>
+            </a>
+          )}
+          {lightboxOpen && msg.mediaUrl && (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-6" onClick={() => setLightboxOpen(false)}>
+              <img src={msg.mediaUrl} alt="imagem ampliada" className="max-h-full max-w-full object-contain" />
             </div>
           )}
           {msg.messageType === "STICKER" && (

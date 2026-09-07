@@ -478,6 +478,9 @@ export async function listGroupMessages(
     message_type: string;
     media_url: string | null;
     media_duration_seconds: string | number | null;
+    media_file_name: string | null;
+    media_mime_type: string | null;
+    media_size_bytes: string | number | null;
     created_at: Date | string;
     reply_to_id: string | number | null;
     reply_to_body: string | null;
@@ -610,7 +613,7 @@ export async function sendGroupMessage(
   profileId: string,
   groupId: number,
   body: string,
-  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number },
+  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number; replyToId?: number },
 ): Promise<GroupMessage> {
   parseProfileId(profileId);
   if (!Number.isInteger(groupId) || groupId <= 0) throw new ValidationError("Grupo inválido.");
@@ -623,7 +626,7 @@ export async function sendGroupMessage(
   if (membership.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
 
   const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
-  const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"];
+  const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO", "DOCUMENT"];
   if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
 
   let text: string | null = null;
@@ -646,9 +649,14 @@ export async function sendGroupMessage(
       : null;
 
   // Vídeos curtos (≤30s) para manter o chat leve; áudio também limitado.
-  if ((messageType === "VIDEO" || messageType === "AUDIO") && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
-    throw new ValidationError("Vídeos e áudios devem ter no máximo 30 segundos.");
+  if (messageType === "VIDEO" && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
+    throw new ValidationError("Vídeos devem ter no máximo 30 segundos.");
   }
+  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 120) {
+    throw new ValidationError("Áudios devem ter no máximo 2 minutos.");
+  }
+  const mediaSizeBytes = opts?.mediaSizeBytes != null ? Number(opts.mediaSizeBytes) : null;
+  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > 20 * 1024 * 1024)) throw new ValidationError("Arquivo de mídia inválido.");
 
   if (messageType === "STICKER" && !text) {
     text = opts?.mediaUrl?.trim() || null;
@@ -675,20 +683,23 @@ export async function sendGroupMessage(
     message_type: string;
     media_url: string | null;
     media_duration_seconds: string | number | null;
+    media_file_name: string | null;
+    media_mime_type: string | null;
+    media_size_bytes: string | number | null;
     created_at: Date | string;
     reply_to_id: string | number | null;
     edited_at: Date | string | null;
   }>(
     hasReplyCols
-      ? `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
-         values ($1, $2, $3, $4, $5, $6, $7)
-         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id, edited_at`
-      : `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds)
-         values ($1, $2, $3, $4, $5, $6)
-         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, created_at`,
+      ? `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, reply_to_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, created_at, reply_to_id, edited_at`
+      : `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, created_at`,
     hasReplyCols
-      ? [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, effectiveReplyId ?? null]
-      : [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds],
+      ? [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.mediaFileName?.slice(0, 255) ?? null, opts?.mediaMimeType?.slice(0, 120) ?? null, mediaSizeBytes, effectiveReplyId ?? null]
+      : [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.mediaFileName?.slice(0, 255) ?? null, opts?.mediaMimeType?.slice(0, 120) ?? null, mediaSizeBytes],
   );
   const row = inserted.rows[0];
   const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
@@ -719,6 +730,9 @@ export async function sendGroupMessage(
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
     mediaUrl: row.media_url ?? undefined,
     mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
+    mediaFileName: row.media_file_name ?? undefined,
+    mediaMimeType: row.media_mime_type ?? undefined,
+    mediaSizeBytes: row.media_size_bytes != null ? Number(row.media_size_bytes) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
     replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
     replyToBody,

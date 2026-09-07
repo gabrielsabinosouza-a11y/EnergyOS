@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
-import { toggleGroupMessagePin } from "@/lib/db/groups";
+import { getDirectPinnedMessages } from "@/lib/db/messages";
 
-export async function POST(
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ messageId: string }> },
+  { params }: { params: Promise<{ friendId: string }> },
 ) {
   try {
     const { profileId } = await requireAuth(request);
-    const { messageId } = await params;
-    // Body is ignored: this is a toggle. v1 keeps a single active pin per chat.
-    await request.json().catch(() => null);
-    const result = await toggleGroupMessagePin(profileId, Number(messageId));
-    return NextResponse.json({ ok: true, pinned: result.pinned });
+    const { friendId } = await params;
+    const pins = await getDirectPinnedMessages(profileId, friendId);
+    return NextResponse.json({ pins });
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

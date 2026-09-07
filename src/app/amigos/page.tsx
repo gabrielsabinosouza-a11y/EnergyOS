@@ -18,7 +18,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
-import { ChatThread, ConversationContextMenu, convActions } from "@/components/chat";
+import { ChatThread, ChatComposer, ConversationContextMenu, convActions } from "@/components/chat";
 import { dmToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
@@ -625,6 +625,12 @@ function ChatPanel({
     setReplyingTo(null);
   }
 
+  async function handleSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
+    const { message } = await api.sendMessage(friend.id, opts.body ?? "", opts);
+    setMessages((prev) => [...prev, message]);
+    lastIdRef.current = message.id;
+  }
+
   async function handleEditMessage(messageId: number, newBody: string) {
     const { message } = await api.editDmMessage(messageId, newBody);
     setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
@@ -699,6 +705,13 @@ function ChatPanel({
           }}
           replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
+          inputSlot={
+            <ChatComposer
+              replying={Boolean(replyingTo)}
+              onSendText={(body) => replyingTo ? handleReply(body, replyingTo.id) : handleSend(body)}
+              onSendMedia={handleSendMedia}
+            />
+          }
         />
         ) : (
                 <div className="flex-1 min-h-0 flex h-full items-center justify-center">

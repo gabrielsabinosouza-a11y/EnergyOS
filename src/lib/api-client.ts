@@ -267,7 +267,7 @@ export const api = {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: DirectMessage[] }>(`/api/dm/${friendId}${query}`);
   },
-  sendMessage: (friendId: string, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number }) =>
+  sendMessage: (friendId: string, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number; replyToId?: number }) =>
     request<{ message: DirectMessage }>(`/api/dm/${friendId}`, { method: "POST", body: JSON.stringify({ body, ...opts }) }),
   editDmMessage: (messageId: number, body: string) =>
     request<{ message: DirectMessage }>(`/api/dm/messages/${messageId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
@@ -305,7 +305,7 @@ export const api = {
     const query = afterId ? `?after=${afterId}` : "";
     return request<{ messages: GroupMessage[] }>(`/api/groups/${id}/messages${query}`);
   },
-  sendGroupMessage: (id: number, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number }) =>
+  sendGroupMessage: (id: number, body: string, opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number; replyToId?: number }) =>
     request<{ message: GroupMessage }>(`/api/groups/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ body, ...opts }),

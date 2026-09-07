@@ -34,6 +34,9 @@ interface DmRow {
   message_type?: string | null;
   media_url?: string | null;
   media_duration_seconds?: string | number | null;
+  media_file_name?: string | null;
+  media_mime_type?: string | null;
+  media_size_bytes?: string | number | null;
   reply_to_id?: string | number | null;
   reply_to_body?: string | null;
   reply_to_sender_name?: string | null;
@@ -76,6 +79,9 @@ function mapDm(row: DmRow): DirectMessage {
     mediaUrl: row.media_url ?? undefined,
     mediaDurationSeconds:
       row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
+    mediaFileName: row.media_file_name ?? undefined,
+    mediaMimeType: row.media_mime_type ?? undefined,
+    mediaSizeBytes: row.media_size_bytes != null ? Number(row.media_size_bytes) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
     replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
     replyToBody: row.reply_to_body ?? undefined,
@@ -116,7 +122,7 @@ const DM_INTERACTION_SELECT = `left join lateral (
    and pinned.message_id = dm.id`;
 
 const DM_SELECT = `select dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at, dm.edited_at,
-  dm.message_type, dm.media_url, dm.media_duration_seconds,
+  dm.message_type, dm.media_url, dm.media_duration_seconds, dm.media_file_name, dm.media_mime_type, dm.media_size_bytes,
   dm.reply_to_id, rp.body as reply_to_body, rp.sender_id as reply_sender_id,
   p.display_name as reply_to_sender_name,
   reactions.reactions, (pinned.message_id is not null) as is_pinned,
@@ -145,8 +151,8 @@ export async function listDirectMessages(
     ? `, dm.edited_at, dm.reply_to_id, rp.body as reply_to_body, p.display_name as reply_to_sender_name`
     : `, null::timestamptz as edited_at, null::bigint as reply_to_id, null::text as reply_to_body, null::text as reply_to_sender_name`;
   const mediaColumns = hasMediaCols
-    ? `, dm.message_type, dm.media_url, dm.media_duration_seconds`
-    : `, null::text as message_type, null::text as media_url, null::int as media_duration_seconds`;
+    ? `    , dm.message_type, dm.media_url, dm.media_duration_seconds, dm.media_file_name, dm.media_mime_type, dm.media_size_bytes`
+    : `, null::text as message_type, null::text as media_url, null::int as media_duration_seconds, null::text as media_file_name, null::text as media_mime_type, null::bigint as media_size_bytes`;
   const FROM = hasReplyCols
     ? ` from direct_messages dm
         left join direct_messages rp on rp.id = dm.reply_to_id
@@ -203,14 +209,14 @@ export async function sendDirectMessage(
   profileId: string,
   otherId: string,
   body: string,
-  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; replyToId?: number },
+  opts?: { messageType?: string; mediaUrl?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number; replyToId?: number },
 ): Promise<DirectMessage> {
   parseProfileId(profileId);
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
 
-  const messageType = (opts?.messageType ?? "TEXT") as DirectMessage["messageType"] | "TEXT";
-  const allowed = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO"] as const;
+  const messageType = (opts?.messageType ?? "TEXT") as "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO" | "DOCUMENT";
+  const allowed = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO", "DOCUMENT"] as const;
   if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
 
   let text: string | null = null;
@@ -230,9 +236,14 @@ export async function sendDirectMessage(
     opts?.mediaDurationSeconds != null && Number.isFinite(opts.mediaDurationSeconds)
       ? Math.max(0, Math.round(opts.mediaDurationSeconds))
       : null;
-  if ((messageType === "VIDEO" || messageType === "AUDIO") && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
-    throw new ValidationError("Vídeos e áudios devem ter no máximo 30 segundos.");
+  if (messageType === "VIDEO" && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
+    throw new ValidationError("Vídeos devem ter no máximo 30 segundos.");
   }
+  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 120) {
+    throw new ValidationError("Áudios devem ter no máximo 2 minutos.");
+  }
+  const mediaSizeBytes = opts?.mediaSizeBytes != null ? Number(opts.mediaSizeBytes) : null;
+  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > 20 * 1024 * 1024)) throw new ValidationError("Arquivo de mídia inválido.");
   if (messageType === "STICKER" && !text) {
     text = opts?.mediaUrl?.trim() || null;
   }
@@ -253,9 +264,9 @@ export async function sendDirectMessage(
 
   const result = await pool.query<DmRow>(
     hasReplyCols && hasMediaCols
-      ? `insert into direct_messages (sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, reply_to_id)
-         values ($1, $2, $3, $4, $5, $6, $7)
-         returning id, sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, created_at, reply_to_id`
+      ? `insert into direct_messages (sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, reply_to_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         returning id, sender_id, recipient_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, created_at, reply_to_id`
       : hasReplyCols
         ? `insert into direct_messages (sender_id, recipient_id, body, reply_to_id)
            values ($1, $2, $3, $4)
@@ -264,7 +275,7 @@ export async function sendDirectMessage(
            values ($1, $2, $3)
            returning id, sender_id, recipient_id, body, created_at`,
     hasReplyCols && hasMediaCols
-      ? [profileId, other, text, messageType, mediaUrl, mediaDurationSeconds, effectiveReplyId ?? null]
+      ? [profileId, other, text, messageType, mediaUrl, mediaDurationSeconds, opts?.mediaFileName?.slice(0, 255) ?? null, opts?.mediaMimeType?.slice(0, 120) ?? null, mediaSizeBytes, effectiveReplyId ?? null]
       : hasReplyCols
         ? [profileId, other, text, effectiveReplyId ?? null]
         : [profileId, other, text],

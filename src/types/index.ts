@@ -167,6 +167,9 @@ export interface DirectMessage {
   messageType?: string;
   mediaUrl?: string;
   mediaDurationSeconds?: number;
+  mediaFileName?: string;
+  mediaMimeType?: string;
+  mediaSizeBytes?: number;
   createdAt: string;
   replyToId?: number;
   replyToBody?: string;
@@ -196,6 +199,9 @@ export interface ChatMessage {
   messageType?: string;
   mediaUrl?: string;
   mediaDurationSeconds?: number;
+  mediaFileName?: string;
+  mediaMimeType?: string;
+  mediaSizeBytes?: number;
   createdAt: string;
   replyToId?: number;
   replyToBody?: string;
@@ -220,6 +226,9 @@ export function dmToChatMessage(dm: DirectMessage): ChatMessage {
     messageType: dm.messageType,
     mediaUrl: dm.mediaUrl,
     mediaDurationSeconds: dm.mediaDurationSeconds,
+    mediaFileName: dm.mediaFileName,
+    mediaMimeType: dm.mediaMimeType,
+    mediaSizeBytes: dm.mediaSizeBytes,
     createdAt: dm.createdAt,
     replyToId: dm.replyToId,
     replyToBody: dm.replyToBody,
@@ -245,6 +254,9 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     messageType: gm.messageType,
     mediaUrl: gm.mediaUrl,
     mediaDurationSeconds: gm.mediaDurationSeconds,
+    mediaFileName: gm.mediaFileName,
+    mediaMimeType: gm.mediaMimeType,
+    mediaSizeBytes: gm.mediaSizeBytes,
     createdAt: gm.createdAt,
     replyToId: (gm as GroupMessage & { replyToId?: number }).replyToId,
     replyToBody: (gm as GroupMessage & { replyToBody?: string }).replyToBody,
@@ -341,7 +353,7 @@ export interface GroupDetail {
   isPublic: boolean;
 }
 
-export type GroupMessageType = "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO";
+export type GroupMessageType = "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO" | "DOCUMENT";
 
 export interface GroupMessage {
   id: number;
@@ -354,6 +366,9 @@ export interface GroupMessage {
   messageType: GroupMessageType;
   mediaUrl?: string;
   mediaDurationSeconds?: number;
+  mediaFileName?: string;
+  mediaMimeType?: string;
+  mediaSizeBytes?: number;
   createdAt: string;
   replyToId?: number;
   replyToBody?: string;

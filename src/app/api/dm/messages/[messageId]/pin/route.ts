@@ -10,8 +10,8 @@ export async function POST(
   try {
     const { profileId } = await requireAuth(request);
     const { messageId } = await params;
-    await toggleDirectMessagePin(profileId, Number(messageId));
-    return NextResponse.json({ ok: true });
+    const result = await toggleDirectMessagePin(profileId, Number(messageId));
+    return NextResponse.json({ ok: true, pinned: result.pinned });
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

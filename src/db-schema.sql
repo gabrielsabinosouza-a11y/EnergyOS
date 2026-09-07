@@ -473,9 +473,12 @@ create table if not exists group_messages (
   sender_id text not null references profiles(id) on delete cascade,
   body text,
   message_type text not null default 'TEXT'
-    check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO')),
+    check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO', 'DOCUMENT')),
   media_url text,
   media_duration_seconds integer,
+  media_file_name text,
+  media_mime_type text,
+  media_size_bytes bigint,
   created_at timestamptz not null default now(),
   reply_to_id bigint,
   edited_at timestamptz
@@ -486,10 +489,16 @@ do $$ begin
   alter table group_messages add column if not exists message_type text not null default 'TEXT';
   alter table group_messages add column if not exists media_url text;
   alter table group_messages add column if not exists media_duration_seconds integer;
+  alter table group_messages add column if not exists media_file_name text;
+  alter table group_messages add column if not exists media_mime_type text;
+  alter table group_messages add column if not exists media_size_bytes bigint;
   alter table group_messages add column if not exists reply_to_id bigint;
   alter table group_messages add column if not exists edited_at timestamptz;
   -- Media-only messages (image/video/audio) have no text body, so body must be nullable
   alter table group_messages alter column body drop not null;
+  alter table group_messages drop constraint if exists group_messages_message_type_check;
+  alter table group_messages add constraint group_messages_message_type_check
+    check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO', 'DOCUMENT')) not valid;
 exception when others then null; end $$;
 
 create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
@@ -545,6 +554,12 @@ do $$ begin
   alter table direct_messages add column if not exists message_type text not null default 'TEXT';
   alter table direct_messages add column if not exists media_url text;
   alter table direct_messages add column if not exists media_duration_seconds integer;
+  alter table direct_messages add column if not exists media_file_name text;
+  alter table direct_messages add column if not exists media_mime_type text;
+  alter table direct_messages add column if not exists media_size_bytes bigint;
+  alter table direct_messages drop constraint if exists direct_messages_message_type_check;
+  alter table direct_messages add constraint direct_messages_message_type_check
+    check (message_type in ('TEXT', 'IMAGE', 'VIDEO', 'STICKER', 'AUDIO', 'DOCUMENT')) not valid;
 exception when others then null; end $$;
 
 create index if not exists dm_pair_idx on direct_messages (
@@ -586,15 +601,27 @@ create table if not exists pinned_messages (
 );
 
 alter table pinned_messages add column if not exists conversation_id text;
--- Pin expiration: chosen at pin time (7/14/30 days). null = never expires.
+-- Pin expiration (legacy 7/14/30-day pins). v1 pins are permanent (null).
 alter table pinned_messages add column if not exists expires_at timestamptz;
 
 create index if not exists pinned_messages_kind_idx
   on pinned_messages(message_kind, message_id);
 
--- Up to 3 pins per conversation are allowed (enforced in application code);
--- the previous one-pin-per-conversation unique index is removed.
-drop index if exists pinned_messages_one_per_conversation_idx;
+-- v1: one active pin per conversation. Keep the most recently pinned row when
+-- collapsing leftovers from the previous 3-pin stack. A later stack/carousel
+-- can drop this unique index.
+delete from pinned_messages pm
+ where pm.conversation_id is not null
+   and pm.ctid not in (
+     select distinct on (message_kind, conversation_id) ctid
+       from pinned_messages
+      where conversation_id is not null
+      order by message_kind, conversation_id, created_at desc
+   );
+
+create unique index if not exists pinned_messages_one_per_conversation_idx
+  on pinned_messages (message_kind, conversation_id)
+  where conversation_id is not null;
 
 -- ── Group milestones & weekly quest ──────────────────────────────────────────
 -- Lifetime combined-minute milestones for each group.
@@ -750,13 +777,14 @@ create table if not exists achievement_progress_events (
 create index if not exists achievement_progress_events_profile_idx
   on achievement_progress_events(profile_id, achievement_id);
 
--- Never allow a stale live-room evaluator to lower append-only progress.
+-- Never allow a stale live-session evaluator to lower append-only progress
+-- for event-backed achievements (focus_companion, deep_focus, flow_state).
 create or replace function prevent_focus_companion_regression()
 returns trigger
 language plpgsql
 as $$
 begin
-  if new.achievement_id = 'focus_companion'
+  if new.achievement_id in ('focus_companion', 'deep_focus', 'flow_state')
      and tg_op = 'UPDATE'
      and new.current_value < old.current_value then
     new.current_value := old.current_value;
@@ -771,6 +799,25 @@ drop trigger if exists focus_companion_progress_no_regression on user_achievemen
 create trigger focus_companion_progress_no_regression
 before update on user_achievement_progress
 for each row execute function prevent_focus_companion_regression();
+
+-- ── Immutable focus-session event log ─────────────────────────────────────
+-- One row per user per completed focus session. Written only on completion.
+-- No FK to focus_rooms or focus_sessions — survives all room/session deletions.
+create table if not exists focus_session_events (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  session_id bigint not null,
+  room_id bigint,
+  participant_count integer not null default 1,
+  duration_minutes integer not null,
+  paused_count integer not null default 0,
+  completed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (profile_id, session_id)
+);
+
+create index if not exists focus_session_events_profile_idx
+  on focus_session_events(profile_id);
 
 -- ========================================
 -- Daily Quests System

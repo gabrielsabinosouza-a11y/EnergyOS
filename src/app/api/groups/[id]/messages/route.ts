@@ -35,6 +35,9 @@ export async function POST(
       messageType: body.messageType as string | undefined,
       mediaUrl: body.mediaUrl as string | undefined,
       mediaDurationSeconds: body.mediaDurationSeconds as number | undefined,
+      mediaFileName: body.mediaFileName as string | undefined,
+      mediaMimeType: body.mediaMimeType as string | undefined,
+      mediaSizeBytes: body.mediaSizeBytes as number | undefined,
       replyToId: body.replyToId != null ? Number(body.replyToId) : undefined,
     });
     return NextResponse.json({ message });
