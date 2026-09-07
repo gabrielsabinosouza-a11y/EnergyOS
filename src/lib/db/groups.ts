@@ -1309,26 +1309,3 @@ export async function deleteGroup(profileId: string, groupId: number): Promise<v
 export function parseGroupId(value: unknown): number {
   return parseNumber(value, "Grupo", { integer: true, min: 1 });
 }
-
-const STICKERS: { id: string; emoji: string }[] = [
-  { id: "fire", emoji: "🔥" },
-  { id: "rocket", emoji: "🚀" },
-  { id: "clap", emoji: "👏" },
-  { id: "muscle", emoji: "💪" },
-  { id: "party", emoji: "🎉" },
-  { id: "fist", emoji: "✊" },
-  { id: "sparkle", emoji: "✨" },
-  { id: "star", emoji: "⭐" },
-  { id: "coffee", emoji: "☕" },
-  { id: "zzz", emoji: "😴" },
-  { id: "tear", emoji: "😂" },
-  { id: "heart", emoji: "❤️" },
-  { id: "thinking", emoji: "🤔" },
-  { id: "check", emoji: "✅" },
-  { id: "wow", emoji: "😮" },
-  { id: "moon", emoji: "🌙" },
-];
-
-export function getAvailableStickers(): { id: string; emoji: string }[] {
-  return STICKERS;
-}

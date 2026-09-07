@@ -13,7 +13,7 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   deep_focus: [60, 120, 240, 520],
   early_riser: [5, 25, 100],
   sleep_champion: [10, 50, 100],
-  consistency_king: [1, 10, 50],
+  consistency_king: [1, 10, 40],
   xp_olympian: [1000, 10000, 50000],
   social_spark: [1, 5, 20],
   rarest_aura: [1],

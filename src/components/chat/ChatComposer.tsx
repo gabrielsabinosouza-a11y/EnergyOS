@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Image as ImageIcon,
   FileText,
@@ -10,10 +10,8 @@ import {
   Paperclip,
   Send,
   Square,
-  Sticker,
   Video,
 } from "lucide-react";
-import { api } from "@/lib/api-client";
 import { MAX_AUDIO_SECONDS, MAX_VIDEO_SECONDS, validateImageFile, validateMediaSize, validateVideoFile, readVideoDuration, uploadToCloudinary } from "@/lib/media";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
@@ -28,7 +26,7 @@ export interface ChatComposerMentionMember {
 export interface ChatComposerProps {
   /** Persist a text send (DM or group). Page decides reply vs plain send. */
   onSendText: (body: string) => Promise<void>;
-  /** Persist a media send (IMAGE/VIDEO/AUDIO/STICKER). */
+  /** Persist a media send (IMAGE/VIDEO/AUDIO/DOCUMENT). */
   onSendMedia: (opts: {
     messageType: string;
     mediaUrl?: string;
@@ -78,8 +76,8 @@ function MentionAvatar({ member, size = 26 }: { member: ChatComposerMentionMembe
 
 /**
  * Shared full-featured message composer used as ChatThread's `inputSlot` by
- * BOTH the DM (Amigos) and group (Grupos) chats, so media + stickers + voice
- * behave identically everywhere. Group-only @mention autocomplete is enabled
+ * BOTH the DM (Amigos) and group (Grupos) chats, so media + voice behave
+ * identically everywhere. Group-only @mention autocomplete is enabled
  * via the optional `mentionMembers` prop.
  */
 export function ChatComposer({
@@ -95,8 +93,6 @@ export function ChatComposer({
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [showStickers, setShowStickers] = useState(false);
-  const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -104,10 +100,6 @@ export function ChatComposer({
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
-
-  useEffect(() => {
-    api.getGroupStickers().then((d) => setStickers(d.stickers)).catch(() => {});
-  }, []);
 
   const sendText = useCallback(
     async (raw: string) => {
@@ -216,17 +208,6 @@ export function ChatComposer({
       await pushMedia({ messageType: "DOCUMENT", mediaUrl: secureUrl, mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size });
     } catch (error) { setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o arquivo."); }
     finally { setUploadingMedia(false); setUploadProgress(0); if (fileRef.current) fileRef.current.value = ""; }
-  }
-
-  async function handleSendSticker(emoji: string) {
-    if (busy) return;
-    setShowStickers(false);
-    setLocalError(null);
-    try {
-      await pushMedia({ messageType: "STICKER", body: emoji });
-    } catch {
-      setLocalError("Não foi possível enviar o sticker.");
-    }
   }
 
   async function handleSendVoice(blob: Blob) {
@@ -370,28 +351,6 @@ export function ChatComposer({
     <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
       {shownError && <p className="mb-2 text-[11px] text-[var(--red)]">{shownError}</p>}
 
-      {/* Sticker picker */}
-      <AnimatePresence>
-        {showStickers && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            className="mb-2 grid max-h-40 grid-cols-8 gap-1 overflow-y-auto rounded-xl border border-[var(--border-subtle)] p-2"
-          >
-            {stickers.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => handleSendSticker(s.emoji)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:bg-[var(--accent-bg)]"
-              >
-                {s.emoji}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* @mention popover (groups only) */}
       {mentionEnabled && mentionOpen && mentionResults.length > 0 && (
         <motion.div
@@ -440,14 +399,6 @@ export function ChatComposer({
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar imagem" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><ImageIcon size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar vídeo MP4" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><Video size={15} /></button>
-        <button
-          onClick={() => setShowStickers((v) => !v)}
-          disabled={recording}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"
-          aria-label="Stickers"
-        >
-          <Sticker size={15} />
-        </button>
         <input
           type="text"
           placeholder={replying ? "Responder..." : "Mensagem..."}

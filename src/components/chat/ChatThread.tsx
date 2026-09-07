@@ -595,7 +595,7 @@ export interface ChatThreadProps {
   /** Read status tracking: message IDs that the other party has read */
   readMessageIds?: Set<number>;
 
-  /** Custom input area (for group-specific features like media, stickers, voice) */
+  /** Custom input area (for group-specific features like media, voice) */
   inputSlot?: React.ReactNode;
 
   /** External reply state */

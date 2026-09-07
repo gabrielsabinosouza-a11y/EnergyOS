@@ -344,8 +344,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action, ...payload }),
     }),
-  getGroupStickers: () =>
-    request<{ stickers: { id: string; emoji: string }[] }>(`/api/groups/stickers`),
   getGroupLeaderboard: (id: number) =>
     request<{ leaderboard: import("@/types").LeagueEntry[] }>(`/api/groups/${id}/leaderboard`),
   getGlobalGroupsLeaderboard: (period: "WEEK" | "MONTH" | "YEAR" | "ALL_TIME", limit = 50, offset = 0) =>

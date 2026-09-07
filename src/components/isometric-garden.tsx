@@ -20,6 +20,10 @@ const TERRAIN_MAX = 748;
 const ICON_BASE = 58;
 /** Piso mínimo de tamanho de célula. Abaixo disso as plantas começarían a se superpor. */
 const MIN_CELL = 8;
+/** Tamanho máximo (e alvo) de cada planta no jardim. Poucas plantas nunca ficam
+ *  gigantes: o terreno cresce com o conteúdo até o cap e, a partir daí, as plantas
+ *  encolhem junto com a densidade — estilo Forest. */
+const MAX_ICON = 120;
 /** Acima deste nº de itens ativa o modo denso: fade único do container, sem springs por item. */
 const DENSE_THRESHOLD = 25;
 
@@ -61,14 +65,19 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   const n = planted.length;
 
   // ── Densidade dinámica (Forest-style) ───────────────────────────────────────
-  // O terreno é um quadrado fixo (aspect-ratio 1/1) que nunca rola. A grade deriva
-  // do nº de plantas (columns/rows ≈ ceil(sqrt(n))) e cada célula encolhe de forma
-  // inversa à densidade para que tudo caiba sempre dentro do quadrado.
+  // O terreno é um quadrado (aspect-ratio 1/1) que nunca rola, mas que cresce com
+  // o conteúdo: poucas plantas → terreno compacto e centralizado, cada uma no seu
+  // tamanho alvo (MAX_ICON). Acima do que cabe no cap (TERRAIN_MAX), as células
+  // encolhem de forma inversa à densidade para que tudo caiba dentro do quadrado.
   const containerSize = Math.max(1, Math.min(TERRAIN_MAX, availableWidth));
   const columns = Math.max(1, Math.ceil(Math.sqrt(n)));
   const rows = Math.max(1, Math.ceil(n / columns));
-  const usableSize = Math.max(1, containerSize - GRID_PAD * 2);
+  const neededSize = Math.max(columns, rows) * MAX_ICON + GRID_PAD * 2;
+  const terrainSize = Math.max(1, Math.min(containerSize, neededSize));
+  const usableSize = Math.max(1, terrainSize - GRID_PAD * 2);
   const cellSize = Math.max(MIN_CELL, usableSize / Math.max(columns, rows));
+  // Um grupo pequeno de plantas nunca domina a tela: o sprite respeita o teto.
+  const icon = Math.min(cellSize, MAX_ICON);
   // Escala de decorações: ficam a tamanho base em células grandes e encolhen junto
   // com a densidade para não estorbar ao compactar muitas plantas.
   const dec = Math.min(1, cellSize / ICON_BASE);
@@ -114,7 +123,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
         transition={{ duration: 0.35 }}
         style={{
           width: "100%",
-          maxWidth: containerSize,
+          maxWidth: terrainSize,
           aspectRatio: "1 / 1",
           background: [
             "radial-gradient(120% 85% at 50% 10%, rgba(113,212,255,0.07) 0%, rgba(113,212,255,0) 55%)",
@@ -212,7 +221,6 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
           const isFullLife = entry.status === "alive" && energyStage === "full";
 
-          const icon = cellSize;
           const delay = index * 0.035;
 
           const sharedProps = {
