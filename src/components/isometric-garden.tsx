@@ -189,11 +189,12 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
         ))}
 
         <div
-          className="absolute inset-0 grid content-start justify-items-center"
+          className="absolute inset-0 grid justify-items-center"
           style={{
-            padding: 16,
-            gridTemplateColumns: `repeat(auto-fill, minmax(${cellWidth}px, 1fr))`,
-            gridAutoRows: cellHeight,
+            padding: GRID_PAD,
+            placeContent: "center",
+            gridTemplateColumns: `repeat(${columns}, 1fr)`,
+            gridAutoRows: `${cellSize}px`,
           }}
         >
         {planted.map((entry, index) => {
@@ -211,7 +212,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
           const isFullLife = entry.status === "alive" && energyStage === "full";
 
-          const icon = iconSize;
+          const icon = cellSize;
           const delay = index * 0.035;
 
           const sharedProps = {
@@ -220,7 +221,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
             className: "relative flex items-center justify-center border-0 bg-transparent p-0",
             style: {
               width: "100%",
-              height: cellHeight,
+              height: cellSize,
               zIndex: 10 + index,
               cursor: onEntryClick ? "pointer" : "default",
             },
@@ -257,8 +258,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                   style={{
                     left: "50%",
                     top: "50%",
-                    width: 92 * gridScale,
-                    height: 62 * gridScale,
+                    width: 92 * dec,
+                    height: 62 * dec,
                     opacity: 0.4,
                     background: `radial-gradient(50% 50% at 50% 50%, ${cfg.glow} 0%, transparent 72%)`,
                     animationDelay: `${((entry.id % 8) * 0.5).toFixed(2)}s`,
@@ -273,8 +274,8 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 style={{
                   left: "50%",
                   top: "50%",
-                  width: 64 * gridScale,
-                  height: 21 * gridScale,
+                  width: 64 * dec,
+                  height: 21 * dec,
                   transform: "translate(-50%, -50%)",
                   background: isWithered
                     ? "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 75%)"
@@ -288,9 +289,9 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                 className="absolute rounded-[50%]"
                 style={{
                   left: "50%",
-                  bottom: 6 * gridScale,
-                  width: 46 * gridScale,
-                  height: 9 * gridScale,
+                  bottom: 6 * dec,
+                  width: 46 * dec,
+                  height: 9 * dec,
                   transform: "translateX(-50%)",
                   background: "rgba(0,0,0,0.5)",
                   filter: "blur(4px)",

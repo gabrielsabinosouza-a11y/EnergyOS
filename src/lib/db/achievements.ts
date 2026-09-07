@@ -226,6 +226,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
         `select count(*)::int as current_value
          from focus_session_events
          where profile_id = $1
+           and is_completed = true
            and participant_count >= 2`,
         [profileId],
       ),
@@ -251,7 +252,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
 
   return {
     streak_master: longestStreak,
-    deep_focus: Number((lifetimeFocus as any)?.rows?.[0]?.minutes ?? 0),
+    deep_focus: Number(lifetimeFocus?.rows?.[0]?.minutes ?? 0),
     early_riser: Number(earlyRiser?.rows[0]?.count ?? 0),
     sleep_champion: Number(sleepChampion?.rows[0]?.count ?? 0),
     consistency_king: Number(perfectWeeks?.rows[0]?.count ?? 0),

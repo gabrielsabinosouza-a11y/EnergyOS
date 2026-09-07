@@ -327,40 +327,6 @@ export async function endFocusSession(
     await addCoins(profileId, coins);
   }
 
-  // Record an immutable event for this completed session. This table has no FK
-  // to focus_rooms or focus_sessions so rows survive any room/session deletion.
-  // Achievements (deep_focus, flow_state, focus_companion) read from here.
-  {
-    let participantCount = 1;
-    if (session.rows[0].room_id) {
-      const pc = await pool.query<{ count: string | number }>(
-        `select count(*)::int as count
-         from room_participants
-         where room_id = $1
-           and joined_at <= $2
-           and session_status in ('focusing', 'completed', 'left')
-           and coalesce(completed_at, gave_up_at, now()) > $3`,
-        [session.rows[0].room_id, updated.rows[0].ended_at ?? new Date(), session.rows[0].started_at],
-      );
-      participantCount = Number(pc.rows[0]?.count ?? 1);
-    }
-    await pool.query(
-      `insert into focus_session_events
-         (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, completed_at)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict (profile_id, session_id) do nothing`,
-      [
-        profileId,
-        sessionId,
-        session.rows[0].room_id ?? null,
-        participantCount,
-        durationMinutes,
-        pausedCount,
-        updated.rows[0].ended_at ?? new Date(),
-      ],
-    );
-  }
-
   // Update daily missions via the shared metric hook. This replaces the old
   // hardcoded quest-id increments (1/2/3), which broke because mission row ids
   // are no longer fixed. Every completed session advances the SESSIONS_COMPLETED
@@ -404,10 +370,12 @@ export async function endFocusSession(
   const completed = durationMinutes >= completedThreshold;
   await finalizeGardenEntries(profileId, sessionId, completed, durationMinutes);
 
-  // Co-focus credit is append-only and independent of the room's later
-  // deletion. Count participants while the room record is still available.
-  if (completed && session.rows[0].room_id) {
-    const participants = await pool.query<{ count: string | number }>(
+  // Record an immutable event for this session. This table has no FK to
+  // focus_rooms or focus_sessions, so rows survive any room/session deletion.
+  // Achievements (deep_focus, flow_state, focus_companion) read from here.
+  let participantCount = 1;
+  if (session.rows[0].room_id) {
+    const pc = await pool.query<{ count: string | number }>(
       `select count(*)::int as count
        from room_participants
        where room_id = $1
@@ -416,9 +384,29 @@ export async function endFocusSession(
          and coalesce(completed_at, gave_up_at, now()) > $3`,
       [session.rows[0].room_id, updated.rows[0].ended_at ?? new Date(), session.rows[0].started_at],
     );
-    if (Number(participants.rows[0]?.count ?? 0) >= 2) {
-      await recordFocusCompanionProgress(profileId, sessionId);
-    }
+    participantCount = Number(pc.rows[0]?.count ?? 1);
+  }
+  await pool.query(
+    `insert into focus_session_events
+       (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, is_completed, completed_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
+     on conflict (profile_id, session_id) do nothing`,
+    [
+      profileId,
+      sessionId,
+      session.rows[0].room_id ?? null,
+      participantCount,
+      durationMinutes,
+      pausedCount,
+      completed,
+      updated.rows[0].ended_at ?? new Date(),
+    ],
+  );
+
+  // Co-focus credit is append-only and independent of the room's later
+  // deletion. Count participants while the room record is still available.
+  if (completed && participantCount >= 2) {
+    await recordFocusCompanionProgress(profileId, sessionId);
   }
 
   // Record group focus contributions for leaderboard

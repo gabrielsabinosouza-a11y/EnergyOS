@@ -811,6 +811,7 @@ create table if not exists focus_session_events (
   participant_count integer not null default 1,
   duration_minutes integer not null,
   paused_count integer not null default 0,
+  is_completed boolean not null default false,
   completed_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   unique (profile_id, session_id)

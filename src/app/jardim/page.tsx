@@ -430,7 +430,6 @@ export default function JardimPage() {
               <IsometricGarden
                 entries={periodEntries}
                 onEntryClick={setSelectedEntry}
-                className="min-h-[300px]"
               />
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">

@@ -144,7 +144,7 @@ export async function listDirectMessages(
   // The reply/edit/media columns may not exist on older databases until the
   // migration runs; detect them so the query stays valid either way.
   const hasReplyCols = await hasDmColumn("reply_to_id");
-  const hasMediaCols = await hasDmColumn("media_url");
+  const hasMediaCols = await hasDmColumn("media_size_bytes");
   const baseColumns = `dm.id, dm.sender_id, dm.recipient_id, dm.body, dm.created_at,
     reactions.reactions, (pinned.message_id is not null) as is_pinned, pinned.created_at as pinned_at, pinned.pinned_by`;
   const replyColumns = hasReplyCols
@@ -258,7 +258,7 @@ export async function sendDirectMessage(
     if (!isSameConversation) throw new ValidationError("Mensagem respondida inválida.");
   }
 
-  const hasMediaCols = await hasDmColumn("media_url");
+  const hasMediaCols = await hasDmColumn("media_size_bytes");
   const hasMedia = messageType !== "TEXT";
   if (hasMedia && !hasMediaCols) throw new ValidationError("Mensagens de mídia indisponíveis.");
 

@@ -17,7 +17,7 @@ async function main() {
   for (const { id } of profiles) {
     const result = await pool.query(
       `insert into focus_session_events
-         (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, completed_at, created_at)
+         (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, is_completed, completed_at, created_at)
        select
          fs.profile_id,
          fs.id,
@@ -32,6 +32,7 @@ async function main() {
          ), 1),
          fs.duration_minutes,
          coalesce(fs.paused_count, 0),
+         fs.duration_minutes >= fs.target_duration_minutes,
          fs.ended_at,
          fs.ended_at
        from focus_sessions fs
