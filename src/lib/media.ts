@@ -5,10 +5,18 @@
 export const MAX_VIDEO_SECONDS = 30;
 export const MAX_AUDIO_SECONDS = 120;
 export const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+
+export function validateImageFile(file: File): void {
+  if (!IMAGE_TYPES.includes(file.type as (typeof IMAGE_TYPES)[number])) {
+    throw new Error("Apenas imagens JPG, PNG, WEBP ou GIF são permitidas.");
+  }
+  validateMediaSize(file);
+}
 
 export function validateVideoFile(file: File): void {
-  if (file.type !== "video/mp4" && !/\.mp4$/i.test(file.name)) {
-    throw new Error("Vídeos devem estar no formato MP4.");
+  if (file.type !== "video/mp4" || !/\.mp4$/i.test(file.name)) {
+    throw new Error("Apenas vídeos .mp4 são permitidos.");
   }
   if (file.size > MAX_MEDIA_BYTES) throw new Error("Vídeos devem ter no máximo 20 MB.");
 }

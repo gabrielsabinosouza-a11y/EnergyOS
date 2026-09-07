@@ -7,12 +7,14 @@ import {
   FileText,
   Loader2,
   Mic,
+  Paperclip,
   Send,
   Square,
   Sticker,
+  Video,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { MAX_AUDIO_SECONDS, MAX_VIDEO_SECONDS, validateMediaSize, validateVideoFile, readVideoDuration, uploadToCloudinary } from "@/lib/media";
+import { MAX_AUDIO_SECONDS, MAX_VIDEO_SECONDS, validateImageFile, validateMediaSize, validateVideoFile, readVideoDuration, uploadToCloudinary } from "@/lib/media";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
 
@@ -92,6 +94,7 @@ export function ChatComposer({
   const [busy, setBusy] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [showStickers, setShowStickers] = useState(false);
   const [stickers, setStickers] = useState<{ id: string; emoji: string }[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -149,7 +152,7 @@ export function ChatComposer({
     setUploadingMedia(true);
     setLocalError(null);
     try {
-      validateMediaSize(file);
+      validateImageFile(file);
       const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
       await pushMedia({ messageType: "IMAGE", mediaUrl: secureUrl, mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size });
     } catch (error) {
@@ -167,7 +170,7 @@ export function ChatComposer({
     try {
       validateVideoFile(file);
       const durationSeconds = await readVideoDuration(file);
-      if (durationSeconds > 0 && durationSeconds > MAX_VIDEO_SECONDS) {
+      if (durationSeconds <= 0 || durationSeconds > MAX_VIDEO_SECONDS) {
         setLocalError(`Vídeos devem ter no máximo ${MAX_VIDEO_SECONDS}s.`);
         return;
       }
@@ -191,7 +194,16 @@ export function ChatComposer({
     if (!file) return;
     if (file.type.startsWith("image/")) await handleSendImage(file);
     else if (file.type === "video/mp4" || /\.mp4$/i.test(file.name)) await handleSendVideo(file);
-    else if (file.type === "application/pdf" || file.type.startsWith("text/") || file.type.includes("word") || file.type.includes("excel")) await handleSendDocument(file);
+    else if (
+      file.type === "application/pdf" ||
+      file.type.startsWith("text/") ||
+      file.type.includes("word") ||
+      file.type.includes("excel") ||
+      file.type.includes("spreadsheet") ||
+      file.type === "application/zip" ||
+      file.type === "application/x-zip-compressed" ||
+      /\.(pdf|doc|docx|xls|xlsx|zip|txt|csv)$/i.test(file.name)
+    ) await handleSendDocument(file);
     else setLocalError("Formato de arquivo não suportado.");
   }
 
@@ -231,8 +243,8 @@ export function ChatComposer({
         mediaDurationSeconds: durationSeconds ?? Math.round(blob.size / 16000),
         mediaFileName: "voice.webm", mediaMimeType: "audio/webm", mediaSizeBytes: blob.size,
       });
-    } catch {
-      setLocalError("Não foi possível enviar o áudio.");
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o áudio.");
     } finally {
       setUploadingMedia(false);
     }
@@ -255,7 +267,16 @@ export function ChatComposer({
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
+      setRecordingSeconds(0);
       setRecording(true);
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        if (mediaRecorderRef.current !== recorder) {
+          window.clearInterval(timer);
+          return;
+        }
+        setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      }, 250);
       window.setTimeout(() => {
         if (mediaRecorderRef.current === recorder) stopRecording();
       }, MAX_AUDIO_SECONDS * 1000);
@@ -268,6 +289,7 @@ export function ChatComposer({
     mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
     setRecording(false);
+    setRecordingSeconds(0);
   }
 
   /* ─── @mention autocomplete (groups only) ──────────────────────── */
@@ -411,11 +433,13 @@ export function ChatComposer({
           onClick={() => fileRef.current?.click()}
           disabled={uploadingMedia || busy || recording}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"
-          aria-label="Enviar imagem, vídeo ou arquivo"
+          aria-label="Enviar arquivo"
         >
-          {uploadingMedia ? <span className="text-[9px]">{uploadProgress}%</span> : <ImageIcon size={15} />}
+          {uploadingMedia ? <span className="text-[9px]">{uploadProgress}%</span> : <Paperclip size={15} />}
         </button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar imagem" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><ImageIcon size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar vídeo MP4" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><Video size={15} /></button>
         <button
           onClick={() => setShowStickers((v) => !v)}
           disabled={recording}
@@ -434,13 +458,19 @@ export function ChatComposer({
           className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
         />
         {recording ? (
-          <button
-            onClick={stopRecording}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110"
-            aria-label="Parar gravação"
-          >
-            <Square size={13} />
-          </button>
+          <>
+            <span className="flex items-center gap-1 text-[11px] text-[var(--red)]" aria-live="polite">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--red)]" />
+              {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
+            </span>
+            <button
+              onClick={stopRecording}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--red)] text-white transition hover:brightness-110"
+              aria-label="Parar gravação"
+            >
+              <Square size={13} />
+            </button>
+          </>
         ) : (
           <button
             onClick={() => startRecording()}

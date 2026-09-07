@@ -12,28 +12,16 @@ interface IsometricGardenProps {
 }
 
 // ── Terrain metrics ───────────────────────────────────────────────────────────
-const TILE_H = 68;
-
-// ── Density scaling (Forest-style) ────────────────────────────────────────────
-// O terreno mantém altura fixa; gridScale encolhe passos e sprites conforme o nº
-// de itens cresce, para o jardim inteiro caber sem rolagem no caso normal.
-/** Largura base do sprite de energia (na densidade mínima). */
+/** Padding interno do grid (espaço entre a borda do terreno e as plantas). */
+const GRID_PAD = 16;
+/** Cap do lado do terreno quadrado em desktop (encolhe naturalmente em telas menores). */
+const TERRAIN_MAX = 748;
+/** Largura base de referência para as decorações (glow, sombra, patch). */
 const ICON_BASE = 58;
-/** Menor tamanho legível do sprite. Abaixo disso o terreno estoura o cap e a rolagem assume. */
-const MIN_ICON = 20;
-const REFERENCE_COUNT = 12;
-/** Altura-alvo fixa do terreno (mantida dentro do cap de 640px do invólucro). */
-const TERRAIN_H_TARGET = 560;
+/** Piso mínimo de tamanho de célula. Abaixo disso as plantas começarían a se superpor. */
+const MIN_CELL = 8;
 /** Acima deste nº de itens ativa o modo denso: fade único do container, sem springs por item. */
 const DENSE_THRESHOLD = 25;
-
-/** Quantas plantas por linha cabem na largura disponível do terreno. */
-function columnsForWidth(width: number): number {
-  if (width >= 660) return 6;
-  if (width >= 540) return 5;
-  if (width >= 420) return 4;
-  return 3;
-}
 
 /** Hash determinístico → 0..1. Dá jitter estável entre renders/SSR, sem Math.random. */
 function hash01(seed: number): number {
@@ -46,7 +34,6 @@ function hash01(seed: number): number {
 
 export function IsometricGarden({ entries, onEntryClick, className = "" }: IsometricGardenProps) {
   const terrainRef = useRef<HTMLDivElement>(null);
-  const [cols, setCols] = useState(6);
   const [availableWidth, setAvailableWidth] = useState(748);
 
   useEffect(() => {
@@ -56,7 +43,6 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
       const cs = getComputedStyle(el);
       const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       setAvailableWidth(Math.max(1, avail));
-      setCols(columnsForWidth(avail));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -74,20 +60,18 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   const reduced = useReducedMotion() ?? false;
   const n = planted.length;
 
-  const iconSize = Math.min(
-    ICON_BASE,
-    Math.max(MIN_ICON, ICON_BASE * Math.sqrt(REFERENCE_COUNT / Math.max(1, n))),
-  );
-  const gridScale = iconSize / ICON_BASE;
-  const currentColumnWidth = Math.max(1, (availableWidth - 40) / cols);
-  const cellWidth = currentColumnWidth * gridScale;
-  const cellHeight = Math.max(iconSize * 1.25, TILE_H * gridScale);
-  const layoutCols = Math.max(1, Math.floor(availableWidth / cellWidth));
-  const rows = Math.max(1, Math.ceil(n / layoutCols));
-  const contentHeight = rows * cellHeight + 32;
-  const needsScroll = iconSize <= MIN_ICON && contentHeight > TERRAIN_H_TARGET;
-  const terrainWidth = Math.min(748, Math.max(200, availableWidth));
-  const terrainHeight = TERRAIN_H_TARGET;
+  // ── Densidade dinámica (Forest-style) ───────────────────────────────────────
+  // O terreno é um quadrado fixo (aspect-ratio 1/1) que nunca rola. A grade deriva
+  // do nº de plantas (columns/rows ≈ ceil(sqrt(n))) e cada célula encolhe de forma
+  // inversa à densidade para que tudo caiba sempre dentro do quadrado.
+  const containerSize = Math.max(1, Math.min(TERRAIN_MAX, availableWidth));
+  const columns = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.max(1, Math.ceil(n / columns));
+  const usableSize = Math.max(1, containerSize - GRID_PAD * 2);
+  const cellSize = Math.max(MIN_CELL, usableSize / Math.max(columns, rows));
+  // Escala de decorações: ficam a tamanho base em células grandes e encolhen junto
+  // com a densidade para não estorbar ao compactar muitas plantas.
+  const dec = Math.min(1, cellSize / ICON_BASE);
   // Modo denso: sem springs/motion por item — o container inteiro faz um único
   // fade-in e as plantas ficam estáticas (hover via CSS) para não travar em densidades altas.
   const dense = n > DENSE_THRESHOLD;
@@ -120,19 +104,18 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
   return (
     <div
       ref={terrainRef}
-      className={`panel overflow-x-hidden p-3 sm:p-5 ${needsScroll ? "overflow-y-auto" : "overflow-y-hidden"} ${className}`}
-      style={{ maxHeight: "min(72vh, 640px)" }}
+      className={`panel overflow-hidden p-3 sm:p-5 ${className}`}
     >
       {/* Terreno único: uma "clareira" iluminada ao centro, escurecendo até as bordas. */}
       <motion.div
-        className="relative mx-auto overflow-visible rounded-[26px]"
+        className="relative mx-auto overflow-hidden rounded-[26px]"
         initial={dense && !reduced ? { opacity: 0 } : false}
         animate={dense && !reduced ? { opacity: 1 } : undefined}
         transition={{ duration: 0.35 }}
         style={{
           width: "100%",
-          maxWidth: terrainWidth,
-          height: terrainHeight,
+          maxWidth: containerSize,
+          aspectRatio: "1 / 1",
           background: [
             "radial-gradient(120% 85% at 50% 10%, rgba(113,212,255,0.07) 0%, rgba(113,212,255,0) 55%)",
             "radial-gradient(90% 78% at 50% 42%, #262d21 0%, #1c2218 52%, #11150e 100%)",

@@ -2,7 +2,6 @@ import pool from "../db";
 import type { AchievementProgress } from "@/types";
 import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
-import { getLifetimeFocusMinutes } from "./focus";
 import { getUserXP, creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK } from "../daily-limits";
@@ -156,7 +155,13 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
         [profileId],
       ),
     ),
-    safeQuery("deep_focus", () => getLifetimeFocusMinutes(profileId)),
+    safeQuery("deep_focus", () =>
+      pool.query<{ minutes: string | number }>(
+        `select coalesce(sum(duration_minutes), 0) as minutes
+         from focus_session_events where profile_id = $1`,
+        [profileId],
+      ),
+    ),
     safeQuery("xp_olympian", () => getUserXP(profileId)),
     safeQuery("early_riser", () =>
       pool.query<{ count: string | number }>(
@@ -218,28 +223,18 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     ),
     safeQuery("focus_companion", () =>
       pool.query<{ current_value: number }>(
-        `select greatest(
-           coalesce((
-             select current_value
-             from user_achievement_progress
-             where profile_id = $1 and achievement_id = 'focus_companion'
-           ), 0),
-           coalesce((
-             select count(*)::int
-             from achievement_progress_events
-             where profile_id = $1 and achievement_id = 'focus_companion'
-           ), 0)
-         ) as current_value`,
+        `select count(*)::int as current_value
+         from focus_session_events
+         where profile_id = $1
+           and participant_count >= 2`,
         [profileId],
       ),
     ),
     safeQuery("flow_state", () =>
       pool.query<{ longest: string | number }>(
         `select coalesce(max(duration_minutes), 0) as longest
-         from focus_sessions
+         from focus_session_events
          where profile_id = $1
-           and ended_at is not null
-           and paused_count is not null
            and paused_count = 0`,
         [profileId],
       ),
@@ -256,7 +251,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
 
   return {
     streak_master: longestStreak,
-    deep_focus: lifetimeFocus ?? 0,
+    deep_focus: Number((lifetimeFocus as any)?.rows?.[0]?.minutes ?? 0),
     early_riser: Number(earlyRiser?.rows[0]?.count ?? 0),
     sleep_champion: Number(sleepChampion?.rows[0]?.count ?? 0),
     consistency_king: Number(perfectWeeks?.rows[0]?.count ?? 0),
@@ -314,7 +309,7 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
     const prev = byId.get(id);
     // Event-backed achievements are append-only. Never let a stale runtime
     // calculation lower a value already persisted in the progress row.
-    const currentValue = id === "focus_companion"
+    const currentValue = ["focus_companion", "deep_focus", "flow_state"].includes(id)
       ? Math.max(values[id] ?? 0, prev?.current_value ?? 0)
       : values[id] ?? 0;
     const unlockedTier = tierFor(currentValue, thresholds);
