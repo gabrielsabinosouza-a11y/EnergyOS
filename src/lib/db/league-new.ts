@@ -188,7 +188,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
       const group = mapLeagueGroup(groupRow);
       await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
       const members = await client.query<LeagueGroupMemberRow>(
-        `select * from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at`,
+        `select * from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at, id`,
         [group.id]
       );
       const n = members.rows.length;
@@ -424,7 +424,7 @@ export async function getLeagueGroupMembers(groupId: number): Promise<LeagueGrou
   const result = await pool.query<LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string }>(
     `select lgm.*, p.display_name, p.photo_url, p.username, p.equipped_decoration_id
      from league_group_members lgm left join profiles p on lgm.profile_id = p.id
-     where lgm.league_group_id = $1 order by lgm.weekly_xp desc, lgm.joined_at`,
+     where lgm.league_group_id = $1 order by lgm.weekly_xp desc, lgm.joined_at, lgm.id`,
     [groupId]
   );
   return result.rows.map(mapLeagueGroupMember);
@@ -449,7 +449,7 @@ export async function updateMemberWeeklyXP(groupId: number, profileId: string, x
 
 export async function calculateGroupRanks(groupId: number): Promise<void> {
   const result = await pool.query<{ id: string | number; weekly_xp: number }>(
-    `select id, weekly_xp from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at`,
+    `select id, weekly_xp from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at, id`,
     [groupId]
   );
   for (let i = 0; i < result.rows.length; i++) {

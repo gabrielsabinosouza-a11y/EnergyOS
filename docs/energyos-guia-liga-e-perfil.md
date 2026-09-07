@@ -69,8 +69,8 @@ ranqueia, decide promoção/rebaixamento e paga as moedas.
 - Imagens usadas para as posições ficam em **`public/places/`**:
   - `first_place.png`, `second_place.png`, `third_place.png`
 - No ranking da semana (`src/app/liga/page.tsx` → função `MedalBadge`), as posições
-  **1, 2 e 3** mostram a imagem de medalha correspondente; a partir da posição 4
-  mostra apenas o número.
+  **1, 2 e 3** mostram a medalha como **decoração** e o número de posição; a
+  partir da posição 4 mostra apenas o número. Toda linha exibe sempre seu número.
 
 ### O que foi feito
 - `MedalBadge` agora usa as imagens `/places/first_place.png`, `/second_place.png`,

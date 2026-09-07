@@ -327,7 +327,7 @@ export async function toggleDirectMessageReaction(
 export async function toggleDirectMessagePin(
   profileId: string,
   messageId: number,
-): Promise<void> {
+): Promise<{ pinned: boolean }> {
   const message = await assertDmMessageParticipant(profileId, messageId);
   const conversationId = dmConversationId(message.sender_id, message.recipient_id);
   const existing = await pool.query(
@@ -341,7 +341,7 @@ export async function toggleDirectMessagePin(
        where message_kind = 'DM' and conversation_id = $1 and message_id = $2`,
       [conversationId, messageId],
     );
-    return;
+    return { pinned: false };
   }
   await pool.query(
     `delete from pinned_messages where message_kind = 'DM' and conversation_id = $1`,
@@ -356,6 +356,16 @@ export async function toggleDirectMessagePin(
          created_at = now()`,
     [messageId, conversationId, profileId],
   );
+  return { pinned: true };
+}
+
+/** Return the active pin for a direct-message conversation, if one exists. */
+export async function getDirectPinnedMessages(
+  profileId: string,
+  otherId: string,
+): Promise<DirectMessage[]> {
+  const messages = await listDirectMessages(profileId, otherId);
+  return messages.filter((message) => message.isPinned);
 }
 
 export async function markDmRead(profileId: string, otherId: string): Promise<void> {

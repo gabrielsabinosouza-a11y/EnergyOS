@@ -36,14 +36,20 @@ const PROMOTION_TEXT: Record<NewLeagueTier, string> = {
 const MEDAL_IMAGES = ["/places/first_place.png", "/places/second_place.png", "/places/third_place.png"] as const;
 
 function MedalBadge({ rank, size = 28 }: { rank: number; size?: number }) {
-  if (rank > 3) return <span className="font-mono text-[10px] text-[var(--text-faint)]">{rank}</span>;
+  const showMedal = rank >= 1 && rank <= MEDAL_IMAGES.length;
   return (
-    <div
-      className="relative flex shrink-0 items-center justify-center"
-      style={{ width: size, height: size }}
-      title={rank === 1 ? "1º lugar" : rank === 2 ? "2º lugar" : "3º lugar"}
-    >
-      <Image src={MEDAL_IMAGES[rank - 1]} alt={`${rank}º lugar`} width={size} height={size} style={{ objectFit: "contain" }} unoptimized draggable={false} />
+    <div className="flex items-center justify-center gap-1">
+      {showMedal && (
+        <div
+          className="relative flex shrink-0 items-center justify-center"
+          style={{ width: size, height: size }}
+          title={rank === 1 ? "1º lugar" : rank === 2 ? "2º lugar" : "3º lugar"}
+        >
+          <Image src={MEDAL_IMAGES[rank - 1]} alt={`${rank}º lugar`} width={size} height={size} style={{ objectFit: "contain" }} unoptimized draggable={false} />
+        </div>
+      )}
+      {/* Toda linha mostra sempre seu número de posição; a medalha é decorativa para o top 3. */}
+      <span className="font-mono text-[10px] text-[var(--text-faint)]">{rank}</span>
     </div>
   );
 }
@@ -305,7 +311,7 @@ export default function LigaPage() {
           </div>
 
           <div className="panel p-0 overflow-hidden">
-            <div className="grid grid-cols-[40px_1fr_80px_32px] gap-2 border-b border-[var(--border-subtle)] px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+            <div className="grid grid-cols-[56px_1fr_80px_32px] gap-2 border-b border-[var(--border-subtle)] px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               <span className="text-center">Pos</span>
               <span>Usuário</span>
               <span className="text-right">XP</span>
@@ -337,7 +343,7 @@ export default function LigaPage() {
                     initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.02 }}
                     onClick={() => setSelectedProfileId(member.profileId)}
-                    className={`grid w-full grid-cols-[40px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${zoneClass}`}
+                    className={`grid w-full grid-cols-[56px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${zoneClass}`}
                   >
                     {/* Rank */}
                     <div className="flex items-center justify-center">

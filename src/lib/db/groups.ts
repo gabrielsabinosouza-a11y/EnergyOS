@@ -873,7 +873,7 @@ export async function toggleGroupMessagePin(
   profileId: string,
   messageId: number,
   opts?: { durationDays?: number },
-): Promise<void> {
+): Promise<{ pinned: boolean }> {
   const message = await assertGroupMessageParticipant(profileId, messageId);
   const conversationId = String(message.groupId);
   const existing = await pool.query(
@@ -887,7 +887,7 @@ export async function toggleGroupMessagePin(
        where message_kind = 'GROUP' and conversation_id = $1 and message_id = $2`,
       [conversationId, messageId],
     );
-    return;
+    return { pinned: false };
   }
 
   const durationDays = opts?.durationDays;
@@ -942,6 +942,7 @@ export async function toggleGroupMessagePin(
       [messageId, conversationId, profileId],
     );
   }
+  return { pinned: true };
 }
 
 /** Active pins for a group (max 3, oldest pin first), for the pinned banner. */
