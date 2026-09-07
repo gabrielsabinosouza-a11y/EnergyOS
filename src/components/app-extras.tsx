@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { AchievementProgress, UserSettings } from "@/types";
-import { registerServiceWorker, watchInstallPrompt } from "@/lib/sw-register";
+import { registerServiceWorker } from "@/lib/sw-register";
 import { startReminders, stopReminders, type ReminderConfig } from "@/lib/reminders";
 import { OnboardingTour } from "./onboarding-tour";
 import { AchievementUnlockModal } from "./achievement-unlock-modal";
@@ -97,7 +97,6 @@ export function AppExtras() {
 
   useEffect(() => {
     registerServiceWorker();
-    watchInstallPrompt();
   }, []);
 
   useEffect(() => {

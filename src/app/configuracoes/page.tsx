@@ -6,7 +6,7 @@ import { deleteUser } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
-import { Loader2, LogOut, Trash2, Check, ChevronLeft, Bell, Download, HelpCircle } from "lucide-react";
+import { Loader2, LogOut, Trash2, Check, ChevronLeft, Bell, Smartphone, HelpCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
@@ -14,7 +14,6 @@ import { api } from "@/lib/api-client";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { requestNotificationPermission, notificationPermission } from "@/lib/reminders";
-import { isInstallPromptAvailable, promptInstall } from "@/lib/sw-register";
 
 type SettingsForm = Omit<UserSettings, "profileId">;
 
@@ -45,7 +44,6 @@ export default function ConfiguracoesPage() {
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [installable, setInstallable] = useState(false);
   const [permTick, setPermTick] = useState(0);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(savedRef.current);
@@ -76,13 +74,6 @@ export default function ConfiguracoesPage() {
     return () => { active = false; };
   }, [user?.uid, setUITheme]);
 
-  // The "Instalar app" button only exists while the browser has a deferred
-  // beforeinstallprompt (Chrome/Edge/Android); poll cheaply for it.
-  useEffect(() => {
-    const id = setInterval(() => setInstallable(isInstallPromptAvailable()), 4000);
-    return () => clearInterval(id);
-  }, []);
-
   if (loading || !user) return <LoadingScreen />;
 
   function setField<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) {
@@ -110,11 +101,6 @@ export default function ConfiguracoesPage() {
       setField(key, false);
     }
     setPermTick((t) => t + 1);
-  }
-
-  async function handleInstall() {
-    const ok = await promptInstall();
-    if (ok) setInstallable(false);
   }
 
   async function handleReplayTour() {
@@ -273,19 +259,21 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
 
-          {/* App (PWA) */}
-          {installable && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.12 } }} className="panel p-6">
-              <span className="eyebrow muted mb-4 block">APP</span>
-              <button
-                onClick={handleInstall}
-                className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-bg)] px-4 py-3 text-sm font-semibold text-[var(--accent)] transition hover:brightness-110"
-              >
-                <Download size={16} /> Instalar energyOS em seu dispositivo
-              </button>
-              <p className="mt-2 text-xs text-[var(--text-muted)]">Acesso rápido como um app, com lembretes e modo offline básico.</p>
-            </motion.div>
-          )}
+          {/* App (móvel / desktop) */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.12 } }} className="panel p-6">
+            <span className="eyebrow muted mb-4 block">APP</span>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3 text-sm font-semibold text-[var(--text-faint)] opacity-60"
+            >
+              <Smartphone size={16} /> Aplicativos para celular e desktop — em breve
+            </button>
+            <p className="mt-2 text-xs text-[var(--text-muted)]">
+              Os apps nativos estão a caminho. Você pode continuar usando pelo navegador com lembretes e modo offline básico.
+            </p>
+          </motion.div>
 
           {/* Save button */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.13 } }}>
