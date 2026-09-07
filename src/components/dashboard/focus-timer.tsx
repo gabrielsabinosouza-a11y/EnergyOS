@@ -831,7 +831,10 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             {history.slice(0, 3).map((s) => (
               <div key={s.id} className="flex items-center justify-between text-[10px] py-1">
                 <span className="text-[var(--text-muted)]">{Math.floor(s.durationMinutes / 60)}h{s.durationMinutes % 60 > 0 ? ` ${s.durationMinutes % 60}min` : ""}</span>
-                <span className="text-[#ffb86b] font-mono">+{s.xpEarned}</span>
+                <span className="flex items-center gap-1 text-[#ffb86b] font-mono">
+                  <CoinIcon size={11} />
+                  +{s.xpEarned}
+                </span>
               </div>
             ))}
           </div>
