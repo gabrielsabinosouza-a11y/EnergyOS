@@ -14,7 +14,7 @@ import {
   FOCUS_DURATION_SNAP_MINUTES,
   formatCountdownMmSs,
 } from "@/lib/focus-duration";
-import { FOCUS_COINS_PER_10_MIN } from "@/lib/daily-limits";
+import { focusCoinsForDuration } from "@/lib/daily-limits";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
@@ -89,7 +89,7 @@ const RING_SIZE = 260;
 
 function calculateCoins(durationMinutes: number): number {
   if (durationMinutes < 10) return 0;
-  return Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
+  return focusCoinsForDuration(durationMinutes);
 }
 
 function formatTime(totalSeconds: number): string {

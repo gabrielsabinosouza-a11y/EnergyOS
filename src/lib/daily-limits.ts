@@ -62,5 +62,24 @@ export const STREAK_COMPLETION_THRESHOLD = 1.0;
 
 /** XP per minute of focus (base, before boost). */
 export const FOCUS_XP_PER_MIN = 1;
-/** Coins per 10 minutes of focus. */
-export const FOCUS_COINS_PER_10_MIN = 1;
+
+// ── Reward de moedas por sessão de foco ─────────────────────────────────────
+// Regra: 25 moedas por hora focada (arredondado), com piso de 9 e teto de 50.
+//  - 10 min   -> max(9, round(10*25/60)) = 9
+//  - 60 min   -> 25
+//  - 120 min  -> 50 (teto, equivale à duração máxima de 120 min)
+export const FOCUS_COINS_PER_HOUR = 25;
+/** Piso de moedas por sessão — sessões curtas continuam valendo a pena. */
+export const FOCUS_COINS_MIN = 9;
+/** Teto de moedas por sessão de foco (120 min * 25/60). */
+export const FOCUS_COINS_CAP = 50;
+
+/**
+ * Moedas de uma sessão de foco, calculadas apenas a partir dos minutos focados.
+ * As moedas nunca são escaladas pela poção 2x XP — essa poção multiplica só XP
+ * (via creditXP → calculateXPWithBoost).
+ */
+export function focusCoinsForDuration(minutes: number): number {
+  const m = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
+  return Math.min(FOCUS_COINS_CAP, Math.max(FOCUS_COINS_MIN, Math.round((m / 60) * FOCUS_COINS_PER_HOUR)));
+}

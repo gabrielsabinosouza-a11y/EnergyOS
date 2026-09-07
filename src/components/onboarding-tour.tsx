@@ -76,32 +76,45 @@ export function OnboardingTour() {
     if (loading || !user || checkedRef.current) return;
     checkedRef.current = true;
     let active = true;
+    // Once the user has finished OR skipped the tour, never show it again —
+    // even across pages and reloads. The localStorage flag short-circuits the
+    // settings fetch (and its flash) on the very same browser; the server flag
+    // keeps the choice persistent across devices/sessions.
+    let onboardedLocally = false;
+    try {
+      onboardedLocally = localStorage.getItem("energyos:onboarded") === "1";
+    } catch { /* ignore */ }
+    if (onboardedLocally) return;
     void api
       .getSettings()
       .then((s) => {
         if (!active) return;
-        // Onboarding persists server-side; also suppress a flash on re-login
-        // until the fetch lands, so the tour only pops for real first runs.
         setOpen(!s.onboardingCompleted);
       })
       .catch(() => { /* silent — never block the app if settings fail */ });
     return () => { active = false; };
   }, [user, loading]);
 
-  const finish = useCallback(async () => {
-    setDismissing(true);
+  const persistOnboarded = useCallback(async () => {
     try {
       await api.saveSettings({ onboardingCompleted: true });
     } catch { /* non-fatal */ }
     try {
       localStorage.setItem("energyos:onboarded", "1");
     } catch { /* ignore */ }
-    setOpen(false);
   }, []);
 
-  const skip = useCallback(() => {
+  const finish = useCallback(async () => {
+    setDismissing(true);
+    await persistOnboarded();
     setOpen(false);
-  }, []);
+  }, [persistOnboarded]);
+
+  const skip = useCallback(async () => {
+    setDismissing(true);
+    await persistOnboarded();
+    setOpen(false);
+  }, [persistOnboarded]);
 
   if (!open || dismissing) return null;
 

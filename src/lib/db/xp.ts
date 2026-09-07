@@ -6,28 +6,31 @@ import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
 import { calculateXPWithBoost } from "./xp-boost";
+import { levelFromXP } from "../xp-levels";
 
 interface XPRow {
   profile_id: string;
   total_xp: string | number;
-  level: string | number;
 }
 
 function mapXP(row: XPRow): UserXP {
+  const totalXP = Number(row.total_xp);
   return {
     profileId: row.profile_id,
-    totalXP: Number(row.total_xp),
-    level: Number(row.level),
+    totalXP,
+    // O nível é sempre derivado do total de XP (nunca da coluna `level`, que é
+    // legada e ficava presa em 1). Ver src/lib/xp-levels.ts para as faixas.
+    level: levelFromXP(totalXP).level,
   };
 }
 
 export async function getUserXP(profileId: string): Promise<UserXP> {
   parseProfileId(profileId);
   const result = await pool.query<XPRow>(
-    `select profile_id, total_xp, level from user_xp where profile_id = $1`,
+    `select profile_id, total_xp from user_xp where profile_id = $1`,
     [profileId],
   );
-  if (!result.rows[0]) return { profileId, totalXP: 0, level: 1 };
+  if (!result.rows[0]) return { profileId, totalXP: 0, level: levelFromXP(0).level };
   return mapXP(result.rows[0]);
 }
 

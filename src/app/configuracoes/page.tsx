@@ -76,6 +76,13 @@ export default function ConfiguracoesPage() {
     return () => { active = false; };
   }, [user?.uid, setUITheme]);
 
+  // The "Instalar app" button only exists while the browser has a deferred
+  // beforeinstallprompt (Chrome/Edge/Android); poll cheaply for it.
+  useEffect(() => {
+    const id = setInterval(() => setInstallable(isInstallPromptAvailable()), 4000);
+    return () => clearInterval(id);
+  }, []);
+
   if (loading || !user) return <LoadingScreen />;
 
   function setField<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) {
@@ -105,13 +112,6 @@ export default function ConfiguracoesPage() {
     setPermTick((t) => t + 1);
   }
 
-  // The "Instalar app" button only exists while the browser has a deferred
-  // beforeinstallprompt (Chrome/Edge/Android); poll cheaply for it.
-  useEffect(() => {
-    const id = setInterval(() => setInstallable(isInstallPromptAvailable()), 4000);
-    return () => clearInterval(id);
-  }, []);
-
   async function handleInstall() {
     const ok = await promptInstall();
     if (ok) setInstallable(false);
@@ -119,6 +119,9 @@ export default function ConfiguracoesPage() {
 
   async function handleReplayTour() {
     await api.saveSettings({ onboardingCompleted: false }).catch(() => {});
+    try {
+      localStorage.removeItem("energyos:onboarded");
+    } catch { /* ignore */ }
     router.push("/dashboard");
   }
 

@@ -7,7 +7,8 @@ import { plantGardenEntries, getEnergyReward, endFocusSession, type GardenGrowth
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
-export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired";
+export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired" | "restarting";
+export type RestartChoice = "pending" | "confirmed" | "declined";
 export type ParticipantSessionStatus = "waiting" | "focusing" | "completed" | "left";
 
 export interface FocusRoomRow {
@@ -33,6 +34,7 @@ export interface RoomParticipantRow {
   selected_energy_type: string | null;
   completed_at: Date | string | null;
   gave_up_at: Date | string | null;
+  restart_choice: string | null;
 }
 
 export interface FocusRoom {
@@ -60,6 +62,9 @@ export interface RoomParticipant {
   selectedEnergyType: string | null;
   completedAt?: string;
   gaveUpAt?: string;
+  /** Restart-request answer: 'pending' until the user acts, 'confirmed' to
+   *  play again, 'declined' when the user chose to leave instead. */
+  restartChoice: RestartChoice;
 }
 
 export type RoomJoinRequestStatus = "pending" | "accepted" | "rejected";
@@ -104,6 +109,7 @@ function mapRoomParticipant(row: RoomParticipantRow, profile?: { id: string; dis
     selectedEnergyType: row.selected_energy_type ?? null,
     completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : undefined,
     gaveUpAt: row.gave_up_at ? (typeof row.gave_up_at === "string" ? row.gave_up_at : row.gave_up_at.toISOString()) : undefined,
+    restartChoice: (row.restart_choice || "pending") as RestartChoice,
   };
 }
 
@@ -376,7 +382,7 @@ export async function getFocusRoomByCode(profileId: string, code: string): Promi
 export async function getRoomParticipants(roomId: number): Promise<RoomParticipant[]> {
   const result = await pool.query<RoomParticipantRow & { display_name: string; photo_url: string | null }>(
     `select 
-       rp.id, rp.room_id, rp.profile_id, rp.joined_at, rp.session_status, rp.selected_energy_type, rp.completed_at, rp.gave_up_at,
+       rp.id, rp.room_id, rp.profile_id, rp.joined_at, rp.session_status, rp.selected_energy_type, rp.completed_at, rp.gave_up_at, rp.restart_choice,
        p.display_name, p.photo_url
      from room_participants rp
      left join profiles p on rp.profile_id = p.id
@@ -398,7 +404,7 @@ export async function updateParticipantEnergyType(roomId: number, profileId: str
     `update room_participants 
      set selected_energy_type = $1 
      where room_id = $2 and profile_id = $3 
-     returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
+     returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at, restart_choice`,
     [energyType, roomId, profileId]
   );
 
@@ -507,7 +513,7 @@ export async function addParticipantToRoom(roomId: number, profileId: string, se
        values ($1, $2, $3, $4)
        on conflict (room_id, profile_id)
        do update set selected_energy_type = coalesce(excluded.selected_energy_type, room_participants.selected_energy_type)
-       returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at`,
+       returning id, room_id, profile_id, joined_at, session_status, selected_energy_type, completed_at, gave_up_at, restart_choice`,
       [roomId, profileId, "waiting", selectedEnergyType ?? null]
     );
 
@@ -1025,16 +1031,17 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
 }
 
 // Restart a COMPLETED focus room for another round (host only, "Play Again").
-// The room is reset to an ACTIVE session with the same participants and a fresh
-// countdown (elapsed_seconds=0, last_resumed_at=now). Participants who left
-// earlier stay out. Each participant creates a brand-new focus session
-// client-side when the room flips back to active, so no session crediting is
-// done here.
+// Instead of immediately flipping the room back to ACTIVE, the restart now
+// enters a "restarting" state: every still-present participant is notified and
+// must answer the prompt (Confirm → join the new round, Cancel → leave). The
+// room actually restarts (status 'active') only once EVERY non-left participant
+// has confirmed — see maybeFinalizeRestart. Participants who already left stay
+// out of the voting. The host is auto-confirmed (they were the one who asked).
 export async function restartFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
 
   // Transaction with a row lock: guards restart vs restart/complete races so
-  // the completed→active transition can't be double-applied.
+  // the completed→restarting transition can't be double-applied.
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -1058,22 +1065,28 @@ export async function restartFocusRoom(roomId: number, hostProfileId: string): P
       throw new ConflictError("A sala só pode ser reiniciada após a conclusão");
     }
 
-    const now = new Date().toISOString();
-
+    // Mark the room as awaiting restart confirmation.
     await client.query(
-      `update focus_rooms
-       set status = 'active', started_at = $1, ended_at = null, elapsed_seconds = 0, last_resumed_at = $1
-       where id = $2`,
-      [now, roomId],
-    );
-
-    // Reactivate everyone still in the room; participants who gave up stay "left".
-    await client.query(
-      `update room_participants
-       set session_status = 'focusing', completed_at = null, gave_up_at = null
-       where room_id = $1 and session_status <> 'left'`,
+      `update focus_rooms set status = 'restarting' where id = $1`,
       [roomId],
     );
+
+    // Everyone still in the room is pending; the host (the initiator) is
+    // already confirmed. Participants who left stay out (declined).
+    await client.query(
+      `update room_participants
+       set restart_choice = case
+             when profile_id = $2 then 'confirmed'
+             when session_status = 'left' then 'declined'
+             else 'pending'
+           end
+       where room_id = $1`,
+      [roomId, hostProfileId],
+    );
+
+    // If every participant already answered before this call flocked through
+    // (e.g. the host is the only member), finalize the restart right away.
+    await maybeFinalizeRestart(client, roomId);
 
     await client.query("commit");
   } catch (error) {
@@ -1085,6 +1098,159 @@ export async function restartFocusRoom(roomId: number, hostProfileId: string): P
 
   const restartedRoom = await getFocusRoomById(hostProfileId, roomId);
   return restartedRoom!;
+}
+
+/**
+ * When no non-left participant is still 'pending', the restart request is
+ * fulfilled: the room flips back to ACTIVE with a fresh countdown and every
+ * confirmed participant is reset to "focusing" for the new round.
+ * MUST be called inside an open transaction (client) with the room row locked.
+ */
+async function maybeFinalizeRestart(client: import("pg").PoolClient, roomId: number): Promise<void> {
+  const waiting = await client.query<{ n: string | number }>(
+    `select count(*)::int as n
+     from room_participants
+     where room_id = $1 and session_status <> 'left' and restart_choice <> 'confirmed'`,
+    [roomId],
+  );
+  if (Number(waiting.rows[0]?.n ?? 0) > 0) return;
+
+  const now = new Date().toISOString();
+  await client.query(
+    `update focus_rooms
+     set status = 'active', started_at = $1, ended_at = null, elapsed_seconds = 0, last_resumed_at = $1
+     where id = $2 and status = 'restarting'`,
+    [now, roomId],
+  );
+
+  // Only confirmed participants join the fresh round; anyone who declined is
+  // already marked 'left' and stays out.
+  await client.query(
+    `update room_participants
+     set session_status = 'focusing', completed_at = null, gave_up_at = null
+     where room_id = $1 and restart_choice = 'confirmed'`,
+    [roomId],
+  );
+}
+
+/**
+ * Answer the pending restart prompt (any participant). `accepted` = true keeps
+ * the user in the room for the next round; false marks them as left (they leave
+ * the room). When every remaining participant has confirmed, the room flips
+ * back to ACTIVE automatically.
+ */
+export async function respondToRestart(roomId: number, profileId: string, accepted: boolean): Promise<FocusRoom> {
+  parseProfileId(profileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ status: RoomStatus }>(
+      `select status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    const mine = await client.query<{ id: string | number }>(
+      `select id from room_participants where room_id = $1 and profile_id = $2`,
+      [roomId, profileId],
+    );
+    if (!mine.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Você não faz parte desta sala.");
+    }
+
+    if (room.rows[0].status !== "restarting") {
+      await client.query("rollback");
+      throw new ConflictError("Não há nenhun reinício pendente nesta sala.");
+    }
+
+    const now = new Date().toISOString();
+
+    if (accepted) {
+      await client.query(
+        `update room_participants
+         set restart_choice = 'confirmed'
+         where room_id = $1 and profile_id = $2 and session_status <> 'left'`,
+        [roomId, profileId],
+      );
+    } else {
+      // Decline = leave the room; the participant sits out all future rounds.
+      await client.query(
+        `update room_participants
+         set session_status = 'left', gave_up_at = coalesce(gave_up_at, $3), restart_choice = 'declined'
+         where room_id = $1 and profile_id = $2`,
+        [roomId, profileId, now],
+      );
+    }
+
+    await maybeFinalizeRestart(client, roomId);
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const room = await getFocusRoomById(profileId, roomId);
+  return room!;
+}
+
+/**
+ * Abort a pending restart (host only): the room goes back to 'completed' and
+ * every answer is reset so the host can ask again later.
+ */
+export async function cancelRestart(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can cancel the restart");
+    }
+
+    if (room.rows[0].status !== "restarting") {
+      await client.query("rollback");
+      throw new ConflictError("Não há nenhun reinício pendente para cancelar");
+    }
+
+    await client.query(
+      `update focus_rooms set status = 'completed' where id = $1`,
+      [roomId],
+    );
+    await client.query(
+      `update room_participants set restart_choice = 'pending' where room_id = $1 and session_status <> 'left'`,
+      [roomId],
+    );
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const room = await getFocusRoomById(hostProfileId, roomId);
+  return room!;
 }
 
 /**

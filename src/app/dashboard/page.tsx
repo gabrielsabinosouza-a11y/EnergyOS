@@ -540,7 +540,15 @@ function DashboardContent() {
             </h1>
           </motion.div>
           <div className="flex items-center gap-3">
-            {focusData?.xp && <XPBadge xp={focusData.xp.totalXP} level={focusData.xp.level} />}
+            {focusData?.xp && (
+              <XPBadge
+                xp={focusData.xp.totalXP}
+                coins={coins}
+                boostExpiresAt={xpBoostUntil}
+                onCoinsChange={setCoins}
+                onBoostChange={setXpBoostUntil}
+              />
+            )}
             {xpBoostUntil && <XpBoostIndicator expiresAt={xpBoostUntil} />}
           </div>
         </header>

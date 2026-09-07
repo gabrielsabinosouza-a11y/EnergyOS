@@ -153,6 +153,9 @@ do $$ begin
   create type room_status as enum ('waiting', 'active', 'paused', 'completed', 'expired');
 exception when duplicate_object then null; end $$;
 do $$ begin
+  alter type room_status add value if not exists 'restarting';
+exception when duplicate_object then null; end $$;
+do $$ begin
   alter type room_status add value if not exists 'expired';
 exception when duplicate_object then null; end $$;
 do $$ begin
@@ -202,6 +205,13 @@ create table if not exists room_participants (
 
 create index if not exists room_participants_room_idx on room_participants(room_id);
 create index if not exists room_participants_profile_idx on room_participants(profile_id);
+
+-- Restart confirmations: when the host asks for another round ('restarting'),
+-- each participant answers with restart_choice = 'pending' (default) →
+-- 'confirmed' (accept, join the new round) or 'declined' (leave the room).
+do $$ begin
+  alter table room_participants add column if not exists restart_choice text not null default 'pending';
+exception when duplicate_column then null; end $$;
 
 create table if not exists room_join_requests (
   id bigserial primary key,

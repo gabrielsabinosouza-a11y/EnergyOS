@@ -11,7 +11,14 @@ import { recordGroupContribution } from "./group-leaderboard";
 import { checkAndUnlockMilestones } from "./group-milestones";
 import { checkGroupSynchrony } from "./group-synchrony";
 import { checkGroupAchievements } from "./group-achievements";
-import { FOCUS_XP_PER_MIN, FOCUS_COINS_PER_10_MIN, STREAK_COMPLETION_THRESHOLD } from "../daily-limits";
+import {
+  FOCUS_XP_PER_MIN,
+  FOCUS_COINS_MIN,
+  FOCUS_COINS_CAP,
+  FOCUS_COINS_PER_HOUR,
+  focusCoinsForDuration,
+  STREAK_COMPLETION_THRESHOLD,
+} from "../daily-limits";
 import { FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 import { recordFocusCompanionProgress } from "./achievement-progress";
 
@@ -295,7 +302,7 @@ export async function endFocusSession(
   // session) is not an error. Reward the already-finalized values exactly once.
   if (session.rows[0].ended_at) {
     const storedDuration = Math.max(0, Number(session.rows[0].duration_minutes) || 0);
-    const coinsAwarded = Math.floor(storedDuration / 10) * FOCUS_COINS_PER_10_MIN;
+    const coinsAwarded = focusCoinsForDuration(storedDuration);
     return {
       session: mapFocus(session.rows[0]),
       xpAwarded: Number(session.rows[0].xp_earned) || 0,
@@ -313,7 +320,10 @@ export async function endFocusSession(
     : FOCUS_DURATION_MAX_MINUTES;
   const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
-  const coins = Math.floor(durationMinutes / 10) * FOCUS_COINS_PER_10_MIN;
+  // Coins are a pure function of focused time and are NEVER scaled by the 2x XP
+  // boost. The XP potion multiplies only XP (via creditXP → calculateXPWithBoost);
+  // coins follow focusCoinsForDuration (25/hora, piso 9, teto 50) regardless.
+  const coins = focusCoinsForDuration(durationMinutes);
 
   // Atomic claim. The room flow (a completed room finalizing a co-participant's
   // open session) can race with that participant's own client calling endFocus.
@@ -340,7 +350,7 @@ export async function endFocusSession(
     return {
       session: mapFocus(row),
       xpAwarded: Number(row.xp_earned) || 0,
-      coinsAwarded: Math.floor(Math.max(0, Number(row.duration_minutes) || 0) / 10) * FOCUS_COINS_PER_10_MIN,
+      coinsAwarded: focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
       questsUpdated: 0,
     };
   }
@@ -527,9 +537,9 @@ export async function getTodayFocusStats(profileId: string): Promise<{ minutesFo
   const today = todayIso();
   const result = await pool.query<{ minutes: string | number; coins: string | number }>(
     `select coalesce(sum(duration_minutes), 0) as minutes,
-            coalesce(sum(floor(duration_minutes / 10) * $3), 0) as coins
+            coalesce(sum(least($4, greatest($3, round(duration_minutes * $5 / 60)))), 0) as coins
      from focus_sessions where profile_id = $1 and ended_at is not null and started_at::date = $2::date`,
-    [profileId, today, FOCUS_COINS_PER_10_MIN],
+    [profileId, today, FOCUS_COINS_MIN, FOCUS_COINS_CAP, FOCUS_COINS_PER_HOUR],
   );
   return { minutesFocused: Number(result.rows[0]?.minutes ?? 0), coinsEarned: Number(result.rows[0]?.coins ?? 0) };
 }
