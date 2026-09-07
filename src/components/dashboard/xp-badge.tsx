@@ -140,7 +140,7 @@ export function XPBadge({
         title="Abra o menu de XP e níveis"
         className="flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-1.5 transition hover:border-[var(--border)] hover:bg-[var(--bg-surface)]"
       >
-        <XpIcon size={14} />
+        <XpIcon size={22} level={levelInfo.level} />
         <span className="font-mono text-xs font-medium text-[#ffb86b]">{xp} XP</span>
         <span className="text-[var(--text-faint)]">·</span>
         <span className="text-xs text-[var(--text-muted)]">Nv. {levelInfo.label}</span>
@@ -161,7 +161,7 @@ export function XPBadge({
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-display flex items-center gap-1.5 text-base font-semibold text-[#ffb86b]">
-                  <XpIcon size={16} /> {xp} XP
+                  <XpIcon size={20} level={levelInfo.level} /> {xp} XP
                 </p>
                 <p className="text-xs text-[var(--text-muted)]">
                   Nível {levelInfo.label}{" "}
