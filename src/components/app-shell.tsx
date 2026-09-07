@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Sidebar, MobileNav } from "./navigation";
+import { AppExtras } from "./app-extras";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -11,6 +12,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen theme-bg">
+      <AppExtras />
       <Sidebar pathname={pathname} />
       {/* Mobile: sticky brand bar + fixed bottom tab bar (with safe-area
           padding); the content reserves room for the tab bar below lg. */}

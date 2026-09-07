@@ -457,8 +457,8 @@ export async function getStreakCalendar(
  * and the STREAK_DAY mission) updates immediately — the UI reflects it on the
  * next snapshot fetch instead of waiting for the next lazy evaluation.
  */
-export async function onFocusSessionCompleted(profileId: string): Promise<void> {
-  const today = todayIso();
+export async function onFocusSessionCompleted(profileId: string, day: string = todayIso()): Promise<void> {
+  const today = day;
   const prior = await pool.query<{ n: number }>(
     `select count(*)::int as n
        from focus_sessions

@@ -44,6 +44,13 @@ import {
   focusDurationProgress,
   formatCountdownMmSs,
 } from "@/lib/focus-duration";
+import {
+  playCompletionSound,
+  primeCompletionSound,
+  restoreTabTitle,
+  sendSystemCompletionNotification,
+  startCompletionTitleFlash,
+} from "@/lib/session-alerts";
 
 type PageState = "list" | "create" | "join" | "room";
 
@@ -525,30 +532,50 @@ export default function FocusRoomsPage() {
 
   // ── Finalize my session on completion ───────────────────────────────────────
   const finalizingRef = useRef(false);
-  const finalizeSession = useCallback(async (room: FocusRoom, focusedSeconds: number, addGarden: boolean) => {
+  const finalizeSession = useCallback(async (room: FocusRoom, focusedSeconds: number, addGarden: boolean, endedAt?: string | Date) => {
     if (finalizingRef.current) return;
     if (!user) return;
     const sess = roomSessionRef.current;
     if (!sess || sess.finalized) return;
 
     finalizingRef.current = true;
+    let endFocusSucceeded = false;
     try {
-      const end = await api.endFocus(sess.sessionId, focusedSeconds, true);
+      // When the room already ended server-side (e.g. the user got back the
+      // next day), the session must be billed at the room's REAL end instant so
+      // the streak and daily missions land on the day the focus happened.
+      const endedAtIso = typeof endedAt === "string" ? endedAt : endedAt ? endedAt.toISOString() : undefined;
+      const end = await api.endFocus(sess.sessionId, focusedSeconds, true, undefined, endedAtIso);
+      endFocusSucceeded = true;
       setLastCoins(end.coinsAwarded);
 
       if (addGarden) {
         setShowCompletion(true);
+        // Multi-layered completion alerts — same as the dashboard countdown
+        // timer: the chime always plays, and when the session ended out of view
+        // the user also gets a native notification + a flashing tab title so a
+        // background room completion is never silent.
+        restoreTabTitle();
+        playCompletionSound();
+        if (typeof document !== "undefined" && document.hidden) {
+          sendSystemCompletionNotification(end.coinsAwarded);
+          startCompletionTitleFlash();
+        }
         // Mark room completed (idempotent — first finisher wins)
         await api.completeFocusRoom(room.id).catch(() => {});
       }
     } catch {
-      // ignore — next poll may retry
+      // ignore — next poll may retry. The session is only marked finalized
+      // when endFocus itself succeeded: marking it on a transient error would
+      // silently drop the streak, missions and coins for this session forever.
     } finally {
-      const s = roomSessionRef.current;
-      if (s) {
-        const updated = { ...s, finalized: true };
-        roomSessionRef.current = updated;
-        saveRoomSession(room.id, updated);
+      if (endFocusSucceeded) {
+        const s = roomSessionRef.current;
+        if (s) {
+          const updated = { ...s, finalized: true };
+          roomSessionRef.current = updated;
+          saveRoomSession(room.id, updated);
+        }
       }
       finalizingRef.current = false;
     }
@@ -580,7 +607,10 @@ export default function FocusRoomsPage() {
     const mine = currentRoom.participants.find((p) => p.profileId === myProfileId);
     if (!mine) return;
     if (mine.sessionStatus === "completed") {
-      finalizeSession(currentRoom, currentRoom.durationMinutes * 60, true);
+      // Bill at the room's real end time: if the user closed the tab and the
+      // room finished while they were away, the streak/missions belong to the
+      // day the focus happened, not the day they came back to finalize.
+      finalizeSession(currentRoom, currentRoom.durationMinutes * 60, true, currentRoom.endedAt);
     } else if (mine.sessionStatus === "left") {
       finalizeSession(currentRoom, 0, false);
     }
@@ -628,6 +658,9 @@ export default function FocusRoomsPage() {
     if (!currentRoom) return;
     setLoadingAction("starting");
     setError(null);
+    // Unlock the audio context inside this host gesture so the room completion
+    // chime is allowed to play later — even from a background tab.
+    primeCompletionSound();
     try {
       const result = await api.startFocusRoom(currentRoom.id);
       setCurrentRoom(result.room);
@@ -1296,7 +1329,7 @@ export default function FocusRoomsPage() {
                 <p className="text-[10px] text-[var(--text-muted)]">Sua energia foi plantada no seu Meu Jardim e conta para seus objetivos e quests diárias.</p>
                 <button onClick={() => setShowCompletion(false)} className="rounded-full px-6 py-2 text-sm font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
                   style={{ background: ENERGY_CONFIGS[myEnergy as EnergyType].accent }}>
-                  Concluído
+                  Resgatar moedas
                 </button>
               </motion.div>
             )}

@@ -6,13 +6,15 @@ import { deleteUser } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
-import { Sparkles, Loader2, LogOut, Trash2, Check, ChevronLeft } from "lucide-react";
+import { Loader2, LogOut, Trash2, Check, ChevronLeft, Bell, Download, HelpCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
 import { api } from "@/lib/api-client";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
+import { requestNotificationPermission, notificationPermission } from "@/lib/reminders";
+import { isInstallPromptAvailable, promptInstall } from "@/lib/sw-register";
 
 type SettingsForm = Omit<UserSettings, "profileId">;
 
@@ -23,6 +25,10 @@ const defaultSettings: SettingsForm = {
   sleepTime: "23:00",
   focusTime: "08:00",
   coins: 0,
+  onboardingCompleted: true,
+  reminderCheckinEnabled: false,
+  reminderFocusEnabled: true,
+  reminderSleepEnabled: false,
 };
 
 export default function ConfiguracoesPage() {
@@ -39,6 +45,8 @@ export default function ConfiguracoesPage() {
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [installable, setInstallable] = useState(false);
+  const [permTick, setPermTick] = useState(0);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(savedRef.current);
 
@@ -54,6 +62,10 @@ export default function ConfiguracoesPage() {
         sleepTime: s.sleepTime ?? defaultSettings.sleepTime,
         focusTime: s.focusTime ?? defaultSettings.focusTime,
         coins: s.coins ?? 0,
+        onboardingCompleted: s.onboardingCompleted ?? true,
+        reminderCheckinEnabled: s.reminderCheckinEnabled ?? false,
+        reminderFocusEnabled: s.reminderFocusEnabled ?? false,
+        reminderSleepEnabled: s.reminderSleepEnabled ?? false,
       };
       savedRef.current = loaded;
       setForm(loaded);
@@ -72,6 +84,44 @@ export default function ConfiguracoesPage() {
     if (key === "preferredTheme") setUITheme(value as SettingsForm["preferredTheme"]);
   }
 
+  // Enabling a reminder requests notification permission on the gesture when
+  // the browser hasn't decided yet, so the toggle is self-serve.
+  async function setReminderField<K extends "reminderCheckinEnabled" | "reminderFocusEnabled" | "reminderSleepEnabled">(
+    key: K,
+    value: boolean,
+  ) {
+    if (value) {
+      const perm = notificationPermission();
+      if (perm === "granted") {
+        setField(key, value);
+      } else if (perm === "default") {
+        const granted = (await requestNotificationPermission()) === "granted";
+        if (granted) setField(key, value);
+        else setField(key, false);
+      }
+    } else {
+      setField(key, false);
+    }
+    setPermTick((t) => t + 1);
+  }
+
+  // The "Instalar app" button only exists while the browser has a deferred
+  // beforeinstallprompt (Chrome/Edge/Android); poll cheaply for it.
+  useEffect(() => {
+    const id = setInterval(() => setInstallable(isInstallPromptAvailable()), 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleInstall() {
+    const ok = await promptInstall();
+    if (ok) setInstallable(false);
+  }
+
+  async function handleReplayTour() {
+    await api.saveSettings({ onboardingCompleted: false }).catch(() => {});
+    router.push("/dashboard");
+  }
+
   async function handleSave() {
     setSaving(true);
     setSaveError("");
@@ -83,9 +133,14 @@ export default function ConfiguracoesPage() {
         preferredTheme: form.preferredTheme,
         sleepTime: form.sleepTime,
         focusTime: form.focusTime,
+        reminderCheckinEnabled: form.reminderCheckinEnabled,
+        reminderFocusEnabled: form.reminderFocusEnabled,
+        reminderSleepEnabled: form.reminderSleepEnabled,
       });
       savedRef.current = { ...form };
       setSaveSuccess(true);
+      // Re-apply reminders app-wide without waiting for the next focus/visibility.
+      window.dispatchEvent(new Event("energyos:settings-changed"));
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro desconhecido.";
@@ -177,6 +232,58 @@ export default function ConfiguracoesPage() {
             </div>
           </motion.div>
 
+          {/* Lembretes */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.11 } }} className="panel p-6">
+            <span className="eyebrow muted mb-4 flex items-center gap-2"><Bell size={14} /> LEMBRETES</span>
+            <p className="mb-5 text-xs leading-relaxed text-[var(--text-muted)]">
+              Notificações locais no seu navegador (ou app instalado) quando você estiver com o energyOS aberto. O check-in usa o horário de foco como referência.
+            </p>
+            <div className="space-y-5">
+              <ToggleRow
+                label="Lembrete de foco"
+                description={`Avisar às ${form.focusTime ?? "08:00"} para iniciar uma sessão`}
+                checked={form.reminderFocusEnabled}
+                onChange={(v) => setReminderField("reminderFocusEnabled", v)}
+              />
+              <ToggleRow
+                label="Lembrete de check-in"
+                description="Lembrar de registrar sono, estudo e energia"
+                checked={form.reminderCheckinEnabled}
+                onChange={(v) => setReminderField("reminderCheckinEnabled", v)}
+              />
+              <ToggleRow
+                label="Hora de dormir"
+                description={`Avisar às ${form.sleepTime ?? "23:00"} para encerrar o dia`}
+                checked={form.reminderSleepEnabled}
+                onChange={(v) => setReminderField("reminderSleepEnabled", v)}
+              />
+              {permTick >= 0 && notificationPermission() === "denied" && (
+                <p className="rounded-lg border border-red-400/20 bg-red-400/8 px-3 py-2 text-xs text-red-300">
+                  Notificações bloqueadas no navegador. Libere nas configurações do site para reativar os lembretes.
+                </p>
+              )}
+              {permTick >= 0 && notificationPermission() === "granted" && (
+                <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/8 px-3 py-2 text-xs text-emerald-300">
+                  Notificações ativas no navegador.
+                </p>
+              )}
+            </div>
+          </motion.div>
+
+          {/* App (PWA) */}
+          {installable && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.12 } }} className="panel p-6">
+              <span className="eyebrow muted mb-4 block">APP</span>
+              <button
+                onClick={handleInstall}
+                className="flex w-full items-center gap-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-bg)] px-4 py-3 text-sm font-semibold text-[var(--accent)] transition hover:brightness-110"
+              >
+                <Download size={16} /> Instalar energyOS em seu dispositivo
+              </button>
+              <p className="mt-2 text-xs text-[var(--text-muted)]">Acesso rápido como um app, com lembretes e modo offline básico.</p>
+            </motion.div>
+          )}
+
           {/* Save button */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.13 } }}>
             {saveError && (
@@ -203,6 +310,9 @@ export default function ConfiguracoesPage() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }} className="panel p-6">
             <span className="eyebrow muted mb-4 block">CONTA</span>
             <div className="space-y-3">
+              <button onClick={handleReplayTour} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)] transition-colors">
+                <HelpCircle size={16} /> Ver tour de boas-vindas novamente
+              </button>
               <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)] transition-colors">
                 <LogOut size={16} /> Sair da conta
               </button>

@@ -7,10 +7,16 @@ import { ThemeProvider } from "@/lib/theme-provider";
 export const metadata: Metadata = {
   title: "energyOS | Seu ritmo, com clareza",
   description: "Dashboard pessoal de energia, foco e consistência.",
+  applicationName: "energyOS",
+  appleWebApp: {
+    capable: true,
+    title: "energyOS",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: "/icons_8bits/logo.png",
     shortcut: "/icons_8bits/logo.png",
-    apple: "/icons_8bits/logo.png",
+    apple: "/icons_pwa/apple-touch-icon.png",
   },
 };
 

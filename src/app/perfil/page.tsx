@@ -11,12 +11,12 @@ import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import type { DashboardSnapshot } from "@/lib/api-client";
-import type { AchievementProgress } from "@/types";
+import type { AchievementProgress, User } from "@/types";
 import { AvatarWithFrame } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
 import Image from "next/image";
 import {
-  Moon,
+  BedDouble,
   Star,
   Lock,
   X,
@@ -25,9 +25,12 @@ import {
   Loader2,
   Trophy,
   Timer,
-  Target,
   Sparkles,
   Camera,
+  Mail,
+  CalendarDays,
+  Coins,
+  Zap,
 } from "lucide-react";
 import {
   CATEGORY_COLORS,
@@ -215,6 +218,8 @@ export default function PerfilPage() {
   const [bannerSaving, setBannerSaving] = useState(false);
   const [bannerError, setBannerError] = useState("");
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
+  const [dbUser, setDbUser] = useState<User | null>(null);
+  const [settingsCoins, setSettingsCoins] = useState<number | null>(null);
   const [profileStreak, setProfileStreak] = useState<{ current: number; longest: number } | null>(null);
   const [lifetimeFocusMinutes, setLifetimeFocusMinutes] = useState(0);
   const [achievements, setAchievements] = useState<AchievementProgress[]>([]);
@@ -242,8 +247,9 @@ export default function PerfilPage() {
       api.getRecaps().catch((e) => { console.error("[perfil] falha ao carregar recaps:", e); return null; }),
       api.getProfile().catch((e) => { console.error("[perfil] falha ao carregar perfil:", e); return null; }),
       api.getFocusData().catch((e) => { console.error("[perfil] falha ao carregar foco:", e); return null; }),
+      api.getSettings().catch((e) => { console.error("[perfil] falha ao carregar configurações:", e); return null; }),
       user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch((e) => { console.error("[perfil] falha ao carregar env-status:", e); return null; }) : Promise.resolve(null),
-    ]).then(([dash, ach, recapResult, profileResult, focusResult, env]) => {
+    ]).then(([dash, ach, recapResult, profileResult, focusResult, settingsResult, env]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
@@ -261,6 +267,7 @@ export default function PerfilPage() {
       if (recapResult?.recaps) setRecaps(recapResult.recaps);
       if (profileResult?.user?.photoUrl) setPhotoUrl(profileResult.user.photoUrl);
       if (profileResult?.user) {
+        setDbUser(profileResult.user);
         setProfileStreak({
           current: profileResult.user.currentStreak ?? 0,
           longest: profileResult.user.longestStreak ?? 0,
@@ -270,6 +277,7 @@ export default function PerfilPage() {
       if (focusResult) setLifetimeFocusMinutes(focusResult.lifetimeFocusMinutes);
       if (profileResult?.user?.bannerImageUrl) setBannerImageUrl(profileResult.user.bannerImageUrl);
       if (profileResult?.user?.hasCustomBanner) setHasCustomBanner(profileResult.user.hasCustomBanner);
+      if (settingsResult) setSettingsCoins(settingsResult.coins);
       if (env) setEnvStatus(env);
     });
     return () => { active = false; };
@@ -288,10 +296,13 @@ export default function PerfilPage() {
   const displayName = user.displayName ?? "Usuário";
   const currentRecapMonth = `${todayIso().slice(0, 7)}-01`;
   const avatarSrc = photoUrl ?? user.photoURL ?? undefined;
-  const createdAt = user.metadata.creationTime
-    ? new Date(user.metadata.creationTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
+  const createdRaw = (dbUser?.createdAt || user.metadata.creationTime) || undefined;
+  const createdAt = createdRaw
+    ? new Date(createdRaw).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "—";
-  const username = (user as { username?: string }).username;
+  const username = dbUser?.username ?? (user as { username?: string }).username;
+  const email = dbUser?.email ?? user.email; 
+  const coinBalance = settingsCoins ?? dashboard?.user?.coinBalance;
 
   const streak = profileStreak?.current
     ?? dashboard?.streak?.currentStreak
@@ -465,9 +476,7 @@ export default function PerfilPage() {
   }
 
   const metrics = [
-    { icon: Moon, color: "#71d4ff", label: "Sono", kind: "sleep" as const, unit: "h" },
-    { icon: Timer, color: "#b69cff", label: "Estudo", kind: "study" as const, unit: "min" },
-    { icon: Target, color: "#ffb86b", label: "Treino", kind: "training" as const, unit: "min" },
+    { icon: BedDouble, color: "#71d4ff", label: "Sono", kind: "sleep" as const, unit: "h" },
   ];
 
   const heroStats = [
@@ -873,7 +882,8 @@ export default function PerfilPage() {
               <div className="grid gap-3 sm:grid-cols-3">
                 {metrics.map(({ icon: Icon, color, label, kind, unit }) => {
                   const metric = dashboard?.metrics.find((m) => m.kind === kind);
-                  const displayValue = metric ? formatStat(metric.value, unit) : "Sem dados";
+                  const hasData = metric && metric.value >= 0;
+                  const displayValue = hasData ? formatStat(metric.value, unit) : "Sem dados";
                   return (
                     <div key={label} className="metric-card flex items-center gap-3">
                       <div className="metric-icon" style={{ color }}><Icon size={15} /></div>
@@ -886,9 +896,29 @@ export default function PerfilPage() {
                     </div>
                   );
                 })}
+                <div className="metric-card flex items-center gap-3">
+                  <div className="metric-icon" style={{ color: "var(--purple)" }}><Zap size={15} /></div>
+                  <div>
+                    <div className="metric-caption">Foco</div>
+                    <div className="font-display text-base text-[var(--text-secondary)]">
+                      {dashboard?.weeklyFocusMinutes != null && dashboard.weeklyFocusMinutes > 0
+                        ? `${dashboard.weeklyFocusMinutes} min`
+                        : "Sem dados"}
+                    </div>
+                  </div>
+                </div>
+                <div className="metric-card flex items-center gap-3">
+                  <div className="metric-icon" style={{ color: "var(--orange)" }}><Coins size={15} /></div>
+                  <div>
+                    <div className="metric-caption">Moedas</div>
+                    <div className="font-display text-base text-[var(--text-secondary)]">
+                      {coinBalance != null ? `${coinBalance}` : "—"}
+                    </div>
+                  </div>
+                </div>
               </div>
               <p className="mt-4 text-xs text-[var(--text-faint)]">
-                Médias calculadas conforme você registrar check-ins diários.
+                Médias calculadas conforme você registrar check-ins diários e sessões de foco.
               </p>
             </div>
 
@@ -899,9 +929,9 @@ export default function PerfilPage() {
                 className="metric-card"
                 style={{ boxShadow: "0 0 20px -8px rgba(182,156,255,0.12)" }}
               >
-                <div className="metric-caption mb-1" style={{ color: "var(--purple)" }}>Provedor</div>
-                <div className="font-display text-sm text-[var(--text-secondary)]">
-                  {user.providerData[0]?.providerId === "google.com" ? "Google" : "E-mail"}
+                <div className="metric-caption mb-1" style={{ color: "var(--purple)" }}>E-mail</div>
+                <div className="truncate font-display text-sm text-[var(--text-secondary)]">
+                  {email || "—"}
                 </div>
               </motion.div>
 
@@ -912,7 +942,23 @@ export default function PerfilPage() {
                 style={{ boxShadow: "0 0 20px -8px rgba(113,212,255,0.12)" }}
               >
                 <div className="metric-caption mb-1" style={{ color: "var(--accent)" }}>Membro desde</div>
-                <div className="font-display text-sm text-[var(--text-secondary)]">{createdAt}</div>
+                <div className="flex items-center gap-1.5 font-display text-sm text-[var(--text-secondary)]">
+                  <CalendarDays size={13} />
+                  <span>{createdAt}</span>
+                </div>
+              </motion.div>
+
+              <motion.div
+                whileHover={reduced ? undefined : { y: -2 }}
+                transition={{ duration: 0.15 }}
+                className="metric-card"
+                style={{ boxShadow: "0 0 20px -8px rgba(113,212,255,0.12)" }}
+              >
+                <div className="metric-caption mb-1" style={{ color: "var(--accent)" }}>Nome de usuário</div>
+                <div className="flex items-center gap-1.5 font-display text-sm text-[var(--text-secondary)]">
+                  <Mail size={13} />
+                  <span>{username ? `@${username}` : "—"}</span>
+                </div>
               </motion.div>
             </div>
           </motion.section>

@@ -4,6 +4,7 @@ import { listCheckins, averagesForRange } from "./checkins";
 import { computeProgress, computeStreak, listTasksByDate, type StreakInfo, type TaskProgress } from "./tasks";
 import { generateWeeklyInsights } from "./insights";
 import { addDaysIso, todayIso } from "./dates";
+import { getWeeklyFocusMinutesForProfiles } from "./focus";
 
 export interface DashboardSnapshotResponse {
   user: import("@/types").User;
@@ -13,6 +14,7 @@ export interface DashboardSnapshotResponse {
   insights: import("@/types").Insight[];
   taskProgress: TaskProgress;
   streak: StreakInfo;
+  weeklyFocusMinutes: number;
 }
 
 function trendPercent(current: number | null, previous: number | null): number | undefined {
@@ -32,7 +34,7 @@ export async function buildDashboardSnapshot(
   const prevWeekStart = addDaysIso(today, -13);
   const prevWeekEnd = addDaysIso(today, -7);
 
-  const [user, tasks, checkins, avgCurrent, avgPrevious, insights, streak] = await Promise.all([
+  const [user, tasks, checkins, avgCurrent, avgPrevious, insights, streak, weeklyFocus] = await Promise.all([
     upsertAndGetProfile(profileId, displayName, email),
     listTasksByDate(profileId, today),
     listCheckins(profileId, weekStart, today),
@@ -40,6 +42,7 @@ export async function buildDashboardSnapshot(
     averagesForRange(profileId, prevWeekStart, prevWeekEnd),
     generateWeeklyInsights(profileId, today),
     computeStreak(profileId, today),
+    getWeeklyFocusMinutesForProfiles([profileId], addDaysIso(today, -6)).then((m) => m.get(profileId) ?? 0),
   ]);
 
   // Override role from auth to ensure it's current
@@ -51,7 +54,7 @@ export async function buildDashboardSnapshot(
     {
       kind: "sleep",
       label: "Sono",
-      value: avgCurrent.sleepHours ?? 0,
+      value: avgCurrent.sleepHours ?? -1,
       unit: "h",
       trend: trendPercent(avgCurrent.sleepHours, avgPrevious.sleepHours),
       period: "week",
@@ -59,7 +62,7 @@ export async function buildDashboardSnapshot(
     {
       kind: "study",
       label: "Estudo",
-      value: avgCurrent.studyMinutes ?? 0,
+      value: avgCurrent.studyMinutes ?? -1,
       unit: "min",
       trend: trendPercent(avgCurrent.studyMinutes, avgPrevious.studyMinutes),
       period: "week",
@@ -67,7 +70,7 @@ export async function buildDashboardSnapshot(
     {
       kind: "training",
       label: "Treino",
-      value: avgCurrent.trainingMinutes ?? 0,
+      value: avgCurrent.trainingMinutes ?? -1,
       unit: "min",
       trend: trendPercent(avgCurrent.trainingMinutes, avgPrevious.trainingMinutes),
       period: "week",
@@ -82,5 +85,6 @@ export async function buildDashboardSnapshot(
     insights,
     taskProgress: computeProgress(tasks),
     streak,
+    weeklyFocusMinutes: weeklyFocus,
   };
 }

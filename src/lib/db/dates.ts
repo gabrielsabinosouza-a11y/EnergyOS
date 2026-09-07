@@ -5,6 +5,13 @@ export function todayIso(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(new Date());
 }
 
+/** Dia (YYYY-MM-DD) de um instante arbitrário no fuso oficial do produto. */
+export function dayInTz(date: Date | string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(
+    typeof date === "string" ? new Date(date) : date,
+  );
+}
+
 /** Instante UTC do próximo reset diário (meia-noite em São Paulo). */
 export function dailyResetAtIso(now = new Date()): string {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(now);

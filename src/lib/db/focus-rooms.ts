@@ -1004,7 +1004,11 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
     );
     for (const s of unbilled.rows) {
       try {
-        await endFocusSession(s.profile_id, Number(s.id), Math.round(durationMinutes * 60), true, 0);
+        // Bill at the room's actual completion instant (`now` was captured when
+        // the transition fired) so the streak and daily missions are credited on
+        // the day the focus really happened — not the day someone finally came
+        // back and triggered this fallback.
+        await endFocusSession(s.profile_id, Number(s.id), Math.round(durationMinutes * 60), true, 0, now);
       } catch (err) {
         console.error(`[completeFocusRoom] finalize open session ${s.id} for ${s.profile_id}:`, err);
       }

@@ -2,7 +2,7 @@ import pool from "../db";
 import type { FocusSession } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
-import { todayIso, APP_TIMEZONE } from "./dates";
+import { todayIso, APP_TIMEZONE, dayInTz } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
 import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
@@ -276,6 +276,7 @@ export async function endFocusSession(
   focusedSeconds: number,
   isRoomSession: boolean = false,
   pausedCount: number = 0,
+  endedAt?: string | Date,
 ): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
@@ -316,15 +317,18 @@ export async function endFocusSession(
 
   // Atomic claim. The room flow (a completed room finalizing a co-participant's
   // open session) can race with that participant's own client calling endFocus.
-  // Only the request whose UPDATE actually flips ended_at from NULL to now()
+  // Only the request whose UPDATE actually flips ended_at from NULL to a value
   // proceeds to award; any concurrent or late end returns the stored values.
   // This keeps coins, missions, streak, garden and the event row exactly-once.
+  // `endedAt` (when supplied) is the TRUE end instant — used when a room session
+  // is finalized after the fact so rewards land on the day the focus actually
+  // happened, not on the day the user finally came back to claim it.
   const updated = await pool.query<FocusRow>(
     `update focus_sessions
-        set duration_minutes = $3, ended_at = now(), xp_earned = 0, paused_count = $4
+        set duration_minutes = $3, ended_at = coalesce($5::timestamptz, now()), xp_earned = 0, paused_count = $4
       where profile_id = $1 and id = $2 and ended_at is null
       returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, sessionId, durationMinutes, pausedCount],
+    [profileId, sessionId, durationMinutes, pausedCount, endedAt ? new Date(endedAt).toISOString() : null],
   );
   if (!updated.rows[0]) {
     const stored = await pool.query<FocusRow>(
@@ -358,15 +362,19 @@ export async function endFocusSession(
   // are no longer fixed. Every completed session advances the SESSIONS_COMPLETED
   // and TOTAL_MINUTES metrics; room sessions additionally advance the
   // ROOM_SESSION_COMPLETED metric regardless of the assigned row ids.
-  await recordMissionProgress(profileId, "SESSIONS_COMPLETED", { incrementBy: 1 });
-  await recordMissionProgress(profileId, "TOTAL_MINUTES", { incrementBy: durationMinutes });
+  // All progress is booked against the day the session actually ENDED (which
+  // can differ from today when a room session is finalized late), so a session
+  // is never counted on the wrong date.
+  const endDate = dayInTz(updated.rows[0].ended_at ?? new Date());
+  await recordMissionProgress(profileId, "SESSIONS_COMPLETED", { incrementBy: 1, questDate: endDate });
+  await recordMissionProgress(profileId, "TOTAL_MINUTES", { incrementBy: durationMinutes, questDate: endDate });
 
   if (isRoomSession) {
-    await recordMissionProgress(profileId, "ROOM_SESSION_COMPLETED", { incrementBy: 1 });
+    await recordMissionProgress(profileId, "ROOM_SESSION_COMPLETED", { incrementBy: 1, questDate: endDate });
   }
 
   if (durationMinutes >= 60) {
-    await recordMissionProgress(profileId, "LONG_SESSION_60", { incrementBy: 1 });
+    await recordMissionProgress(profileId, "LONG_SESSION_60", { incrementBy: 1, questDate: endDate });
   }
 
   // "Focus before 9am" is evaluated against the session start in the product TZ.
@@ -376,18 +384,19 @@ export async function endFocusSession(
     ),
   );
   if (startedLocalHour < 9) {
-    await recordMissionProgress(profileId, "EARLY_SESSION_9AM", { incrementBy: 1 });
+    await recordMissionProgress(profileId, "EARLY_SESSION_9AM", { incrementBy: 1, questDate: endDate });
   }
 
   // Real-time streak: a session that reached at least `STREAK_COMPLETION_THRESHOLD`
   // of its target duration counts as the day's "success" for streak purposes and
   // advances the streak immediately (first qualifying session of the day).
   // Given-up sessions (fewer focused minutes than the target) and abandoned ones
-  // do not affect the streak.
+  // do not affect the streak. The day is passed explicitly so a session
+  // finalized late extends the streak on the day the focus really happened.
   const targetMinutes = session.rows[0].target_duration_minutes ?? 0;
   const completedThreshold = targetMinutes * STREAK_COMPLETION_THRESHOLD;
   if (durationMinutes >= completedThreshold) {
-    await onFocusSessionCompleted(profileId);
+    await onFocusSessionCompleted(profileId, endDate);
   }
 
   // Garden: finalize the energy(ies) that were planted when the session started.

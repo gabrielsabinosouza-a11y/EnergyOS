@@ -251,7 +251,8 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
        sleep_time = excluded.sleep_time,
        focus_time = excluded.focus_time,
        sound_notifications_enabled = excluded.sound_notifications_enabled
-     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled`,
+     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled,
+       onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled`,
     [
       dbProfileId,
       input.notificationsEnabled,
@@ -269,6 +270,10 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
     focus_time: string | null;
     coins: number;
     sound_notifications_enabled: boolean;
+    onboarding_completed: boolean;
+    reminder_checkin_enabled: boolean;
+    reminder_focus_enabled: boolean;
+    reminder_sleep_enabled: boolean;
   };
   return {
     profileId,
@@ -278,13 +283,18 @@ export async function saveUserSettings(profileId: string, input: SaveUserSetting
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
     coins: row.coins ?? 0,
     soundNotificationsEnabled: row.sound_notifications_enabled,
+    onboardingCompleted: row.onboarding_completed,
+    reminderCheckinEnabled: row.reminder_checkin_enabled,
+    reminderFocusEnabled: row.reminder_focus_enabled,
+    reminderSleepEnabled: row.reminder_sleep_enabled,
   };
 }
 
 export async function getUserSettings(profileId: string): Promise<UserSettings | null> {
   const dbProfileId = requireProfileId(profileId);
   const result = await pool.query(
-    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled
+    `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled,
+            onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled
      from user_settings where profile_id = $1`,
     [dbProfileId],
   );
@@ -296,6 +306,10 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
         focus_time: string | null;
         coins: number;
         sound_notifications_enabled: boolean;
+        onboarding_completed: boolean;
+        reminder_checkin_enabled: boolean;
+        reminder_focus_enabled: boolean;
+        reminder_sleep_enabled: boolean;
       }
     | undefined;
   if (!row) return null;
@@ -307,5 +321,9 @@ export async function getUserSettings(profileId: string): Promise<UserSettings |
     focusTime: row.focus_time ? row.focus_time.slice(0, 5) : undefined,
     coins: row.coins ?? 0,
     soundNotificationsEnabled: row.sound_notifications_enabled,
+    onboardingCompleted: row.onboarding_completed,
+    reminderCheckinEnabled: row.reminder_checkin_enabled,
+    reminderFocusEnabled: row.reminder_focus_enabled,
+    reminderSleepEnabled: row.reminder_sleep_enabled,
   };
 }
