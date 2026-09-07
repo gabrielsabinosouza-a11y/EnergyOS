@@ -88,9 +88,33 @@ function mapGardenRow(row: GardenRow): GardenEntry {
  *
  * Self-heals historical rows that never got finalized: entries whose focus
  * session already ended are reconciled to their true state (alive/withered +
- * stage), so a completed energy never renders as an eternal "Crescendo...". */
+ * stage), so a completed energy never renders as an eternal "Crescendo...".
+ * Sessions that were never ended at all (the client closed the tab before the
+ * timer fired and nothing stamped ended_at) are swept below as well. */
 export async function getGardenEntries(profileId: string): Promise<GardenEntry[]> {
   parseProfileId(profileId);
+
+  // Stale open sessions: a session that was never ended (client closed the
+  // tab mid-session and never came back through the end flow) can no longer
+  // complete by itself once it is well past its target — yet its garden
+  // plants stayed "growing" forever. Mark those plants withered so they stop
+  // rendering as an eternal "Crescendo...". The session row itself is left
+  // untouched (rewards are unaffected): if the client later returns and the
+  // persisted timer still ends the session for real, finalizeGardenEntries
+  // flips the plants back to their true state.
+  await pool.query(
+    `update garden_entries ge
+        set status = 'withered'
+       from focus_sessions fs
+      where ge.profile_id = $1
+        and ge.session_id = fs.id
+        and ge.status = 'growing'
+        and fs.ended_at is null
+        and now() > fs.started_at
+                    + (coalesce(fs.target_duration_minutes, 25) * interval '1 minute')
+                    + interval '2 hours'`,
+    [profileId],
+  );
 
   // Rows linked to a (non-room) session that already ended: resolve precisely.
   await pool.query(
@@ -213,7 +237,7 @@ export async function finalizeGardenEntries(
   await pool.query(
     `update garden_entries
      set status = $1, growth_stage = $2, duration_minutes = $3
-     where profile_id = $4 and session_id = $5 and status = 'growing'`,
+     where profile_id = $4 and session_id = $5 and status in ('growing', 'withered')`,
     [newStatus, newGrowthStage, actualDurationMinutes, profileId, sessionId],
   );
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ChevronDown, FlaskConical, Loader2, Lock } from "lucide-react";
-import { XpIcon } from "@/components/xp-icon";
+import { XpIcon, xpLevelImage } from "@/components/xp-icon";
 import { CoinIcon } from "@/components/coin-icon";
 import { api } from "@/lib/api-client";
 import { XP_BOOST_ITEM, XP_BOOST_COST, XP_BOOST_MAX_HELD } from "@/lib/xp-boost";
@@ -140,7 +140,7 @@ export function XPBadge({
         title="Abra o menu de XP e níveis"
         className="flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-1.5 transition hover:border-[var(--border)] hover:bg-[var(--bg-surface)]"
       >
-        <XpIcon size={22} level={levelInfo.level} />
+        <XpIcon size={14} />
         <span className="font-mono text-xs font-medium text-[#ffb86b]">{xp} XP</span>
         <span className="text-[var(--text-faint)]">·</span>
         <span className="text-xs text-[var(--text-muted)]">Nv. {levelInfo.label}</span>
@@ -161,7 +161,7 @@ export function XPBadge({
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-display flex items-center gap-1.5 text-base font-semibold text-[#ffb86b]">
-                  <XpIcon size={20} level={levelInfo.level} /> {xp} XP
+                  <XpIcon size={16} /> {xp} XP
                 </p>
                 <p className="text-xs text-[var(--text-muted)]">
                   Nível {levelInfo.label}{" "}
@@ -170,8 +170,13 @@ export function XPBadge({
                     : "· nível máximo"}
                 </p>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#ffb86b]/30 bg-[#ffb86b]/10 text-sm font-bold text-[#ffb86b]">
-                Nv {levelInfo.label}
+              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[#ffb86b]/30 bg-[#ffb86b]/10">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={xpLevelImage(levelInfo.level)}
+                  alt={`Nível ${levelInfo.label}`}
+                  className="h-full w-full object-cover"
+                />
               </div>
             </div>
 
