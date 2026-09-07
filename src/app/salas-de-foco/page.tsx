@@ -100,6 +100,7 @@ const ROOM_STATUS_META: Record<string, { label: string; pill: string; dot: strin
   active:    { label: "Em andamento",  pill: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300", dot: "bg-emerald-400" },
   paused:    { label: "Pausada",       pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
   completed: { label: "Concluída",     pill: "border-emerald-400/25 bg-emerald-400/5  text-emerald-300/80", dot: "bg-emerald-400" },
+  restarting:{ label: "Reiniciando",   pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
 };
 
 const ROOM_STATUS_FALLBACK = { label: "Expirada", pill: "border-white/10 bg-white/5 text-[var(--text-faint)]", dot: "bg-[var(--text-faint)]" };
@@ -392,24 +393,28 @@ export default function FocusRoomsPage() {
         setCurrentRoom(null);
         setPageState("list");
         fetchRooms();
-      } else if (currentRoom.status === "completed" && next.status === "active") {
-        // The host restarted a completed session → participants auto-transition
-        // into the fresh round (elapsed_seconds=0 resets the shared countdown).
+      } else if ((currentRoom.status === "completed" || currentRoom.status === "restarting") && next.status === "active") {
+        // Everyone confirmed the host's "Play Again" request → the room flipped
+        // back to active with elapsed_seconds=0 (fresh shared countdown) and
+        // every confirmed participant was reset to "focusing" server-side.
         setShowCompletion(false);
         setLastCoins(0);
-        setSuccessMessage("O anfitrião iniciou outra sessão. Bora focar!");
+        setNowMs(Date.now());
+        setSuccessMessage("Todos confirmaram — nova sessão iniciada. Bora focar!");
       }
     } catch {
       // transient polling failure — ignore
     }
   }, [currentRoom, fetchRooms]);
 
-  // Poll while in a waiting, active, paused or completed room view. Completed
-  // rooms keep being polled so participants waiting for the host to restart
-  // ("Play Again") auto-transition into the new round.
+  // Poll while in a waiting, active, paused, completed or restarting room view.
+  // Completed rooms keep being polled so participants waiting for the host to
+  // restart ("Play Again") receive the confirm/cancel prompt; restarting rooms
+  // keep being polled so the host sees confirmations arriving and everyone
+  // transitions into the new round the moment the last confirmation lands.
   useEffect(() => {
     if (pageState !== "room" || !currentRoom) return;
-    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed") return;
+    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed" && currentRoom.status !== "restarting") return;
     const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
@@ -818,15 +823,55 @@ export default function FocusRoomsPage() {
     setError(null);
     try {
       const result = await api.restartFocusRoom(currentRoom.id);
-      // Fresh round: status flips back to active, elapsed_seconds=0 resets the
-      // shared countdown, and every present participant is reset to "focusing".
+      // The room enters the "restarting" state: every still-present participant
+      // gets a Confirm/Cancel prompt and the room only flips back to active
+      // (fresh countdown, elapsed_seconds=0) once EVERYONE confirms — done
+      // server-side in respondToRestart → maybeFinalizeRestart.
       setCurrentRoom(result.room);
-      setNowMs(Date.now());
-      setShowCompletion(false);
-      setLastCoins(0);
-      setSuccessMessage("Sessão reiniciada! Todos os participantes estão de volta.");
+      setSuccessMessage("Pedido enviado! Aguardando a confirmação dos participantes...");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao reiniciar a sala");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom]);
+
+  // Participant answers the host's "Play Again" prompt: confirm joins the next
+  // round (the room restarts automatically once everyone confirmed); cancel
+  // marks the user as left and takes them back to the room list.
+  const handleRespondRestart = useCallback(async (accepted: boolean) => {
+    if (!currentRoom) return;
+    setLoadingAction(accepted ? "restart-accept" : "restart-decline");
+    setError(null);
+    try {
+      await api.respondToRestart(currentRoom.id, accepted);
+      if (accepted) {
+        setSuccessMessage("Confirmado! A nova sessão começa quando todos confirmarem.");
+      } else {
+        setCurrentRoom(null);
+        setPageState("list");
+        fetchRooms();
+        setSuccessMessage("Você saiu da sala.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao responder ao reinício");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom, fetchRooms]);
+
+  // Host aborts a pending "Play Again" request: the room returns to 'completed'
+  // and every answer is reset, so the host can ask again later.
+  const handleCancelRestart = useCallback(async () => {
+    if (!currentRoom) return;
+    setLoadingAction("restart-cancel");
+    setError(null);
+    try {
+      const result = await api.cancelRestart(currentRoom.id);
+      setCurrentRoom(result.room);
+      setSuccessMessage("Reinício cancelado. A sala continua concluída.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao cancelar o reinício");
     } finally {
       setLoadingAction(null);
     }
@@ -1409,6 +1454,52 @@ export default function FocusRoomsPage() {
               )
             )}
 
+            {/* Restarting → the host asked to "Play Again": every still-present
+                participant must Confirm (join the next round) or Cancel (leave
+                the room). The room flips back to active — with the countdown
+                reset — only after EVERYONE confirms; the host sees live
+                progress and can abort the request. */}
+            {room.status === "restarting" && myParticipant?.sessionStatus !== "left" && (
+              isHost ? (
+                <div className="space-y-2">
+                  <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                    <Loader2 size={14} className="animate-spin" />
+                    {`Aguardando confirmações (${room.participants.filter((p) => p.sessionStatus !== "left" && p.restartChoice === "confirmed").length}/${room.participants.filter((p) => p.sessionStatus !== "left").length})...`}
+                  </motion.div>
+                  <button onClick={handleCancelRestart} disabled={loadingAction === "restart-cancel"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                    {loadingAction === "restart-cancel" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Cancelar reinício"}
+                  </button>
+                </div>
+              ) : myParticipant?.restartChoice === "confirmed" ? (
+                <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <Loader2 size={14} className="animate-spin" /> Confirmado! Aguardando os demais participantes...
+                </motion.div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-4 py-3 text-sm text-[var(--text)]">
+                    O anfitrião quer jogar novamente — nova sessão de {room.durationMinutes} min. Confirme para participar ou cancele para sair da sala.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <motion.button
+                      onClick={() => handleRespondRestart(true)}
+                      disabled={loadingAction !== null}
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                      className="primary-button"
+                    >
+                      {loadingAction === "restart-accept" ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Confirmar</>}
+                    </motion.button>
+                    <button
+                      onClick={() => handleRespondRestart(false)}
+                      disabled={loadingAction !== null}
+                      className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingAction === "restart-decline" ? <Loader2 size={16} className="animate-spin" /> : <><X size={16} /> Cancelar e sair</>}
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+
             {/* Host-only room controls — Pausar/Retomar (shared countdown) and Parar
                 (host's OWN give-up; the room keeps running for everyone else).
                 Non-hosts see no room controls here; they get the passive status
@@ -1550,6 +1641,33 @@ export default function FocusRoomsPage() {
                 <button onClick={handleStopRoom} disabled={loadingAction === "stopping"}
                   className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
                   {loadingAction === "stopping" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Parar"}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* "Play Again" warn: while the host's restart request is pending, every
+            still-present participant gets a forced confirm/cancel prompt. The
+            modal can't be dismissed (onClose is a no-op) — it only disappears
+            when the user answers, the host cancels, or the room restarts. */}
+        {currentRoom && currentRoom.status === "restarting" && myProfileId && currentRoom.hostProfileId !== myProfileId &&
+          currentRoom.participants.find((p) => p.profileId === myProfileId && p.sessionStatus !== "left")?.restartChoice === "pending" && (
+          <Modal onClose={() => { /* must be answered via Confirmar/Cancelar */ }}>
+            <div className="glass-card w-full max-w-sm p-6">
+              <h3 className="font-display text-lg mb-2">Jogar novamente?</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-6">
+                O anfitrião quer iniciar outra sessão de {currentRoom.durationMinutes} min nesta sala. Confirme para participar ou cancele para sair.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => handleRespondRestart(false)} disabled={loadingAction !== null}
+                  className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                  {loadingAction === "restart-decline" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Cancelar"}
+                </button>
+                <button onClick={() => handleRespondRestart(true)} disabled={loadingAction !== null}
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--bg-primary)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "var(--accent)" }}>
+                  {loadingAction === "restart-accept" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Confirmar"}
                 </button>
               </div>
             </div>

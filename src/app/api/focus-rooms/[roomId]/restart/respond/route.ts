@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound } from "@/lib/http";
-import { ValidationError } from "@/lib/errors";
+import { ValidationError } from "@/lib/db/validation";
 import { getFocusRoomById, respondToRestart } from "@/lib/db/focus-rooms";
 
 // POST /api/focus-rooms/[roomId]/restart/respond — any participant answers the
