@@ -191,7 +191,8 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
 
 /** Atualiza apenas o progresso atual da meta (valor acumulado). */
 export async function updateGoalProgress(profileId: string, goalId: number, currentValue: number): Promise<GoalWithProgress> {
-  return updateGoal(profileId, goalId, { currentValue });
+  const { goal } = await updateGoal(profileId, goalId, { currentValue });
+  return goal;
 }
 
 export async function deleteGoal(profileId: string, goalId: number): Promise<void> {
