@@ -684,23 +684,33 @@ export function ChatThread({
   // Pin the viewport to the newest message when the chat opens. The list is
   // usually populated asynchronously after mount, and late-rendering media can
   // change the scroll height, so retry until the bottom is actually reached.
+  // The latch resets whenever a *different* conversation is opened (signalled
+  // by a change in the first message id), so switching friends/groups always
+  // drops the user straight to the newest messages instead of leaving them
+  // stranded on the old ones.
+  const firstMsgId = messages.length > 0 ? messages[0].id : undefined;
+  const prevFirstIdRef = useRef<number | undefined>(undefined);
   useEffect(() => {
+    if (firstMsgId !== prevFirstIdRef.current) {
+      prevFirstIdRef.current = firstMsgId;
+      initialScrollDoneRef.current = false;
+    }
     if (initialScrollDoneRef.current || messages.length === 0) return;
     initialScrollDoneRef.current = true;
     const el = scrollRef.current;
-    let retries = 8;
+    let retries = 10;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const pin = () => {
       if (!el || retries-- <= 0) return;
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       if (distFromBottom > SCROLL_BOTTOM_THRESHOLD) scrollToBottom(false);
-      timer = setTimeout(pin, 120);
+      timer = setTimeout(pin, 100);
     };
     pin();
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [messages.length, scrollToBottom]);
+  }, [firstMsgId, messages.length, scrollToBottom]);
 
   // Track new messages
   useEffect(() => {

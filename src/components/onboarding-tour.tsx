@@ -141,8 +141,9 @@ export function OnboardingTour() {
         onClick={skip}
       >
         <motion.div
-          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          initial={{ opacity: 0, y: 8, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.12 }}
           className="glass-card relative w-full max-w-md overflow-hidden rounded-2xl border p-6 text-center shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
@@ -160,14 +161,14 @@ export function OnboardingTour() {
             {step.eyebrow}
           </p>
 
-          {"actions" in step && step.actions ? (
-            <Bell size={44} className="mx-auto mb-3 text-[#ffb86b]" />
-          ) : step.img ? (
+          {step.img ? (
             <Image
+              key={step.img}
               src={step.img}
               alt=""
               width={64}
               height={64}
+              unoptimized
               className="mx-auto mb-3 object-contain"
             />
           ) : (
