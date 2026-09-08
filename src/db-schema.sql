@@ -344,6 +344,11 @@ alter table xp_ledger alter column source_id type text using source_id::text;
 alter table xp_ledger drop constraint if exists xp_ledger_source_check;
 alter table xp_ledger add constraint xp_ledger_source_check
   check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
+-- 'weekly_plan' is written by awardWeeklyPlanCompletion (planner completion
+-- rewards). Without it the planner's XP credit violates the check at runtime.
+alter table xp_ledger drop constraint if exists xp_ledger_source_check;
+alter table xp_ledger add constraint xp_ledger_source_check
+  check (source in ('task','kanban','kanban_task','weekly_plan','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
 -- Idempotency backstop: one ledger row per (profile, source, source_id).
 -- Reconcile legacy duplicate awards before enforcing the invariant.
 delete from xp_ledger older

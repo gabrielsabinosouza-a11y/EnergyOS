@@ -35,12 +35,13 @@ export const WEEKLY_PLAN_DONE_COINS = 10;
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;
 
-/** Completion XP/coins tiered by targetValue. */
-export const GOAL_COMPLETION_TIERS: { maxTarget: number; xp: number; coins: number }[] = [
-  { maxTarget: 10,       xp: 30,  coins: 15 },
-  { maxTarget: 100,      xp: 60,  coins: 20 },
-  { maxTarget: Infinity, xp: 100, coins: 30 },
-];
+/** XP/coins when a regular (daily/weekly/monthly) goal reaches its target. */
+export const GOAL_DONE_XP = 15;
+export const GOAL_DONE_COINS = 15;
+
+/** XP/coins for a unique (once-in-a-lifetime) goal, like "become a navy seal". */
+export const GOAL_UNIQUE_DONE_XP = 50;
+export const GOAL_UNIQUE_DONE_COINS = 50;
 
 // ── Achievements ───────────────────────────────────────────────────────────────
 //

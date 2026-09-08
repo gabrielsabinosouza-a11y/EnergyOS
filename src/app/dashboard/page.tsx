@@ -465,7 +465,22 @@ function DashboardContent() {
     const target = goals.find((g) => g.id === goalId);
     if (!target) return;
     const next = Math.max(0, Math.min(target.targetValue, Number((target.currentValue + delta).toFixed(2))));
-    api.updateGoal(goalId, { currentValue: next }).catch(() => {
+    api.updateGoal(goalId, { currentValue: next }).then(({ goal, xpAwarded, coinsAwarded }) => {
+      setGoals((gs) =>
+        gs.map((g) => (g.id === goalId ? { ...g, ...goal } : g)),
+      );
+      // Reward popup — same alert as the missions/daily tasks, shown when the
+      // goal actually completes (server returns 0/0 for repeat completions).
+      if (xpAwarded > 0 || coinsAwarded > 0) {
+        setCoins((c) => {
+          const newBalance = c + coinsAwarded;
+          setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
+          return newBalance;
+        });
+        showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
+        api.getFocusData().then((f) => setFocusData(f));
+      }
+    }).catch(() => {
       // Roll back to server truth on failure.
       api.getGoals().then((bundles) => setGoals(bundles.map((b) => b.goal))).catch(() => {});
     });
@@ -517,9 +532,21 @@ function DashboardContent() {
         targetValue: patch.targetValue,
         frequency: patch.frequency,
       })
-      .then(({ goal }) => {
+      .then(({ goal, xpAwarded, coinsAwarded }) => {
         setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
-        showSuccess("Meta atualizada com sucesso.");
+        // Editing a goal can complete it (e.g. lowering the target below the
+        // current progress) — surface the reward popup when that happens.
+        if (xpAwarded > 0 || coinsAwarded > 0) {
+          setCoins((c) => {
+            const newBalance = c + coinsAwarded;
+            setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
+            return newBalance;
+          });
+          showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        } else {
+          showSuccess("Meta atualizada com sucesso.");
+        }
       })
       .catch(() => {
         setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? prev : g)));

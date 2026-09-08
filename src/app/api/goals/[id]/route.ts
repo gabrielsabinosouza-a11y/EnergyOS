@@ -26,7 +26,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.targetValue !== undefined) patch.targetValue = parseNumber(body.targetValue, "Valor alvo");
     if (body.currentValue !== undefined) patch.currentValue = parseNumber(body.currentValue, "Progresso atual");
 
-    return jsonOk({ goal: await updateGoal(profileId, goalId, patch) });
+    const { goal, xpAwarded, coinsAwarded } = await updateGoal(profileId, goalId, patch);
+    return jsonOk({ goal, xpAwarded, coinsAwarded });
   });
 }
 

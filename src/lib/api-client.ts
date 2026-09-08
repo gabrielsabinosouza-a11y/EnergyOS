@@ -113,7 +113,7 @@ export const api = {
   createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency: GoalFrequency }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
   updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; currentValue?: number; frequency?: GoalFrequency }) =>
-    request<{ goal: GoalWithProgress }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
   createHabit: (goalId: number, input: { title: string; frequency: HabitFrequency }) =>
     request<{ habit: HabitWithCompletion }>(`/api/goals/${goalId}/habits`, { method: "POST", body: JSON.stringify(input) }),

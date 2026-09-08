@@ -4,15 +4,22 @@ import { ensureProfile } from "./profiles";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseEnum, parseNumber, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
-import { awardXPAndCoins, creditXP } from "./xp";
+import { creditXP } from "./xp";
+import { addCoins } from "./settings";
 import {
   GOAL_CREATION_XP,
-  GOAL_COMPLETION_TIERS,
+  GOAL_DONE_COINS,
+  GOAL_DONE_XP,
+  GOAL_UNIQUE_DONE_COINS,
+  GOAL_UNIQUE_DONE_XP,
 } from "../daily-limits";
 
-function goalCompletionReward(targetValue: number): { xp: number; coins: number } {
-  return GOAL_COMPLETION_TIERS.find((t) => targetValue <= t.maxTarget)
-    ?? GOAL_COMPLETION_TIERS[GOAL_COMPLETION_TIERS.length - 1];
+/** Recompensa de conclusão: 15 XP + 15 moedas para metas normais e
+ *  50 XP + 50 moedas para metas únicas (conquistadas uma vez na vida). */
+function goalCompletionReward(frequency: GoalFrequency): { xp: number; coins: number } {
+  return frequency === "unique"
+    ? { xp: GOAL_UNIQUE_DONE_XP, coins: GOAL_UNIQUE_DONE_COINS }
+    : { xp: GOAL_DONE_XP, coins: GOAL_DONE_COINS };
 }
 
 export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly", "unique"] as const;
@@ -118,7 +125,7 @@ export interface UpdateGoalPatch {
   frequency?: GoalFrequency;
 }
 
-export async function updateGoal(profileId: string, goalId: number, patch: UpdateGoalPatch): Promise<GoalWithProgress> {
+export async function updateGoal(profileId: string, goalId: number, patch: UpdateGoalPatch): Promise<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
   assertGoalId(goalId);
 
@@ -164,14 +171,22 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [updated.rows[0].id]);
   const goal = withProgress(mapGoalRow(result.rows[0]));
 
-  // Award once when the goal reaches its target for the first time.
+  // Award once when the goal reaches its target for the first time. Coins are
+  // gated on the XP ledger result (creditXP is idempotent per source_id), so
+  // resetting and re-completing a goal can never farm repeat coin payouts.
   const nowComplete = goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
+  let xpAwarded = 0;
+  let coinsAwarded = 0;
   if (nowComplete && !wasComplete) {
-    const { xp, coins } = goalCompletionReward(goal.targetValue);
-    await awardXPAndCoins(profileId, "goal", goal.id, xp, coins);
+    const { xp, coins } = goalCompletionReward(goal.frequency);
+    xpAwarded = await creditXP(profileId, "goal", goal.id, xp);
+    if (xpAwarded > 0) {
+      await addCoins(profileId, coins);
+      coinsAwarded = coins;
+    }
   }
 
-  return goal;
+  return { goal, xpAwarded, coinsAwarded };
 }
 
 /** Atualiza apenas o progresso atual da meta (valor acumulado). */

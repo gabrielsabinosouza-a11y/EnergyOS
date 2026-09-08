@@ -8,9 +8,18 @@ import {
   LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
   Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Modal } from "./modal";
 
-export const navigationItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  img?: string;
+  badge?: "dm" | "group" | null;
+};
+
+export const navigationItems: NavItem[] = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },
@@ -25,14 +34,14 @@ export const navigationItems = [
 /* Bottom tab bar: the 4 most frequently used sections get permanent,
    thumb-reachable tabs; everything else lives behind "Mais". The custom
    pixel icons (img) match the desktop sidebar — lucide is only a fallback. */
-const PRIMARY_TABS = [
+const PRIMARY_TABS: readonly NavItem[] = [
   { href: "/dashboard",     label: "Início", icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
   { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen,        img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "dm" as const, img: "/sidebar_menu/friends.png" },
   { href: "/liga",          label: "Liga",   icon: Trophy,          img: "/sidebar_menu/leaderboard.png" },
 ] as const;
 
-const MORE_TABS = [
+const MORE_TABS: readonly NavItem[] = [
   { href: "/grupos",        label: "Grupos",        icon: Users,       badge: "group" as const, img: "/sidebar_menu/groups.png" },
   { href: "/loja",          label: "Loja",          icon: ShoppingBag, img: "/sidebar_menu/store.png" },
   { href: "/jardim",        label: "Meu jardim",    icon: Leaf,        img: "/sidebar_menu/garden.png" },

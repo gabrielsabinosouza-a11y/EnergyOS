@@ -80,20 +80,23 @@ function MentionText({
         if (i % 2 === 0) return <Fragment key={i}>{part}</Fragment>;
         const token = part.slice(1);
         const stripped = token.replace(/[.,;:!?…"'()\[\]{}]+$/, "");
-        const isMember = stripped.length > 0 && members.some(
+        const isEveryone = stripped.toLowerCase() === "everyone";
+        const isMember = !isEveryone && stripped.length > 0 && members.some(
           (m) =>
             (m.username ?? "").toLowerCase() === stripped.toLowerCase() ||
             m.displayName.toLowerCase() === stripped.toLowerCase(),
         );
-        if (!isMember) return <Fragment key={i}>{part}</Fragment>;
+        if (!isMember && !isEveryone) return <Fragment key={i}>{part}</Fragment>;
         const trailing = token.slice(stripped.length);
         return (
           <Fragment key={i}>
             <span
               className={
-                isMe
-                  ? "rounded bg-black/10 px-1 font-medium text-black/80"
-                  : "rounded bg-[var(--accent-bg)] px-1 font-medium text-[var(--accent)]"
+                isEveryone
+                  ? "rounded bg-[#c44dff]/15 px-1 font-medium text-[#c44dff]"
+                  : isMe
+                    ? "rounded bg-black/10 px-1 font-medium text-black/80"
+                    : "rounded bg-[var(--accent-bg)] px-1 font-medium text-[var(--accent)]"
               }
             >
               @{stripped}
