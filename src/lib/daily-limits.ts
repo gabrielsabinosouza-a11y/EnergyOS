@@ -24,8 +24,13 @@ export const STREAK_BONUS_XP_PER_DAY = 5;
 export const STREAK_BONUS_CAP = 50;
 
 // ── Kanban ────────────────────────────────────────────────────────────────────
-export const KANBAN_DONE_XP = 10;
-export const KANBAN_DONE_COINS = 10;
+export const KANBAN_DONE_XP = 25;
+export const KANBAN_DONE_COINS = 25;
+
+// ── Weekly planner ────────────────────────────────────────────────────────────
+/** XP/coins per completed weekly-plan task (awarded once per plan, ever). */
+export const WEEKLY_PLAN_DONE_XP = 10;
+export const WEEKLY_PLAN_DONE_COINS = 10;
 
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;

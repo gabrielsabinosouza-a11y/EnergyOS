@@ -171,9 +171,9 @@ export const api = {
   createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
-    request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
+    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
   setWeeklyPlanCompleted: (id: number, completed: boolean) =>
-    request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
@@ -218,6 +218,8 @@ export const api = {
     request<{ room?: import("@/lib/db/focus-rooms").FocusRoom; request?: import("@/lib/db/focus-rooms").RoomJoinRequest; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
   getMyFocusRoomRequests: () =>
     request<{ requests: import("@/lib/db/focus-rooms").RoomJoinRequest[] }>("/api/focus-rooms/requests"),
+  getPendingJoinRequestCounts: () =>
+    request<{ rooms: import("@/lib/db/focus-rooms").PendingJoinRequestCount[] }>("/api/focus-rooms/requests/counts"),
   getFocusRoomRequest: (requestId: number) =>
     request<{ request: import("@/lib/db/focus-rooms").RoomJoinRequest }>(`/api/focus-rooms/requests/${requestId}`),
   getFocusRoomPendingRequests: (roomId: number) =>

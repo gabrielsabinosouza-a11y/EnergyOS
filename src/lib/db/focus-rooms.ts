@@ -263,6 +263,24 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
       return result.rows.map(mapJoinRequest);
     }
 
+    export type PendingJoinRequestCount = { roomId: number; pendingCount: number };
+
+    // Count pending join requests for every room the current user hosts. Used
+    // by the salas list view so host approval prompts stay visible even when
+    // the host is not sitting on the room screen.
+    export async function getPendingJoinRequestCounts(profileId: string): Promise<PendingJoinRequestCount[]> {
+      parseProfileId(profileId);
+      const result = await pool.query<{ room_id: string | number; count: string }>(
+        `select r.room_id, count(*)::int as count
+         from room_join_requests r
+         join focus_rooms fr on fr.id = r.room_id
+         where fr.host_profile_id = $1 and r.status = 'pending'
+         group by r.room_id`,
+        [profileId]
+      );
+      return result.rows.map((row) => ({ roomId: Number(row.room_id), pendingCount: Number(row.count) }));
+    }
+
     export async function createJoinRequest(roomId: number, profileId: string, selectedEnergyType?: string): Promise<RoomJoinRequest> {
       parseProfileId(profileId);
       const client = await pool.connect();

@@ -4,6 +4,10 @@ import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { recordMissionProgress } from "./daily-quests";
+import { creditXP } from "./xp";
+import { addCoins } from "./settings";
+import { addLeagueXP } from "./league-new";
+import { WEEKLY_PLAN_DONE_XP, WEEKLY_PLAN_DONE_COINS } from "../daily-limits";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
@@ -140,6 +144,58 @@ export async function setWeeklyPlanCompleted(profileId: string, planId: number, 
   if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado.");
   const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
   return mapPlan(result.rows[0]);
+}
+
+/**
+ * Awards fixed XP + coins when a weekly-plan task is completed. Returns the
+ * amounts credited (0/0 if already awarded, not owned, or not completed).
+ *
+ * Mirrors awardKanbanCompletion: the whole award is a single transaction and
+ * idempotency comes from the xp_ledger unique index (profile_id, source,
+ * source_id) — completing, reopening and re-completing a plan forever pays
+ * the WEEKLY_PLAN_DONE_XP/COINS exactly once per plan. Reopening a plan never
+ * claws back rewards (same rule as kanban "done").
+ */
+export async function awardWeeklyPlanCompletion(
+  profileId: string,
+  planId: number,
+): Promise<{ xpAwarded: number; coinsAwarded: number }> {
+  parseProfileId(profileId);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    // Lock the row and re-verify ownership + the completed state inside the
+    // same transaction that credits the rewards, so no reward is ever paid
+    // for plans the caller doesn't own or that are not actually completed.
+    const planRow = await client.query<{ completed_at: Date | string | null }>(
+      `select completed_at from weekly_plans where id = $1 and profile_id = $2 for update`,
+      [planId, profileId],
+    );
+    if (!planRow.rows[0]?.completed_at) {
+      await client.query("commit");
+      return { xpAwarded: 0, coinsAwarded: 0 };
+    }
+
+    const xpAwarded = await creditXP(profileId, "weekly_plan", planId, WEEKLY_PLAN_DONE_XP, { db: client });
+    let coinsAwarded = 0;
+    if (xpAwarded > 0) {
+      await addCoins(profileId, WEEKLY_PLAN_DONE_COINS, client);
+      coinsAwarded = WEEKLY_PLAN_DONE_COINS;
+    }
+    await client.query("commit");
+
+    // League XP is applied after commit: addLeagueXP writes its own tables on
+    // separate connections and cannot join this transaction (see creditXP).
+    if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
+
+    return { xpAwarded, coinsAwarded };
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export interface UpdateWeeklyPlanInput {

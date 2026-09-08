@@ -23,20 +23,21 @@ export const navigationItems = [
 ];
 
 /* Bottom tab bar: the 4 most frequently used sections get permanent,
-   thumb-reachable tabs; everything else lives behind "Mais". */
+   thumb-reachable tabs; everything else lives behind "Mais". The custom
+   pixel icons (img) match the desktop sidebar — lucide is only a fallback. */
 const PRIMARY_TABS = [
-  { href: "/dashboard",     label: "Início", icon: LayoutDashboard },
-  { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen },
-  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "dm" as const },
-  { href: "/liga",          label: "Liga",   icon: Trophy },
+  { href: "/dashboard",     label: "Início", icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
+  { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen,        img: "/sidebar_menu/rooms.png" },
+  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "dm" as const, img: "/sidebar_menu/friends.png" },
+  { href: "/liga",          label: "Liga",   icon: Trophy,          img: "/sidebar_menu/leaderboard.png" },
 ] as const;
 
 const MORE_TABS = [
-  { href: "/grupos",        label: "Grupos",          icon: Users,      badge: "group" as const },
-  { href: "/loja",          label: "Loja",            icon: ShoppingBag },
-  { href: "/jardim",        label: "Meu jardim",      icon: Leaf },
-  { href: "/perfil",        label: "Meu perfil",      icon: TrendingUp },
-  { href: "/configuracoes", label: "Configurações",   icon: Settings },
+  { href: "/grupos",        label: "Grupos",        icon: Users,       badge: "group" as const, img: "/sidebar_menu/groups.png" },
+  { href: "/loja",          label: "Loja",          icon: ShoppingBag, img: "/sidebar_menu/store.png" },
+  { href: "/jardim",        label: "Meu jardim",    icon: Leaf,        img: "/sidebar_menu/garden.png" },
+  { href: "/perfil",        label: "Meu perfil",    icon: TrendingUp,  img: "/sidebar_menu/profile.png" },
+  { href: "/configuracoes", label: "Configurações", icon: Settings,    img: "/sidebar_menu/settings.png" },
 ] as const;
 
 function isActivePath(pathname: string, href: string) {
@@ -179,14 +180,18 @@ export function MobileNav({ pathname }: { pathname: string }) {
       {/* Bottom tab bar */}
       <nav className="bottom-tabbar lg:hidden" aria-label="Navegação principal">
         <div className="flex items-stretch">
-          {PRIMARY_TABS.map(({ href, label, icon: Icon, ...rest }) => {
+          {PRIMARY_TABS.map(({ href, label, icon: Icon, img, ...rest }) => {
             const badge = "badge" in rest ? rest.badge : undefined;
             const active = isActivePath(pathname, href);
             const showDot = badgeCountFor(badge, unreadCounts) > 0;
             return (
               <Link key={href} href={href} className={`tab-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
                 <span className="tab-icon">
-                  <Icon size={21} strokeWidth={active ? 2.3 : 2} />
+                  {img ? (
+                    <Image src={img} alt="" width={24} height={24} className="shrink-0 object-contain" />
+                  ) : (
+                    <Icon size={21} strokeWidth={active ? 2.3 : 2} />
+                  )}
                   {showDot && <span className="tab-dot" aria-label="Mensagens não lidas" />}
                 </span>
                 <span className="tab-label">{label}</span>
@@ -223,7 +228,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2 p-2">
-              {MORE_TABS.map(({ href, label, icon: Icon, ...rest }) => {
+              {MORE_TABS.map(({ href, label, icon: Icon, img, ...rest }) => {
                 const badge = "badge" in rest ? rest.badge : undefined;
                 const active = isActivePath(pathname, href);
                 const showDot = badgeCountFor(badge, unreadCounts) > 0;
@@ -238,7 +243,11 @@ export function MobileNav({ pathname }: { pathname: string }) {
                         : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text)]"
                     }`}
                   >
-                    <Icon size={18} className="shrink-0" />
+                    {img ? (
+                      <Image src={img} alt="" width={20} height={20} className="shrink-0 object-contain" />
+                    ) : (
+                      <Icon size={18} className="shrink-0" />
+                    )}
                     <span className="truncate">{label}</span>
                     {showDot && <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-[var(--orange)] shadow-[0_0_8px_rgba(255,184,107,.6)]" aria-label="Mensagens não lidas" />}
                   </Link>

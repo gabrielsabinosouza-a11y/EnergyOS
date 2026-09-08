@@ -1,9 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import type { WeeklyPlan } from "@/types";
-import { completeWeeklyPlan, deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
-import { awardTaskXP } from "@/lib/db/xp";
+import { awardWeeklyPlanCompletion, deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -16,14 +14,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // corpo vazio = concluir (compatível com o cliente antigo)
     }
     const planId = Number(id);
-    let plan: WeeklyPlan;
     if (body.completed === false) {
-      plan = await setWeeklyPlanCompleted(profileId, planId, false);
-    } else {
-      plan = await setWeeklyPlanCompleted(profileId, planId, true);
-      await awardTaskXP(profileId, plan.id, 10).catch(() => {});
+      const plan = await setWeeklyPlanCompleted(profileId, planId, false);
+      return jsonOk({ plan, xpAwarded: 0, coinsAwarded: 0 });
     }
-    return jsonOk({ plan });
+    const plan = await setWeeklyPlanCompleted(profileId, planId, true);
+    // Recompensa única por plano (10 XP + 10 moedas), idempotente via xp_ledger.
+    const { xpAwarded, coinsAwarded } = await awardWeeklyPlanCompletion(profileId, planId);
+    return jsonOk({ plan, xpAwarded, coinsAwarded });
   });
 }
 

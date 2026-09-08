@@ -366,7 +366,21 @@ function DashboardContent() {
     try {
       const result = await api.setWeeklyPlanCompleted(id, completed);
       setWeeklyPlans((ps) => ps.map((p) => (p.id === id ? result.plan : p)));
-      if (completed) void refreshQuests();
+      if (completed) {
+        void refreshQuests();
+        // Same reward feedback as the kanban "Feito" transition.
+        if (result.coinsAwarded > 0) {
+          setCoins((c) => {
+            const newBalance = c + result.coinsAwarded;
+            setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded, balance: newBalance });
+            return newBalance;
+          });
+        }
+        if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
+          showSuccess(`+${result.xpAwarded} XP · +${result.coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        }
+      }
     } catch (error) {
       setWeeklyPlans(prev);
       if (completed) void refreshQuests();

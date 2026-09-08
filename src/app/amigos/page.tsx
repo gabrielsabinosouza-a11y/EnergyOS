@@ -113,7 +113,9 @@ export default function AmigosPage() {
      profileIdReady so the comparison never runs against the uid fallback
      during the (brief) window before getProfile() settles. */
   const [profileIdReady, setProfileIdReady] = useState(false);
-  const currentUserId = myProfileId ?? user?.uid ?? "";
+  /* Ownership key: only ever the normalized id. The raw uid is never valid,
+     so there is no fallback — profileIdReady gates every consumer. */
+  const currentUserId = myProfileId ?? "";
 
   /* Conversation list context menu */
   const [listMenu, setListMenu] = useState<{ x: number; y: number; friend: FriendSummary } | null>(null);
@@ -155,10 +157,25 @@ export default function AmigosPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    api.getProfile()
-      .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
-      .catch(() => {})
-      .finally(() => { if (active) setProfileIdReady(true); });
+    let attempts = 0;
+    const retry = () => {
+      if (!active) return;
+      attempts += 1;
+      if (attempts <= 3) setTimeout(attempt, 1200 * attempts);
+      // never turn profileIdReady on without a resolved id: the raw uid is
+      // never a valid ownership key, so the chat stays on its loading state.
+    };
+    const attempt = () => {
+      if (!active) return;
+      api.getProfile()
+        .then(({ user: profile }) => {
+          if (!active || !profile?.id) { retry(); return; }
+          setMyProfileId(profile.id);
+          setProfileIdReady(true);
+        })
+        .catch(() => retry());
+    };
+    attempt();
     return () => { active = false; };
   }, [user]);
 

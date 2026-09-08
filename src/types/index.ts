@@ -318,6 +318,8 @@ export interface GroupSummary {
   memberCount: number;
   weeklyFocusMinutes: number;
   unreadCount: number;
+  /** Unread group messages where the current user was @-mentioned (or @everyone). */
+  mentionCount: number;
 }
 
 export interface GroupInvite {
@@ -381,6 +383,8 @@ export interface GroupMessage {
   replyToBody?: string;
   replyToSenderName?: string;
   editedAt?: string;
+  /** Member profile ids mentioned in this message; includes the "everyone" sentinel on @everyone. */
+  mentions?: string[];
   reactions?: MessageReactionSummary[];
   isPinned?: boolean;
   pinnedAt?: string;

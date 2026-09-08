@@ -644,7 +644,7 @@ export default function GruposPage() {
     const [myProfileId, setMyProfileId] = useState<string | null>(null);
   const [profileIdReady, setProfileIdReady] = useState(false);
 
-  const currentUserId = myProfileId ?? user?.uid ?? "";
+  const currentUserId = myProfileId ?? "";
 
   /* Conversation list context menu */
   const [listMenu, setListMenu] = useState<{ x: number; y: number; group: GroupSummary } | null>(null);
@@ -652,10 +652,25 @@ export default function GruposPage() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    api.getProfile()
-      .then(({ user: profile }) => { if (active && profile?.id) setMyProfileId(profile.id); })
-      .catch(() => {})
-      .finally(() => { if (active) setProfileIdReady(true); });
+    let attempts = 0;
+    const retry = () => {
+      if (!active) return;
+      attempts += 1;
+      if (attempts <= 3) setTimeout(attempt, 1200 * attempts);
+      // never turn profileIdReady on without a resolved id: the raw uid is
+      // never a valid ownership key, so the chat stays on its loading state.
+    };
+    const attempt = () => {
+      if (!active) return;
+      api.getProfile()
+        .then(({ user: profile }) => {
+          if (!active || !profile?.id) { retry(); return; }
+          setMyProfileId(profile.id);
+          setProfileIdReady(true);
+        })
+        .catch(() => retry());
+    };
+    attempt();
     return () => { active = false; };
   }, [user]);
 
@@ -725,7 +740,7 @@ export default function GruposPage() {
         : await api.createGroup({ name, avatarUrl: createIcon ?? undefined, inviteIds });
       setGroups((prev) => [
         { id: group.id, name: group.name, avatarEmoji: group.avatarEmoji, avatarUrl: group.avatarUrl,
-          memberCount: group.members.length, weeklyFocusMinutes: group.weeklyFocusMinutes, unreadCount: 0 },
+          memberCount: group.members.length, weeklyFocusMinutes: group.weeklyFocusMinutes, unreadCount: 0, mentionCount: 0 },
         ...prev,
       ]);
       setUserGroupIds((prev) => [...prev, group.id]);
@@ -805,7 +820,7 @@ export default function GruposPage() {
               profileIdReady={profileIdReady}
               reduced={reduced}
               onBack={() => setActiveGroup(null)}
-              onRead={(groupId) => setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, unreadCount: 0 } : g))}
+              onRead={(groupId) => setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, unreadCount: 0, mentionCount: 0 } : g))}
             />
           ) : (
             <motion.div key="list" initial={reduced ? false : { opacity: 0, y: 8 }}
@@ -982,6 +997,7 @@ export default function GruposPage() {
                               .then(({ group }) => { setError(null); setActiveGroup(group); })
                               .catch(() => setError("Não foi possível abrir o grupo."));
                             if (g.unreadCount > 0) setGroups((prev) => prev.map((x) => x.id === g.id ? { ...x, unreadCount: 0 } : x));
+                            if (g.mentionCount > 0) setGroups((prev) => prev.map((x) => x.id === g.id ? { ...x, mentionCount: 0 } : x));
                           }}
                           className="glass-card group relative flex flex-col items-center gap-3 px-4 py-6 text-center transition hover:border-[var(--accent)]/30">
                           <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--accent-bg)] text-4xl leading-none">
@@ -1002,11 +1018,21 @@ export default function GruposPage() {
                             <span className="flex items-center gap-1"><Users size={12} />{g.memberCount}</span>
                             <span className="flex items-center gap-1 text-[var(--green)]"><Timer size={12} />{fmtMinutes(g.weeklyFocusMinutes)}</span>
                           </div>
-                          {g.unreadCount > 0 && (
-                            <span className="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-black">
-                              {g.unreadCount > 99 ? "99+" : g.unreadCount}
-                            </span>
-                          )}
+                          <div className="absolute right-3 top-3 flex items-center gap-1">
+                            {g.mentionCount > 0 && (
+                              <span
+                                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--purple)] px-1.5 text-[10px] font-bold text-white"
+                                title="Você foi mencionado"
+                              >
+                                @
+                              </span>
+                            )}
+                            {g.unreadCount > 0 && (
+                              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-black">
+                                {g.unreadCount > 99 ? "99+" : g.unreadCount}
+                              </span>
+                            )}
+                          </div>
                           <MessageCircle size={16} className="absolute bottom-3 right-3 text-[var(--text-faint)] transition group-hover:text-[var(--accent)]" />
                         </motion.button>
                       ))}
@@ -1026,11 +1052,11 @@ export default function GruposPage() {
             onClose={() => setListMenu(null)}
             actions={[
               convActions.markAsRead(() => {
-                if (listMenu.group.unreadCount > 0) {
+                if (listMenu.group.unreadCount > 0 || listMenu.group.mentionCount > 0) {
                   api.markGroupRead(listMenu.group.id).catch(() => {});
                   setGroups((prev) =>
                     prev.map((x) =>
-                      x.id === listMenu.group.id ? { ...x, unreadCount: 0 } : x,
+                      x.id === listMenu.group.id ? { ...x, unreadCount: 0, mentionCount: 0 } : x,
                     ),
                   );
                 }

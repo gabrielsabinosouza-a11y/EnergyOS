@@ -496,8 +496,9 @@ create table if not exists group_messages (
   media_mime_type text,
   media_size_bytes bigint,
   created_at timestamptz not null default now(),
-  reply_to_id bigint,
-  edited_at timestamptz
+reply_to_id bigint,
+  edited_at timestamptz,
+  mentions text[]
 );
 
 -- Add media columns to existing group_messages tables (idempotent for old dbs)
@@ -510,6 +511,7 @@ do $$ begin
   alter table group_messages add column if not exists media_size_bytes bigint;
   alter table group_messages add column if not exists reply_to_id bigint;
   alter table group_messages add column if not exists edited_at timestamptz;
+  alter table group_messages add column if not exists mentions text[];
   -- Media-only messages (image/video/audio) have no text body, so body must be nullable
   alter table group_messages alter column body drop not null;
   alter table group_messages drop constraint if exists group_messages_message_type_check;
@@ -519,6 +521,7 @@ exception when others then null; end $$;
 
 create index if not exists group_messages_group_idx on group_messages(group_id, created_at desc);
 create index if not exists group_messages_reply_idx on group_messages(reply_to_id);
+create index if not exists group_messages_mentions_idx on group_messages using gin(mentions);
 
 create table if not exists group_reads (
   profile_id text not null references profiles(id) on delete cascade,

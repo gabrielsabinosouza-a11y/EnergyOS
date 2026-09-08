@@ -651,6 +651,9 @@ export function ChatThread({
   const [pinPickerFor, setPinPickerFor] = useState<number | null>(null);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
+  // Set true the moment the user deliberately scrolls away from the bottom
+  // (reading history); the initial force-pin stops while it's true.
+  const userScrolledUpRef = useRef(false);
   // Banner pins: prefer the authoritative server list (covers messages older
   // than the fetched window); fall back to in-list flags for DM chats.
   const pinnedList = useMemo(
@@ -660,7 +663,8 @@ export function ChatThread({
 
   /* ─── Scroll management ────────────────────────────────────────── */
 
-  // Detect if near bottom on scroll
+  // Detect if near bottom on scroll. Sets userScrolledUpRef so the initial
+  // force-pin stops the moment the user starts reading history.
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -668,50 +672,70 @@ export function ChatThread({
     const near = distFromBottom < SCROLL_BOTTOM_THRESHOLD;
     setIsNearBottom(near);
     if (near) setPendingCount(0);
+    // "instant" scrolls never fire a scroll event with a big enough delta, so
+    // use a small dead-zone to tell deliberate scrolls apart.
+    userScrolledUpRef.current = !near && el.scrollTop > 0;
   }, []);
 
-  // Scroll to bottom (imperative)
+  // Scroll to bottom (imperative). Using direct scrollTop assignment for the
+  // instant case is the most reliable way to land on the newest messages.
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current;
     if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: smooth ? "smooth" : "instant",
-      });
-    });
+    const doScroll = () => {
+      if (smooth) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    // Double rAF: first lets layout for newly-rendered messages finish, second
+    // guarantees the browser has the final scrollHeight before we set scrollTop.
+    requestAnimationFrame(() => requestAnimationFrame(doScroll));
   }, []);
 
-  // Pin the viewport to the newest message when the chat opens. The list is
-  // usually populated asynchronously after mount, and late-rendering media can
-  // change the scroll height, so retry until the bottom is actually reached.
-  // The latch resets whenever a *different* conversation is opened (signalled
-  // by a change in the first message id), so switching friends/groups always
-  // drops the user straight to the newest messages instead of leaving them
-  // stranded on the old ones.
+  // Pin the viewport to the newest message when the chat opens. The list loads
+  // asynchronously and late-rendering media changes the scroll height, so keep
+  // force-pinning until the container stops growing — up to ~3.6s after the
+  // conversation opens. The latch resets whenever a *different* conversation is
+  // opened (signalled by a change in the first message id), so switching
+  // friends/groups always drops the user straight to the newest messages
+  // instead of leaving them stranded on the old ones.
   const firstMsgId = messages.length > 0 ? messages[0].id : undefined;
   const prevFirstIdRef = useRef<number | undefined>(undefined);
   useEffect(() => {
+    if (messages.length === 0) return;
     if (firstMsgId !== prevFirstIdRef.current) {
       prevFirstIdRef.current = firstMsgId;
       initialScrollDoneRef.current = false;
     }
-    if (initialScrollDoneRef.current || messages.length === 0) return;
-    initialScrollDoneRef.current = true;
+    if (initialScrollDoneRef.current) return;
+
     const el = scrollRef.current;
-    let retries = 10;
+    if (!el) return;
+    let retries = 30;
+    let lastHeight = -1;
     let timer: ReturnType<typeof setTimeout> | undefined;
+
     const pin = () => {
-      if (!el || retries-- <= 0) return;
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (distFromBottom > SCROLL_BOTTOM_THRESHOLD) scrollToBottom(false);
-      timer = setTimeout(pin, 100);
+      if (!el || retries-- <= 0 || userScrolledUpRef.current) {
+        initialScrollDoneRef.current = true;
+        return;
+      }
+      el.scrollTop = el.scrollHeight;
+      // Keep pinning while the content height is still settling (media loads).
+      if (el.scrollHeight !== lastHeight) {
+        lastHeight = el.scrollHeight;
+        timer = setTimeout(pin, 120);
+      } else {
+        initialScrollDoneRef.current = true;
+      }
     };
     pin();
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [firstMsgId, messages.length, scrollToBottom]);
+  }, [firstMsgId, messages.length]);
 
   // Track new messages
   useEffect(() => {
@@ -950,20 +974,37 @@ export function ChatThread({
     <div className="flex h-full flex-col">
       {/* Pinned messages banner (up to 3; expired pins filtered server-side) */}
       {pinnedList.length > 0 && (
-        <div className="border-b border-[var(--border-subtle)] bg-[var(--accent-bg)]/60 px-4 py-1.5">
+        <div className="mx-3 mt-3 mb-1 space-y-2 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent-bg)]/40 p-3 backdrop-blur-sm">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
+            <Pin size={14} className="shrink-0" />
+            Mensagens fixadas
+          </div>
           {pinnedList.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 py-1 text-[10px] text-[var(--text-muted)]">
-              <Pin size={12} className="shrink-0 text-[var(--accent)]" />
-              <span className="shrink-0">Fixada:</span>
+            <div
+              key={p.id}
+              className="flex items-center gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 px-3 py-2.5 shadow-sm"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
+                <Pin size={16} className="fill-current" />
+              </span>
               <button
                 type="button"
                 onClick={() => jumpToMessage(p.id)}
-                className="min-w-0 flex-1 truncate text-left text-[var(--text)] hover:text-[var(--accent)]"
+                className="min-w-0 flex-1 text-left"
               >
-                {p.body ?? "Mídia"}
+                <span className="block truncate text-sm font-medium text-[var(--text)] hover:text-[var(--accent)]">
+                  {p.body ?? "Mídia"}
+                </span>
+                {p.senderName && (
+                  <span className="block truncate text-[11px] text-[var(--text-muted)]">
+                    {p.senderName}
+                  </span>
+                )}
               </button>
               {p.pinnedUntil && (
-                <span className="shrink-0 text-[var(--text-faint)]">{formatPinExpiry(p.pinnedUntil)}</span>
+                <span className="shrink-0 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
+                  {formatPinExpiry(p.pinnedUntil)}
+                </span>
               )}
               {onTogglePin && (
                 <button
@@ -971,9 +1012,9 @@ export function ChatThread({
                   onClick={() => void togglePin(p)}
                   disabled={busyPinId === p.id}
                   aria-label="Desafixar"
-                  className="shrink-0 rounded p-0.5 text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-40"
+                  className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--text)] disabled:opacity-40"
                 >
-                  <X size={12} />
+                  <X size={16} />
                 </button>
               )}
             </div>

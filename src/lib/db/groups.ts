@@ -182,8 +182,21 @@ function normalizeReactions(value: unknown): MessageReactionSummary[] {
 export async function listGroups(profileId: string): Promise<GroupSummary[]> {
   parseProfileId(profileId);
   const weekStart = sundayWeekStartIso(todayIso());
+  const hasMentionsCol = await hasColumn("group_messages", "mentions");
+  const mentionSelect = hasMentionsCol
+    ? `,
+            (
+              select count(*)::int from group_messages gm
+              where gm.group_id = g.id and gm.sender_id <> $1
+                and gm.created_at > coalesce(
+                  (select read_at from group_reads r where r.profile_id = $1 and r.group_id = g.id),
+                  'epoch'::timestamptz
+                )
+                and ($1 = any(gm.mentions) or 'everyone' = any(gm.mentions))
+            ) as ment`
+    : ", 0 as ment";
   const result = await pool.query<
-    GroupRow & { member_count: string | number; unread: string | number }
+    GroupRow & { member_count: string | number; unread: string | number; ment: string | number }
   >(
     `select g.id, g.name, g.avatar_emoji, g.avatar_url, g.created_by, g.created_at,
             (select count(*) from group_members m where m.group_id = g.id) as member_count,
@@ -194,7 +207,7 @@ export async function listGroups(profileId: string): Promise<GroupSummary[]> {
                   (select read_at from group_reads r where r.profile_id = $1 and r.group_id = g.id),
                   'epoch'::timestamptz
                 )
-            ) as unread
+            ) as unread${mentionSelect}
      from groups g
      join group_members me on me.group_id = g.id and me.profile_id = $1
      order by g.created_at desc`,
@@ -230,6 +243,7 @@ export async function listGroups(profileId: string): Promise<GroupSummary[]> {
     memberCount: Number(row.member_count),
     weeklyFocusMinutes: minutesByGroup.get(Number(row.id)) ?? 0,
     unreadCount: Number(row.unread),
+    mentionCount: Number(row.ment),
   }));
 }
 
@@ -609,6 +623,50 @@ export async function listGroupMessages(
   }));
 }
 
+/** Parse "@handle" / "@everyone" mentions out of a group message body against the
+ *  group's members. Returns an array of matched member profile ids; the sentinel
+ *  "everyone" plus every member id is returned when @everyone is used. Null when
+ *  the body has no mentions. Matches the client composer's "@handle" insertion
+ *  (username preferred, else displayName without spaces) and the trailing
+ *  punctuation stripping used by <MentionText/>. */
+async function resolveMentions(groupId: number, body: string | null): Promise<string[] | null> {
+  if (!body) return null;
+  const tokens = body.match(/@[^\s]+/g);
+  if (!tokens || tokens.length === 0) return null;
+  const stripped = tokens.map((t) => {
+    const h = t.slice(1);
+    return h.replace(/[.,;:!?…"''\[\](){}]+$/, "").toLowerCase();
+  });
+  if (stripped.includes("everyone")) {
+    const members = await pool.query<{ profile_id: string }>(
+      `select profile_id from group_members where group_id = $1`,
+      [groupId],
+    );
+    return members.rows.length > 0
+      ? ["everyone", ...members.rows.map((r) => r.profile_id)]
+      : ["everyone"];
+  }
+  const handles = [...new Set(stripped)];
+  const members = await pool.query<{ profile_id: string; username: string | null; display_name: string }>(
+    `select pm.profile_id, p.username, p.display_name
+     from group_members pm
+     join profiles p on p.id = pm.profile_id
+     where pm.group_id = $1`,
+    [groupId],
+  );
+  const matched: string[] = [];
+  for (const h of handles) {
+    if (!h) continue;
+    const member = members.rows.find(
+      (r) =>
+        (r.username ?? "").toLowerCase() === h ||
+        (r.display_name && !r.display_name.includes(" ") && r.display_name.toLowerCase() === h),
+    );
+    if (member && !matched.includes(member.profile_id)) matched.push(member.profile_id);
+  }
+  return matched.length > 0 ? matched : null;
+}
+
 export async function sendGroupMessage(
   profileId: string,
   groupId: number,
@@ -675,6 +733,50 @@ export async function sendGroupMessage(
     }
   }
 
+  const hasMentionsCol = await hasColumn("group_messages", "mentions");
+  const mentions = hasMentionsCol ? await resolveMentions(groupId, text) : null;
+
+  const insertCols = [
+    "group_id",
+    "sender_id",
+    "body",
+    "message_type",
+    "media_url",
+    "media_duration_seconds",
+    "media_file_name",
+    "media_mime_type",
+    "media_size_bytes",
+    ...(hasReplyCols ? ["reply_to_id", "edited_at"] : []),
+    ...(hasMentionsCol ? ["mentions"] : []),
+  ];
+  const insertVals = [
+    groupId,
+    profileId,
+    text,
+    messageType,
+    mediaUrl,
+    mediaDurationSeconds,
+    opts?.mediaFileName?.slice(0, 255) ?? null,
+    opts?.mediaMimeType?.slice(0, 120) ?? null,
+    mediaSizeBytes,
+    ...(hasReplyCols ? [effectiveReplyId ?? null, "now()"] : []),
+    ...(hasMentionsCol ? [mentions] : []),
+  ];
+  const returningCols = [
+    "id",
+    "group_id",
+    "sender_id",
+    "body",
+    "message_type",
+    "media_url",
+    "media_duration_seconds",
+    "media_file_name",
+    "media_mime_type",
+    "media_size_bytes",
+    "created_at",
+    ...(hasReplyCols ? ["reply_to_id", "edited_at"] : []),
+    ...(hasMentionsCol ? ["mentions"] : []),
+  ];
   const inserted = await pool.query<{
     id: string | number;
     group_id: string | number;
@@ -689,17 +791,12 @@ export async function sendGroupMessage(
     created_at: Date | string;
     reply_to_id: string | number | null;
     edited_at: Date | string | null;
+    mentions: string[] | null;
   }>(
-    hasReplyCols
-      ? `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, reply_to_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, created_at, reply_to_id, edited_at`
-      : `insert into group_messages (group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         returning id, group_id, sender_id, body, message_type, media_url, media_duration_seconds, media_file_name, media_mime_type, media_size_bytes, created_at`,
-    hasReplyCols
-      ? [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.mediaFileName?.slice(0, 255) ?? null, opts?.mediaMimeType?.slice(0, 120) ?? null, mediaSizeBytes, effectiveReplyId ?? null]
-      : [groupId, profileId, text, messageType, mediaUrl, mediaDurationSeconds, opts?.mediaFileName?.slice(0, 255) ?? null, opts?.mediaMimeType?.slice(0, 120) ?? null, mediaSizeBytes],
+    `insert into group_messages (${insertCols.join(", ")})
+     values (${insertVals.map((_, i) => `$${i + 1}`).join(", ")})
+     returning ${returningCols.join(", ")}`,
+    insertVals,
   );
   const row = inserted.rows[0];
   const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
@@ -737,6 +834,7 @@ export async function sendGroupMessage(
     replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
     replyToBody,
     replyToSenderName,
+    mentions: (row.mentions ?? undefined) as string[] | undefined,
     editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : undefined,
   };
 }

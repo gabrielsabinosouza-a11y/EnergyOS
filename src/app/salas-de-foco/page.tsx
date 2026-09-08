@@ -284,6 +284,7 @@ export default function FocusRoomsPage() {
   const [showShare, setShowShare] = useState(false);
   const [pendingJoinRequest, setPendingJoinRequest] = useState<import("@/lib/db/focus-rooms").RoomJoinRequest | null>(null);
   const [ownerRequests, setOwnerRequests] = useState<import("@/lib/db/focus-rooms").RoomJoinRequest[]>([]);
+  const [pendingCounts, setPendingCounts] = useState<Record<number, number>>({});
 
   // Countdown clock
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -453,6 +454,25 @@ export default function FocusRoomsPage() {
     const id = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.hostProfileId, myProfileId]);
+
+  // Host badge counts on the list view: surface pending join requests outside
+  // the room screen so the host doesn't have to be watching the room to spot
+  // an approval request.
+  useEffect(() => {
+    if (pageState !== "list" || !user || !myProfileId) return;
+    let active = true;
+    const poll = () => api.getPendingJoinRequestCounts()
+      .then((data) => {
+        if (!active) return;
+        const next: Record<number, number> = {};
+        for (const item of data.rooms) next[item.roomId] = item.pendingCount;
+        setPendingCounts(next);
+      })
+      .catch(() => {});
+    poll();
+    const id = setInterval(poll, POLL_INTERVAL_MS);
+    return () => { active = false; clearInterval(id); };
+  }, [pageState, user, myProfileId]);
 
   // 1-second clock for the shared countdown while the session is running.
   // The countdown itself is always wall-clock derived (see sharedRemainingMs),
@@ -968,14 +988,33 @@ export default function FocusRoomsPage() {
                     </span>
                   </div>
 
-                  <div className="relative flex items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-2.5 sm:px-5">
-                    <span
-                      className="flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.04] px-2.5 py-1.5 text-[10px] text-[var(--text-faint)] backdrop-blur-md"
-                      title="Participantes"
-                    >
-                      <Users size={12} className="text-[var(--text-muted)]" />
-                      {room.participants.length}
-                    </span>
+                  <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-2.5 sm:px-5">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.04] px-2.5 py-1.5 text-[10px] text-[var(--text-faint)] backdrop-blur-md"
+                        title="Participantes"
+                      >
+                        <Users size={12} className="text-[var(--text-muted)]" />
+                        {room.participants.length}
+                      </span>
+
+                      {isMyRoomHost && (pendingCounts[room.id] ?? 0) > 0 && (
+                        <motion.button
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => {
+                            setShowCompletion(false);
+                            setLastCoins(0);
+                            setCurrentRoom(room);
+                            setPageState("room");
+                          }}
+                          title="Solicitações de entrada pendentes"
+                          className="flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-medium text-amber-300 backdrop-blur-md transition-colors hover:bg-amber-400/15"
+                        >
+                          <UserPlus size={12} />
+                          Solicitações ({pendingCounts[room.id]})
+                        </motion.button>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-1.5">
                       {/* Delete — host only, disabled while a session is live */}

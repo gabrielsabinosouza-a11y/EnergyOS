@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   FileText,
   Loader2,
+  Megaphone,
   Mic,
   Paperclip,
   Send,
@@ -47,6 +48,20 @@ export interface ChatComposerProps {
 }
 
 function MentionAvatar({ member, size = 26 }: { member: ChatComposerMentionMember; size?: number }) {
+  if (member.id === "everyone") {
+    return (
+      <span
+        className="flex shrink-0 items-center justify-center rounded-full text-[var(--white)]"
+        style={{
+          width: size,
+          height: size,
+          background: "linear-gradient(135deg, #ff8a5c, #c44dff)",
+        }}
+      >
+        <Megaphone size={Math.round(size * 0.6)} />
+      </span>
+    );
+  }
   if (member.photoUrl) {
     return (
       <img
@@ -289,6 +304,10 @@ export function ChatComposer({
   const mentionResults = useMemo(() => {
     if (mentionQuery === null || !mentionMembers) return [];
     const q = mentionQuery.toLowerCase();
+    const everyone: ChatComposerMentionMember[] =
+      !q || "everyone".startsWith(q)
+        ? [{ id: "everyone", displayName: "everyone", username: "everyone" }]
+        : [];
     const matches = mentionMembers.filter(
       (m) =>
         m.id !== currentUserId &&
@@ -299,9 +318,13 @@ export function ChatComposer({
       if (q && m.displayName.toLowerCase().startsWith(q)) return 1;
       return 0;
     };
-    return matches
-      .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName))
-      .slice(0, 8);
+    return everyone.length > 0
+      ? [...everyone, ...matches]
+          .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName))
+          .slice(0, 8)
+      : matches
+          .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName))
+          .slice(0, 8);
   }, [mentionQuery, mentionMembers, currentUserId]);
 
   useEffect(() => {
