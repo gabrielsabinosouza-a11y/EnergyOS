@@ -852,6 +852,7 @@ export default function PerfilPage() {
                       leaguePromoted: recap.leaguePromoted,
                       productivityTag: recap.productivityTag,
                       gardenCount: recap.gardenCount,
+                      totalXp: recap.totalXp,
                       hasBeenShared: recap.hasBeenShared,
                     }}
                     isLive={recap.recapMonth === currentRecapMonth}

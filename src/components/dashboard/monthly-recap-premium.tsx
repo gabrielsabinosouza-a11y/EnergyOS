@@ -22,6 +22,7 @@ export interface RecapData {
   leaguePromoted?: boolean;
   productivityTag?: string;
   gardenCount?: number;
+  totalXp: number;
   hasBeenShared?: boolean;
 }
 
@@ -37,7 +38,7 @@ interface MonthlyRecapPremiumProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SLIDE_COUNT = 6;
+const SLIDE_COUNT = 7;
 const SHARE_REWARD_COINS = 50;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -102,6 +103,14 @@ function gardenCopy(count: number): string {
   if (count < 5) return `${count} energias cultivadas. O jardim está crescendo.`;
   if (count < 15) return `${count} energias. Um jardim vibrante tomando forma.`;
   return `${count} energias. Jardim exuberante — dedicação visível.`;
+}
+
+function xpCopy(xp: number): string {
+  if (xp === 0) return "Cada sessão de foco gera XP. Sua jornada começa aqui.";
+  if (xp < 1000) return `${xp.toLocaleString("pt-BR")} XP acumulados. Todo ponto conta na sua evolução.`;
+  if (xp < 5000) return "Mais de 1.000 XP! Você já está evoluindo de verdade.";
+  if (xp < 20000) return "Milhares de XP. Sua consistência está virando poder.";
+  return "XP de elite. Sua jornada impressiona até os veteranos.";
 }
 
 // ─── Primitive sub-components ─────────────────────────────────────────────────
@@ -181,6 +190,7 @@ const THEMES = {
   focus:   { bg: "linear-gradient(160deg, #071828 0%, #0a2540 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.35)" },
   streak:  { bg: "linear-gradient(160deg, #1a0e06 0%, #2d1a08 100%)",          accent: "#ffb86b", glow: "rgba(255,184,107,0.38)" },
   garden:  { bg: "linear-gradient(160deg, #071a0e 0%, #0d2a18 100%)",          accent: "#4ade80", glow: "rgba(74,222,128,0.32)"  },
+  xp:      { bg: "linear-gradient(160deg, #12061f 0%, #26103f 100%)",          accent: "#b69cff", glow: "rgba(182,156,255,0.38)" },
   summary: { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
 };
 
@@ -466,6 +476,7 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, onDownload, o
     { label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: "#ffb86b" },
     { label: "Liga",      value: meta ? meta.label : "—",                color: tierColor  },
     { label: plural(garden, "energia", "energias"), value: String(garden), color: "#4ade80" },
+    { label: "XP total",  value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: "#b69cff" },
   ];
 
   return (
@@ -688,15 +699,16 @@ export async function captureRecapCard(
   ctx.fillRect(CARD_W * 0.25, y, CARD_W * 0.5, 2);
   y += 60;
 
-  // ── Four hero stat rows ──
+  // ── Five hero stat rows ──
   const statRows = [
     { label: "Foco total",  value: formatMinutes(recap.totalFocusMinutes), color: "#71d4ff", glow: "rgba(113,212,255,.32)", copy: focusCopy(recap.totalFocusMinutes) },
     { label: plural(recap.longestStreak, "dia de sequência", "dias de sequência"), value: String(recap.longestStreak), color: "#ffb86b", glow: "rgba(255,184,107,.32)", copy: streakCopy(recap.longestStreak) },
     { label: "Liga",        value: meta ? meta.label : "—",                color: tierColor, glow: `${tierColor}55`,       copy: leagueCopy(tier, recap.leaguePromoted ?? false) },
     { label: plural(garden, "energia plantada", "energias plantadas"), value: String(garden), color: "#4ade80", glow: "rgba(74,222,128,.32)", copy: gardenCopy(garden) },
+    { label: "XP total",    value: `⚡${(recap.totalXp ?? 0).toLocaleString("pt-BR")}`, color: "#b69cff", glow: "rgba(182,156,255,.32)", copy: xpCopy(recap.totalXp ?? 0) },
   ];
 
-  const rowH = 290;
+  const rowH = 260;
   const cardR = 28;
 
   // Preload league icon
@@ -892,7 +904,7 @@ export function MonthlyRecapPremium({
           await navigator.share({
             files: [file],
             title: `Meu recap de ${monthLabel} no energyOS`,
-            text: `${formatMinutes(recap.totalFocusMinutes)} de foco, ${recap.longestStreak} ${plural(recap.longestStreak, "dia", "dias")} de sequência!`,
+            text: `${formatMinutes(recap.totalFocusMinutes)} de foco, ${recap.longestStreak} ${plural(recap.longestStreak, "dia", "dias")} de sequência, ${(recap.totalXp ?? 0).toLocaleString("pt-BR")} XP!`,
           }).catch(() => {/* user cancelled */});
         }
       }
@@ -949,6 +961,17 @@ export function MonthlyRecapPremium({
         );
       case 5:
         return (
+          <HeroStatSlide
+            numericValue={recap.totalXp ?? 0}
+            valueSuffix="XP"
+            label="XP total"
+            copy={xpCopy(recap.totalXp ?? 0)}
+            theme={THEMES.xp}
+            icon={<Zap size={52} color={THEMES.xp.accent} strokeWidth={1.5} />}
+          />
+        );
+      case 6:
+        return (
           <SummarySlide
             recap={recap}
             userName={userName}
@@ -984,7 +1007,7 @@ export function MonthlyRecapPremium({
           <p className="truncate text-sm font-semibold text-[var(--text)]">Ver recap de {monthLabel}</p>
           <p className="truncate text-xs text-[var(--text-muted)]">
             {isLive ? "Mês em andamento — dados atualizados até agora · " : ""}
-            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")} de sequência
+            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")} de sequência · {(recap.totalXp ?? 0).toLocaleString("pt-BR")} XP
           </p>
         </div>
         {isLive ? (

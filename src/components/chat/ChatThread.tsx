@@ -6,6 +6,7 @@ import {
   ArrowDown,
   Check,
   CheckCheck,
+  ChevronRight,
   Copy,
   Pin,
   MessageCircleReply,
@@ -16,6 +17,7 @@ import {
 import { createPortal } from "react-dom";
 import type { ChatMessage, PinDurationDays } from "@/types";
 import { AvatarWithFrame } from "@/components/avatar";
+import { Modal } from "@/components/modal";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
@@ -652,6 +654,7 @@ export function ChatThread({
   const [busyReaction, setBusyReaction] = useState<string | null>(null);
   const [busyPinId, setBusyPinId] = useState<number | null>(null);
   const [pinPickerFor, setPinPickerFor] = useState<number | null>(null);
+  const [pinsOpen, setPinsOpen] = useState(false);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
   // Set true the moment the user deliberately scrolls away from the bottom
@@ -711,6 +714,10 @@ export function ChatThread({
     if (firstMsgId !== prevFirstIdRef.current) {
       prevFirstIdRef.current = firstMsgId;
       initialScrollDoneRef.current = false;
+      // A different conversation just loaded: drop any stale "user scrolled up"
+      // state from the previous chat so opening a new one always lands at the
+      // newest messages instead of being stranded mid-history.
+      userScrolledUpRef.current = false;
     }
     if (initialScrollDoneRef.current) return;
 
@@ -739,6 +746,25 @@ export function ChatThread({
       if (timer) clearTimeout(timer);
     };
   }, [firstMsgId, messages.length]);
+
+  // Auto-follow the newest message while the user hasn't deliberately scrolled
+  // up. The scroller's box is a fixed `h-full`, so content growth (late-loading
+  // media, taller bubbles, mobile keyboard/viewport resizes) is only visible
+  // through the content wrapper's size — without this the chat can render
+  // "stuck" above the newest messages after opening an image-heavy chat.
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (userScrolledUpRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(content);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Track new messages
   useEffect(() => {
@@ -975,54 +1001,23 @@ export function ChatThread({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Pinned messages banner (up to 3; expired pins filtered server-side) */}
+      {/* Pinned messages — compact entry row (WhatsApp/Telegram style); the
+          full list lives in a bottom sheet so it never eats the chat area. */}
       {pinnedList.length > 0 && (
-        <div className="mx-3 mt-3 mb-1 space-y-2 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent-bg)]/40 p-3 backdrop-blur-sm">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-            <Pin size={14} className="shrink-0" />
-            Mensagens fixadas
-          </div>
-          {pinnedList.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 px-3 py-2.5 shadow-sm"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
-                <Pin size={16} className="fill-current" />
-              </span>
-              <button
-                type="button"
-                onClick={() => jumpToMessage(p.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <span className="block truncate text-sm font-medium text-[var(--text)] hover:text-[var(--accent)]">
-                  {p.body ?? "Mídia"}
-                </span>
-                {p.senderName && (
-                  <span className="block truncate text-[11px] text-[var(--text-muted)]">
-                    {p.senderName}
-                  </span>
-                )}
-              </button>
-              {p.pinnedUntil && (
-                <span className="shrink-0 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
-                  {formatPinExpiry(p.pinnedUntil)}
-                </span>
-              )}
-              {onTogglePin && (
-                <button
-                  type="button"
-                  onClick={() => void togglePin(p)}
-                  disabled={busyPinId === p.id}
-                  aria-label="Desafixar"
-                  className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--text)] disabled:opacity-40"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setPinsOpen(true)}
+          className="mx-3 mt-2 flex shrink-0 items-center gap-2 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent-bg)]/40 px-3 py-1.5 backdrop-blur-sm transition hover:bg-[var(--accent-bg)]/60"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--accent)]/15 text-[var(--accent)]">
+            <Pin size={12} className="fill-current" />
+          </span>
+          <span className="text-[11px] font-semibold text-[var(--accent)]">Mensagens fixadas</span>
+          <span className="rounded-full bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-bold text-[var(--accent)]">
+            {pinnedList.length}
+          </span>
+          <ChevronRight size={13} className="ml-auto shrink-0 text-[var(--text-muted)]" />
+        </button>
       )}
 
       {/* Scrollable messages area */}
@@ -1030,8 +1025,9 @@ export function ChatThread({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full space-y-3 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
+        className="h-full overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
       >
+        <div ref={contentRef} className="space-y-3">
         {messages.length === 0 && (
           <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
             Nenhuma mensagem ainda
@@ -1136,10 +1132,11 @@ export function ChatThread({
             />
             </div>
           );
-        })}
+})}
+      </div>
       </div>
 
-        {/* "Novas mensagens / mensagens antigas" pill */}
+      {/* "Novas mensagens / mensagens antigas" pill */}
         <AnimatePresence>
           {!isNearBottom && (
             <NewMessagesPill count={pendingCount} onClick={handlePillClick} />
@@ -1207,6 +1204,80 @@ export function ChatThread({
           </div>
         </div>
       )}
+
+      {/* Pinned messages list (bottom sheet) */}
+      <Modal
+        open={pinsOpen}
+        onClose={() => setPinsOpen(false)}
+        variant="bottom-sheet"
+        zIndex={1100}
+        panelClassName="w-full max-w-md overflow-hidden rounded-b-none! bg-[var(--bg-surface)]/95 backdrop-blur-xl sm:rounded-b-[14px]!"
+      >
+        <div className="flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+              <Pin size={15} className="text-[var(--accent)]" />
+              Mensagens fixadas
+            </p>
+            <button
+              type="button"
+              onClick={() => setPinsOpen(false)}
+              aria-label="Fechar"
+              className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--text)]"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="max-h-[60dvh] overflow-y-auto overscroll-contain p-2">
+            {pinnedList.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => {
+                  setPinsOpen(false);
+                  jumpToMessage(p.id);
+                }}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--accent-bg)]/60"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
+                  <Pin size={15} className="fill-current" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-[12px] font-semibold text-[var(--text)]">
+                      {p.senderName ?? "Mensagem"}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
+                      {formatClock(p.createdAt)}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--text-muted)]">
+                    {p.body ?? "Mídia"}
+                  </span>
+                  {p.pinnedUntil && (
+                    <span className="mt-1 block w-fit rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] text-[var(--text-muted)]">
+                      {formatPinExpiry(p.pinnedUntil)}
+                    </span>
+                  )}
+                </span>
+                {onTogglePin && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void togglePin(p);
+                    }}
+                    disabled={busyPinId === p.id}
+                    aria-label="Desafixar"
+                    className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--text)] disabled:opacity-40"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Modal>
 
       {/* Context menu portal */}
       {contextMenu && (

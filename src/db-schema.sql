@@ -1084,6 +1084,7 @@ create table if not exists monthly_recaps (
   league_tier text,
   league_promoted boolean default false,
   productivity_tag text,
+  total_xp integer not null default 0,
   has_been_shared boolean default false,
   generated_at timestamptz not null default now(),
   unique (profile_id, recap_month)
@@ -1091,6 +1092,9 @@ create table if not exists monthly_recaps (
 
 -- Purge recaps from months before the platform existed
 delete from monthly_recaps where recap_month < '2026-08-01';
+
+-- Capture o XP total do usuário (acumulado) no momento em que o recap é gerado.
+alter table monthly_recaps add column if not exists total_xp integer not null default 0;
 
 -- ── Seed streak shield designs ──────────────────────────────────────────
 insert into streak_shield_designs (id, name, description, image_url, icon_url, price, rarity, sort_order) values

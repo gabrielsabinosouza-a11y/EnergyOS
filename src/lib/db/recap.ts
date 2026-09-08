@@ -10,6 +10,28 @@ import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
+/** Detect whether a column exists on a table (cached, so we don't pay on every call). */
+const columnCache = new Map<string, Promise<boolean>>();
+function hasColumn(table: string, column: string): Promise<boolean> {
+  const key = `${table}.${column}`;
+  if (!columnCache.has(key)) {
+    columnCache.set(
+      key,
+      pool
+        .query<{ exists: boolean }>(
+          `select exists (
+             select 1 from information_schema.columns
+             where table_name = $1 and column_name = $2
+           ) as exists`,
+          [table, column],
+        )
+        .then((r) => r.rows[0]?.exists ?? false)
+        .catch(() => false),
+    );
+  }
+  return columnCache.get(key)!;
+}
+
 interface RecapRow {
   id: number;
   recap_month: Date | string;
@@ -19,6 +41,7 @@ interface RecapRow {
   league_promoted: boolean | null;
   productivity_tag: string | null;
   garden_count: number;
+  total_xp: number;
   has_been_shared: boolean | null;
   generated_at: Date | string;
 }
@@ -34,6 +57,7 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
     leaguePromoted: row.league_promoted ?? undefined,
     productivityTag: row.productivity_tag ?? undefined,
     gardenCount: Number(row.garden_count) || 0,
+    totalXp: Number(row.total_xp) || 0,
     hasBeenShared: row.has_been_shared ?? undefined,
     generatedAt: new Date(row.generated_at).toISOString(),
   };
@@ -166,6 +190,7 @@ interface RecapSummary {
   longestStreak: number;
   leagueTier?: string;
   promoted: boolean;
+  totalXp: number;
 }
 
 async function buildRecapSummary(
@@ -173,7 +198,7 @@ async function buildRecapSummary(
   monthStart: string,
   monthEnd: string,
 ): Promise<RecapSummary> {
-  const [focusRow, leagueRow] = await Promise.all([
+  const [focusRow, leagueRow, xpRow] = await Promise.all([
     pool.query<{ minutes: string | number }>(
       `select coalesce(sum(duration_minutes), 0) as minutes
        from focus_sessions
@@ -207,6 +232,12 @@ async function buildRecapSummary(
       );
       return latest;
     }),
+    // XP total do usuário (acumulado) capturado AO VIVO no momento da geração.
+    // Cada "Gerar recap" relê o valor atual e sobrescreve o snapshot do recap.
+    pool.query<{ total_xp: string | number }>(
+      `select coalesce(total_xp, 0) as total_xp from user_xp where profile_id = $1`,
+      [profileId],
+    ),
   ]);
 
   const totalMinutes = Number(focusRow.rows[0]?.minutes ?? 0);
@@ -217,7 +248,13 @@ async function buildRecapSummary(
     ? rawTier.toUpperCase()
     : undefined;
 
-  return { totalFocusMinutes: totalMinutes, longestStreak, leagueTier, promoted: false };
+  return {
+    totalFocusMinutes: totalMinutes,
+    longestStreak,
+    leagueTier,
+    promoted: false,
+    totalXp: Number(xpRow.rows[0]?.total_xp ?? 0) || 0,
+  };
 }
 
 async function upsertRecap(
@@ -225,27 +262,53 @@ async function upsertRecap(
   monthStart: string,
   summary: RecapSummary,
 ): Promise<MonthlyRecap> {
+  // Coluna nova pode ainda não existir na produção (migração manual); detecta
+  // uma vez (cacheado) e omite o campo enquanto ela não existir.
+  const hasXpCol = await hasColumn("monthly_recaps", "total_xp");
+  const cols = hasXpCol
+    ? `(profile_id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, total_xp)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (profile_id, recap_month) do update set
+         total_focus_minutes = excluded.total_focus_minutes,
+         longest_streak = excluded.longest_streak,
+         league_tier = excluded.league_tier,
+         league_promoted = excluded.league_promoted,
+         productivity_tag = excluded.productivity_tag,
+         total_xp = excluded.total_xp,
+         generated_at = now()
+       returning id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, total_xp, generated_at`
+    : `(profile_id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (profile_id, recap_month) do update set
+         total_focus_minutes = excluded.total_focus_minutes,
+         longest_streak = excluded.longest_streak,
+         league_tier = excluded.league_tier,
+         league_promoted = excluded.league_promoted,
+         productivity_tag = excluded.productivity_tag,
+         generated_at = now()
+       returning id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, generated_at`;
   const result = await pool.query<RecapRow>(
-    `insert into monthly_recaps
-       (profile_id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag)
-     values ($1, $2, $3, $4, $5, $6, $7)
-     on conflict (profile_id, recap_month) do update set
-       total_focus_minutes = excluded.total_focus_minutes,
-       longest_streak = excluded.longest_streak,
-       league_tier = excluded.league_tier,
-       league_promoted = excluded.league_promoted,
-       productivity_tag = excluded.productivity_tag,
-       generated_at = now()
-     returning id, recap_month, total_focus_minutes, longest_streak, league_tier, league_promoted, productivity_tag, generated_at`,
-    [
-      profileId,
-      monthStart,
-      summary.totalFocusMinutes,
-      summary.longestStreak,
-      summary.leagueTier ?? null,
-      summary.promoted,
-      resolveTag(summary.totalFocusMinutes),
-    ],
+    `insert into monthly_recaps ${cols}`,
+    hasXpCol
+      ? [
+          profileId,
+          monthStart,
+          summary.totalFocusMinutes,
+          summary.longestStreak,
+          summary.leagueTier ?? null,
+          summary.promoted,
+          resolveTag(summary.totalFocusMinutes),
+          summary.totalXp,
+        ]
+      : [
+          profileId,
+          monthStart,
+          summary.totalFocusMinutes,
+          summary.longestStreak,
+          summary.leagueTier ?? null,
+          summary.promoted,
+          resolveTag(summary.totalFocusMinutes),
+        ],
   );
 
   // Conta as energias/auras plantadas no jardim ao longo do mesmo ano do recap.
@@ -266,9 +329,11 @@ async function upsertRecap(
 
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   parseProfileId(profileId);
+  const hasXpCol = await hasColumn("monthly_recaps", "total_xp");
+  const xpSelect = hasXpCol ? `, r.total_xp` : `, 0 as total_xp`;
   const result = await pool.query<RecapRow>(
     `select r.id, r.recap_month, r.total_focus_minutes, r.longest_streak, r.league_tier,
-            r.league_promoted, r.productivity_tag, r.has_been_shared, r.generated_at,
+            r.league_promoted, r.productivity_tag, r.has_been_shared, r.generated_at${xpSelect},
             (select count(*) from garden_entries g
              where g.profile_id = r.profile_id
                and date_trunc('year', g.planted_at) = date_trunc('year', r.recap_month)) as garden_count

@@ -222,12 +222,10 @@ interface ColumnProps {
   color: string;
   tasks: KanbanTask[];
   labels: KanbanLabel[];
-  categories: Category[];
   onMove: (id: number, newStatus: KanbanStatus, newPosition: number) => void;
-  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) => Promise<void>;
+  onAddTask: (status: KanbanStatus) => void;
   onUpdate: (id: number, task: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => Promise<void>;
   onDelete: (id: number) => void;
-  onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
   onEdit: (task: KanbanTask) => void;
 }
 
@@ -237,97 +235,19 @@ function Column({
   color,
   tasks,
   labels,
-  categories,
   onMove,
-  onCreate,
+  onAddTask,
   onUpdate,
   onDelete,
-  onCreateLabel,
   onEdit,
 }: ColumnProps) {
-  const sortedCategories = sortCategoriesForPicker(categories);
-  const firstCategoryId = sortedCategories[0]?.id ?? 0;
-  const [showForm, setShowForm] = useState(false);
   const { setNodeRef } = useDroppable({
     id: `column-${status}`,
     data: { status },
   });
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newCategoryId, setNewCategoryId] = useState(0);
-  const [newLabels, setNewLabels] = useState<string[]>([]);
-  const [newDueDate, setNewDueDate] = useState("");
-  const [newPriority, setNewPriority] = useState<KanbanPriority>("medium");
-  const [saving, setSaving] = useState(false);
-  const [showLabelSelector, setShowLabelSelector] = useState(false);
-  const [newLabelName, setNewLabelName] = useState("");
-  const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
-  const [creatingLabel, setCreatingLabel] = useState(false);
   // On mobile the three columns stack vertically — allow collapsing each one
   // so users don't face one endless scroll. Desktop (md+) always shows both.
   const [collapsed, setCollapsed] = useState(false);
-
-  const selectedCategoryId = newCategoryId || firstCategoryId;
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const handleCreate = useCallback(
-    async () => {
-      if (!newTitle.trim() || !selectedCategoryId) return;
-      setSaving(true);
-      try {
-        await onCreate({
-          title: newTitle.trim(),
-          description: newDescription.trim() || undefined,
-          status,
-          categoryId: selectedCategoryId,
-          labels: newLabels,
-          dueDate: newDueDate || undefined,
-          priority: newPriority,
-          assigneeId: undefined,
-          position: tasks.length,
-        });
-        setNewTitle("");
-        setNewDescription("");
-        setNewLabels([]);
-        setNewDueDate("");
-        setNewPriority("medium");
-        setShowForm(false);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, tasks.length, onCreate]
-  );
-
-  const handleCreateLabel = useCallback(
-    async () => {
-      if (!newLabelName.trim()) return;
-      setCreatingLabel(true);
-      try {
-        const label = await onCreateLabel(newLabelName.trim(), newLabelColor);
-        setNewLabels((prev) => [...prev, label.name]);
-        setNewLabelName("");
-        setShowLabelSelector(false);
-      } finally {
-        setCreatingLabel(false);
-      }
-    },
-    [newLabelName, newLabelColor, onCreateLabel]
-  );
-
-  const toggleLabel = useCallback(
-    (labelName: string) => {
-      setNewLabels((prev) =>
-        prev.includes(labelName) ? prev.filter((l) => l !== labelName) : [...prev, labelName]
-      );
-    },
-    []
-  );
-
-  const availableLabels = useMemo(() => {
-    return labels.filter((l) => !newLabels.includes(l.name));
-  }, [labels, newLabels]);
 
   return (
     <div
@@ -343,7 +263,7 @@ function Column({
         <span className="text-[10px] font-semibold uppercase tracking-[.15em] text-[var(--text-muted)]">{label}</span>
         <span className="ml-auto flex items-center gap-1">
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => onAddTask(status)}
             aria-label={`Adicionar tarefa em ${label}`}
             className="tap flex h-7 w-7 items-center justify-center text-[var(--text-faint)] hover:text-[var(--text)] transition-colors"
           >
@@ -370,189 +290,9 @@ function Column({
 
       {/* Collapsible body — hidden on mobile when collapsed, always shown on md+ */}
       <div className={collapsed ? "hidden md:block" : ""}>
-      <AnimatePresence>
-        {showForm && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden mb-3"
-          >
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 space-y-3">
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-                  className="auth-input flex-1 text-sm"
-                  placeholder="Título da tarefa..."
-                />
-                <button
-                  onClick={handleCreate}
-                  disabled={saving || !newTitle.trim()}
-                  className="icon-button small"
-                >
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                </button>
-              </div>
-
-              <textarea
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                className="auth-input w-full text-sm min-h-[60px] resize-none"
-                placeholder="Descrição (opcional)..."
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
-                  <div className="flex gap-1 flex-wrap">
-                    {sortedCategories.map((cat) => (
-                      <button
-                        key={cat.id}
-                        onClick={() => setNewCategoryId(cat.id)}
-                        className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
-                          selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
-                        }`}
-                        style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Prioridade</label>
-                  <div className="flex gap-1">
-                    {(Object.keys(PRIORITY_COLORS) as KanbanPriority[]).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => setNewPriority(p)}
-                        className={`flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg transition-colors ${
-                          newPriority === p
-                            ? "bg-[var(--bg-surface-hover)] text-[var(--text)]"
-                            : "text-[var(--text-faint)] hover:bg-[var(--bg-tertiary)]"
-                        }`}
-                        style={{
-                          border: newPriority === p ? `1px solid ${PRIORITY_COLORS[p]}` : "none",
-                        }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: PRIORITY_COLORS[p] }}
-                        />
-                        {p === "high" ? "Alta" : p === "medium" ? "Média" : "Baixa"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
-                  Etiquetas
-                  <button
-                    onClick={() => setShowLabelSelector(!showLabelSelector)}
-                    className="ml-1 text-[var(--text-faint)] hover:text-[var(--text)]"
-                  >
-                    <Plus size={10} />
-                  </button>
-                </label>
-                <div className="flex flex-wrap gap-1 mb-1">
-                  {newLabels.map((labelName) => {
-                    const label = labels.find((l) => l.name === labelName);
-                    return (
-                      <button
-                        key={labelName}
-                        onClick={() => toggleLabel(labelName)}
-                        className="flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg bg-[var(--bg-surface)] text-[var(--text)]"
-                        style={{ border: `1px solid ${label?.color || "#71d4ff"}` }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: label?.color || "#71d4ff" }}
-                        />
-                        {labelName}
-                        <X size={10} className="text-[var(--text-faint)]" />
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <AnimatePresence>
-                  {showLabelSelector && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 mb-2"
-                    >
-                      <div className="flex gap-1 flex-wrap mb-2">
-                        {availableLabels.map((label) => (
-                          <button
-                            key={label.id}
-                            onClick={() => toggleLabel(label.name)}
-                            className="flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
-                            style={{ color: label.color }}
-                          >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ background: label.color }}
-                            />
-                            {label.name}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <div className="flex gap-1">
-                          {LABEL_COLORS.map((c) => (
-                            <button
-                              key={c}
-                              onClick={() => setNewLabelColor(c)}
-                              className={`w-4 h-4 rounded-full transition-all ${
-                                newLabelColor === c ? "ring-2 ring-white" : ""
-                              }`}
-                              style={{ background: c }}
-                            />
-                          ))}
-                        </div>
-                        <input
-                          value={newLabelName}
-                          onChange={(e) => setNewLabelName(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleCreateLabel()}
-                          className="auth-input flex-1 text-[10px]"
-                          placeholder="Nova etiqueta..."
-                        />
-                        <button
-                          onClick={handleCreateLabel}
-                          disabled={creatingLabel || !newLabelName.trim()}
-                          className="text-[var(--text-faint)] hover:text-[var(--text)]"
-                        >
-                          {creatingLabel ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-[var(--text-faint)]" />
-                <input
-                  type="date"
-                  value={newDueDate}
-                  onChange={(e) => setNewDueDate(e.target.value)}
-                  className="bg-transparent text-sm text-[var(--text)] border-none outline-none"
-                />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+
+
         <div className="min-h-[80px] rounded-lg">
           {tasks.length === 0 ? (
             <motion.div
@@ -563,7 +303,7 @@ function Column({
               <Plus size={20} className="mb-1 opacity-50" />
               <span className="text-[10px]">Nenhuma tarefa ainda</span>
               <button
-                onClick={() => setShowForm(true)}
+                onClick={() => onAddTask(status)}
                 className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] mt-1 flex items-center gap-1"
               >
                 <Plus size={10} /> Adicionar tarefa
@@ -898,7 +638,13 @@ export function KanbanBoard({
   onDeleteLabel,
 }: KanbanBoardProps) {
   const [editingTask, setEditingTask] = useState<KanbanTask | null>(null);
+  // Column whose "+" opened the creation modal (null = closed).
+  const [createStatus, setCreateStatus] = useState<KanbanStatus | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleAddTask = useCallback((status: KanbanStatus) => {
+    setCreateStatus(status);
+  }, []);
 
   const handleMove = useCallback(
     (id: number, newStatus: KanbanStatus, newPosition: number) => {
@@ -988,12 +734,10 @@ export function KanbanBoard({
               color={col.color}
               tasks={col.tasks}
               labels={labels}
-              categories={categories}
               onMove={handleMove}
-              onCreate={handleCreate}
+              onAddTask={handleAddTask}
               onUpdate={handleUpdate}
               onDelete={onDelete}
-              onCreateLabel={onCreateLabel}
               onEdit={handleEdit}
             />
           ))}
@@ -1001,14 +745,16 @@ export function KanbanBoard({
       </DndContext>
 
       <AnimatePresence>
-        {editingTask && (
-          <TaskDetailModal
-            task={editingTask}
+        {createStatus && (
+          <KanbanCreateModal
+            status={createStatus}
+            columnLabel={COLUMNS.find((c) => c.status === createStatus)?.label ?? ""}
+            columnColor={COLUMNS.find((c) => c.status === createStatus)?.color ?? "#71d4ff"}
+            positionInColumn={tasks.filter((t) => t.status === createStatus).length}
             labels={labels}
             categories={categories}
-            onClose={() => setEditingTask(null)}
-            onSave={(updates) => handleUpdate(editingTask.id, updates)}
-            onDelete={onDelete}
+            onClose={() => setCreateStatus(null)}
+            onCreate={onCreate}
             onCreateLabel={onCreateLabel}
           />
         )}

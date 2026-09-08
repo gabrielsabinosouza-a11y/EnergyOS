@@ -696,6 +696,7 @@ export interface MonthlyRecap {
   leaguePromoted?: boolean;
   productivityTag?: string;
   gardenCount?: number;
+  totalXp: number;
   hasBeenShared?: boolean;
   generatedAt: string;
 }
