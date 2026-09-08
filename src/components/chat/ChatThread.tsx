@@ -553,7 +553,8 @@ function MessageBubble({
             {formatClock(msg.createdAt)}
             {msg.editedAt && " (editada)"}
           </p>
-          {isMe && <CheckMark read={read} />}
+          {msg.pending && <span className="text-[9px] italic text-[var(--text-faint)]">enviando…</span>}
+          {isMe && !msg.pending && <CheckMark read={read} />}
         </div>
       </div>
     </motion.div>

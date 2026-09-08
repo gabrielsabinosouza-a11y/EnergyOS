@@ -1078,6 +1078,37 @@ function GroupDetailPanel({
   const [pinnedMessages, setPinnedMessages] = useState<GroupPinnedMessage[]>([]);
   const [replyingTo, setReplyingTo] = useState<GroupMessage | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
+  // Optimistic sends: messages shown immediately with a negative temp id while
+  // the request is in flight. Merged back into every server list so polls can
+  // never "lose" a message that hasn't been confirmed yet.
+  const pendingRef = useRef<GroupMessage[]>([]);
+  const tempIdRef = useRef(0);
+
+  const nextTempId = useCallback(() => -(++tempIdRef.current), []);
+
+  const applyServerMessages = useCallback((msgs: GroupMessage[]) => {
+    const serverIds = new Set(msgs.map((m) => m.id));
+    const stillPending = pendingRef.current.filter((p) => !serverIds.has(p.id));
+    const merged = [...msgs, ...stillPending];
+    setMessages(merged);
+    if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
+    return merged;
+  }, []);
+
+  const confirmMessage = useCallback((tempId: number, message: GroupMessage) => {
+    pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
+    setMessages((prev) => {
+      const hasTemp = prev.some((m) => m.id === tempId);
+      return hasTemp
+        ? prev.map((m) => (m.id === tempId ? message : m))
+        : [...prev, message];
+    });
+  }, []);
+
+  const addOptimisticMessage = useCallback((message: GroupMessage) => {
+    pendingRef.current = [...pendingRef.current, message];
+    setMessages((prev) => [...prev, message]);
+  }, []);
 
   /* Settings state */
   const [editName, setEditName] = useState(group.name);
@@ -1106,15 +1137,14 @@ function GroupDetailPanel({
     api.getGroupMessages(group.id)
       .then(({ messages: msgs }) => {
         if (cancelled) return;
-        setMessages(msgs);
-        lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+        applyServerMessages(msgs);
       })
       .catch(() => { if (!cancelled) setMessageError("Não foi possível carregar as mensagens."); });
     api.getGroupPinnedMessages(group.id)
       .then(({ pins }) => { if (!cancelled) setPinnedMessages(pins); })
       .catch(() => { /* silent */ });
     return () => { cancelled = true; };
-  }, [group.id]);
+  }, [group.id, applyServerMessages]);
 
   /* Load milestones + rank when stats tab opens */
   useEffect(() => {
@@ -1134,15 +1164,12 @@ function GroupDetailPanel({
           api.getGroupMessages(group.id),
           api.getGroupPinnedMessages(group.id),
         ]);
-        setMessages(msgs);
+        applyServerMessages(msgs);
         setPinnedMessages(pins);
-        if (msgs.length > 0) {
-          lastIdRef.current = msgs[msgs.length - 1].id;
-        }
       } catch { /* silent */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [group.id, tab]);
+  }, [group.id, tab, applyServerMessages]);
 
   useEffect(() => {
     if (!tab.includes("settings")) return;
@@ -1151,25 +1178,59 @@ function GroupDetailPanel({
   }, [tab, friends.length]);
 
   /* Composer persistence — the composer UI (upload + mic) lives in the shared
-     ChatComposer; these wrappers persist to the group API and surface failures
-     by rethrowing so the composer can restore input + show an error. */
-  function appendMessage(message: GroupMessage) {
-    setMessages((prev) => [...prev, message]);
-    lastIdRef.current = message.id;
-  }
+     ChatComposer; these wrappers optimistically render the message instantly,
+     then swap in the server-confirmed copy. Failures restore the input + error
+     by rethrowing so the composer can surface them. */
 
   const chatMessages = messages.map((m) => groupToChatMessage(m));
   const pinnedChatMessages = pinnedMessages.map(groupPinnedToChatMessage);
 
+  function makeOptimistic(opts: { body?: string; messageType?: GroupMessage["messageType"]; replyToId?: number; mediaUrl?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }): GroupMessage {
+    return {
+      id: nextTempId(),
+      groupId: group.id,
+      senderId: currentUserId,
+      senderName: me?.displayName ?? currentUserId,
+      senderPhotoUrl: me?.photoUrl,
+      senderRole: myRole,
+      body: opts.body,
+      messageType: opts.messageType ?? "TEXT",
+      mediaUrl: opts.mediaUrl,
+      mediaDurationSeconds: opts.mediaDurationSeconds,
+      mediaFileName: opts.mediaFileName,
+      mediaMimeType: opts.mediaMimeType,
+      mediaSizeBytes: opts.mediaSizeBytes,
+      createdAt: new Date().toISOString(),
+      replyToId: opts.replyToId,
+      pending: true,
+    };
+  }
+
   async function handleSend(body: string) {
-    const { message } = await api.sendGroupMessage(group.id, body);
-    appendMessage(message);
+    const temp: GroupMessage = makeOptimistic({ body, messageType: "TEXT" });
+    addOptimisticMessage(temp);
+    try {
+      const { message } = await api.sendGroupMessage(group.id, body);
+      confirmMessage(temp.id, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== temp.id);
+      setMessages((prev) => prev.filter((m) => m.id !== temp.id));
+      throw err;
+    }
   }
 
   async function handleReply(body: string, replyToId: number) {
-    const { message } = await api.sendGroupMessage(group.id, body, { replyToId });
-    appendMessage(message);
+    const temp: GroupMessage = makeOptimistic({ body, messageType: "TEXT", replyToId });
+    addOptimisticMessage(temp);
     setReplyingTo(null);
+    try {
+      const { message } = await api.sendGroupMessage(group.id, body, { replyToId });
+      confirmMessage(temp.id, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== temp.id);
+      setMessages((prev) => prev.filter((m) => m.id !== temp.id));
+      throw err;
+    }
   }
 
   async function handleComposerSend(body: string) {
@@ -1179,12 +1240,28 @@ function GroupDetailPanel({
   }
 
   async function handleComposerSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
-    const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
-      messageType: opts.messageType,
+    const temp: GroupMessage = makeOptimistic({
+      body: opts.body,
+      messageType: opts.messageType as GroupMessage["messageType"],
       mediaUrl: opts.mediaUrl,
       mediaDurationSeconds: opts.mediaDurationSeconds,
+      mediaFileName: opts.mediaFileName,
+      mediaMimeType: opts.mediaMimeType,
+      mediaSizeBytes: opts.mediaSizeBytes,
     });
-    appendMessage(message);
+    addOptimisticMessage(temp);
+    try {
+      const { message } = await api.sendGroupMessage(group.id, opts.body ?? "", {
+        messageType: opts.messageType,
+        mediaUrl: opts.mediaUrl,
+        mediaDurationSeconds: opts.mediaDurationSeconds,
+      });
+      confirmMessage(temp.id, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== temp.id);
+      setMessages((prev) => prev.filter((m) => m.id !== temp.id));
+      throw err;
+    }
   }
 
   async function handleEditMessage(messageId: number, newBody: string) {

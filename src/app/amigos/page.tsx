@@ -576,6 +576,32 @@ function ChatPanel({
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [replyingTo, setReplyingTo] = useState<DirectMessage | null>(null);
   const lastIdRef = useRef<number | undefined>(undefined);
+  // Optimistic sends: messages shown immediately with a negative temp id while
+  // the request is in flight. Merged back into every server list so polls can
+  // never "lose" a message that hasn't been confirmed yet.
+  const pendingRef = useRef<DirectMessage[]>([]);
+  const tempIdRef = useRef(0);
+
+  const nextTempId = useCallback(() => -(++tempIdRef.current), []);
+
+  const applyServerMessages = useCallback((msgs: DirectMessage[]) => {
+    const serverIds = new Set(msgs.map((m) => m.id));
+    const stillPending = pendingRef.current.filter((p) => !serverIds.has(p.id));
+    const merged = [...msgs, ...stillPending];
+    setMessages(merged);
+    if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
+    return merged;
+  }, []);
+
+  const confirmMessage = useCallback((tempId: number, message: DirectMessage) => {
+    pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
+    setMessages((prev) => {
+      const hasTemp = prev.some((m) => m.id === tempId);
+      return hasTemp
+        ? prev.map((m) => (m.id === tempId ? message : m))
+        : [...prev, message];
+    });
+  }, []);
 
   /* Mark read on open */
   useEffect(() => {
@@ -591,44 +617,96 @@ function ChatPanel({
     let cancelled = false;
     api.getMessages(friend.id).then(({ messages: msgs }) => {
       if (cancelled) return;
-      setMessages(msgs);
-      lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+      applyServerMessages(msgs);
     });
     return () => { cancelled = true; };
-  }, [friend.id]);
+  }, [friend.id, applyServerMessages]);
 
   /* Poll */
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const { messages: msgs } = await api.getMessages(friend.id);
-        setMessages(msgs);
-        if (msgs.length > 0) {
-          lastIdRef.current = msgs[msgs.length - 1].id;
-        }
+        applyServerMessages(msgs);
       } catch { /* silent */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [friend.id]);
+  }, [friend.id, applyServerMessages]);
+
+  /* Optimistic helper: append a temp message immediately, return its id. */
+  const addOptimisticMessage = useCallback((message: DirectMessage) => {
+    pendingRef.current = [...pendingRef.current, message];
+    setMessages((prev) => [...prev, message]);
+  }, []);
 
   async function handleSend(body: string) {
-    const { message } = await api.sendMessage(friend.id, body);
-    setMessages((prev) => [...prev, message]);
-    lastIdRef.current = message.id;
+    const tempId = nextTempId();
+    addOptimisticMessage({
+      id: tempId,
+      senderId: currentUserId,
+      recipientId: friend.id,
+      body,
+      messageType: "TEXT",
+      createdAt: new Date().toISOString(),
+      pending: true,
+    });
+    try {
+      const { message } = await api.sendMessage(friend.id, body);
+      confirmMessage(tempId, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      throw err;
+    }
   }
 
   async function handleReply(body: string, replyToId: number) {
-    const { message } = await api.sendMessage(friend.id, body, { replyToId });
-    // The server returns the reply with joined reply info
-    setMessages((prev) => [...prev, message]);
-    lastIdRef.current = message.id;
+    const tempId = nextTempId();
+    addOptimisticMessage({
+      id: tempId,
+      senderId: currentUserId,
+      recipientId: friend.id,
+      body,
+      messageType: "TEXT",
+      createdAt: new Date().toISOString(),
+      replyToId,
+      pending: true,
+    });
     setReplyingTo(null);
+    try {
+      const { message } = await api.sendMessage(friend.id, body, { replyToId });
+      confirmMessage(tempId, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      throw err;
+    }
   }
 
   async function handleSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
-    const { message } = await api.sendMessage(friend.id, opts.body ?? "", opts);
-    setMessages((prev) => [...prev, message]);
-    lastIdRef.current = message.id;
+    const tempId = nextTempId();
+    addOptimisticMessage({
+      id: tempId,
+      senderId: currentUserId,
+      recipientId: friend.id,
+      body: opts.body,
+      messageType: opts.messageType,
+      mediaUrl: opts.mediaUrl,
+      mediaDurationSeconds: opts.mediaDurationSeconds,
+      mediaFileName: opts.mediaFileName,
+      mediaMimeType: opts.mediaMimeType,
+      mediaSizeBytes: opts.mediaSizeBytes,
+      createdAt: new Date().toISOString(),
+      pending: true,
+    });
+    try {
+      const { message } = await api.sendMessage(friend.id, opts.body ?? "", opts);
+      confirmMessage(tempId, message);
+    } catch (err) {
+      pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      throw err;
+    }
   }
 
   async function handleEditMessage(messageId: number, newBody: string) {
@@ -649,8 +727,7 @@ function ChatPanel({
   async function handleTogglePin(messageId: number) {
     await api.pinDmMessage(messageId);
     const { messages: msgs } = await api.getMessages(friend.id);
-    setMessages(msgs);
-    lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : undefined;
+    applyServerMessages(msgs);
   }
 
   /* Convert to unified type */

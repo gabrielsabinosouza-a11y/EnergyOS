@@ -904,7 +904,7 @@ export default function PerfilPage() {
                   );
                 })}
                 <div className="metric-card flex items-center gap-3">
-                  <div className="metric-icon" style={{ color: "var(--purple)" }}><XpIcon size={15} /></div>
+                  <div className="metric-icon" style={{ color: "var(--purple)" }}><XpIcon size={28} /></div>
                   <div>
                     <div className="metric-caption">Foco</div>
                     <div className="font-display text-base text-[var(--text-secondary)]">
@@ -915,7 +915,7 @@ export default function PerfilPage() {
                   </div>
                 </div>
                 <div className="metric-card flex items-center gap-3">
-                  <div className="metric-icon" style={{ color: "var(--orange)" }}><CoinIcon size={15} /></div>
+                  <div className="metric-icon" style={{ color: "var(--orange)" }}><CoinIcon size={28} /></div>
                   <div>
                     <div className="metric-caption">Moedas</div>
                     <div className="font-display text-base text-[var(--text-secondary)]">

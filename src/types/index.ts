@@ -180,6 +180,8 @@ export interface DirectMessage {
   isPinned?: boolean;
   pinnedAt?: string;
   pinnedBy?: string;
+  /** Optimistic flag: shown in the UI before the server confirms the send. */
+  pending?: boolean;
 }
 
 export interface MessageReactionSummary {
@@ -213,6 +215,8 @@ export interface ChatMessage {
   pinnedAt?: string;
   pinnedUntil?: string;
   pinnedBy?: string;
+  /** Optimistic flag: shown in the UI before the server confirms the send. */
+  pending?: boolean;
 }
 
 /** Convert a DirectMessage to the unified ChatMessage format.
@@ -239,6 +243,7 @@ export function dmToChatMessage(dm: DirectMessage): ChatMessage {
     isPinned: dm.isPinned,
     pinnedAt: dm.pinnedAt,
     pinnedBy: dm.pinnedBy,
+    pending: dm.pending,
   };
 }
 
@@ -268,6 +273,7 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     pinnedAt: gm.pinnedAt,
     pinnedUntil: gm.pinnedUntil,
     pinnedBy: gm.pinnedBy,
+    pending: gm.pending,
   };
 }
 
@@ -380,6 +386,8 @@ export interface GroupMessage {
   pinnedAt?: string;
   pinnedUntil?: string;
   pinnedBy?: string;
+  /** Optimistic flag: shown in the UI before the server confirms the send. */
+  pending?: boolean;
 }
 
 export interface LeagueEntry {

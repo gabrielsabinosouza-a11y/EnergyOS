@@ -13,9 +13,9 @@ import { Modal } from "./modal";
 export const navigationItems = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
-  { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "social" as const, img: "/sidebar_menu/friends.png" },
+  { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },
   { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null, img: "/sidebar_menu/leaderboard.png" },
-  { href: "/grupos",    label: "Grupos",           icon: Users,        badge: "social" as const, img: "/sidebar_menu/groups.png" },
+  { href: "/grupos",    label: "Grupos",           icon: Users,        badge: "group" as const, img: "/sidebar_menu/groups.png" },
   { href: "/loja",      label: "Loja",             icon: ShoppingBag,  badge: null, img: "/sidebar_menu/store.png" },
   { href: "/jardim",    label: "Meu jardim",       icon: Leaf, img: "/sidebar_menu/garden.png" },
   { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp, img: "/sidebar_menu/profile.png" },
@@ -27,12 +27,12 @@ export const navigationItems = [
 const PRIMARY_TABS = [
   { href: "/dashboard",     label: "Início", icon: LayoutDashboard },
   { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen },
-  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "social" as const },
+  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "dm" as const },
   { href: "/liga",          label: "Liga",   icon: Trophy },
 ] as const;
 
 const MORE_TABS = [
-  { href: "/grupos",        label: "Grupos",          icon: Users,      badge: "social" as const },
+  { href: "/grupos",        label: "Grupos",          icon: Users,      badge: "group" as const },
   { href: "/loja",          label: "Loja",            icon: ShoppingBag },
   { href: "/jardim",        label: "Meu jardim",      icon: Leaf },
   { href: "/perfil",        label: "Meu perfil",      icon: TrendingUp },
@@ -43,10 +43,11 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Unread social count — one poller shared by the desktop sidebar and the
- *  mobile tab bar so we never double-poll `/api/social/unread`. */
-function useUnreadCount() {
-  const [unreadCount, setUnreadCount] = useState(0);
+/** Unread counts kept apart: `dmUnread` drives the Amigos badge and
+ *  `groupUnread` drives the Grupos badge. One poller shared by the desktop
+ *  sidebar and the mobile tab bar so we never double-poll `/api/social/unread`. */
+function useUnreadCounts() {
+  const [counts, setCounts] = useState({ dmUnread: 0, groupUnread: 0 });
   useEffect(() => {
     let active = true;
     async function fetchUnread() {
@@ -59,19 +60,31 @@ function useUnreadCount() {
         });
         if (!res.ok || !active) return;
         const data = await res.json();
-        if (active) setUnreadCount(data.dmUnread + data.groupUnread);
+        if (active) {
+          setCounts({
+            dmUnread: Number(data.dmUnread ?? 0),
+            groupUnread: Number(data.groupUnread ?? 0),
+          });
+        }
       } catch { /* silent */ }
     }
     fetchUnread();
     const interval = setInterval(fetchUnread, 30_000);
     return () => { active = false; clearInterval(interval); };
   }, []);
-  return unreadCount;
+  return counts;
+}
+
+/** Badge count for a nav item given its badge kind and the unread counts. */
+function badgeCountFor(kind: "dm" | "group" | null | undefined, counts: { dmUnread: number; groupUnread: number }): number {
+  if (kind === "dm") return counts.dmUnread;
+  if (kind === "group") return counts.groupUnread;
+  return 0;
 }
 
 export function Sidebar({ pathname }: { pathname: string }) {
   const reduced = useReducedMotion();
-  const unreadCount = useUnreadCount();
+  const unreadCounts = useUnreadCounts();
 
   return (
     <aside className="hidden w-[252px] shrink-0 flex-col border-r border-[var(--border-subtle)] px-6 py-8 lg:fixed lg:inset-y-0 lg:flex">
@@ -85,7 +98,8 @@ export function Sidebar({ pathname }: { pathname: string }) {
       <nav className="space-y-1">
         {navigationItems.map(({ href, label, icon: Icon, badge, img }) => {
           const isActive = pathname === href;
-          const showBadge = badge === "social" && unreadCount > 0;
+          const unreadCount = badgeCountFor(badge, unreadCounts);
+          const showBadge = unreadCount > 0;
           return (
             <Link
               key={href}
@@ -142,7 +156,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
    many times a day (check-ins, timers): primary destinations are one
    thumb-tap away. */
 export function MobileNav({ pathname }: { pathname: string }) {
-  const unreadCount = useUnreadCount();
+  const unreadCounts = useUnreadCounts();
   const [showMore, setShowMore] = useState(false);
 
   // Close the "Mais" sheet whenever the route changes.
@@ -168,7 +182,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
           {PRIMARY_TABS.map(({ href, label, icon: Icon, ...rest }) => {
             const badge = "badge" in rest ? rest.badge : undefined;
             const active = isActivePath(pathname, href);
-            const showDot = badge === "social" && unreadCount > 0;
+            const showDot = badgeCountFor(badge, unreadCounts) > 0;
             return (
               <Link key={href} href={href} className={`tab-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
                 <span className="tab-icon">
@@ -212,7 +226,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
               {MORE_TABS.map(({ href, label, icon: Icon, ...rest }) => {
                 const badge = "badge" in rest ? rest.badge : undefined;
                 const active = isActivePath(pathname, href);
-                const showDot = badge === "social" && unreadCount > 0;
+                const showDot = badgeCountFor(badge, unreadCounts) > 0;
                 return (
                   <Link
                     key={href}
