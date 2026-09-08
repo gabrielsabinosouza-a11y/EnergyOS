@@ -31,6 +31,7 @@ const STEPS: Step[] = [
     eyebrow: "CHECK-IN DIÁRIO",
     title: "Comece pelo seu ritmo",
     body: "Registre sono, estudo, treino e energia todos os dias. O check-in alimenta seus indicadores e mantém a consistência.",
+    img: "/Onboard/Check_diario.png",
     href: "/dashboard",
   },
   {
@@ -38,6 +39,7 @@ const STEPS: Step[] = [
     eyebrow: "FOCO",
     title: "Dê o primeiro passo: foque",
     body: "Use o timer ou entre em uma sala de foco. Cada sessão concluída rende XP, moedas e conta para o seu streak — do painel ou da sala.",
+    img: "/Onboard/focus.png",
     href: "/salas-de-foco",
   },
   {
@@ -45,6 +47,7 @@ const STEPS: Step[] = [
     eyebrow: "JARDIM",
     title: "Cultive sua energia",
     body: "A cada foco, uma nova energia brota no seu jardim. Quanto mais longo o foco, mais valiosa a planta.",
+    img: "/Onboard/jardim.png",
     href: "/jardim",
   },
   {
@@ -52,6 +55,7 @@ const STEPS: Step[] = [
     eyebrow: "LIGA E LOJA",
     title: "Suba e recompense-se",
     body: "Ganhe XP para escalar a liga e troque moedas por auras, escudos e decorações na loja.",
+    img: "/Onboard/league.png",
     href: "/liga",
   },
   {
@@ -59,6 +63,7 @@ const STEPS: Step[] = [
     eyebrow: "LEMBRETES",
     title: "Não quebre o ritmo",
     body: "Ative as notificações para receber lembretes de focus, check-in e hora de dormir.",
+    img: "/Onboard/notifications.png",
     actions: true,
   },
 ];
