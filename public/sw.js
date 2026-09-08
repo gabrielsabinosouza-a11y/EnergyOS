@@ -34,7 +34,7 @@ function shouldBypass(request) {
   if (request.method !== "GET") return true;
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) return true;
-  if (url.origin !== self.location.origin) return false; // allow-cors fonts/images to cache
+  if (url.origin !== self.location.origin) return true; // skip cross-origin (Google APIs, CDNs, etc.)
   return false;
 }
 
@@ -51,7 +51,7 @@ self.addEventListener("fetch", (event) => {
           if (res.ok) caches.open(VERSION).then((cache) => cache.put("/", copy));
           return res;
         })
-        .catch(() => caches.match("/"))
+        .catch(() => caches.match("/").then((r) => r || new Response("Offline", { status: 503, headers: { "Content-Type": "text/html" } })))
     );
     return;
   }
@@ -64,7 +64,7 @@ self.addEventListener("fetch", (event) => {
           if (res.ok) caches.open(VERSION).then((cache) => cache.put(request, res.clone()));
           return res;
         })
-        .catch(() => cached);
+        .catch(() => cached || new Response("Offline", { status: 503 }));
       return cached || network;
     })
   );
