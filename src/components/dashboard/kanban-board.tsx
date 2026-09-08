@@ -626,6 +626,288 @@ await onSave({
   );
 }
 
+interface KanbanCreateModalProps {
+  status: KanbanStatus;
+  columnLabel: string;
+  columnColor: string;
+  positionInColumn: number;
+  labels: KanbanLabel[];
+  categories: Category[];
+  onClose: () => void;
+  onCreate: (task: Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">) => Promise<void>;
+  onCreateLabel: (name: string, color: string) => Promise<KanbanLabel>;
+}
+
+function KanbanCreateModal({
+  status,
+  columnLabel,
+  columnColor,
+  positionInColumn,
+  labels,
+  categories,
+  onClose,
+  onCreate,
+  onCreateLabel,
+}: KanbanCreateModalProps) {
+  const sortedCategories = sortCategoriesForPicker(categories);
+  const firstCategoryId = sortedCategories[0]?.id ?? 0;
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState(0);
+  const [newLabels, setNewLabels] = useState<string[]>([]);
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newPriority, setNewPriority] = useState<KanbanPriority>("medium");
+  const [saving, setSaving] = useState(false);
+  const [showLabelSelector, setShowLabelSelector] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
+  const [creatingLabel, setCreatingLabel] = useState(false);
+
+  const selectedCategoryId = newCategoryId || firstCategoryId;
+
+  const handleCreate = useCallback(
+    async () => {
+      if (!newTitle.trim() || !selectedCategoryId || saving) return;
+      setSaving(true);
+      try {
+        await onCreate({
+          title: newTitle.trim(),
+          description: newDescription.trim() || undefined,
+          status,
+          categoryId: selectedCategoryId,
+          labels: newLabels,
+          dueDate: newDueDate || undefined,
+          priority: newPriority,
+          assigneeId: undefined,
+          position: positionInColumn,
+        });
+        onClose();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, positionInColumn, saving, onCreate, onClose]
+  );
+
+  const handleCreateLabel = useCallback(
+    async () => {
+      if (!newLabelName.trim()) return;
+      setCreatingLabel(true);
+      try {
+        const label = await onCreateLabel(newLabelName.trim(), newLabelColor);
+        setNewLabels((prev) => [...prev, label.name]);
+        setNewLabelName("");
+        setShowLabelSelector(false);
+      } finally {
+        setCreatingLabel(false);
+      }
+    },
+    [newLabelName, newLabelColor, onCreateLabel]
+  );
+
+  const toggleLabel = useCallback((labelName: string) => {
+    setNewLabels((prev) =>
+      prev.includes(labelName) ? prev.filter((l) => l !== labelName) : [...prev, labelName]
+    );
+  }, []);
+
+  const availableLabels = useMemo(() => {
+    return labels.filter((l) => !newLabels.includes(l.name));
+  }, [labels, newLabels]);
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ background: columnColor, boxShadow: `0 0 8px ${columnColor}40` }}
+            />
+            <span className="eyebrow muted">NOVA TAREFA · {columnLabel}</span>
+          </div>
+          <button onClick={onClose} className="icon-button small" aria-label="Fechar">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            className="auth-input flex-1 text-sm"
+            placeholder="Título da tarefa..."
+          />
+
+          <textarea
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            className="auth-input w-full text-sm min-h-[60px] resize-none"
+            placeholder="Descrição (opcional)..."
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Categoria</label>
+              <div className="flex gap-1 flex-wrap">
+                {sortedCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setNewCategoryId(cat.id)}
+                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] border transition-all ${
+                      selectedCategoryId === cat.id ? "" : "border-[var(--border-subtle)] text-[var(--text-faint)]"
+                    }`}
+                    style={selectedCategoryId === cat.id ? { color: cat.color, borderColor: cat.color } : {}}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Prioridade</label>
+              <div className="flex gap-1">
+                {(Object.keys(PRIORITY_COLORS) as KanbanPriority[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setNewPriority(p)}
+                    className={`flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg transition-colors ${
+                      newPriority === p
+                        ? "bg-[var(--bg-surface-hover)] text-[var(--text)]"
+                        : "text-[var(--text-faint)] hover:bg-[var(--bg-tertiary)]"
+                    }`}
+                    style={{
+                      border: newPriority === p ? `1px solid ${PRIORITY_COLORS[p]}` : "none",
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ background: PRIORITY_COLORS[p] }}
+                    />
+                    {p === "high" ? "Alta" : p === "medium" ? "Média" : "Baixa"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
+              Etiquetas
+              <button
+                onClick={() => setShowLabelSelector(!showLabelSelector)}
+                className="ml-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+              >
+                <Plus size={10} />
+              </button>
+            </label>
+            <div className="flex flex-wrap gap-1 mb-1">
+              {newLabels.map((labelName) => {
+                const label = labels.find((l) => l.name === labelName);
+                return (
+                  <button
+                    key={labelName}
+                    onClick={() => toggleLabel(labelName)}
+                    className="flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg bg-[var(--bg-surface)] text-[var(--text)]"
+                    style={{ border: `1px solid ${label?.color || "#71d4ff"}` }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ background: label?.color || "#71d4ff" }}
+                    />
+                    {labelName}
+                    <X size={10} className="text-[var(--text-faint)]" />
+                  </button>
+                );
+              })}
+            </div>
+
+            <AnimatePresence>
+              {showLabelSelector && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 mb-2"
+                >
+                  <div className="flex gap-1 flex-wrap mb-2">
+                    {availableLabels.map((label) => (
+                      <button
+                        key={label.id}
+                        onClick={() => toggleLabel(label.name)}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
+                        style={{ color: label.color }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: label.color }}
+                        />
+                        {label.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div className="flex gap-1">
+                      {LABEL_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setNewLabelColor(c)}
+                          className={`w-4 h-4 rounded-full transition-all ${
+                            newLabelColor === c ? "ring-2 ring-white" : ""
+                          }`}
+                          style={{ background: c }}
+                        />
+                      ))}
+                    </div>
+                    <input
+                      value={newLabelName}
+                      onChange={(e) => setNewLabelName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateLabel()}
+                      className="auth-input flex-1 text-[10px]"
+                      placeholder="Nova etiqueta..."
+                    />
+                    <button
+                      onClick={handleCreateLabel}
+                      disabled={creatingLabel || !newLabelName.trim()}
+                      className="text-[var(--text-faint)] hover:text-[var(--text)]"
+                    >
+                      {creatingLabel ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Calendar size={14} className="text-[var(--text-faint)]" />
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              className="bg-transparent text-sm text-[var(--text)] border-none outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleCreate}
+              disabled={saving || !newTitle.trim() || !selectedCategoryId}
+              className="primary-button flex-1 text-sm"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              {saving ? "Criando..." : "Criar tarefa"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function KanbanBoard({
   tasks,
   labels,
