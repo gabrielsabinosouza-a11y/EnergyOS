@@ -53,19 +53,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
-    if (!auth) return;
-    await signOut(auth);
-    // Guarantee the null user has propagated into this provider before we
-    // resolve, so callers that navigate immediately after logout can never
-    // read a stale signed-in `user`. That race previously dropped logged-out
-    // users onto "/" with a stale session, the landing page bounced them back
-    // to "/dashboard", and the competing client-side redirects were dropped —
-    // leaving an endless loading spinner on /dashboard. Bounded so logout can
-    // never hang, even if the Firebase listener ever stalls.
+    // Kill the session cookie first, synchronously. The proxy redirects every
+    // guest-only route (including "/") to "/dashboard" while this cookie
+    // exists, so it must be gone before the post-logout navigation runs —
+    // not just whenever Firebase's auth-state listener happens to fire.
+    clearSessionCookie();
+    if (auth) {
+      try {
+        await signOut(auth);
+      } catch {
+        // A failed Firebase call must never strand the user with a live
+        // client session; the local cleanup below still runs.
+      }
+    }
+    // Give the null user a bounded window to propagate into this provider
+    // before we resolve, so callers that navigate immediately after logout
+    // usually see the settled state. Bounded so logout can never hang, even
+    // if the Firebase listener ever stalls.
     const deadline = Date.now() + 2500;
     while (userRef.current !== null && Date.now() < deadline) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
+    // Force the signed-out state regardless of the listener: a stale non-null
+    // user here is what previously made the landing page's `ifAuthed` redirect
+    // fire and drop the logged-out user onto "/dashboard".
+    userRef.current = null;
+    setUser(null);
+    setLoading(false);
+    clearSessionCookie();
   };
 
   return (

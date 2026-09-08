@@ -889,7 +889,7 @@ export default function PerfilPage() {
                       <div className="metric-icon" style={{ color }}>
                         {icon === "bed" ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src="/bed_icon.png" alt={label} width={15} height={15} style={{ objectFit: "contain" }} />
+                          <img src="/bed_icon.png" alt={label} width={28} height={28} style={{ objectFit: "contain" }} />
                         ) : (
                           <BedDouble size={15} />
                         )}

@@ -11,6 +11,8 @@
     "db:seed-admin": "node scripts/seed-admin.mjs",
     "db:reset-messages": "node scripts/reset-messages.mjs",
     "db:migrate-reminders": "node scripts/migrate-reminders.mjs",
+    "db:recompute-xp": "node scripts/recompute-user-xp.mjs",
+    "db:restore-messages": "node scripts/restore-messages.mjs",
     "lint": "eslint"
   },
   "dependencies": {
