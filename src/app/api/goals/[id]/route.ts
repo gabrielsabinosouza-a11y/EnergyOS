@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { deleteGoal, updateGoal, GOAL_FREQUENCY_VALUES } from "@/lib/db/goals";
 import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { getActiveBoost, getUserPotionInventory, purchaseXpBoost } from "@/lib/db/xp-boost";
 import { XP_BOOST_ITEM_TYPE } from "@/lib/xp-boost";

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { listCheckins, upsertCheckin } from "@/lib/db/checkins";

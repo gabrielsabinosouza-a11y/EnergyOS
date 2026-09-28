@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { listKanbanTasks, createKanbanTask, listKanbanLabels, createKanbanLabel, deleteKanbanLabel } from "@/lib/db/kanban";
 import type { KanbanLabel } from "@/types";

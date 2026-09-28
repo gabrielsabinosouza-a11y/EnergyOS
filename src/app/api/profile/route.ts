@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
-import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
+import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { getProfile, upsertAndGetProfile, updateDisplayName, updatePhotoUrl, updateFeaturedAchievements } from "@/lib/db/profiles";
 import { assertObject, parseTitle, ValidationError } from "@/lib/db/validation";
 

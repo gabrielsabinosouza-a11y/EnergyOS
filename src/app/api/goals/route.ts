@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { createGoal, listGoals, GOAL_FREQUENCY_VALUES, type GoalWithProgress } from "@/lib/db/goals";
 import { listHabits, type HabitWithCompletion } from "@/lib/db/habits";
