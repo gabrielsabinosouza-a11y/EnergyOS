@@ -25,8 +25,16 @@ export default function AuthCallbackPage() {
           router.push("/login");
         }
       })
-      .catch(() => {
-        setError("Não foi possível autenticar com o Google.");
+      .catch((err: unknown) => {
+        const code = (err as { code?: string })?.code;
+        // "missing initial state" happens when the user refreshes the
+        // callback page or navigates here directly — not a real auth failure.
+        if (code === "auth/missing-initial-state") {
+          router.push("/login");
+        } else {
+          console.error("[auth/callback] Error:", err);
+          setError("Não foi possível autenticar com o Google.");
+        }
       });
   }, [router]);
 
