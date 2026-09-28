@@ -7,6 +7,7 @@ import { purchaseAura } from "@/lib/db/store";
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const result = await purchaseAura(profileId, body.auraType as string);
     return NextResponse.json(result);

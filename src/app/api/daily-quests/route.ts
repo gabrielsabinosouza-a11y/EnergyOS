@@ -10,6 +10,7 @@ import { dailyResetAtIso, todayIso } from "@/lib/db/dates";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const today = todayIso();
     
     // Ensure quests exist and get user's progress

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { BadRequestError, UnauthorizedError, AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { markRecapShared } from "@/lib/db/recap";
@@ -7,6 +8,7 @@ import { markRecapShared } from "@/lib/db/recap";
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     
     const body = await readJsonBody(request);
     const { recapId } = body;

@@ -84,7 +84,7 @@ async function findVisibleByName(profileId: string, name: string, excludeId?: nu
        and ($3::bigint is null or id != $3)`,
     [profileId, name, excludeId ?? null],
   );
-  return result.rows[0];
+  return result.rows[0] ?? undefined;
 }
 
 export interface CreateCategoryInput {
@@ -109,6 +109,7 @@ export async function createCategory(profileId: string, input: CreateCategoryInp
      returning ${CATEGORY_COLUMNS}`,
     [profileId, name, color, icon],
   );
+  if (!result.rows[0]) throw new Error("Failed to create category");
   return mapCategory(result.rows[0]);
 }
 
@@ -144,6 +145,7 @@ export async function updateCategory(profileId: string, categoryId: number, patc
      returning ${CATEGORY_COLUMNS}`,
     [name, color, icon, categoryId, profileId],
   );
+  if (!result.rows[0]) throw new NotFoundError("Categoria não encontrada.");
   return mapCategory(result.rows[0]);
 }
 

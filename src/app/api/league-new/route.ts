@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import {
   getUserLeagueSnapshot,
   getLiveCohort,

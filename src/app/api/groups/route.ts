@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { listGroups, createGroup } from "@/lib/db/groups";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const groups = await listGroups(profileId);
     return NextResponse.json({ groups });
   } catch (error) {

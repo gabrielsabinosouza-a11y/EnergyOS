@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { getGardenEntries, importGardenEntries, type ImportGardenEntry } from "@/lib/db/focus";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const entries = await getGardenEntries(profileId);
     return jsonOk({ entries });
   });
@@ -14,6 +16,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const raw = body.entries;
     if (!Array.isArray(raw)) return jsonOk({ imported: 0 });

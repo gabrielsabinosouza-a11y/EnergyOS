@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { todayIso } from "@/lib/db/dates";
 import { incrementQuestProgress, initializeUserDailyQuests, getUserQuestProgress } from "@/lib/db/daily-quests";
@@ -17,6 +18,7 @@ import { FOCUS_DURATION_MAX_MINUTES } from "@/lib/focus-duration";
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const today = todayIso();
     

@@ -14,6 +14,7 @@ export interface GoalBundle {
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const [goals, habits] = await Promise.all([listGoals(profileId), listHabits(profileId)]);
     const bundles: GoalBundle[] = goals.map((goal) => ({
       goal,
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = assertObject(await readJsonBody(request));
     const goal = await createGoal(profileId, {
       title: parseTitle(body.title),

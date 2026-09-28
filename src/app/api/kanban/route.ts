@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const task = await createKanbanTask(profileId, {
       title: body.title as string,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http";
@@ -8,6 +9,7 @@ import { startDirectChatByUsername, sendDirectMessageByUsername } from "@/lib/db
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const username = request.nextUrl.searchParams.get("username") ?? "";
 
     // Remove @ prefix if present
@@ -27,6 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     rateLimitForProfile(profileId, "dm-send", 20, 60_000);
     const username = request.nextUrl.searchParams.get("username") ?? "";
     const body = await readJsonBody(request);

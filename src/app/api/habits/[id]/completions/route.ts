@@ -16,6 +16,7 @@ interface CompletionBody {
 export async function POST(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const raw = await context.params;
     const habitId = Number(raw.id);
     if (!Number.isInteger(habitId) || habitId <= 0) throw new ValidationError("Hábito inválido.");

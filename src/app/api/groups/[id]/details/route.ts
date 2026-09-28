@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { jsonOk, handleRoute, readJsonBody } from "@/lib/http";
 import { updateGroupDetails, updateGroupAvatar } from "@/lib/db/groups";
 
@@ -9,6 +10,7 @@ export async function PATCH(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
 

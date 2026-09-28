@@ -14,6 +14,7 @@ import { readJsonBody } from "@/lib/http";
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     
     const [designs, owned, equipped] = await Promise.all([
       getAllStreakShieldDesigns(),
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     
     const body = await readJsonBody(request);
     const { shieldDesignId } = body;
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     
     const body = await readJsonBody(request);
     const { shieldDesignId } = body;

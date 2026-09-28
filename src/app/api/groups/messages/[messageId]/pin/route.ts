@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { toggleGroupMessagePin } from "@/lib/db/groups";
 
@@ -9,6 +10,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     // Body is ignored: this is a toggle. v1 keeps a single active pin per chat.
     await request.json().catch(() => null);

@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { buildDashboardSnapshot } from "@/lib/db/dashboard";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email, role } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const snapshot = await buildDashboardSnapshot(profileId, displayName ?? undefined, email ?? undefined, role);
     return jsonOk(snapshot);
   });

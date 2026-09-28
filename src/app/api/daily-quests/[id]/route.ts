@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { claimQuestReward } from "@/lib/db/daily-quests";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const questProgressId = Number(id);
     

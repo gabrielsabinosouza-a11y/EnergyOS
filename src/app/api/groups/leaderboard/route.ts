@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { getGlobalGroupLeaderboard, type Period } from "@/lib/db/group-leaderboard";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const searchParams = request.nextUrl.searchParams;
     
     const period = (searchParams.get("period") as Period) || "WEEK";

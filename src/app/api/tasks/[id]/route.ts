@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { deleteTask, setTaskCompleted, updateTask } from "@/lib/db/tasks";
 import { assertObject, parseBoolean, parseDate, parseNumber, parseProfileId, parseTitle } from "@/lib/db/validation";
@@ -16,6 +17,7 @@ async function resolveTaskId(context: RouteContext): Promise<number> {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const taskId = await resolveTaskId(context);
     const body = assertObject(await readJsonBody(request));
 
@@ -35,6 +37,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const taskId = await resolveTaskId(context);
     parseProfileId(profileId);
 

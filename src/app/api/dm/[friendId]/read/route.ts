@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { markDmRead } from "@/lib/db/messages";
 
@@ -9,6 +10,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { friendId } = await params;
     await markDmRead(profileId, friendId);
     return NextResponse.json({ ok: true });

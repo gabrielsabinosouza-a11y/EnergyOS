@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { getGroupMemberContributions, type Period } from "@/lib/db/group-leaderboard";
 
@@ -9,6 +10,7 @@ export async function GET(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const period = (request.nextUrl.searchParams.get("period") as Period) ?? "ALL_TIME";
     const result = await getGroupMemberContributions(profileId, Number(id), period);

@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { awardWeeklyPlanCompletion, deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     let body: Record<string, unknown> = {};
     try {
@@ -28,6 +30,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
     const plan = await updateWeeklyPlan(profileId, Number(id), {
@@ -42,6 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     await deleteWeeklyPlan(profileId, Number(id));
     return jsonOk({ ok: true });

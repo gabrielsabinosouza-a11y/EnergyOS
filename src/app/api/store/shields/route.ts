@@ -6,6 +6,7 @@ import { purchaseShield, getShieldCount } from "@/lib/db/store";
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const count = await getShieldCount(profileId);
     return NextResponse.json({ shieldCount: count });
   } catch (error) {
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const result = await purchaseShield(profileId);
     return NextResponse.json(result);
   } catch (error) {

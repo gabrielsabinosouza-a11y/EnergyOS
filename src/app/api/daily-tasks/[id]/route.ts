@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { todayIso } from "@/lib/db/dates";
 import {
@@ -12,6 +13,7 @@ import { assertObject, parseTitle, ValidationError } from "@/lib/db/validation";
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const taskId = Number(id);
     const body = assertObject(await readJsonBody(request));
@@ -45,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     // Soft-archive: keeps the task row and its completion history, hides it
     // from the daily checklist from now on.

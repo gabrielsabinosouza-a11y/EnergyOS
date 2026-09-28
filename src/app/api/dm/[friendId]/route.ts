@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http";
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { friendId } = await params;
     const afterId = request.nextUrl.searchParams.get("after");
     const messages = await listDirectMessages(profileId, friendId, afterId ? Number(afterId) : undefined);
@@ -29,6 +31,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     rateLimitForProfile(profileId, "dm-send", 20, 60_000);
     const { friendId } = await params;
     const body = await readJsonBody(request);

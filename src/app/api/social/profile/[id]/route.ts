@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError, ForbiddenError } from "@/lib/errors";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { getPublicProfile, getBasicPublicProfile } from "@/lib/db/social";
 
 export async function GET(
@@ -9,6 +10,7 @@ export async function GET(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     
     // Try to get full profile (requires friendship)

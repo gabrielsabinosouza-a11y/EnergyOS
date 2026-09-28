@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { toggleDirectMessagePin } from "@/lib/db/messages";
 
@@ -9,6 +10,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     const result = await toggleDirectMessagePin(profileId, Number(messageId));
     return NextResponse.json({ ok: true, pinned: result.pinned });

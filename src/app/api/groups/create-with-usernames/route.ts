@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { createGroupWithUsernames } from "@/lib/db/groups";
@@ -7,6 +8,7 @@ import { createGroupWithUsernames } from "@/lib/db/groups";
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     
     // Process member usernames - remove @ prefix if present

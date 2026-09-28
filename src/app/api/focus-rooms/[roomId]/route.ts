@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
 import { ForbiddenError } from "@/lib/errors";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import {
   getFocusRoomById,
   getFocusRoomByCode,
@@ -24,6 +25,7 @@ export async function GET(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { roomId } = await params;
 
     const room = isNumeric(roomId)
@@ -42,6 +44,7 @@ export async function POST(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { roomId } = await params;
     const body = await readJsonBody(request);
 
@@ -88,6 +91,7 @@ export async function DELETE(
 ) {
   return handleRoute(async () => {
     const { profileId, role } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { roomId } = await params;
 
     if (!isNumeric(roomId)) return badRequest("Invalid room ID");

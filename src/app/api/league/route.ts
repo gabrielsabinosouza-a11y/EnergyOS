@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { getLeagueSnapshot } from "@/lib/db/league";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const snapshot = await getLeagueSnapshot(profileId);
     return NextResponse.json({ snapshot });
   } catch (error) {

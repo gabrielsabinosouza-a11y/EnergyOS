@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, notFound, badRequest } from "@/lib/http";
 import { getFocusRoomStatus, removeParticipantFromRoom } from "@/lib/db/focus-rooms";
 
@@ -14,6 +15,7 @@ export async function DELETE(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { roomId } = await params;
 
     const status = await getFocusRoomStatus(Number(roomId));

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { setTaskCompleted } from "@/lib/db/tasks";
 import { awardTaskXP } from "@/lib/db/xp";
@@ -12,6 +13,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const raw = await context.params;
     const taskId = Number(raw.id);
     if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");

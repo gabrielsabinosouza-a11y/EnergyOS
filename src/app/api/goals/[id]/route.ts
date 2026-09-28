@@ -16,6 +16,7 @@ async function resolveGoalId(context: RouteContext): Promise<number> {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const goalId = await resolveGoalId(context);
     const body = assertObject(await readJsonBody(request));
 
@@ -34,6 +35,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const goalId = await resolveGoalId(context);
     await deleteGoal(profileId, goalId);
     return jsonOk({ ok: true });

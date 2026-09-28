@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonError, jsonOk } from "@/lib/http";
 import { generateWeeklyInsights, listInsights } from "@/lib/db/insights";
 import { isValidDateString } from "@/lib/db/validation";
@@ -7,6 +8,7 @@ import { isValidDateString } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const weekStartParam = request.nextUrl.searchParams.get("weekStart");
     if (weekStartParam !== null && !isValidDateString(weekStartParam)) {
       return jsonError(400, "weekStart deve ser uma data YYYY-MM-DD válida.");
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const insights = await generateWeeklyInsights(profileId);
     return jsonOk({ insights }, 201);
   });

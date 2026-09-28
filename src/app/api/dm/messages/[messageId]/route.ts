@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { editDirectMessage, deleteDirectMessage } from "@/lib/db/messages";
@@ -10,6 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     const body = await readJsonBody(request);
     const message = await editDirectMessage(profileId, Number(messageId), body.body as string);
@@ -28,6 +30,7 @@ export async function DELETE(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     await deleteDirectMessage(profileId, Number(messageId));
     return NextResponse.json({ ok: true });

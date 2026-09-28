@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { createHabit, HABIT_FREQUENCY_VALUES } from "@/lib/db/habits";
 import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
@@ -11,6 +12,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const raw = await context.params;
     const goalId = parseNumber(raw.id, "Identificador da meta", { integer: true, min: 1 });
     const body = assertObject(await readJsonBody(request));

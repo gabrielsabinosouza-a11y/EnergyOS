@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { deleteCategory, updateCategory } from "@/lib/db/categories";
 import { assertObject } from "@/lib/db/validation";
 
@@ -16,6 +17,7 @@ async function resolveCategoryId(context: RouteContext): Promise<number> {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const categoryId = await resolveCategoryId(context);
     const body = assertObject(await readJsonBody(request));
     const category = await updateCategory(profileId, categoryId, {
@@ -30,6 +32,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const categoryId = await resolveCategoryId(context);
     const { affected } = await deleteCategory(profileId, categoryId);
     return jsonOk({ ok: true as const, affected });

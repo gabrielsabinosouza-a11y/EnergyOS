@@ -1,12 +1,14 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { getProfile, upsertAndGetProfile, updateDisplayName, updatePhotoUrl, updateFeaturedAchievements } from "@/lib/db/profiles";
 import { assertObject, parseTitle, ValidationError } from "@/lib/db/validation";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email } = await requireAuth(request);
+    await ensureUserBootstrap(profileId, displayName, email);
     return jsonOk({ user: await upsertAndGetProfile(profileId, displayName ?? undefined, email ?? undefined) });
   });
 }

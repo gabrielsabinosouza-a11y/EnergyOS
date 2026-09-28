@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { markGroupRead } from "@/lib/db/groups";
 
@@ -9,6 +10,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     await markGroupRead(profileId, Number(id));
     return NextResponse.json({ ok: true });

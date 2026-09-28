@@ -9,6 +9,7 @@
     "db:init": "node scripts/init-db.mjs",
     "db:migrate-group-invites": "node scripts/migrate-group-invites.mjs",
     "db:seed-admin": "node scripts/seed-admin.mjs",
+    "db:seed": "node scripts/seed-reference-data.mjs",
     "db:reset-messages": "node scripts/reset-messages.mjs",
     "db:migrate-reminders": "node scripts/migrate-reminders.mjs",
     "db:recompute-xp": "node scripts/recompute-user-xp.mjs",

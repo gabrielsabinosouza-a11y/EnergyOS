@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { deleteHabit, HABIT_FREQUENCY_VALUES, updateHabit } from "@/lib/db/habits";
 import { assertObject, parseBoolean, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
 
@@ -16,6 +17,7 @@ async function resolveHabitId(context: RouteContext): Promise<number> {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const habitId = await resolveHabitId(context);
     const body = assertObject(await readJsonBody(request));
 
@@ -31,6 +33,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const habitId = await resolveHabitId(context);
     await deleteHabit(profileId, habitId);
     return jsonOk({ ok: true });

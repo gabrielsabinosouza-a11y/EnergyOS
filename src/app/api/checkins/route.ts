@@ -9,6 +9,7 @@ import { assertObject, parseDate, parseNumber } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const today = todayIso();
     const params = request.nextUrl.searchParams;
     const to = parseDate(params.get("to"), "Data final", today);
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     rateLimitForProfile(profileId, "checkin-post", 10, 60_000);
     const body = assertObject(await readJsonBody(request));
 

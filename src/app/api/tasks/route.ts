@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { computeProgress, createTask, listTasksByDate } from "@/lib/db/tasks";
 import { todayIso } from "@/lib/db/dates";
 import { assertObject, parseDate, parseNumber, parseTitle } from "@/lib/db/validation";
@@ -8,6 +9,7 @@ import { assertObject, parseDate, parseNumber, parseTitle } from "@/lib/db/valid
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const date = parseDate(request.nextUrl.searchParams.get("date"), "Data", todayIso());
     const tasks = await listTasksByDate(profileId, date);
     return jsonOk({ date, tasks, progress: computeProgress(tasks) });
@@ -17,6 +19,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = assertObject(await readJsonBody(request));
     
     console.log('[tasks POST] Attempting to create task for profile:', profileId);

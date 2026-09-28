@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { deleteGroup, leaveGroup } from "@/lib/db/groups";
@@ -10,6 +11,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
     const action = typeof body.action === "string" ? body.action : "";

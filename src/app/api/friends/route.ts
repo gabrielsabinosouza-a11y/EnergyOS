@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { listFriends, sendFriendRequest } from "@/lib/db/social";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const friends = await listFriends(profileId);
     return NextResponse.json({ friends });
   } catch (error) {

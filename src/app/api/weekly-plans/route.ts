@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { listWeeklyPlans, createWeeklyPlan } from "@/lib/db/weekly-plans";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const url = new URL(request.url);
     const weekStart = url.searchParams.get("weekStart") ?? undefined;
     return jsonOk(await listWeeklyPlans(profileId, weekStart));
@@ -15,6 +17,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const plan = await createWeeklyPlan(profileId, {
       planDate: body.planDate as string,

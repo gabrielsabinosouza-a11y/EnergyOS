@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { createCategory, listCategories } from "@/lib/db/categories";
 import { assertObject } from "@/lib/db/validation";
 
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = assertObject(await readJsonBody(request));
     const category = await createCategory(profileId, {
       name: body.name as string,

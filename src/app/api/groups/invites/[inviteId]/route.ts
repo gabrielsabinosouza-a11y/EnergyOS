@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { respondToGroupInvite } from "@/lib/db/groups";
@@ -10,6 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const response = body.response;
     if (response !== "accepted" && response !== "rejected") {

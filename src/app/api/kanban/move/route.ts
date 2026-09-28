@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { moveKanbanTask } from "@/lib/db/kanban";
 import { awardKanbanCompletion } from "@/lib/db/kanban";
@@ -9,6 +10,7 @@ import pool from "@/lib/db";
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const taskId = body.taskId as number;
     const newStatus = body.newStatus as KanbanStatus;

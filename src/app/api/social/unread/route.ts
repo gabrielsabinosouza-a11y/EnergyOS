@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { getUnreadCounts } from "@/lib/db/social";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const counts = await getUnreadCounts(profileId);
     return NextResponse.json(counts);
   } catch (error) {

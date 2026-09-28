@@ -7,6 +7,7 @@ import { todayIso } from "@/lib/db/dates";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const today = todayIso();
     const tasks = await listDailyTasks(profileId, today);
     return jsonOk({ tasks, date: today });
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const title = typeof body.title === "string" ? body.title : "";
     const today = todayIso();

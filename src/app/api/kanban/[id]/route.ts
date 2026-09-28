@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { updateKanbanTask, deleteKanbanTask } from "@/lib/db/kanban";
 import { awardKanbanCompletion } from "@/lib/db/kanban";
@@ -8,6 +9,7 @@ import pool from "@/lib/db";
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
     const taskId = Number(id);
@@ -43,6 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     await deleteKanbanTask(profileId, Number(id));
     return jsonOk({ ok: true });

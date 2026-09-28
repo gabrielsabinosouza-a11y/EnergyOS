@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { readJsonBody } from "@/lib/http";
 import { getRecaps, generateRecap } from "@/lib/db/recap";
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     // Recap generation is expensive (aggregates a month of data); 5/hour.
     rateLimitForProfile(profileId, "recap-generate", 5, 3_600_000);
     const body = await readJsonBody(request);

@@ -7,6 +7,7 @@ import { searchUsers } from "@/lib/db/social";
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     rateLimitForProfile(profileId, "social-search", 30, 60_000);
     const q = request.nextUrl.searchParams.get("q") ?? "";
     const results = await searchUsers(profileId, q);

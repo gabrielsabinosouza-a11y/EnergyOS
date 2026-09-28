@@ -349,7 +349,11 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   if (existingMember.rows[0]) {
     const group = await getLeagueGroupById(Number(existingMember.rows[0].lg_id));
     const member = await getLeagueGroupMember(Number(existingMember.rows[0].lg_id), profileId);
-    return { group: group!, member: member! };
+    if (!group || !member) {
+      // This shouldn't happen, but handle it gracefully
+      throw new Error("League group or member not found");
+    }
+    return { group, member };
   }
   
   // For new users, start in BRONZE

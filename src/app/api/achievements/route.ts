@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { listAchievementProgress, markAchievementSeen, toggleFeaturedAchievement } from "@/lib/db/achievements";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const achievements = await listAchievementProgress(profileId);
     return NextResponse.json({ achievements });
   } catch (error) {
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const result = await toggleFeaturedAchievement(profileId, body.achievementId as string);
     return NextResponse.json(result);

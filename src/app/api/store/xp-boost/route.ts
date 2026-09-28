@@ -7,6 +7,7 @@ import { XP_BOOST_ITEM_TYPE } from "@/lib/xp-boost";
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const [inventory, boost] = await Promise.all([
       getUserPotionInventory(profileId),
       getActiveBoost(profileId),
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const result = await purchaseXpBoost(profileId);
     return NextResponse.json(result);
   } catch (error) {

@@ -82,11 +82,13 @@ export async function upsertCheckin(
        returning id, profile_id, checkin_date, sleep_hours, study_minutes, training_minutes, energy_score, (xmax = 0) as inserted`,
       [profileId, date, sleepHours, studyMinutes, trainingMinutes, energyScore],
     );
-    const isNew = Boolean(result.rows[0]?.inserted);
+    const row = result.rows[0];
+    if (!row) throw new Error("Failed to upsert checkin");
+    const isNew = Boolean(row?.inserted);
 
     if (isNew) {
       // Base check-in reward (creditXP is idempotent via the ledger unique index)
-      const xpBase = await creditXP(profileId, "checkin", result.rows[0].id, CHECKIN_XP);
+      const xpBase = await creditXP(profileId, "checkin", row.id, CHECKIN_XP);
       await addCoins(profileId, CHECKIN_COINS);
 
       // Per-day streak bonus (capped). The ledger key is a numeric YYYYMMDD
@@ -104,13 +106,13 @@ export async function upsertCheckin(
         : 0;
 
       return {
-        checkin: mapCheckin(result.rows[0]),
+        checkin: mapCheckin(row),
         xpAwarded: xpBase + xpStreak,
         coinsAwarded: CHECKIN_COINS,
       };
     }
 
-    return { checkin: mapCheckin(result.rows[0]), xpAwarded: 0, coinsAwarded: 0 };
+    return { checkin: mapCheckin(row), xpAwarded: 0, coinsAwarded: 0 };
   } catch (error) {
     console.error('[checkins db] Error upserting checkin:', error);
     throw error;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http";
@@ -10,6 +11,7 @@ export async function GET(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const afterId = request.nextUrl.searchParams.get("after");
     const messages = await listGroupMessages(profileId, Number(id), afterId ? Number(afterId) : undefined);
@@ -28,6 +30,7 @@ export async function POST(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     rateLimitForProfile(profileId, "group-msg-send", 30, 60_000);
     const { id } = await params;
     const body = await readJsonBody(request);

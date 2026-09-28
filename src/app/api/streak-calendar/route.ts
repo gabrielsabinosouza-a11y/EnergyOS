@@ -7,6 +7,7 @@ import { ValidationError } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
 
     const url = new URL(request.url);
     const rawYear = url.searchParams.get("year");

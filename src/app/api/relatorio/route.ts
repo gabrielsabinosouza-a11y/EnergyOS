@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { listCheckins, averagesForRange } from "@/lib/db/checkins";
 import { dailyCompletions, computeStreak } from "@/lib/db/tasks";
@@ -10,6 +11,7 @@ import { parseNumber } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const daysParam = request.nextUrl.searchParams.get("days");
     // Bounded window: rejects negative/zero/huge ranges (query-cost abuse).
     const days = parseNumber(daysParam, "Período", { integer: true, min: 1, max: 366, fallback: 7 });

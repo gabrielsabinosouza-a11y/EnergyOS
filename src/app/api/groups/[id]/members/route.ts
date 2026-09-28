@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { getGroupMemberContributions } from "@/lib/db/group-leaderboard";
@@ -14,6 +15,7 @@ export async function GET(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
     
@@ -41,6 +43,7 @@ export async function PATCH(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
     const targetProfileId = typeof body.profileId === "string" ? body.profileId : "";
@@ -75,6 +78,7 @@ export async function DELETE(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = await readJsonBody(request);
     const targetProfileId = typeof body.profileId === "string" ? body.profileId : "";

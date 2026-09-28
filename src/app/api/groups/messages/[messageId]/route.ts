@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { readJsonBody } from "@/lib/http";
 import { editGroupMessage, deleteGroupMessage } from "@/lib/db/groups";
@@ -10,6 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     const body = await readJsonBody(request);
     const groupId = Number(request.nextUrl.searchParams.get("groupId"));
@@ -29,6 +31,7 @@ export async function DELETE(
 ) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { messageId } = await params;
     const groupId = Number(request.nextUrl.searchParams.get("groupId"));
     await deleteGroupMessage(profileId, groupId, Number(messageId));

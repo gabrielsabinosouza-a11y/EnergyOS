@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest, jsonError } from "@/lib/http";
 import { ForbiddenError } from "@/lib/errors";
 import { updateParticipantEnergyType, getFocusRoomById } from "@/lib/db/focus-rooms";
@@ -13,6 +14,7 @@ export async function POST(
 ) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const { roomId } = await params;
     const body = await readJsonBody(request);
 

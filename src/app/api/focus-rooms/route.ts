@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody, notFound, badRequest } from "@/lib/http";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import {
   createFocusRoom,
@@ -17,6 +18,7 @@ import type { FocusRoom, RoomParticipant } from "@/lib/db/focus-rooms";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const rooms = await getUserFocusRooms(profileId);
     return jsonOk({ rooms });
   });

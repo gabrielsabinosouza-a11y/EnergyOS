@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
+import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { readJsonBody } from "@/lib/http";
 import { getBannerStatus, unlockBanner, updateBannerImage } from "@/lib/db/store";
 
 export async function GET(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const status = await getBannerStatus(profileId);
     return NextResponse.json(status);
   } catch (error) {
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
+    await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     if (body.action === "unlock") {
       const result = await unlockBanner(profileId);

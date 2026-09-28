@@ -1,5 +1,6 @@
 import type { DailyCheckin, Metric, Task } from "@/types";
 import { upsertAndGetProfile } from "./profiles";
+import { ensureUserBootstrap } from "./bootstrap";
 import { listCheckins, averagesForRange } from "./checkins";
 import { computeProgress, computeStreak, listTasksByDate, type StreakInfo, type TaskProgress } from "./tasks";
 import { generateWeeklyInsights } from "./insights";
@@ -33,6 +34,9 @@ export async function buildDashboardSnapshot(
   const weekStart = addDaysIso(today, -6);
   const prevWeekStart = addDaysIso(today, -13);
   const prevWeekEnd = addDaysIso(today, -7);
+
+  // Ensure all required user rows exist before querying
+  await ensureUserBootstrap(profileId, displayName, email);
 
   const [user, tasks, checkins, avgCurrent, avgPrevious, insights, streak, weeklyFocus] = await Promise.all([
     upsertAndGetProfile(profileId, displayName, email),
