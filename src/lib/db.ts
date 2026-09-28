@@ -8,17 +8,13 @@ export interface HabitWithCompletion extends Habit {
 
 const connectionString = process.env.DATABASE_URL;
 
-if (!connectionString) {
-  throw new Error("DATABASE_URL não configurada. Copie .env.example para .env.local.");
-}
-
 console.log('[db] Database connection string configured:', connectionString ? 'Yes' : 'No');
 
 declare global {
   var energyosPgPool: Pool | undefined;
 }
 
-const isNeon = /neon\.tech/.test(connectionString);
+const isNeon = /neon\.tech/.test(connectionString ?? '');
 // TLS policy: in production (or DATABASE_SSL_STRICT=true) the server
 // certificate is fully verified. Neon's AWS/GCP endpoints present
 // publicly-trusted certificates (Amazon Trust Services / Google Trust
@@ -32,7 +28,7 @@ const caPath = process.env.DATABASE_SSL_CA_PATH;
 const pool =
   globalThis.energyosPgPool ??
   new Pool({
-    connectionString,
+    connectionString: connectionString ?? 'postgres://localhost:5432/energyos',
     ssl: isNeon
       ? sslStrict
         ? { rejectUnauthorized: true, ...(caPath ? { ca: readFileSync(caPath) } : {}) }
