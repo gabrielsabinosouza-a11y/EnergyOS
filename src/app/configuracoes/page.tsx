@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, LayoutGroup } from "framer-motion";
-import { deleteUser } from "firebase/auth";
+import { deleteUser, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-provider";
 import { auth } from "@/lib/firebase";
-import { Loader2, LogOut, Trash2, Check, ChevronLeft, Bell, Smartphone, HelpCircle } from "lucide-react";
+import { Loader2, LogOut, Trash2, Check, ChevronLeft, Bell, Smartphone, HelpCircle, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserSettings } from "@/types";
@@ -45,6 +45,17 @@ export default function ConfiguracoesPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [permTick, setPermTick] = useState(0);
+
+  // Password change state
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState("");
+  const [pwdSuccess, setPwdSuccess] = useState(false);
+
+  // Check if user has a password provider (email/password auth)
+  const hasPassword = user?.providerData?.some((p) => p.providerId === "password") ?? false;
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(savedRef.current);
 
@@ -161,6 +172,57 @@ export default function ConfiguracoesPage() {
     } catch {
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  }
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    if (!auth?.currentUser) return;
+    setPwdError("");
+    setPwdSuccess(false);
+
+    // Validation
+    if (pwdNew.length < 6) {
+      setPwdError("A nova senha deve ter ao menos 6 caracteres.");
+      return;
+    }
+    if (pwdNew !== pwdConfirm) {
+      setPwdError("As senhas não coincidem.");
+      return;
+    }
+    // For users with existing password, current password is required
+    if (hasPassword && !pwdCurrent) {
+      setPwdError("Digite sua senha atual.");
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      const currentUser = auth.currentUser;
+      // Re-authenticate if user has an existing password
+      if (hasPassword) {
+        const credential = EmailAuthProvider.credential(currentUser.email!, pwdCurrent);
+        await reauthenticateWithCredential(currentUser, credential);
+      }
+      await updatePassword(currentUser, pwdNew);
+      setPwdSuccess(true);
+      setPwdCurrent("");
+      setPwdNew("");
+      setPwdConfirm("");
+      setTimeout(() => setPwdSuccess(false), 4000);
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        setPwdError("Senha atual incorreta.");
+      } else if (code === "auth/requires-recent-login") {
+        setPwdError("Por favor, saia e entre novamente para alterar a senha.");
+      } else if (code === "auth/weak-password") {
+        setPwdError("A nova senha é muito fraca.");
+      } else {
+        setPwdError("Não foi possível alterar a senha. Tente novamente.");
+      }
+    } finally {
+      setPwdLoading(false);
     }
   }
 
@@ -324,6 +386,81 @@ export default function ConfiguracoesPage() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Alterar senha */}
+            <div className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+              <h3 className="text-sm font-semibold text-[var(--text)] mb-1 flex items-center gap-2">
+                <KeyRound size={15} /> {hasPassword ? "Alterar senha" : "Definir senha"}
+              </h3>
+              <p className="text-xs text-[var(--text-muted)] mb-4">
+                {hasPassword
+                  ? "Digite sua senha atual e escolha uma nova senha."
+                  : "Você entrou com o Google. Defina uma senha para também poder entrar com e-mail e senha."}
+              </p>
+
+              {pwdSuccess && (
+                <p className="mb-3 rounded-lg border border-green-500/20 bg-green-500/8 px-3 py-2 text-xs text-green-400 flex items-center gap-2">
+                  <Check size={13} /> Senha alterada com sucesso!
+                </p>
+              )}
+              {pwdError && (
+                <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-400">
+                  {pwdError}
+                </p>
+              )}
+
+              <form onSubmit={handlePasswordChange} className="space-y-3">
+                {hasPassword && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      Senha atual
+                    </label>
+                    <input
+                      type="password"
+                      value={pwdCurrent}
+                      onChange={(e) => setPwdCurrent(e.target.value)}
+                      className="auth-input"
+                      placeholder="••••••••"
+                      required
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                    Nova senha
+                  </label>
+                  <input
+                    type="password"
+                    value={pwdNew}
+                    onChange={(e) => setPwdNew(e.target.value)}
+                    className="auth-input"
+                    placeholder="Mínimo 6 caracteres"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                    Confirmar nova senha
+                  </label>
+                  <input
+                    type="password"
+                    value={pwdConfirm}
+                    onChange={(e) => setPwdConfirm(e.target.value)}
+                    className="auth-input"
+                    placeholder="Repita a nova senha"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={pwdLoading}
+                  className="primary-button w-full justify-center"
+                >
+                  {pwdLoading ? <Loader2 size={15} className="animate-spin" /> : null}
+                  {pwdLoading ? "Alterando…" : hasPassword ? "Alterar senha" : "Definir senha"}
+                </button>
+              </form>
             </div>
           </motion.div>
         </div>
