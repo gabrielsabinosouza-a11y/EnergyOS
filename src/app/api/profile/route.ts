@@ -8,7 +8,7 @@ import { assertObject, parseTitle, ValidationError } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email } = await requireAuth(request);
-    await ensureUserBootstrap(profileId, displayName, email);
+    await ensureUserBootstrap(profileId, displayName ?? undefined, email ?? undefined);
     return jsonOk({ user: await upsertAndGetProfile(profileId, displayName ?? undefined, email ?? undefined) });
   });
 }
