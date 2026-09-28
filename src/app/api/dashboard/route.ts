@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email, role } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
-    const snapshot = await buildDashboardSnapshot(profileId, displayName ?? undefined, email ?? undefined, role);
+    const snapshot = await buildDashboardSnapshot(profileId, displayName === null ? undefined : displayName, email === null ? undefined : email, role);
     return jsonOk(snapshot);
   });
 }

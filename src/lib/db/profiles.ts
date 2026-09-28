@@ -104,7 +104,7 @@ async function assignUsernameIfMissing(profileId: string, displayName: string): 
   );
   if (existing.rows[0]?.username) return;
 
-  const base = slugifyName(displayName);
+  const base = slugifyName(displayName || "");
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const candidate = attempt === 0 ? base : `${base}${Math.floor(1000 + Math.random() * 9000)}`;
     try {

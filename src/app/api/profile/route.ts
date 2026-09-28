@@ -8,8 +8,8 @@ import { assertObject, parseTitle, ValidationError } from "@/lib/db/validation";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email } = await requireAuth(request);
-    await ensureUserBootstrap(profileId, displayName ?? undefined, email ?? undefined);
-    return jsonOk({ user: await upsertAndGetProfile(profileId, displayName ?? undefined, email ?? undefined) });
+    await ensureUserBootstrap(profileId, displayName === null ? undefined : displayName, email === null ? undefined : email);
+    return jsonOk({ user: await upsertAndGetProfile(profileId, displayName === null ? undefined : displayName, email === null ? undefined : email) });
   });
 }
 
@@ -17,7 +17,7 @@ export async function PATCH(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId, displayName, email } = await requireAuth(request);
     const body = assertObject(await readJsonBody(request));
-    await upsertAndGetProfile(profileId, displayName ?? undefined, email ?? undefined);
+    await upsertAndGetProfile(profileId, displayName === null ? undefined : displayName, email === null ? undefined : email);
     if (body.photoUrl !== undefined) {
       return jsonOk({ user: await updatePhotoUrl(profileId, String(body.photoUrl)) });
     }

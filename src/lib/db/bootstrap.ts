@@ -62,7 +62,8 @@ export async function ensureUserBootstrap(
       `select count(*)::int as count from profiles where id = $1`,
       [profileId],
     );
-    if ((profileCheck.rows[0]?.count ?? 0) === 0) {
+    const profileCount = profileCheck.rows[0]?.count ?? 0;
+    if (profileCount === 0) {
       await ensureProfile(profileId, displayName, email, photoUrl);
       result.profileCreated = true;
     }
@@ -72,7 +73,8 @@ export async function ensureUserBootstrap(
       `select count(*)::int as count from user_settings where profile_id = $1`,
       [profileId],
     );
-    if ((settingsCheck.rows[0]?.count ?? 0) === 0) {
+    const settingsCount = settingsCheck.rows[0]?.count ?? 0;
+    if (settingsCount === 0) {
       // Create with defaults
       await client.query(
         `insert into user_settings (profile_id, notifications_enabled, preferred_theme, coins, sound_notifications_enabled, onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled)

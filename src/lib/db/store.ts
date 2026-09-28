@@ -391,7 +391,7 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     ),
   ]);
 
-  const profile = profiles.rows[0];
+  const profile = profiles.rows[0] ?? null;
   const ownedIds = new Set(ownedDecs.rows.map((row) => row.decoration_id));
   const equippedDecorationId = profile?.equipped_decoration_id ?? null;
 
