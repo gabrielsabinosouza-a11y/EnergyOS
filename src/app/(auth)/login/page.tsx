@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { ArrowUpRight, Loader2 } from "lucide-react";
@@ -39,11 +39,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (!auth) throw new Error("Firebase não configurado");
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      router.push("/dashboard");
+      await signInWithRedirect(auth, new GoogleAuthProvider());
+      // signInWithRedirect navigates away — no router.push needed
     } catch {
       setError("Não foi possível entrar com o Google.");
-    } finally {
       setLoading(false);
     }
   }
