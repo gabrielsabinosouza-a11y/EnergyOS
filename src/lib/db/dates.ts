@@ -62,3 +62,79 @@ export function leagueResetAtIso(now = new Date()): string {
   const asUtc = new Date(`${nextSunday}T00:00:00-03:00`);
   return asUtc.toISOString();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chaves e janelas de período (fuso oficial America/Sao_Paulo)
+//
+// Regra do produto: NUNCA usar `new Date().toISOString().slice(0,10)` para
+// "hoje". Fora do fuso de São Paulo (UTC−3) isso devolve o dia errado entre
+// 21:00 e 23:59 — exatamente a janela em que metas diárias são concluídas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Chave de data local (YYYY-MM-DD) de um instante, no fuso oficial do produto. */
+export function getLocalDateKey(date: Date | string = new Date()): string {
+  return dayInTz(date);
+}
+
+export interface DateRange {
+  start: string;
+  end: string;
+}
+
+/** Semana (segunda → domingo) que contém a data informada. */
+export function getWeekRange(isoDate: string): DateRange {
+  const start = weekStartIso(isoDate);
+  return { start, end: addDaysIso(start, 6) };
+}
+
+/** Mês (primeiro → último dia) que contém a data informada. */
+export function getMonthRange(isoDate: string): DateRange {
+  const year = Number(isoDate.slice(0, 4));
+  const month = Number(isoDate.slice(5, 7)); // 1-12
+  const start = `${isoDate.slice(0, 7)}-01`;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { start, end: addDaysIso(start, daysInMonth - 1) };
+}
+
+/** Ano inteiro (01/01 → 31/12) — usado pelo histórico de atividade. */
+export function getYearRange(year: number): DateRange {
+  return { start: `${year}-01-01`, end: `${year}-12-31` };
+}
+
+export type GoalPeriodFrequency = "daily" | "weekly" | "monthly" | "unique";
+
+/**
+ * Janela do período ATUAL de uma meta. `null` = sem reset (meta única:
+ * todos os registros contam, para sempre).
+ */
+export function goalPeriodRange(frequency: GoalPeriodFrequency, isoDate: string): DateRange | null {
+  switch (frequency) {
+    case "daily":
+      return { start: isoDate, end: isoDate };
+    case "weekly":
+      return getWeekRange(isoDate);
+    case "monthly":
+      return getMonthRange(isoDate);
+    case "unique":
+      return null;
+  }
+}
+
+/**
+ * Chave determinística do período de uma meta — usada como sufixo do
+ * `source_id` no xp_ledger para que cada período premie exatamente uma vez
+ * (o equivalente ao document id `goalId_date` citado no briefing).
+ */
+export function goalPeriodKey(frequency: GoalPeriodFrequency, isoDate: string): string {
+  switch (frequency) {
+    case "daily":
+      return `d:${isoDate}`;
+    case "weekly":
+      return `w:${weekStartIso(isoDate)}`;
+    case "monthly":
+      return `m:${isoDate.slice(0, 7)}`;
+    case "unique":
+      return "u:once";
+  }
+}
+

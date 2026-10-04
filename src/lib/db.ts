@@ -113,3 +113,34 @@ export function mapHabitRow(row: DbHabitRow): HabitWithCompletion {
     completedToday: Boolean(row.completed_today),
   };
 }
+
+/** Colunas de goal + categoria resolvida (join com categories). Compartilhado
+ *  entre `db/goals.ts` (CRUD) e `db/goal-logs.ts` (check-ins por período). */
+export const GOAL_SELECT = `
+  select g.id, g.profile_id, g.title, g.target_value, g.current_value, g.frequency, g.created_at,
+         c.id as category_id, c.user_id as category_user_id, c.name as category_name,
+         c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
+         c.created_at as category_created_at
+  from goals g
+  join categories c on c.id = g.category_id`;
+
+export interface GoalWithProgress extends Goal {
+  progressPercentage: number;
+}
+
+/** Progresso de meta em % (0–100), sempre derivado de valores do servidor. */
+export function goalProgressPercentage(goal: Goal): number {
+  if (goal.targetValue <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100)));
+}
+
+/**
+ * Monta o GoalWithProgress. Desde o modelo baseado em logs, `currentValue` é
+ * SEMPRE o somatório do período atual (nunca a coluna legada `current_value`,
+ * que é ignorada) — `derivedCurrentValue` sobrescreve o valor da linha.
+ */
+export function withGoalProgress(goal: Goal, derivedCurrentValue?: number): GoalWithProgress {
+  const normalized = derivedCurrentValue === undefined ? goal : { ...goal, currentValue: derivedCurrentValue };
+  return { ...normalized, progressPercentage: goalProgressPercentage(normalized) };
+}
+
