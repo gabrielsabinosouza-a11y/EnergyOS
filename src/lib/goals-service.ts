@@ -1,5 +1,6 @@
 import pool, { mapGoalRow, mapHabitRow, type DbGoalRow, type DbHabitRow, type HabitWithCompletion } from "./db";
 import { GOAL_SELECT } from "./db/goals";
+import { applyGoalLogAction } from "./db/goal-logs";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./db/categories";
 import type { Goal, Habit, UserSettings } from "@/types";
 import { parseProfileId } from "./db/validation";
@@ -99,7 +100,6 @@ export interface UpdateGoalPatch {
   title?: string;
   categoryId?: number;
   targetValue?: number;
-  currentValue?: number;
   frequency?: Goal["frequency"];
 }
 
@@ -122,11 +122,6 @@ export async function updateGoal(profileId: string, goalId: number, patch: Updat
   if (patch.targetValue !== undefined) {
     values.push(validateTargetValue(patch.targetValue));
     updates.push(`target_value = $${values.length}`);
-  }
-  if (patch.currentValue !== undefined) {
-    if (!Number.isFinite(patch.currentValue) || patch.currentValue < 0) throw new Error("Progresso inválido.");
-    values.push(patch.currentValue);
-    updates.push(`current_value = $${values.length}`);
   }
   if (patch.frequency !== undefined) {
     if (!GOAL_FREQUENCIES.includes(patch.frequency)) throw new Error("Frequência inválida.");
@@ -153,8 +148,14 @@ export async function deleteGoal(profileId: string, goalId: number): Promise<voi
   if (result.rowCount === 0) throw new Error("Meta não encontrada.");
 }
 
+/**
+ * Legado: o progresso não é mais um valor gravado na meta. Delega ao fluxo de
+ * check-ins (goal_logs) para manter o comportamento antigo compatível com o
+ * modelo derivado — ver src/lib/db/goal-logs.ts.
+ */
 export async function updateGoalProgress(profileId: string, goalId: number, currentValue: number): Promise<Goal> {
-  return updateGoal(profileId, goalId, { currentValue });
+  const { goal } = await applyGoalLogAction(profileId, goalId, { action: "set", amount: currentValue });
+  return goal;
 }
 
 export interface CreateHabitInput {

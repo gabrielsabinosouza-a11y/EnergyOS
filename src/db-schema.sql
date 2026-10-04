@@ -1294,3 +1294,19 @@ alter table goals drop constraint if exists goals_frequency_check;
 alter table goals add constraint goals_frequency_check check (frequency in ('daily','weekly','monthly','unique'));
 
 create index if not exists user_auras_profile_idx on user_auras(profile_id);
+
+-- ── goal_logs: check-ins por dia das metas ──────────────────────────────────
+-- O progresso do período NÃO é mais um flag/valor permanente na meta: é
+-- derivado por soma dos logs do período corrente. O UNIQUE (goal_id, log_date)
+-- é o registro por meta por dia. Espelha o ensureGoalLogsSchema de
+-- src/lib/db/goal-logs.ts (idempotente; o app também cria em runtime).
+create table if not exists goal_logs (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  goal_id bigint not null references goals(id) on delete cascade,
+  log_date date not null,
+  amount numeric(8,2) not null default 1 check (amount >= 0),
+  created_at timestamptz not null default now(),
+  unique (goal_id, log_date)
+);
+create index if not exists goal_logs_profile_date_idx on goal_logs(profile_id, log_date);

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
-  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library,
+  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library, CalendarCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Modal } from "./modal";
@@ -21,6 +21,7 @@ type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
+  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },
   { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null, img: "/sidebar_menu/leaderboard.png" },
@@ -42,6 +43,7 @@ const PRIMARY_TABS: readonly NavItem[] = [
 ] as const;
 
 const MORE_TABS: readonly NavItem[] = [
+  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck },
   { href: "/grupos",        label: "Grupos",        icon: Users,       badge: "group" as const, img: "/sidebar_menu/groups.png" },
   { href: "/loja",          label: "Loja",          icon: ShoppingBag, img: "/sidebar_menu/store.png" },
   { href: "/jardim",        label: "Meu jardim",    icon: Leaf,        img: "/sidebar_menu/garden.png" },
@@ -50,6 +52,9 @@ const MORE_TABS: readonly NavItem[] = [
 ] as const;
 
 function isActivePath(pathname: string, href: string) {
+  // "/dashboard" é a raiz de subrotas (ex.: /dashboard/consistencia): só fica
+  // ativo no path exato, senão a página filha acenderia o tab de "Início".
+  if (href === "/dashboard") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
