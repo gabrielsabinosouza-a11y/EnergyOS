@@ -60,12 +60,7 @@ export interface ApplyGoalLogResult {
   revertedCoins: number;
 }
 
-/**
- * Recompensa de conclusão da meta. Metas não têm mais frequência: TODAS são
- * concluídas UMA vez, no máximo, quando current >= target. A chave de período é
- * sempre "u:once", o que torna o source_id (`<goalId>:u:once`) determinístico e
- * a gravação no xp_ledger naturalmente idempotente.
- */
+/** Recompensa de conclusão por período, idempotente pela chave da meta e frequência. */
 export const GOAL_COMPLETE_REWARD = { coins: 50, xp: 50 } as const;
 
 /** Recompensa de conclusão (mesma para qualquer meta, pago uma única vez). */
@@ -73,7 +68,7 @@ export function goalCompletionReward(): { xp: number; coins: number } {
   return GOAL_COMPLETE_REWARD;
 }
 
-/** Id determinístico da recompensa: uma meta só pode pagar uma vez (`12:u:once`). */
+/** Id determinístico da recompensa: mensal paga uma vez por mês; única, uma vez para sempre. */
 export function goalRewardSourceKey(goalId: number, frequency: Goal["frequency"], dateKey: string): string {
   return `${goalId}:${goalPeriodKey(frequency, dateKey)}`;
 }
@@ -242,7 +237,7 @@ export async function getGoalPeriodSum(
   return sumGoalLogs(db, profileId, goal.id, goalPeriodRange(goal.frequency, referenceDate));
 }
 
-/** Meta única com progresso derivado dos logs do período atual. */
+/** Meta com progresso derivado dos logs do período atual. */
 export async function getGoalWithLogs(
   profileId: string,
   goalId: number,

@@ -3,14 +3,14 @@
 /**
  * Modais de META (Nova meta / Editar meta).
  *
- * Meta = alvo com progresso único ou mensal. Hábitos relacionados não fazem
- * parte da meta; tarefas diárias são acompanhadas no painel de consistência.
+ * Meta = alvo com progresso único ou mensal. Tarefas diárias são acompanhadas
+ * separadamente no painel de consistência.
  *
  * Os dois modais usam o `Modal` compartilhado (portal em document.body) no modo
  * ESTRUTURADO: painel opaco, cabeçalho/rodapé fixos, corpo rolável, max-height
  * 85vh, Esc/backdrop para fechar e bottom sheet no mobile (<640px).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { CalendarDays, Loader2, Minus, Plus, Trash2 } from "lucide-react";
 import type { Category, Goal } from "@/types";
@@ -193,19 +193,29 @@ interface CreateGoalModalProps {
 }
 
 export function CreateGoalModal({ open, categories, onClose, onCreated }: CreateGoalModalProps) {
-  const [draft, setDraft] = useState<GoalDraft>(EMPTY_GOAL_DRAFT);
+  // Estado do formulário vive no montaje: fechar reaberta cria um rascunho limpo
+  // (nenhum efeito de sincronização — e sem risco de rascunho velho).
+  if (!open) return null;
+  return <CreateGoalForm categories={categories} onClose={onClose} onCreated={onCreated} />;
+}
+
+function CreateGoalForm({
+  categories,
+  onClose,
+  onCreated,
+}: {
+  categories: Category[];
+  onClose: () => void;
+  onCreated: (goal: Goal) => void;
+}) {
+  const [draft, setDraft] = useState<GoalDraft>(() => ({
+    ...EMPTY_GOAL_DRAFT,
+    categoryId: categories[0]?.id ?? 0,
+  }));
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setDraft({ ...EMPTY_GOAL_DRAFT, categoryId: categories[0]?.id ?? 0 });
-    setShowCategoryForm(false);
-    setSaving(false);
-    setError("");
-  }, [open, categories]);
 
   async function handleCategoryCreated(input: { name: string; color: string; icon: string | null }) {
     try {
@@ -240,7 +250,7 @@ export function CreateGoalModal({ open, categories, onClose, onCreated }: Create
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       title="Nova meta"
       description="Algo com fim: um alvo e, se quiser, um prazo."
@@ -293,8 +303,24 @@ interface EditGoalModalProps {
   onDelete?: () => Promise<void> | void;
 }
 
-export function EditGoalModal({ goal, categories, open, onClose, onSave, onProgress, onDelete }: EditGoalModalProps) {
-  const [draft, setDraft] = useState<GoalDraft>(draftFromGoal(goal));
+/**
+ * Estado do formulário vive no montaje do modal: cada abertura cria um rascunho
+ * novo (nenhum efeito de sincronização, e nunca um rascunho velho).
+ */
+export function EditGoalModal(props: EditGoalModalProps) {
+  if (!props.open) return null;
+  return <EditGoalForm {...props} />;
+}
+
+function EditGoalForm({
+  goal,
+  categories,
+  onClose,
+  onSave,
+  onProgress,
+  onDelete,
+}: Omit<EditGoalModalProps, "open">) {
+  const [draft, setDraft] = useState<GoalDraft>(() => draftFromGoal(goal));
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [error, setError] = useState("");
@@ -308,21 +334,6 @@ export function EditGoalModal({ goal, categories, open, onClose, onSave, onProgr
   const progressPct = goal.targetValue > 0
     ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
     : 0;
-
-  useEffect(() => {
-    if (!open) return;
-    setDraft(draftFromGoal(goal));
-    setShowCategoryForm(false);
-    setError("");
-    setProgressBusy(false);
-    setConfirmDelete(false);
-    setDeleting(false);
-    setSaving(false);
-  }, [open, goal]);
-
-  useEffect(() => {
-    setLocalCategories(categories);
-  }, [categories]);
 
   const runProgress = async (action: GoalLogAction) => {
     if (!onProgress || progressBusy) return;
@@ -370,7 +381,7 @@ export function EditGoalModal({ goal, categories, open, onClose, onSave, onProgr
   }
 return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       title="Editar meta"
       description={goalDone ? "Esta meta já foi concluída." : undefined}

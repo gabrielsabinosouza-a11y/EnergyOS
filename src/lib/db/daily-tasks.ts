@@ -1,6 +1,6 @@
 import pool from "../db";
 import { ForbiddenError, NotFoundError } from "../errors";
-import { parseProfileId, ValidationError } from "./validation";
+import { parseDate, parseProfileId, ValidationError } from "./validation";
 import { todayIso } from "./dates";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";

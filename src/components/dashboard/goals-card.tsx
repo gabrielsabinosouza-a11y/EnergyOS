@@ -12,32 +12,18 @@ import {
   Trash2,
   Pencil,
   Loader2,
-  X,
-  Sparkles,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
-import { CategoryChips } from "@/components/category-chips";
 import type { GoalLogAction } from "@/lib/db/goal-logs";
 import {
   CreateGoalModal,
   EditGoalModal,
-  draftFromGoal,
   type GoalDraft,
 } from "./goals-modals";
 import { diffDaysIso, todayIso } from "@/lib/db/dates";
-
-function withAlpha(hex: string, alpha: number): string {
-  const short = hex.replace("#", "");
-  const full = short.length === 3 ? short.split("").map((c) => c + c).join("") : short;
-  const num = parseInt(full, 16);
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 function isComplete(goal: Goal): boolean {
   return goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
@@ -238,7 +224,7 @@ export function GoalsCard({
 
       <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
         <AnimatePresence mode="popLayout" initial={false}>
-          {activeGoals.map((goal, i) => {
+          {activeGoals.map((goal) => {
             const { color, icon } = goal.category;
             const Icon = categoryIcon(icon);
             const done = isComplete(goal);
@@ -559,7 +545,6 @@ export function GoalsCard({
               onDelete={() => setConfirmGoalId(activeMenuGoalId)}
               onConfirmDelete={() => void handleDelete(activeMenuGoalId)}
               onCancelDelete={() => setConfirmGoalId(null)}
-              onClose={closeMenu}
               confirming={confirmGoalId === activeMenuGoalId}
             />,
             document.body,
@@ -617,7 +602,6 @@ function DropdownPortal({
   onDelete,
   onConfirmDelete,
   onCancelDelete,
-  onClose,
 }: {
   anchor: { top: number; left: number };
   hasEdit: boolean;
@@ -628,7 +612,6 @@ function DropdownPortal({
   onDelete: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
-  onClose: () => void;
 }) {
   // Desloca o popover para não estourar a borda direita/inferior da viewport.
   const confirmW = 240;

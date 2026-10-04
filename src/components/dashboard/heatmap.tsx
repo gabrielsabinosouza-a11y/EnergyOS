@@ -20,7 +20,10 @@ function formatTooltip(day: ActivityDay): string {
   if (day.checkin === "success") parts.push("check-in feito");
   else if (day.checkin === "protected") parts.push("sequência protegida pelo escudo");
   else if (day.checkin === "lost") parts.push("sequência perdida");
-  if (day.goalLogs > 0) parts.push(`${day.goalLogs} check-in${day.goalLogs > 1 ? "s" : ""} de meta${day.goalLogs > 1 ? "s" : ""}`);
+  const dailyTaskCompletions = day.dailyTaskCompletions ?? day.goalLogs ?? 0;
+  if (dailyTaskCompletions > 0) {
+    parts.push(`${dailyTaskCompletions} tarefa${dailyTaskCompletions > 1 ? "s" : ""} diária${dailyTaskCompletions > 1 ? "s" : ""} feita${dailyTaskCompletions > 1 ? "s" : ""}`);
+  }
   if (parts.length === 0) parts.push("sem atividade");
   return `${label} — ${parts.join(" · ")}`;
 }
@@ -80,7 +83,12 @@ export function Heatmap({ year, days, today }: HeatmapProps) {
                 {column.map((date) => {
                   const inYear = date.startsWith(`${year}-`);
                   if (!inYear) return <div key={date} className="h-3 w-3" aria-hidden />;
-                  const day = byDate.get(date) ?? { date, checkin: null, goalLogs: 0, future: date > today };
+                  const day = byDate.get(date) ?? {
+                    date,
+                    checkin: null,
+                    dailyTaskCompletions: 0,
+                    future: date > today,
+                  };
                   const level = day.future ? null : activityLevel(day);
                   const isToday = date === today;
                   return (

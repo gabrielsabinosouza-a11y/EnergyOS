@@ -34,8 +34,8 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
     current: 0,
     best: 0,
     activeDays: 0,
-    goalLogEntries: 0,
     dailyTaskEntries: 0,
+    goalLogEntries: 0,
     elapsedDays: 0,
     rate: 0,
   });
@@ -77,11 +77,11 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
           }
         }
 
-        const goalLogCounts: Record<string, number> = {};
+        const dailyTaskCounts: Record<string, number> = {};
         const tasksOutcome = dailyTasksResult[0];
         if (tasksOutcome?.status === "fulfilled") {
           for (const log of tasksOutcome.value.logs) {
-            goalLogCounts[log.date] = (goalLogCounts[log.date] ?? 0) + 1;
+            dailyTaskCounts[log.date] = (dailyTaskCounts[log.date] ?? 0) + 1;
           }
         }
 
@@ -90,7 +90,7 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
           throw new Error("Não foi possível carregar o histórico de atividade.");
         }
 
-        const yearDays = buildActivityYear(year, { checkins, goalLogCounts, today });
+        const yearDays = buildActivityYear(year, { checkins, dailyTaskCounts, today });
         const yearEnd = `${year}-12-31`;
         const effectiveEndpoint = today > yearEnd ? yearEnd : today < start ? start : today;
 

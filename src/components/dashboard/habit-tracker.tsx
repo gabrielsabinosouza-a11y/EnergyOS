@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CalendarCheck, Check, Loader2, Plus } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { addDaysIso, todayIso } from "@/lib/db/dates";
+import { Modal } from "@/components/modal";
 import { HabitCard, type HabitTab } from "./habit-card";
 
 const TABS: { id: HabitTab; label: string }[] = [
@@ -75,8 +76,7 @@ export function HabitTracker() {
     void load();
   }, [load]);
 
-  async function createTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function createTask() {
     const title = newTitle.trim();
     if (!title || creating) return;
     setCreating(true);
@@ -175,27 +175,11 @@ export function HabitTracker() {
           <p className="text-sm text-[var(--text-muted)]">Crie sua primeira tarefa diária</p>
           <button
             type="button"
-            onClick={() => setShowCreateForm((open) => !open)}
+            onClick={() => setShowCreateForm(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
           >
             <Plus size={15} /> Criar tarefa diária
           </button>
-          {showCreateForm && (
-            <form onSubmit={(event) => void createTask(event)} className="flex w-full max-w-md gap-2">
-              <input
-                autoFocus
-                value={newTitle}
-                onChange={(event) => setNewTitle(event.target.value)}
-                placeholder="Tarefa que você repete todo dia..."
-                maxLength={120}
-                className="auth-input flex-1"
-                disabled={creating}
-              />
-              <button type="submit" disabled={!newTitle.trim() || creating} className="icon-button small">
-                {creating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              </button>
-            </form>
-          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -212,6 +196,54 @@ export function HabitTracker() {
           ))}
         </div>
       )}
+
+      <Modal
+        open={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        title="Nova tarefa diária"
+        description="Tarefas diárias se repetem todo dia e reiniciam a cada manhã."
+        panelClassName="sm:max-w-md"
+        footerClassName="justify-end"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(false)}
+              className="min-h-[42px] cursor-pointer rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)] transition hover:text-[var(--text)]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void createTask()}
+              disabled={!newTitle.trim() || creating}
+              className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
+            >
+              {creating ? <Loader2 size={15} className="animate-spin" /> : "Criar tarefa"}
+            </button>
+          </>
+        }
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createTask();
+          }}
+        >
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            Nome da tarefa
+          </label>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(event) => setNewTitle(event.target.value)}
+            placeholder="Tarefa que você repete todo dia..."
+            maxLength={120}
+            className="auth-input"
+            disabled={creating}
+          />
+        </form>
+      </Modal>
     </section>
   );
 }
