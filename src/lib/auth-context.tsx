@@ -9,7 +9,7 @@ import { getAuthCookieName } from "./route-access";
 const COOKIE = getAuthCookieName();
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 dias
 
-function setSessionCookie() {
+export function setSessionCookie() {
   document.cookie = `${COOKIE}=1; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
 }
 
