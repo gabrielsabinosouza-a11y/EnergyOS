@@ -35,8 +35,17 @@ export const WEEKLY_PLAN_DONE_COINS = 10;
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;
 
-/** XP/coins when a regular (daily/weekly/monthly) goal reaches its target. */
+/**
+ * Recompensa ÚNICA de conclusão de uma meta, paga UMA vez quando ela atinge o
+ * alvo. O pagamento é idempotente pelo id determinístico
+ * `goal:<goalId>:u:once` no xp_ledger, e é estornado se o progresso voltar
+ * abaixo do alvo (o usuário não pode "desconcluir" e re-concluir de graça).
+ */
+export const GOAL_COMPLETE_REWARD = { coins: 50, xp: 50 } as const;
+
+/** @deprecated Legado: metas não têm mais frequência. Mantido só para leitura. */
 export const GOAL_DONE_XP = 15;
+/** @deprecated Legado: metas não têm mais frequência. Mantido só para leitura. */
 export const GOAL_DONE_COINS = 15;
 
 /** XP/coins for a unique (once-in-a-lifetime) goal, like "become a navy seal". */

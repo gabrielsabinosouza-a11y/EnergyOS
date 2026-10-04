@@ -16,8 +16,15 @@ export function StatCard({ label, value, hint, icon: Icon, iconContent, color }:
   return (
     <div className="panel p-6">
       <div className="mb-4 flex items-center gap-3">
-        <div className="rounded-lg p-2" style={{ backgroundColor: `${color}20`, color }}>
-          {iconContent ?? <Icon size={18} />}
+        <div
+          className="rounded-full p-2.5"
+          style={{
+            backgroundColor: `${color}20`,
+            color,
+            boxShadow: `0 0 0 2px ${color}55, 0 0 12px ${color}66, inset 0 0 8px ${color}33`,
+          }}
+        >
+          {iconContent ?? <Icon size={22} />}
         </div>
         <span className="text-sm text-[var(--text-secondary)]">{label}</span>
       </div>

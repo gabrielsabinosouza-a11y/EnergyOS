@@ -60,16 +60,25 @@ export interface ApplyGoalLogResult {
   revertedCoins: number;
 }
 
-export const GOAL_REWARD = { coins: 10, xp: 10 } as const;
+/**
+ * Recompensa de conclusão da meta. Metas não têm mais frequência: TODAS são
+ * concluídas UMA vez, no máximo, quando current >= target. A chave de período é
+ * sempre "u:once", o que torna o source_id (`<goalId>:u:once`) determinístico e
+ * a gravação no xp_ledger naturalmente idempotente.
+ */
+export const GOAL_COMPLETE_REWARD = { coins: 50, xp: 50 } as const;
 
-/** Daily goals have a reversible reward; other frequencies do not. */
-export function goalCompletionReward(frequency: Goal["frequency"]): { xp: number; coins: number } {
-  return frequency === "daily" ? GOAL_REWARD : { coins: 0, xp: 0 };
+/** Toda meta é "sem reset": o progresso é a soma de todos os logs. */
+export const GOAL_PERIOD_FREQUENCY = "unique" as const;
+
+/** Recompensa de conclusão (mesma para qualquer meta, pago uma única vez). */
+export function goalCompletionReward(): { xp: number; coins: number } {
+  return GOAL_COMPLETE_REWARD;
 }
 
-/** Stable per-goal, per-period reward key (for example "12:d:2026-04-10"). */
+/** Id determinístico da recompensa: uma meta só pode pagar uma vez (`12:u:once`). */
 export function goalRewardSourceKey(goalId: number, frequency: Goal["frequency"], dateKey: string): string {
-  return `${goalId}:${goalPeriodKey(frequency, dateKey)}`;
+  return `${goalId}:${goalPeriodKey(GOAL_PERIOD_FREQUENCY, dateKey)}`;
 }
 
 // ── Schema (lazy, idempotente, uma vez por processo) ─────────────────────────
@@ -188,7 +197,7 @@ export async function computeGoalPeriodSums(
   await ensureGoalLogsSchema();
 
   const ranges = new Map<number, DateRange | null>();
-  for (const goal of goals) ranges.set(goal.id, goalPeriodRange(goal.frequency, referenceDate));
+  for (const goal of goals) ranges.set(goal.id, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
 
   const needsAllHistory = [...ranges.values()].some((range) => range === null);
   const lowerBound = needsAllHistory

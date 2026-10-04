@@ -76,7 +76,7 @@ export default function ConsistenciaPage() {
               value={stats.current}
               hint={streakHint}
               icon={Flame}
-              iconContent={<StreakIcon size={26} variant="saved" />}
+              iconContent={<StreakIcon size={32} variant="saved" />}
               color="#ffb86b"
             />
             <StatCard
@@ -84,7 +84,7 @@ export default function ConsistenciaPage() {
               value={stats.best}
               hint={`recorde de ${year}`}
               icon={TrendingUp}
-              iconContent={<Image src="/icons_8bits/graph.png" alt="" width={26} height={26} unoptimized />}
+              iconContent={<Image src="/icons_8bits/graph.png" alt="" width={32} height={32} unoptimized />}
               color="#71d4ff"
             />
             <StatCard
@@ -92,7 +92,7 @@ export default function ConsistenciaPage() {
               value={stats.activeDays}
               hint={`${stats.rate}% dos ${stats.elapsedDays} dias do ano até agora`}
               icon={CalendarCheck}
-              iconContent={<Image src="/icons_8bits/calendar.png" alt="" width={26} height={26} unoptimized />}
+              iconContent={<Image src="/icons_8bits/calendar.png" alt="" width={32} height={32} unoptimized />}
               color="#6bffb8"
             />
             <StatCard
@@ -100,15 +100,15 @@ export default function ConsistenciaPage() {
               value={stats.goalLogEntries}
               hint="registros em metas no ano"
               icon={Target}
-              iconContent={<Image src="/icons_8bits/target.png" alt="" width={26} height={26} unoptimized />}
+              iconContent={<Image src="/icons_8bits/target.png" alt="" width={32} height={32} unoptimized />}
               color="#b69cff"
             />
           </section>
 
           <section className="panel p-6 sm:p-8">
             <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-[#71d4ff]/20 p-2">
-                <Image src="/icons_8bits/map.png" alt="" width={26} height={26} unoptimized />
+              <div className="rounded-full bg-[#71d4ff]/20 p-2.5" style={{ boxShadow: "0 0 0 2px rgba(113,212,255,0.35), 0 0 12px rgba(113,212,255,0.4), inset 0 0 8px rgba(113,212,255,0.2)" }}>
+                <Image src="/icons_8bits/map.png" alt="" width={32} height={32} unoptimized />
               </div>
               <div>
                 <h2 className="font-display text-xl">Mapa do ano</h2>
