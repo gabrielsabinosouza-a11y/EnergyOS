@@ -28,7 +28,7 @@ const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
  * streak-calendar) + goal_logs (1 intervalo). Falha parcial degrada para a
  * fonte ausente; erro global só quando as duas fontes falham.
  */
-export function useActivityHistory(year: number): ActivityHistoryState {
+export function useActivityHistory(year: number, enabled = true): ActivityHistoryState {
   const [days, setDays] = useState<ActivityDay[]>([]);
   const [stats, setStats] = useState<ActivityStats>({
     current: 0,
@@ -46,6 +46,11 @@ export function useActivityHistory(year: number): ActivityHistoryState {
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
+
     let cancelled = false;
 
     async function fetchHistory() {
@@ -104,7 +109,7 @@ export function useActivityHistory(year: number): ActivityHistoryState {
     return () => {
       cancelled = true;
     };
-  }, [year, reloadKey]);
+  }, [enabled, year, reloadKey]);
 
   return { days, stats, endpoint, loading, error, reload };
 }

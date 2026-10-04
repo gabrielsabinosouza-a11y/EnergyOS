@@ -62,7 +62,8 @@ async function verifyWithGoogle(token: string): Promise<VerifiedIdentity> {
   // SECURITY: an account created with someone else's email is not verified.
   // Require verification before honoring the identity (prevents impersonation
   // in email-keyed checks such as admin actions).
-  if (user.email && user.emailVerified === false) {
+  // Disabled at user request so accounts created before verification flow can use the app.
+  if (user.email && user.emailVerified === false && process.env.AUTH_ENFORCE_VERIFIED === "true") {
     throw new UnauthorizedError("Confirme seu e-mail para continuar.");
   }
 

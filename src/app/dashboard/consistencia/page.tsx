@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { HabitTracker } from "@/components/dashboard/habit-tracker";
 import { Heatmap } from "@/components/dashboard/heatmap";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { StreakIcon } from "@/components/streak-icon";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useActivityHistory } from "@/lib/use-activity-history";
 import { todayIso } from "@/lib/db/dates";
@@ -14,7 +15,7 @@ export default function ConsistenciaPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const currentYear = Number(todayIso().slice(0, 4));
   const [year, setYear] = useState(currentYear);
-  const { days, stats, loading: loadingHistory, error } = useActivityHistory(year);
+  const { days, stats, loading: loadingHistory, error } = useActivityHistory(year, !loading && Boolean(user));
 
   if (loading || !user || loadingHistory) {
     return (
@@ -74,6 +75,7 @@ export default function ConsistenciaPage() {
               value={stats.current}
               hint={streakHint}
               icon={Flame}
+              iconContent={<StreakIcon size={18} variant="saved" />}
               color="#ffb86b"
             />
             <StatCard
