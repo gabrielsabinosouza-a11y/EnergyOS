@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
   Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library, CalendarCheck,
@@ -172,10 +172,10 @@ export function Sidebar({ pathname }: { pathname: string }) {
    thumb-tap away. */
 export function MobileNav({ pathname }: { pathname: string }) {
   const unreadCounts = useUnreadCounts();
-  const [showMore, setShowMore] = useState(false);
-
-  // Close the "Mais" sheet whenever the route changes.
-  useEffect(() => { setShowMore(false); }, [pathname]);
+  // A folha "Mais" só fica aberta enquanto o pathname não muda: navegar para
+  // uma seção fecha sozinho, sem setState dentro de useEffect.
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  const showMore = openedAt === pathname;
 
   const moreActive = MORE_TABS.some(({ href }) => isActivePath(pathname, href));
 
@@ -214,7 +214,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
           })}
           <button
             type="button"
-            onClick={() => setShowMore(true)}
+            onClick={() => setOpenedAt(pathname)}
             className={`tab-item ${moreActive ? "active" : ""}`}
             aria-expanded={showMore}
           >
@@ -228,13 +228,13 @@ export function MobileNav({ pathname }: { pathname: string }) {
 
       {/* "Mais" — bottom sheet with the remaining sections */}
       {showMore && (
-        <Modal open={showMore} onClose={() => setShowMore(false)} variant="bottom-sheet">
+        <Modal open={showMore} onClose={() => setOpenedAt(null)} variant="bottom-sheet">
           <div className="glass-card w-full max-w-md overflow-hidden rounded-b-none! p-2 sm:rounded-b-[14px]!" role="menu" aria-label="Mais seções">
             <div className="flex items-center justify-between px-4 pb-1 pt-3">
               <span className="eyebrow muted"><Library size={12} /> MAIS SEÇÕES</span>
               <button
                 type="button"
-                onClick={() => setShowMore(false)}
+                onClick={() => setOpenedAt(null)}
                 aria-label="Fechar"
                 className="tap flex h-11 w-11 items-center justify-center rounded-lg text-[var(--text-faint)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
               >

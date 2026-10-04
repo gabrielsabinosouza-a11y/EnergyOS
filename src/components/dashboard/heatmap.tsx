@@ -37,20 +37,21 @@ export function Heatmap({ year, days, today }: HeatmapProps) {
   const byDate = new Map(days.map((day) => [day.date, day]));
   const columns = heatmapColumns(year);
 
-  // Rótulos de mês: primeira coluna em que o mês muda (segunda dentro do ano).
+  // Rótulos de mês: alinhamos na célula exata do dia 1 de cada mês.
   const monthLabels = new Map<number, number>();
   columns.forEach((column, columnIndex) => {
-    const inYear = column.find((date) => date >= `${year}-01-01` && date <= `${year}-12-31`);
-    if (!inYear) return;
-    const month = Number(inYear.slice(5, 7)) - 1;
-    if (!monthLabels.has(month)) monthLabels.set(month, columnIndex);
+    for (let month = 0; month < 12; month += 1) {
+      const firstOfMonth = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const dayIndex = column.indexOf(firstOfMonth);
+      if (dayIndex !== -1) monthLabels.set(month, (columnIndex * 15) + (dayIndex * 15));
+    }
   });
 
   return (
     <div className="overflow-x-auto pb-1">
       <div className="inline-flex min-w-max gap-2">
         {/* Coluna de rótulos de dia da semana */}
-        <div className="grid grid-rows-7 gap-[3px] pt-[18px]">
+        <div className="grid grid-rows-7 gap-[3px] pt-[20px]">
           {Array.from({ length: 7 }, (_, row) => (
             <div key={row} className="flex h-3 items-center text-[10px] leading-none text-[var(--text-muted)]">
               {WEEKDAY_LABELS[row] ?? ""}
@@ -61,11 +62,11 @@ export function Heatmap({ year, days, today }: HeatmapProps) {
         <div>
           {/* Rótulos de mês */}
           <div className="relative mb-1 h-4">
-            {Array.from(monthLabels.entries()).map(([month, columnIndex]) => (
+            {Array.from(monthLabels.entries()).map(([month, left]) => (
               <span
                 key={month}
                 className="absolute top-0 text-[10px] uppercase tracking-wide text-[var(--text-muted)]"
-                style={{ left: `${columnIndex * 15}px` }}
+                style={{ left: `${left}px` }}
               >
                 {MONTH_LABELS[month]}
               </span>
