@@ -21,7 +21,7 @@ type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
-  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck },
+  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },
   { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null, img: "/sidebar_menu/leaderboard.png" },
@@ -43,7 +43,7 @@ const PRIMARY_TABS: readonly NavItem[] = [
 ] as const;
 
 const MORE_TABS: readonly NavItem[] = [
-  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck },
+  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
   { href: "/grupos",        label: "Grupos",        icon: Users,       badge: "group" as const, img: "/sidebar_menu/groups.png" },
   { href: "/loja",          label: "Loja",          icon: ShoppingBag, img: "/sidebar_menu/store.png" },
   { href: "/jardim",        label: "Meu jardim",    icon: Leaf,        img: "/sidebar_menu/garden.png" },
