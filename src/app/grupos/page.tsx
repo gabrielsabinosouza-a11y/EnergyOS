@@ -221,7 +221,7 @@ function RankCell({ rank, size = 22 }: { rank: number; size?: number }) {
           alt={`${rank}º lugar`}
           width={size}
           height={size}
-          style={{ objectFit: "contain" }}
+          style={{ width: size, height: size, objectFit: "contain" }}
           unoptimized
           draggable={false}
         />

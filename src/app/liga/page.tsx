@@ -45,7 +45,7 @@ function MedalBadge({ rank, size = 28 }: { rank: number; size?: number }) {
           style={{ width: size, height: size }}
           title={rank === 1 ? "1º lugar" : rank === 2 ? "2º lugar" : "3º lugar"}
         >
-          <Image src={MEDAL_IMAGES[rank - 1]} alt={`${rank}º lugar`} width={size} height={size} style={{ objectFit: "contain" }} unoptimized draggable={false} />
+          <Image src={MEDAL_IMAGES[rank - 1]} alt={`${rank}º lugar`} width={size} height={size} style={{ width: size, height: size, objectFit: "contain" }} unoptimized draggable={false} />
         </div>
       )}
       {/* Toda linha mostra sempre seu número de posição; a medalha é decorativa para o top 3. */}
@@ -424,19 +424,19 @@ export default function LigaPage() {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-faint)]">Recompensas do pódio</p>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
-                  <Image src="/places/first_place.png" alt="1º" width={16} height={16} unoptimized draggable={false} /> 1º lugar
+                  <Image src="/places/first_place.png" alt="1º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 1º lugar
                 </span>
                 <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />150 moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
-                  <Image src="/places/second_place.png" alt="2º" width={16} height={16} unoptimized draggable={false} /> 2º lugar
+                  <Image src="/places/second_place.png" alt="2º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 2º lugar
                 </span>
                 <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />100 moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
-                  <Image src="/places/third_place.png" alt="3º" width={16} height={16} unoptimized draggable={false} /> 3º lugar
+                  <Image src="/places/third_place.png" alt="3º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 3º lugar
                 </span>
                 <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />75 moedas</span>
               </div>

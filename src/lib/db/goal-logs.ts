@@ -14,12 +14,6 @@ import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { recordMissionProgress } from "./daily-quests";
 import { addLeagueXP, recomputeWeeklyLeagueXP } from "./league-new";
-import {
-  GOAL_DONE_COINS,
-  GOAL_DONE_XP,
-  GOAL_UNIQUE_DONE_COINS,
-  GOAL_UNIQUE_DONE_XP,
-} from "../daily-limits";
 
 /**
  * goal_logs — check-ins por dia (o "goalLogs" do briefing).
@@ -66,14 +60,14 @@ export interface ApplyGoalLogResult {
   revertedCoins: number;
 }
 
-/** XP/moedas de conclusão de meta (única premia mais). */
+export const GOAL_REWARD = { coins: 10, xp: 10 } as const;
+
+/** Daily goals have a reversible reward; other frequencies do not. */
 export function goalCompletionReward(frequency: Goal["frequency"]): { xp: number; coins: number } {
-  return frequency === "unique"
-    ? { xp: GOAL_UNIQUE_DONE_XP, coins: GOAL_UNIQUE_DONE_COINS }
-    : { xp: GOAL_DONE_XP, coins: GOAL_DONE_COINS };
+  return frequency === "daily" ? GOAL_REWARD : { coins: 0, xp: 0 };
 }
 
-/** source_id determinístico por meta+período ("12:d:2026-04-10"). */
+/** Stable per-goal, per-period reward key (for example "12:d:2026-04-10"). */
 export function goalRewardSourceKey(goalId: number, frequency: Goal["frequency"], dateKey: string): string {
   return `${goalId}:${goalPeriodKey(frequency, dateKey)}`;
 }
@@ -477,4 +471,3 @@ export async function applyGoalLogAction(
     client.release();
   }
 }
-

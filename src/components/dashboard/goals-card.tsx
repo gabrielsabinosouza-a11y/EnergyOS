@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
-import type { GoalLogAction } from "@/lib/api-client";
+import type { GoalLogAction } from "@/lib/db/goal-logs";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 import { CategoryForm } from "@/components/category-form";

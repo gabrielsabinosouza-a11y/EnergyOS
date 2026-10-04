@@ -492,7 +492,7 @@ function DashboardContent() {
             setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
             return newBalance;
           });
-          showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
+          showSuccess(`+${coinsAwarded} moedas, +${xpAwarded} XP`);
           api.getFocusData().then((f) => setFocusData(f));
         } else if (revertedXp > 0 || revertedCoins > 0) {
           // Desfez a conclusão do período: o servidor estornou a recompensa.

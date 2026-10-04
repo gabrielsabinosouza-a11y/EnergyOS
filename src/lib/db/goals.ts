@@ -209,32 +209,24 @@ export async function updateGoal(
     let revertedXp = 0;
     let revertedCoins = 0;
 
-    if (nowComplete && !wasComplete) {
+    const wasRewardableComplete = prevGoal.frequency === "daily" && wasComplete;
+    const isRewardableComplete = goal.frequency === "daily" && nowComplete;
+
+    if (isRewardableComplete && !wasRewardableComplete) {
       ({ xpAwarded, coinsAwarded } = await awardGoalCompletion(
         client,
         profileId,
         goal,
         goalRewardSourceKey(goal.id, goal.frequency, today),
       ));
-    } else if (wasComplete && !nowComplete) {
-      // Tenta a chave da frequência atual; se a frequência mudou junto, limpa
-      // também a chave antiga para não deixar recompensa órfã no ledger.
+    } else if (wasRewardableComplete && !isRewardableComplete) {
       ({ revertedXp, revertedCoins } = await revertGoalCompletion(
         client,
         profileId,
-        goal,
-        goalRewardSourceKey(goal.id, goal.frequency, today),
+        prevGoal,
+        goalRewardSourceKey(goal.id, prevGoal.frequency, today),
         today,
       ));
-      if (revertedXp === 0 && prevGoal.frequency !== goal.frequency) {
-        ({ revertedXp, revertedCoins } = await revertGoalCompletion(
-          client,
-          profileId,
-          goal,
-          goalRewardSourceKey(goal.id, prevGoal.frequency, today),
-          today,
-        ));
-      }
     }
 
     await client.query("commit");
