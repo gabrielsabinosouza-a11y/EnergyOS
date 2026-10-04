@@ -7,6 +7,7 @@ import { HabitTracker } from "@/components/dashboard/habit-tracker";
 import { Heatmap } from "@/components/dashboard/heatmap";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StreakIcon } from "@/components/streak-icon";
+import Image from "next/image";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { useActivityHistory } from "@/lib/use-activity-history";
 import { todayIso } from "@/lib/db/dates";
@@ -75,7 +76,7 @@ export default function ConsistenciaPage() {
               value={stats.current}
               hint={streakHint}
               icon={Flame}
-              iconContent={<StreakIcon size={18} variant="saved" />}
+              iconContent={<StreakIcon size={26} variant="saved" />}
               color="#ffb86b"
             />
             <StatCard
@@ -83,6 +84,7 @@ export default function ConsistenciaPage() {
               value={stats.best}
               hint={`recorde de ${year}`}
               icon={TrendingUp}
+              iconContent={<Image src="/icons_8bits/graph.png" alt="" width={26} height={26} unoptimized />}
               color="#71d4ff"
             />
             <StatCard
@@ -90,6 +92,7 @@ export default function ConsistenciaPage() {
               value={stats.activeDays}
               hint={`${stats.rate}% dos ${stats.elapsedDays} dias do ano até agora`}
               icon={CalendarCheck}
+              iconContent={<Image src="/icons_8bits/calendar.png" alt="" width={26} height={26} unoptimized />}
               color="#6bffb8"
             />
             <StatCard
@@ -97,14 +100,15 @@ export default function ConsistenciaPage() {
               value={stats.goalLogEntries}
               hint="registros em metas no ano"
               icon={Target}
+              iconContent={<Image src="/icons_8bits/target.png" alt="" width={26} height={26} unoptimized />}
               color="#b69cff"
             />
           </section>
 
           <section className="panel p-6 sm:p-8">
             <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-[#71d4ff]/20 p-2 text-[#71d4ff]">
-                <CalendarCheck size={18} />
+              <div className="rounded-lg bg-[#71d4ff]/20 p-2">
+                <Image src="/icons_8bits/map.png" alt="" width={26} height={26} unoptimized />
               </div>
               <div>
                 <h2 className="font-display text-xl">Mapa do ano</h2>

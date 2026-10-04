@@ -1025,14 +1025,14 @@ export function ChatThread({
   }, [messages]);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Pinned messages — compact entry row (WhatsApp/Telegram style); the
           full list lives in a bottom sheet so it never eats the chat area. */}
       {pinnedList.length > 0 && (
         <button
           type="button"
           onClick={() => setPinsOpen(true)}
-          className="mx-3 mt-2 flex shrink-0 items-center gap-2 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent-bg)]/40 px-3 py-1.5 backdrop-blur-sm transition hover:bg-[var(--accent-bg)]/60"
+          className="mx-3 mt-2 flex flex-none items-center gap-2 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent-bg)]/40 px-3 py-1.5 backdrop-blur-sm transition hover:bg-[var(--accent-bg)]/60"
         >
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--accent)]/15 text-[var(--accent)]">
             <Pin size={12} className="fill-current" />
@@ -1185,38 +1185,37 @@ export function ChatThread({
         </AnimatePresence>
       </div>
 
-      {/* Reply preview */}
-      <AnimatePresence>
-        {replyingTo && (
-          <ReplyPreview message={replyingTo} onCancel={() => onCancelReply?.()} />
-        )}
-      </AnimatePresence>
+      <div className="flex-none">
+        {/* Reply and edit previews stay with the composer as it grows upward. */}
+        <AnimatePresence>
+          {replyingTo && (
+            <ReplyPreview message={replyingTo} onCancel={() => onCancelReply?.()} />
+          )}
+        </AnimatePresence>
 
-      {/* Editing indicator */}
-      <AnimatePresence>
-        {editingId !== null && !replyingTo && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="flex items-center gap-2 overflow-hidden border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-4 py-2"
-          >
-            <Pencil size={14} className="shrink-0 text-[var(--accent)]" />
-            <span className="text-xs text-[var(--text-muted)]">Editando mensagem</span>
-            <button
-              onClick={() => { setEditingId(null); setEditText(""); }}
-              className="ml-auto rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)]"
+        <AnimatePresence>
+          {editingId !== null && !replyingTo && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex items-center gap-2 overflow-hidden border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-4 py-2"
             >
-              <X size={14} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <Pencil size={14} className="shrink-0 text-[var(--accent)]" />
+              <span className="text-xs text-[var(--text-muted)]">Editando mensagem</span>
+              <button
+                onClick={() => { setEditingId(null); setEditText(""); }}
+                className="ml-auto rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)]"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {/* Input area */}
-      {inputSlot ?? (
-        <div className="border-t border-[var(--border-subtle)] px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
-          <div className="glass-card flex items-center gap-1.5 px-2 py-2">
+        {inputSlot ?? (
+          <div className="border-t border-[var(--border-subtle)] px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
+            <div className="glass-card flex items-center gap-1.5 px-2 py-2">
             <input
               type="text"
               placeholder={
@@ -1242,9 +1241,10 @@ export function ChatThread({
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13" /><path d="M22 2 15 22 11 13 2 9Z" /></svg>
               )}
             </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Pinned messages list (bottom sheet) */}
       <Modal

@@ -113,6 +113,7 @@ export function ChatComposer({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionOpen, setMentionOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
 
@@ -370,8 +371,17 @@ export function ChatComposer({
 
   const shownError = error ?? localError;
 
+  useEffect(() => {
+    const textarea = textAreaRef.current;
+    if (!textarea) return;
+    const maxHeight = 80;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
+
   return (
-    <div className="border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
+    <div className="flex-none border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur-lg sm:px-8 lg:px-12">
       {shownError && <p className="mb-2 text-[11px] text-[var(--red)]">{shownError}</p>}
 
       {/* @mention popover (groups only) */}
@@ -422,14 +432,15 @@ export function ChatComposer({
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar imagem" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><ImageIcon size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar vídeo MP4" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><Video size={15} /></button>
-        <input
-          type="text"
+        <textarea
+          ref={textAreaRef}
+          rows={1}
           placeholder={replying ? "Responder..." : "Mensagem..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onBlur={() => setMentionOpen(false)}
           onKeyDown={handleKeyDown}
-          className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
+          className="min-h-6 max-h-20 w-full resize-none overflow-y-hidden bg-transparent text-sm leading-5 text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
         />
         {recording ? (
           <>

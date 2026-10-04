@@ -1310,3 +1310,58 @@ create table if not exists goal_logs (
   unique (goal_id, log_date)
 );
 create index if not exists goal_logs_profile_date_idx on goal_logs(profile_id, log_date);
+-- ── Fase 1: terminologia HÁBITO / META / PLANEJAMENTO ─────────────────────────
+-- Espelha scripts/migrate-terminology.mjs (idempotente).
+--
+-- HÁBITO = a antiga "Tarefa diária" (profile_daily_tasks) — repete todo dia.
+--   daily_task_log guarda a conclusão por dia com doc_id determinístico
+--   `${habitId}_${YYYY-MM-DD}` (gerado pelo próprio banco).
+-- META = goals sem frequência: alvo + unidade + prazo, concluída uma única vez.
+-- PLANEJAMENTO = planner_items (UM doc por item, nunca por ocorrência) +
+--   planner_completions com doc_id `${itemId}_${YYYY-MM-DD}`.
+alter table profile_daily_tasks add column if not exists category_id bigint;
+alter table profile_daily_tasks add column if not exists migrated_from_goal_id bigint;
+create index if not exists profile_daily_tasks_migrated_idx on profile_daily_tasks(migrated_from_goal_id);
+alter table daily_task_log add column if not exists doc_id text
+  generated always as (task_id::text || '_' || log_date::text) stored;
+
+alter table goals add column if not exists unit text;
+alter table goals add column if not exists deadline date;
+alter table goals add column if not exists completed_at timestamptz;
+alter table goals add column if not exists migrated_at timestamptz;
+alter table goals add column if not exists migrated_to text check (migrated_to in ('habit','goal'));
+alter table goals alter column frequency set default 'unique';
+create index if not exists goals_profile_deadline_idx on goals(profile_id, deadline);
+
+create table if not exists planner_items (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  title text not null,
+  category_id bigint not null references categories(id),
+  kind text not null default 'task' check (kind in ('task','event')),
+  date date not null,
+  time time,
+  all_day boolean not null default true,
+  recurrence_type text not null default 'none' check (recurrence_type in ('none','weekly','monthly','yearly')),
+  recurrence_weekdays smallint[] not null default '{}',
+  recurrence_interval_weeks smallint,
+  recurrence_until date,
+  skipped_dates date[] not null default '{}',
+  migrated_from_plan_id bigint,
+  created_at timestamptz not null default now()
+);
+create index if not exists planner_items_profile_date_idx on planner_items(profile_id, date);
+create index if not exists planner_items_migrated_idx on planner_items(migrated_from_plan_id);
+
+create table if not exists planner_completions (
+  item_id bigint not null references planner_items(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  completed_date date not null,
+  completed_at timestamptz not null default now(),
+  doc_id text generated always as (item_id::text || '_' || completed_date::text) stored,
+  primary key (item_id, completed_date)
+);
+create index if not exists planner_completions_profile_date_idx on planner_completions(profile_id, completed_date);
+
+alter table weekly_plans add column if not exists migrated_at timestamptz;
+alter table weekly_plans add column if not exists migrated_to text check (migrated_to in ('planner_item'));

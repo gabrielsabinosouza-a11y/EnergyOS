@@ -802,7 +802,7 @@ export default function GruposPage() {
 
   return (
     <AppShell>
-      <main className={`relative ${activeGroup ? "flex h-[calc(100dvh-126px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col px-5 sm:px-8 lg:px-12" : "min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
+      <main className={`relative ${activeGroup ? "flex h-[calc(100dvh-126px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] min-h-0 flex-col overflow-hidden px-5 sm:px-8 lg:h-dvh lg:px-12" : "min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
         {!activeGroup && <Header eyebrow="Comunidade" title="Grupos" />}
 
         {error && (
@@ -1464,7 +1464,7 @@ function GroupDetailPanel({
             className="-mx-5 flex min-h-0 flex-1 flex-col overflow-hidden sm:-mx-8 lg:-mx-12">
 
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
+      <div className="flex flex-none items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
         <button onClick={onBack}
           className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]">
           <ArrowLeft size={20} />
