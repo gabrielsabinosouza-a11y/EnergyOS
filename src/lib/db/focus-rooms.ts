@@ -4,7 +4,7 @@ import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
 import { plantGardenEntries, getEnergyReward, endFocusSession, type GardenGrowthStage } from "./focus";
-import { clearAllGroupRoomPresence, clearGroupRoomPresence } from "./group-room-presence";
+import { clearAllGroupRoomPresence, clearGroupRoomPresence, ensureGroupRoomPresenceSchema } from "./group-room-presence";
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
@@ -1063,6 +1063,7 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
 // out of the voting. The host is auto-confirmed (they were the one who asked).
 export async function restartFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
+  await ensureGroupRoomPresenceSchema();
 
   // Transaction with a row lock: guards restart vs restart/complete races so
   // the completed→restarting transition can't be double-applied.

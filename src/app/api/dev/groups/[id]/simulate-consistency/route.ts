@@ -50,7 +50,7 @@ export async function POST(
       for (let offset = GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays - 1; offset >= 0; offset -= 1) {
         const day = addDaysIso(today, -offset);
         for (const { profile_id: memberId } of members.rows) {
-          const session = await client.query<{ id: number }>(
+          const session = await client.query<{ id: string | number }>(
             `insert into focus_sessions
                (profile_id, duration_minutes, target_duration_minutes, started_at, ended_at)
              values (

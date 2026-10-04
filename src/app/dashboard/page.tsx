@@ -556,7 +556,6 @@ function DashboardContent() {
         title: patch.title,
         categoryId: patch.categoryId,
         targetValue: patch.targetValue,
-        frequency: patch.frequency,
       })
       .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
         setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? { ...g, ...goal } : g)));

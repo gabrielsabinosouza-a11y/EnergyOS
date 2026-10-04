@@ -14,35 +14,20 @@ import {
   Loader2,
   X,
   Sparkles,
-  Power,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
-import type { HabitWithCompletion } from "@/lib/db";
-import type { GoalLogAction } from "@/lib/db/goal-logs";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
-import { CategoryForm } from "@/components/category-form";
-import { Modal } from "@/components/modal";
-import { api } from "@/lib/api-client";
-
-type GoalDraft = { title: string; categoryId: number; targetValue: number; frequency: Goal["frequency"] };
-type HabitFrequency = "daily" | "weekly";
-type HabitDraft = { title: string; frequency: HabitFrequency };
-
-const FREQ_OPTIONS: { value: Goal["frequency"]; label: string }[] = [
-  { value: "daily", label: "Diária" },
-  { value: "weekly", label: "Semanal" },
-  { value: "monthly", label: "Mensal" },
-  { value: "unique", label: "Única" },
-];
-
-/** Sufixo da janela do período atual (mesma regra do servidor, goal-logs.ts). */
-const PERIOD_LABEL: Record<Goal["frequency"], string> = {
-  daily: "de hoje",
-  weekly: "desta semana",
-  monthly: "deste mês",
-  unique: "total",
-};
+import type { GoalLogAction } from "@/lib/db/goal-logs";
+import {
+  CreateGoalModal,
+  EditGoalModal,
+  draftFromGoal,
+  type GoalDraft,
+} from "./goals-modals";
+import { diffDaysIso, todayIso } from "@/lib/db/dates";
 
 function withAlpha(hex: string, alpha: number): string {
   const short = hex.replace("#", "");
@@ -54,10 +39,37 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** Máximo de metas exibidas no card antes de delegar o restante ao link "Ver todas". */
-
 function isComplete(goal: Goal): boolean {
   return goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
+}
+
+/** "faltam 12 dias" | "hoje" | "amanhã" | "12 dias em atraso" | null (sem prazo). */
+function deadlineLabel(goal: Goal, today: string): { text: string; overdue: boolean } | null {
+  if (!goal.deadline) return null;
+  const days = diffDaysIso(goal.deadline, today);
+  if (isComplete(goal)) return { text: "concluída", overdue: false };
+  if (days < 0) return { text: `${Math.abs(days)} ${Math.abs(days) === 1 ? "dia" : "dias"} em atraso`, overdue: true };
+  if (days === 0) return { text: "vence hoje", overdue: false };
+  if (days === 1) return { text: "vence amanhã", overdue: false };
+  return { text: `faltam ${days} dias`, overdue: false };
+}
+
+/**
+ * Ativas primeiro pelo prazo mais próximo (sem prazo vão para o fim), concluídas
+ * num grupo colapsado no rodapé.
+ */
+function sortGoals(goals: Goal[]): { active: Goal[]; completed: Goal[] } {
+  const active = goals.filter((g) => !isComplete(g));
+  const completed = goals.filter(isComplete);
+  const byDeadline = (a: Goal, b: Goal) => {
+    if (!a.deadline && !b.deadline) return a.id - b.id;
+    if (!a.deadline) return 1;
+    if (!b.deadline) return -1;
+    return a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : a.id - b.id;
+  };
+  active.sort(byDeadline);
+  completed.sort((a, b) => (b.deadline ?? "").localeCompare(a.deadline ?? "") || a.id - b.id);
+  return { active, completed };
 }
 
 export function GoalsCard({
@@ -81,7 +93,8 @@ export function GoalsCard({
   categories?: Category[];
 }) {
   const reduced = useReducedMotion();
-  const activeGoals = goals;
+  const [showCompleted, setShowCompleted] = useState(false);
+  const { active: activeGoals, completed: completedGoals } = sortGoals(goals);
 
   // ids em celebração (acabaram de completar) — controla a animação de parabenização
   const [celebrating, setCelebrating] = useState<Set<number>>(new Set());
@@ -226,18 +239,19 @@ export function GoalsCard({
       <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
         <AnimatePresence mode="popLayout" initial={false}>
           {activeGoals.map((goal, i) => {
-            const { color, icon, name: label } = goal.category;
+            const { color, icon } = goal.category;
             const Icon = categoryIcon(icon);
             const done = isComplete(goal);
             const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
+            const deadline = deadlineLabel(goal, todayIso());
             const isCelebrating = celebrating.has(goal.id);
             const isMenuOpen = activeMenuGoalId === goal.id || confirmGoalId === goal.id;
 
             const handleProgress = (action: GoalLogAction) => {
-              // Celebra só quando a ação prevista completa o período — o
-              // servidor devolve o estado real logo em seguida (otimista vivo).
+              // Celebra só quando a ação prevista conclui a meta — o servidor
+              // devolve o estado real logo em seguida (otimista vivo).
               const predictsCompletion =
-                action === "toggle" ||
+                action === "set" ||
                 (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
               if (!done && predictsCompletion) celebrate(goal.id);
               void onProgress(goal.id, action);
@@ -315,18 +329,35 @@ export function GoalsCard({
 
                 <div className="min-w-0 flex-1 pr-6">
                   <p
-                    className="text-xs font-medium text-[var(--text)] truncate"
+                    className="line-clamp-2 text-xs font-medium leading-snug text-[var(--text)]"
+                    title={goal.title}
                     style={done ? { textDecoration: "line-through", color: "var(--text-faint)" } : undefined}
                   >
                     {goal.title}
                   </p>
-                  <p className="text-[10px] text-[var(--text-faint)]">
-                    {done ? (
-                      <span style={{ color }}>Concluída</span>
-                    ) : (
-                      <>{label} · {goal.currentValue}/{goal.targetValue} · {pct}%</>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="text-[10px] text-[var(--text-faint)]">
+                      {done ? (
+                        <span style={{ color }}>Concluída</span>
+                      ) : (
+                        <>
+                          {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
+                          {goal.unit ? ` ${goal.unit}` : ""} · {pct}%
+                        </>
+                      )}
+                    </p>
+                    {deadline && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                          deadline.overdue
+                            ? "bg-red-500/15 text-red-400"
+                            : "bg-[var(--bg-surface-active)] text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {deadline.text}
+                      </span>
                     )}
-                  </p>
+                  </div>
 
                   {/* Barra de progresso com fill em spring */}
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
@@ -340,9 +371,8 @@ export function GoalsCard({
                   </div>
                 </div>
 
-                {/* Ação: toggle (meta unitária) ou +1/−1 (quantitativa).
-                    Concluída deixa de ser um selo estático: o check vira botão
-                    de DESMARCAR (corrige o bug de conclusão permanente). */}
+                {/* Ação: −1/+1. Concluída (current >= target) o check vira botão
+                    de DESMARCAR, e o servidor estorna a recompensa de 50/50. */}
                 <div className="flex shrink-0 items-center gap-1">
                   {done ? (
                     <>
@@ -362,9 +392,9 @@ export function GoalsCard({
                         animate={{ scale: 1 }}
                         transition={{ type: "spring", stiffness: 320, damping: 14 }}
                         whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={() => handleProgress("uncheck")}
+                        onClick={() => handleProgress("decrement")}
                         aria-label={`Desmarcar ${goal.title}`}
-                        title="Desmarcar concluída"
+                        title="Desmarcar meta concluída"
                         className="tap flex h-8 w-8 items-center justify-center rounded-full cursor-pointer"
                         style={{ background: `${color}1a`, color }}
                       >
@@ -659,898 +689,5 @@ function DropdownPortal({
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal de edição de meta (premium, cor-tie à categoria)             */
-/* ------------------------------------------------------------------ */
-
-function EditGoalModal({
-  goal,
-  categories,
-  open,
-  onClose,
-  onSave,
-  onProgress,
-  onDelete,
-}: {
-  goal: Goal;
-  categories: Category[];
-  open: boolean;
-  onClose: () => void;
-  onSave: (patch: GoalDraft) => void;
-  /** Ajuste manual do progresso do período atual (mesma via do card). */
-  onProgress?: (action: GoalLogAction) => Promise<void> | void;
-  /** Exclui a meta (e, por FK cascade, todo o histórico de check-ins). */
-  onDelete?: () => Promise<void> | void;
-}) {
-  const reduced = useReducedMotion();
-  const [draft, setDraft] = useState<GoalDraft>({
-    title: goal.title,
-    categoryId: goal.categoryId,
-    targetValue: goal.targetValue,
-    frequency: goal.frequency,
-  });
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [localCategories, setLocalCategories] = useState<Category[]>(categories);
-  const [error, setError] = useState("");
-  const [progressBusy, setProgressBusy] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const goalDone = goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
-  const progressPct = goal.targetValue > 0
-    ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
-    : 0;
-
-  useEffect(() => { setLocalCategories(categories); }, [categories]);
-
-  useEffect(() => {
-    if (!open) return;
-    setDraft({
-      title: goal.title,
-      categoryId: goal.categoryId,
-      targetValue: goal.targetValue,
-      frequency: goal.frequency,
-    });
-    setShowCategoryForm(false);
-    setSaving(false);
-    setSaved(false);
-    setError("");
-    setProgressBusy(false);
-    setConfirmDelete(false);
-    setDeleting(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const runProgress = async (action: GoalLogAction) => {
-    if (!onProgress || progressBusy) return;
-    setProgressBusy(true);
-    try {
-      await onProgress(action);
-    } finally {
-      setProgressBusy(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!onDelete || deleting) return;
-    setDeleting(true);
-    try {
-      await onDelete();
-      // Sucesso: a meta sai da lista e este modal desmonta sozinho.
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
-  };
-
-  const category = localCategories.find((c) => c.id === draft.categoryId);
-  const glowColor = category?.color ?? "#71d4ff";
-
-  async function handleCategoryCreated(input: { name: string; color: string; icon: string | null }) {
-    try {
-      const { category: newCat } = await api.createCategory(input);
-      setLocalCategories((prev) => [...prev, newCat]);
-      setDraft((d) => ({ ...d, categoryId: newCat.id }));
-      setShowCategoryForm(false);
-    } catch {
-      setError("Não foi possível criar a categoria.");
-    }
-  }
-
-  const handleSave = () => {
-    if (!draft.title.trim()) return;
-    if (typeof onSave !== "function") {
-      onClose();
-      return;
-    }
-    setSaving(true);
-    setSaved(true);
-    window.setTimeout(() => {
-      onSave({
-        title: draft.title.trim(),
-        categoryId: draft.categoryId,
-        targetValue: Math.max(1, draft.targetValue || 1),
-        frequency: draft.frequency,
-      });
-    }, 520);
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} panelClassName="max-w-md w-full">
-      <motion.div
-        style={{ perspective: 1000 }}
-        initial={{ scale: reduced ? 1 : 0.92, rotateX: reduced ? 0 : -4, opacity: 0 }}
-        animate={{ scale: 1, rotateX: 0, opacity: 1 }}
-        exit={{ scale: 0.92, rotateX: reduced ? 0 : -4, opacity: 0 }}
-        transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 24 }}
-      >
-        <div
-          className="glass-card relative w-full overflow-hidden p-6"
-          style={{ border: `1px solid ${glowColor}30` }}
-        >
-        {/* brilho ambiente na cor da categoria */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-20 left-1/2 h-44 w-80 -translate-x-1/2 rounded-full opacity-40"
-          style={{ background: `radial-gradient(ellipse, ${glowColor}55, transparent 70%)`, filter: "blur(22px)" }}
-        />
-        {/* partículas/faíscas ambientes (muito sutis) */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-          {["12%", "78%", "85%", "20%"].map((left, i) => (
-            <motion.span
-              key={i}
-              className="absolute h-1 w-1 rounded-full"
-              style={{ left, background: glowColor, opacity: 0.35, boxShadow: `0 0 6px ${glowColor}` }}
-              animate={reduced ? undefined : { y: [0, -26, 0], opacity: [0, 0.6, 0] }}
-              transition={{ duration: 6 + i, repeat: Infinity, delay: i * 1.2, ease: "easeInOut" }}
-            />
-          ))}
-        </div>
-
-        {/* borda LED superior sutil */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${glowColor}99, transparent)`, boxShadow: `0 0 10px ${glowColor}66` }}
-        />
-
-        <div className="relative mb-5 flex items-center justify-between">
-          <span className="eyebrow" style={{ color: glowColor }}>EDITAR META</span>
-          <button onClick={onClose} className="icon-button small" aria-label="Fechar"><X size={14} /></button>
-        </div>
-
-        <div className="relative space-y-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Título</label>
-            <input
-              value={draft.title}
-              onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-              className="auth-input"
-              placeholder="Ex: Dormir 8 horas por dia"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Categoria</label>
-            <CategoryChips
-              categories={localCategories}
-              selectedId={draft.categoryId}
-              onSelect={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
-              onAdd={() => setShowCategoryForm((v) => !v)}
-              addActive={showCategoryForm}
-            />
-            <AnimatePresence>
-              {showCategoryForm && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
-                    <CategoryForm
-                      submitLabel="Criar categoria"
-                      onSubmit={handleCategoryCreated}
-                      onCancel={() => setShowCategoryForm(false)}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Quantidade</label>
-            <input
-              type="number"
-              min={1}
-              value={draft.targetValue}
-              onChange={(e) => setDraft((d) => ({ ...d, targetValue: Number(e.target.value) }))}
-              className="auth-input"
-            />
-          </div>
-
-          {/* Progresso do período atual — ajuste manual. Corrige o bug de
-              conclusão permanente: dá para desmarcar/corrigir por aqui também. */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              Progresso {PERIOD_LABEL[goal.frequency]}
-            </label>
-            <div className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-[var(--text)]">
-                  {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
-                  {goalDone ? <span style={{ color: glowColor }}> · Concluída</span> : null}
-                </p>
-                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-300"
-                    style={{ width: `${goalDone ? 100 : progressPct}%`, background: glowColor }}
-                  />
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {goal.targetValue <= 1 ? (
-                  <motion.button
-                    type="button"
-                    whileTap={reduced ? undefined : { scale: 0.95 }}
-                    disabled={progressBusy}
-                    onClick={() => void runProgress(goalDone ? "uncheck" : "toggle")}
-                    className="min-h-[36px] rounded-lg border px-3 text-xs font-semibold transition-colors disabled:opacity-40 cursor-pointer"
-                    style={
-                      goalDone
-                        ? { borderColor: `${glowColor}66`, color: glowColor, background: withAlpha(glowColor, 0.1) }
-                        : { borderColor: "var(--border-subtle)", color: "var(--text-muted)", background: "var(--bg-tertiary)" }
-                    }
-                  >
-                    {progressBusy ? <Loader2 size={13} className="animate-spin" /> : goalDone ? "Desmarcar" : "Marcar"}
-                  </motion.button>
-                ) : (
-                  <>
-                    <motion.button
-                      type="button"
-                      whileTap={reduced ? undefined : { scale: 0.92 }}
-                      disabled={progressBusy || goal.currentValue <= 0}
-                      onClick={() => void runProgress("decrement")}
-                      aria-label="Remover −1 do progresso"
-                      title="Remover −1"
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30 cursor-pointer"
-                    >
-                      <Minus size={15} strokeWidth={3} />
-                    </motion.button>
-                    <motion.button
-                      type="button"
-                      whileTap={reduced ? undefined : { scale: 0.92 }}
-                      disabled={progressBusy || goalDone}
-                      onClick={() => void runProgress("increment")}
-                      aria-label="Adicionar +1 ao progresso"
-                      title="Adicionar +1"
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border transition-colors disabled:opacity-30 cursor-pointer"
-                      style={{ borderColor: `${glowColor}55`, background: withAlpha(glowColor, 0.08), color: glowColor }}
-                    >
-                      {progressBusy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} strokeWidth={3} />}
-                    </motion.button>
-                  </>
-                )}
-              </div>
-            </div>
-            <p className="mt-1.5 text-[10px] text-[var(--text-faint)]">
-              A conclusão é por período — ao mudar o dia/semana, o progresso reinicia automaticamente.
-            </p>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</label>
-            <div className="grid grid-cols-2 gap-2">
-              {FREQ_OPTIONS.map((opt) => {
-                const selected = draft.frequency === opt.value;
-                return (
-                  <motion.button
-                    key={opt.value}
-                    type="button"
-                    whileTap={reduced ? undefined : { scale: 0.95 }}
-                    onClick={() => setDraft((d) => ({ ...d, frequency: opt.value }))}
-                    className="min-h-[40px] rounded-lg border text-xs font-medium transition-colors cursor-pointer"
-                    style={
-                      selected
-                        ? { borderColor: glowColor, color: glowColor, background: withAlpha(glowColor, 0.12), boxShadow: `0 0 14px -4px ${glowColor}70` }
-                        : { borderColor: "var(--border-subtle)", color: "var(--text-faint)", background: "var(--bg-tertiary)" }
-                    }
-                  >
-                    {opt.label}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-
-          <motion.button
-            whileTap={reduced ? undefined : { scale: 0.97 }}
-            onClick={handleSave}
-            disabled={!draft.title.trim() || saving}
-            style={{
-              background: glowColor,
-              color: "var(--bg-primary)",
-              boxShadow: `0 0 24px -8px ${glowColor}`,
-            }}
-            className="relative flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl text-xs font-bold transition-opacity disabled:opacity-40 cursor-pointer"
-          >
-            {saving ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : saved ? (
-              <motion.span
-                initial={{ scale: 0.4, opacity: 0 }}
-                animate={{ scale: [0.4, 1.3, 1], opacity: 1 }}
-                transition={{ duration: 0.4 }}
-                className="flex items-center gap-1.5"
-              >
-                <Check size={15} strokeWidth={3} /> Salvo!
-              </motion.span>
-            ) : (
-              <><Check size={15} strokeWidth={3} /> Salvar alterações</>
-            )}
-          </motion.button>
-
-          {/* Excluir meta — confirmação em duas etapas (remover tem peso). */}
-          {onDelete && (
-            <div className="pt-1">
-              <AnimatePresence mode="wait" initial={false}>
-                {confirmDelete ? (
-                  <motion.div
-                    key="confirm"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3"
-                  >
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Excluir <span className="font-semibold text-[var(--text)]">{goal.title}</span> e todo o
-                      histórico de check-ins? Esta ação não pode ser desfeita.
-                    </p>
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(false)}
-                        disabled={deleting}
-                        className="min-h-[36px] flex-1 rounded-lg border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete()}
-                        disabled={deleting}
-                        className="flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-500/90 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:opacity-50 cursor-pointer"
-                      >
-                        {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                        Excluir meta
-                      </button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.button
-                    key="idle"
-                    type="button"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    whileTap={reduced ? undefined : { scale: 0.97 }}
-                    onClick={() => setConfirmDelete(true)}
-                    className="flex w-full min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-red-500/20 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10 cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                    Excluir meta
-                  </motion.button>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-        </div>
-      </div>
-      </motion.div>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Modal de criação de nova meta — premium 3D glass + LED + habits    */
-/* ------------------------------------------------------------------ */
-
-const HABIT_FREQ_OPTIONS: { value: HabitFrequency; label: string }[] = [
-  { value: "daily", label: "Diário" },
-  { value: "weekly", label: "Semanal" },
-];
-
-const PARTICLES = ["8%", "25%", "50%", "72%", "90%"];
-
-function CreateGoalModal({
-  open,
-  categories,
-  onClose,
-  onCreated,
-}: {
-  open: boolean;
-  categories: Category[];
-  onClose: () => void;
-  onCreated: (goal: Goal) => void;
-}) {
-  const reduced = useReducedMotion();
-
-  const defaultCategoryId = categories.find((c) => !c.userId && c.name === "Foco")?.id ?? categories[0]?.id ?? 0;
-
-  const emptyDraft = (): GoalDraft => ({
-    title: "",
-    categoryId: defaultCategoryId,
-    targetValue: 1,
-    frequency: "daily",
-  });
-
-  const [draft, setDraft] = useState<GoalDraft>(emptyDraft);
-  const [habitInput, setHabitInput] = useState("");
-  const [habitFreq, setHabitFreq] = useState<HabitFrequency>("daily");
-  const [pendingHabits, setPendingHabits] = useState<HabitDraft[]>([]);
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [localCategories, setLocalCategories] = useState<Category[]>(categories);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const titleRef = useRef<HTMLInputElement>(null);
-
-  // Sync categories from parent when they change
-  useEffect(() => { setLocalCategories(categories); }, [categories]);
-
-  // Reset on open
-  useEffect(() => {
-    if (!open) return;
-    setDraft({ ...emptyDraft(), categoryId: defaultCategoryId });
-    setPendingHabits([]);
-    setHabitInput("");
-    setHabitFreq("daily");
-    setShowCategoryForm(false);
-    setSaving(false);
-    setSaved(false);
-    setError("");
-    window.setTimeout(() => titleRef.current?.focus(), 80);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const category = localCategories.find((c) => c.id === draft.categoryId);
-  const glowColor = category?.color ?? "#71d4ff";
-
-  function addPendingHabit() {
-    if (!habitInput.trim()) return;
-    setPendingHabits((prev) => [...prev, { title: habitInput.trim(), frequency: habitFreq }]);
-    setHabitInput("");
-  }
-
-  function removePendingHabit(i: number) {
-    setPendingHabits((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  async function handleCategoryCreated(input: { name: string; color: string; icon: string | null }) {
-    try {
-      const { category: newCat } = await api.createCategory(input);
-      setLocalCategories((prev) => [...prev, newCat]);
-      setDraft((d) => ({ ...d, categoryId: newCat.id }));
-      setShowCategoryForm(false);
-    } catch {
-      setError("Não foi possível criar a categoria.");
-    }
-  }
-
-  async function handleSave() {
-    if (!draft.title.trim()) return;
-    setSaving(true);
-    setError("");
-    try {
-      const { goal } = await api.createGoal({
-        title: draft.title.trim(),
-        categoryId: draft.categoryId || defaultCategoryId,
-        targetValue: Math.max(1, draft.targetValue || 1),
-        frequency: draft.frequency,
-      });
-      // Create pending habits sequentially
-      for (const h of pendingHabits) {
-        await api.createHabit(goal.id, h).catch(() => {});
-      }
-      setSaved(true);
-      window.setTimeout(() => {
-        onCreated(goal as Goal);
-      }, 480);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível criar a meta.");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} panelClassName="max-w-lg w-full">
-      {/* Outer 3D wrapper — perspective tilt on mount */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.92, rotateX: 6, y: 24 }}
-        animate={{ opacity: 1, scale: 1, rotateX: 0, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, rotateX: 6, y: 24 }}
-        transition={{ type: "spring", stiffness: 340, damping: 28 }}
-        style={{ perspective: 1000, transformStyle: "preserve-3d" }}
-        className="relative w-full"
-      >
-        {/* Glass card */}
-        <div
-          className="relative w-full overflow-hidden rounded-2xl"
-          style={{
-            background: "linear-gradient(145deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)",
-            border: `1px solid ${glowColor}28`,
-            boxShadow: `0 32px 80px -16px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.05) inset, 0 0 60px -20px ${glowColor}40`,
-            backdropFilter: "blur(28px)",
-          }}
-        >
-          {/* Ambient radial glow top-center */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -top-24 left-1/2 h-56 w-96 -translate-x-1/2 rounded-full"
-            style={{
-              background: `radial-gradient(ellipse, ${glowColor}45, transparent 68%)`,
-              filter: "blur(28px)",
-            }}
-          />
-
-          {/* LED top border */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-px"
-            style={{
-              background: `linear-gradient(90deg, transparent 5%, ${glowColor}cc 40%, ${glowColor} 50%, ${glowColor}cc 60%, transparent 95%)`,
-              boxShadow: `0 0 16px 2px ${glowColor}88`,
-            }}
-          />
-
-          {/* LED bottom border (subtle) */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
-            style={{
-              background: `linear-gradient(90deg, transparent, ${glowColor}33, transparent)`,
-            }}
-          />
-
-          {/* Floating particles */}
-          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-            {PARTICLES.map((left, i) => (
-              <motion.span
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left,
-                  bottom: "10%",
-                  width: i % 2 === 0 ? 3 : 2,
-                  height: i % 2 === 0 ? 3 : 2,
-                  background: glowColor,
-                  boxShadow: `0 0 8px 2px ${glowColor}`,
-                  opacity: 0,
-                }}
-                animate={
-                  reduced
-                    ? undefined
-                    : {
-                        y: [0, -(80 + i * 20), 0],
-                        opacity: [0, 0.7, 0],
-                        x: [0, (i % 2 === 0 ? 1 : -1) * (6 + i * 2), 0],
-                      }
-                }
-                transition={{
-                  duration: 5 + i * 0.8,
-                  repeat: Infinity,
-                  delay: i * 0.9,
-                  ease: "easeInOut",
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Inner glass sheen (top-left highlight) */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -top-8 -left-8 h-40 w-40 rounded-full"
-            style={{
-              background: "radial-gradient(circle, rgba(255,255,255,0.06), transparent 70%)",
-            }}
-          />
-
-          <div className="relative p-6 max-h-[88dvh] overflow-y-auto overscroll-contain">
-            {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <motion.div
-                  animate={reduced ? undefined : { rotate: [0, 15, -10, 0], scale: [1, 1.15, 1] }}
-                  transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 4 }}
-                  className="flex h-8 w-8 items-center justify-center rounded-xl"
-                  style={{
-                    background: `linear-gradient(135deg, ${glowColor}30, ${glowColor}10)`,
-                    border: `1px solid ${glowColor}40`,
-                    boxShadow: `0 0 16px -4px ${glowColor}80`,
-                  }}
-                >
-                  <Sparkles size={15} style={{ color: glowColor }} />
-                </motion.div>
-                <div>
-                  <p
-                    className="text-[10px] font-bold uppercase tracking-[0.18em]"
-                    style={{ color: glowColor }}
-                  >
-                    Nova Meta
-                  </p>
-                  <p className="text-[11px] text-[var(--text-faint)] leading-none mt-0.5">
-                    Dashboard · Metas &amp; Hábitos
-                  </p>
-                </div>
-              </div>
-              <motion.button
-                whileTap={reduced ? undefined : { scale: 0.9 }}
-                onClick={onClose}
-                aria-label="Fechar"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-white/[0.07] hover:text-[var(--text)] cursor-pointer"
-              >
-                <X size={15} />
-              </motion.button>
-            </div>
-
-            <div className="space-y-5">
-              {/* Título */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Título
-                </label>
-                <input
-                  ref={titleRef}
-                  value={draft.title}
-                  onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-                  onKeyDown={(e) => e.key === "Enter" && void handleSave()}
-                  className="auth-input"
-                  placeholder="Ex: Dormir 8 horas por dia"
-                />
-              </div>
-
-              {/* Categoria */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Categoria
-                </label>
-                <CategoryChips
-                  categories={localCategories}
-                  selectedId={draft.categoryId}
-                  onSelect={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
-                  onAdd={() => setShowCategoryForm((v) => !v)}
-                  addActive={showCategoryForm}
-                />
-                <AnimatePresence>
-                  {showCategoryForm && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
-                        <CategoryForm
-                          submitLabel="Criar categoria"
-                          onSubmit={handleCategoryCreated}
-                          onCancel={() => setShowCategoryForm(false)}
-                        />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Quantidade + Frequência side by side */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                    Quantidade
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={draft.targetValue}
-                    onChange={(e) => setDraft((d) => ({ ...d, targetValue: Number(e.target.value) }))}
-                    className="auth-input"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                    Frequência
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {FREQ_OPTIONS.map((opt) => {
-                      const selected = draft.frequency === opt.value;
-                      return (
-                        <motion.button
-                          key={opt.value}
-                          type="button"
-                          whileTap={reduced ? undefined : { scale: 0.93 }}
-                          onClick={() => setDraft((d) => ({ ...d, frequency: opt.value }))}
-                          className="min-h-[36px] rounded-lg border text-[10px] font-semibold transition-all cursor-pointer"
-                          style={
-                            selected
-                              ? {
-                                  borderColor: glowColor,
-                                  color: glowColor,
-                                  background: withAlpha(glowColor, 0.14),
-                                  boxShadow: `0 0 16px -4px ${glowColor}80, inset 0 1px 0 ${glowColor}30`,
-                                }
-                              : {
-                                  borderColor: "var(--border-subtle)",
-                                  color: "var(--text-faint)",
-                                  background: "rgba(255,255,255,0.03)",
-                                }
-                          }
-                        >
-                          {opt.label}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Hábitos */}
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Hábitos relacionados
-                  <span className="ml-1.5 text-[var(--text-faint)] normal-case tracking-normal font-normal">
-                    (opcional)
-                  </span>
-                </label>
-
-                {/* Lista de hábitos pendentes */}
-                <AnimatePresence initial={false}>
-                  {pendingHabits.map((h, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -8, height: 0 }}
-                      animate={{ opacity: 1, x: 0, height: "auto" }}
-                      exit={{ opacity: 0, x: 8, height: 0 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 28 }}
-                      className="mb-1.5 flex items-center gap-2 overflow-hidden"
-                    >
-                      <div
-                        className="flex flex-1 items-center gap-2 rounded-lg px-3 py-2"
-                        style={{
-                          background: `${glowColor}0d`,
-                          border: `1px solid ${glowColor}22`,
-                        }}
-                      >
-                        <Power size={11} style={{ color: glowColor }} />
-                        <span className="flex-1 text-xs text-[var(--text-secondary)]">{h.title}</span>
-                        <span
-                          className="text-[10px] font-medium"
-                          style={{ color: glowColor }}
-                        >
-                          {h.frequency === "daily" ? "Diário" : "Semanal"}
-                        </span>
-                      </div>
-                      <motion.button
-                        type="button"
-                        whileTap={reduced ? undefined : { scale: 0.88 }}
-                        onClick={() => removePendingHabit(i)}
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--text-faint)] hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                      >
-                        <X size={12} />
-                      </motion.button>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-
-                {/* Input de novo hábito */}
-                <div className="flex gap-2 mt-1">
-                  <input
-                    value={habitInput}
-                    onChange={(e) => setHabitInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPendingHabit())}
-                    className="auth-input flex-1 py-2! text-xs!"
-                    placeholder="Adicionar hábito..."
-                  />
-                  <div className="flex shrink-0 gap-1">
-                    {HABIT_FREQ_OPTIONS.map((o) => {
-                      const sel = habitFreq === o.value;
-                      return (
-                        <motion.button
-                          key={o.value}
-                          type="button"
-                          whileTap={reduced ? undefined : { scale: 0.93 }}
-                          onClick={() => setHabitFreq(o.value)}
-                          className="rounded-lg border px-2.5 py-2 text-[10px] font-semibold transition-all cursor-pointer"
-                          style={
-                            sel
-                              ? { borderColor: glowColor, color: glowColor, background: withAlpha(glowColor, 0.14) }
-                              : { borderColor: "var(--border-subtle)", color: "var(--text-faint)", background: "rgba(255,255,255,0.03)" }
-                          }
-                        >
-                          {o.label}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Error */}
-              <AnimatePresence>
-                {error && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="text-xs text-red-400"
-                  >
-                    {error}
-                  </motion.p>
-                )}
-              </AnimatePresence>
-
-              {/* CTA */}
-              <motion.button
-                type="button"
-                whileHover={
-                  reduced
-                    ? undefined
-                    : { scale: 1.02, boxShadow: `0 0 40px -8px ${glowColor}` }
-                }
-                whileTap={reduced ? undefined : { scale: 0.97 }}
-                onClick={handleSave}
-                disabled={!draft.title.trim() || saving}
-                className="relative flex w-full min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-xl text-sm font-bold transition-all disabled:opacity-40 cursor-pointer"
-                style={{
-                  background: `linear-gradient(135deg, ${glowColor}ee, ${glowColor}bb)`,
-                  color: "var(--bg-primary)",
-                  boxShadow: `0 0 28px -8px ${glowColor}cc, inset 0 1px 0 rgba(255,255,255,0.25)`,
-                }}
-              >
-                {/* Sheen sweep on hover */}
-                <motion.div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0"
-                  initial={{ x: "-100%" }}
-                  whileHover={{ x: "100%" }}
-                  transition={{ duration: 0.55, ease: "easeInOut" }}
-                  style={{
-                    background:
-                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)",
-                  }}
-                />
-                {saving ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : saved ? (
-                  <motion.span
-                    initial={{ scale: 0.4, opacity: 0 }}
-                    animate={{ scale: [0.4, 1.25, 1], opacity: 1 }}
-                    transition={{ duration: 0.4 }}
-                    className="flex items-center gap-1.5"
-                  >
-                    <Check size={16} strokeWidth={3} /> Meta criada!
-                  </motion.span>
-                ) : (
-                  <>
-                    <Sparkles size={15} />
-                    Criar meta
-                    {pendingHabits.length > 0 && (
-                      <span className="ml-1 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-bold">
-                        +{pendingHabits.length} hábito{pendingHabits.length > 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </>
-                )}
-              </motion.button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-    </Modal>
   );
 }
