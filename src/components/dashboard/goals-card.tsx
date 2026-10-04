@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import {
   Check,
   Plus,
+  Minus,
   Target,
   MoreVertical,
   Trash2,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { HabitWithCompletion } from "@/lib/db";
+import type { GoalLogAction } from "@/lib/api-client";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 import { CategoryForm } from "@/components/category-form";
@@ -33,6 +35,14 @@ const FREQ_OPTIONS: { value: Goal["frequency"]; label: string }[] = [
   { value: "monthly", label: "Mensal" },
   { value: "unique", label: "Única" },
 ];
+
+/** Sufixo da janela do período atual (mesma regra do servidor, goal-logs.ts). */
+const PERIOD_LABEL: Record<Goal["frequency"], string> = {
+  daily: "de hoje",
+  weekly: "desta semana",
+  monthly: "deste mês",
+  unique: "total",
+};
 
 function withAlpha(hex: string, alpha: number): string {
   const short = hex.replace("#", "");
@@ -52,14 +62,19 @@ function isComplete(goal: Goal): boolean {
 
 export function GoalsCard({
   goals,
-  onAdjust,
+  onProgress,
   onDelete,
   onUpdate,
   onCreate,
   categories,
 }: {
   goals: Goal[];
-  onAdjust: (goalId: number, delta: number) => void;
+  /**
+   * Aplica um check-in na meta (increment/decrement/toggle/uncheck). A fonte da
+   * verdade é o servidor (POST /api/goal-logs): ele soma os logs do período e
+   * concede/estorna XP e moedas na transição de conclusão.
+   */
+  onProgress: (goalId: number, action: GoalLogAction) => Promise<void> | void;
   onDelete?: (goalId: number) => Promise<void> | void;
   onUpdate?: (goalId: number, patch: GoalDraft, prev: Goal) => void;
   onCreate?: (goal: Goal) => void;
@@ -218,11 +233,14 @@ export function GoalsCard({
             const isCelebrating = celebrating.has(goal.id);
             const isMenuOpen = activeMenuGoalId === goal.id || confirmGoalId === goal.id;
 
-            const handleTap = () => {
-              if (done) return;
-              const next = goal.currentValue + 1;
-              if (next >= goal.targetValue) celebrate(goal.id);
-              onAdjust(goal.id, 1);
+            const handleProgress = (action: GoalLogAction) => {
+              // Celebra só quando a ação prevista completa o período — o
+              // servidor devolve o estado real logo em seguida (otimista vivo).
+              const predictsCompletion =
+                action === "toggle" ||
+                (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
+              if (!done && predictsCompletion) celebrate(goal.id);
+              void onProgress(goal.id, action);
             };
 
             return (
@@ -322,25 +340,53 @@ export function GoalsCard({
                   </div>
                 </div>
 
-                {/* Ação: check (meta unitária) ou +1 (meta quantitativa).
-                    Botão visível compacto (32px), com padding invisível para
-                    manter o alvo de toque acessível (~44px) no mobile. */}
-                <div className="flex shrink-0 items-center">
+                {/* Ação: toggle (meta unitária) ou +1/−1 (quantitativa).
+                    Concluída deixa de ser um selo estático: o check vira botão
+                    de DESMARCAR (corrige o bug de conclusão permanente). */}
+                <div className="flex shrink-0 items-center gap-1">
                   {done ? (
-                    <motion.div
-                      initial={{ scale: 0.4 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 320, damping: 14 }}
-                      className="flex h-8 w-8 items-center justify-center rounded-full"
-                      style={{ background: `${color}1a`, color }}
-                    >
-                      <Check size={16} strokeWidth={3} />
-                    </motion.div>
+                    <>
+                      {goal.targetValue > 1 && (
+                        <motion.button
+                          whileTap={reduced ? undefined : { scale: 0.92 }}
+                          onClick={() => handleProgress("decrement")}
+                          aria-label={`Remover progresso de ${goal.title}`}
+                          title="Remover −1"
+                          className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                        >
+                          <Minus size={16} strokeWidth={3} />
+                        </motion.button>
+                      )}
+                      <motion.button
+                        initial={{ scale: 0.4 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", stiffness: 320, damping: 14 }}
+                        whileTap={reduced ? undefined : { scale: 0.92 }}
+                        onClick={() => handleProgress("uncheck")}
+                        aria-label={`Desmarcar ${goal.title}`}
+                        title="Desmarcar concluída"
+                        className="tap flex h-8 w-8 items-center justify-center rounded-full cursor-pointer"
+                        style={{ background: `${color}1a`, color }}
+                      >
+                        <Check size={16} strokeWidth={3} />
+                      </motion.button>
+                    </>
                   ) : (
-                    <div className="flex items-center justify-center p-1">
+                    <div className="flex items-center gap-1">
+                      {goal.targetValue > 1 && goal.currentValue > 0 && (
+                        <motion.button
+                          whileTap={reduced ? undefined : { scale: 0.92 }}
+                          onClick={() => handleProgress("decrement")}
+                          aria-label={`Remover progresso de ${goal.title}`}
+                          title="Remover −1"
+                          className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                        >
+                          <Minus size={16} strokeWidth={3} />
+                        </motion.button>
+                      )}
                       <motion.button
                         whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={handleTap}
+                        onClick={() => handleProgress(goal.targetValue <= 1 ? "toggle" : "increment")}
                         aria-label={goal.targetValue <= 1 ? `Concluir ${goal.title}` : `Adicionar progresso a ${goal.title}`}
                         title={goal.targetValue <= 1 ? "Marcar como concluída" : "Adicionar +1"}
                         className="tap flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
@@ -460,6 +506,8 @@ export function GoalsCard({
             onUpdate(editingGoal.id, patch, editingGoal);
             setEditingGoalId(null);
           }}
+          onProgress={(action) => onProgress(editingGoal.id, action)}
+          onDelete={onDelete ? async () => { await onDelete(editingGoal.id); } : undefined}
         />
       )}
 
@@ -624,12 +672,18 @@ function EditGoalModal({
   open,
   onClose,
   onSave,
+  onProgress,
+  onDelete,
 }: {
   goal: Goal;
   categories: Category[];
   open: boolean;
   onClose: () => void;
   onSave: (patch: GoalDraft) => void;
+  /** Ajuste manual do progresso do período atual (mesma via do card). */
+  onProgress?: (action: GoalLogAction) => Promise<void> | void;
+  /** Exclui a meta (e, por FK cascade, todo o histórico de check-ins). */
+  onDelete?: () => Promise<void> | void;
 }) {
   const reduced = useReducedMotion();
   const [draft, setDraft] = useState<GoalDraft>({
@@ -643,6 +697,14 @@ function EditGoalModal({
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
   const [error, setError] = useState("");
+  const [progressBusy, setProgressBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const goalDone = goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
+  const progressPct = goal.targetValue > 0
+    ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
+    : 0;
 
   useEffect(() => { setLocalCategories(categories); }, [categories]);
 
@@ -658,8 +720,33 @@ function EditGoalModal({
     setSaving(false);
     setSaved(false);
     setError("");
+    setProgressBusy(false);
+    setConfirmDelete(false);
+    setDeleting(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const runProgress = async (action: GoalLogAction) => {
+    if (!onProgress || progressBusy) return;
+    setProgressBusy(true);
+    try {
+      await onProgress(action);
+    } finally {
+      setProgressBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+      // Sucesso: a meta sai da lista e este modal desmonta sozinho.
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const category = localCategories.find((c) => c.id === draft.categoryId);
   const glowColor = category?.color ?? "#71d4ff";
@@ -789,6 +876,75 @@ function EditGoalModal({
             />
           </div>
 
+          {/* Progresso do período atual — ajuste manual. Corrige o bug de
+              conclusão permanente: dá para desmarcar/corrigir por aqui também. */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              Progresso {PERIOD_LABEL[goal.frequency]}
+            </label>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-[var(--text)]">
+                  {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
+                  {goalDone ? <span style={{ color: glowColor }}> · Concluída</span> : null}
+                </p>
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-300"
+                    style={{ width: `${goalDone ? 100 : progressPct}%`, background: glowColor }}
+                  />
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {goal.targetValue <= 1 ? (
+                  <motion.button
+                    type="button"
+                    whileTap={reduced ? undefined : { scale: 0.95 }}
+                    disabled={progressBusy}
+                    onClick={() => void runProgress(goalDone ? "uncheck" : "toggle")}
+                    className="min-h-[36px] rounded-lg border px-3 text-xs font-semibold transition-colors disabled:opacity-40 cursor-pointer"
+                    style={
+                      goalDone
+                        ? { borderColor: `${glowColor}66`, color: glowColor, background: withAlpha(glowColor, 0.1) }
+                        : { borderColor: "var(--border-subtle)", color: "var(--text-muted)", background: "var(--bg-tertiary)" }
+                    }
+                  >
+                    {progressBusy ? <Loader2 size={13} className="animate-spin" /> : goalDone ? "Desmarcar" : "Marcar"}
+                  </motion.button>
+                ) : (
+                  <>
+                    <motion.button
+                      type="button"
+                      whileTap={reduced ? undefined : { scale: 0.92 }}
+                      disabled={progressBusy || goal.currentValue <= 0}
+                      onClick={() => void runProgress("decrement")}
+                      aria-label="Remover −1 do progresso"
+                      title="Remover −1"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30 cursor-pointer"
+                    >
+                      <Minus size={15} strokeWidth={3} />
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={reduced ? undefined : { scale: 0.92 }}
+                      disabled={progressBusy || goalDone}
+                      onClick={() => void runProgress("increment")}
+                      aria-label="Adicionar +1 ao progresso"
+                      title="Adicionar +1"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border transition-colors disabled:opacity-30 cursor-pointer"
+                      style={{ borderColor: `${glowColor}55`, background: withAlpha(glowColor, 0.08), color: glowColor }}
+                    >
+                      {progressBusy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} strokeWidth={3} />}
+                    </motion.button>
+                  </>
+                )}
+              </div>
+            </div>
+            <p className="mt-1.5 text-[10px] text-[var(--text-faint)]">
+              A conclusão é por período — ao mudar o dia/semana, o progresso reinicia automaticamente.
+            </p>
+          </div>
+
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</label>
             <div className="grid grid-cols-2 gap-2">
@@ -840,6 +996,61 @@ function EditGoalModal({
               <><Check size={15} strokeWidth={3} /> Salvar alterações</>
             )}
           </motion.button>
+
+          {/* Excluir meta — confirmação em duas etapas (remover tem peso). */}
+          {onDelete && (
+            <div className="pt-1">
+              <AnimatePresence mode="wait" initial={false}>
+                {confirmDelete ? (
+                  <motion.div
+                    key="confirm"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3"
+                  >
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Excluir <span className="font-semibold text-[var(--text)]">{goal.title}</span> e todo o
+                      histórico de check-ins? Esta ação não pode ser desfeita.
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(false)}
+                        disabled={deleting}
+                        className="min-h-[36px] flex-1 rounded-lg border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete()}
+                        disabled={deleting}
+                        className="flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-500/90 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:opacity-50 cursor-pointer"
+                      >
+                        {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        Excluir meta
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.button
+                    key="idle"
+                    type="button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    whileTap={reduced ? undefined : { scale: 0.97 }}
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex w-full min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-red-500/20 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10 cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                    Excluir meta
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
       </motion.div>

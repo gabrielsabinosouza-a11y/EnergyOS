@@ -553,3 +553,24 @@ export async function addLeagueXP(profileId: string, xp: number): Promise<void> 
     [weeklyXP, group.id, profileId],
   );
 }
+
+/**
+ * Recalcula o weekly_xp do usuário a partir do ledger da semana — par do
+ * `addLeagueXP` para quando XP é ESTORNADO (desmarcar meta concluída, subir o
+ * alvo). `addLeagueXP` ignora xp <= 0, então o estorno precisa deste caminho.
+ * Falha de liga nunca derruba a operação principal (é apenas um placar):
+ * erro é logado e engolido.
+ */
+export async function recomputeWeeklyLeagueXP(profileId: string): Promise<void> {
+  try {
+    const { group } = await getOrCreateUserLeagueGroup(profileId);
+    const weeklyXP = await getUserWeeklyXP(profileId);
+    await pool.query(
+      `update league_group_members set weekly_xp = $1 where league_group_id = $2 and profile_id = $3`,
+      [weeklyXP, group.id, profileId],
+    );
+  } catch (error) {
+    console.error("[league] Falha ao recalcular XP semanal após estorno:", error);
+  }
+}
+

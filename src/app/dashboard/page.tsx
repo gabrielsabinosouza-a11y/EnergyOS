@@ -8,6 +8,7 @@ import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import type { Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, StreakDayStatus } from "@/types";
+import type { GoalLogAction } from "@/lib/db/goal-logs";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
@@ -453,37 +454,58 @@ function DashboardContent() {
     }
   }
 
-  /** Otimista: atualiza o progresso local e persiste no servidor. */
-  function adjustGoalProgress(goalId: number, delta: number) {
-    setGoals((gs) =>
-      gs.map((g) => {
-        if (g.id !== goalId) return g;
-        const next = Math.max(0, Math.min(g.targetValue, Number((g.currentValue + delta).toFixed(2))));
-        return { ...g, currentValue: next };
-      }),
-    );
+  /**
+   * Otimista: aplica o check-in localmente e persiste no servidor. O servidor
+   * soma os logs do período e devolve o goal real (fonte da verdade) —
+   * concede XP/moedas na conclusão e ESTORNA ao desfazer.
+   */
+  function goalProgressAction(goalId: number, action: GoalLogAction) {
     const target = goals.find((g) => g.id === goalId);
     if (!target) return;
-    const next = Math.max(0, Math.min(target.targetValue, Number((target.currentValue + delta).toFixed(2))));
-    api.updateGoal(goalId, { currentValue: next }).then(({ goal, xpAwarded, coinsAwarded }) => {
-      setGoals((gs) =>
-        gs.map((g) => (g.id === goalId ? { ...g, ...goal } : g)),
-      );
-      // Reward popup — same alert as the missions/daily tasks, shown when the
-      // goal actually completes (server returns 0/0 for repeat completions).
-      if (xpAwarded > 0 || coinsAwarded > 0) {
-        setCoins((c) => {
-          const newBalance = c + coinsAwarded;
-          setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
-          return newBalance;
-        });
-        showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
-        api.getFocusData().then((f) => setFocusData(f));
+
+    // Palpite otimista; o servidor confirma/refina no retorno.
+    const optimistic = (g: Goal): Goal => {
+      const clamp = (v: number) => Math.max(0, Math.min(g.targetValue, Number(v.toFixed(2))));
+      switch (action) {
+        case "increment":
+          return { ...g, currentValue: clamp(g.currentValue + 1) };
+        case "decrement":
+        case "uncheck":
+          return { ...g, currentValue: clamp(g.currentValue - 1) };
+        case "toggle":
+          return { ...g, currentValue: g.targetValue <= 1 ? 1 : Math.max(1, g.currentValue) };
+        case "set":
+          return g;
       }
-    }).catch(() => {
-      // Roll back to server truth on failure.
-      api.getGoals().then((bundles) => setGoals(bundles.map((b) => b.goal))).catch(() => {});
-    });
+    };
+    setGoals((gs) => gs.map((g) => (g.id === goalId ? optimistic(g) : g)));
+
+    return api
+      .postGoalLog({ goalId, action })
+      .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
+        setGoals((gs) => gs.map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
+        // Reward popup — same alert as the missions/daily tasks, shown when the
+        // goal actually completes this period (server returns 0/0 on repeats).
+        if (xpAwarded > 0 || coinsAwarded > 0) {
+          setCoins((c) => {
+            const newBalance = c + coinsAwarded;
+            setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
+            return newBalance;
+          });
+          showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        } else if (revertedXp > 0 || revertedCoins > 0) {
+          // Desfez a conclusão do período: o servidor estornou a recompensa.
+          setCoins((c) => Math.max(0, c - revertedCoins));
+          showSuccess("Progresso atualizado — recompensa do período revertida.");
+          api.getFocusData().then((f) => setFocusData(f));
+        }
+      })
+      .catch((error) => {
+        // Roll back to server truth on failure.
+        api.getGoals().then((bundles) => setGoals(bundles.map((b) => b.goal))).catch(() => {});
+        showError(error instanceof Error ? error.message : "Não foi possível atualizar a meta.");
+      });
   }
 
   /** Criação de meta diretamente pelo modal do dashboard. */
@@ -532,10 +554,11 @@ function DashboardContent() {
         targetValue: patch.targetValue,
         frequency: patch.frequency,
       })
-      .then(({ goal, xpAwarded, coinsAwarded }) => {
+      .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
         setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
-        // Editing a goal can complete it (e.g. lowering the target below the
-        // current progress) — surface the reward popup when that happens.
+        // Editing a goal can complete it (lowering the target below the
+        // current progress) or UN-complete it (raising the target above the
+        // progress) — sync the reward in both directions.
         if (xpAwarded > 0 || coinsAwarded > 0) {
           setCoins((c) => {
             const newBalance = c + coinsAwarded;
@@ -543,6 +566,10 @@ function DashboardContent() {
             return newBalance;
           });
           showSuccess(`Meta concluída! +${xpAwarded} XP · +${coinsAwarded} moedas 🎉`);
+          api.getFocusData().then((f) => setFocusData(f));
+        } else if (revertedXp > 0 || revertedCoins > 0) {
+          setCoins((c) => Math.max(0, c - revertedCoins));
+          showSuccess("Meta atualizada — recompensa do período revertida.");
           api.getFocusData().then((f) => setFocusData(f));
         } else {
           showSuccess("Meta atualizada com sucesso.");
@@ -717,7 +744,7 @@ function DashboardContent() {
             onStart={startFocus}
             onEnd={endFocus}
           />
-          <GoalsCard goals={goals} categories={categories} onAdjust={adjustGoalProgress} onDelete={deleteGoal} onUpdate={updateGoal} onCreate={createGoal} />
+          <GoalsCard goals={goals} categories={categories} onProgress={goalProgressAction} onDelete={deleteGoal} onUpdate={updateGoal} onCreate={createGoal} />
         </section>
       </main>
 

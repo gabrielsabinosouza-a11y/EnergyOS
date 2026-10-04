@@ -26,10 +26,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.categoryId !== undefined) patch.categoryId = parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 });
     if (body.frequency !== undefined) patch.frequency = parseEnum(body.frequency, GOAL_FREQUENCY_VALUES, "Frequência");
     if (body.targetValue !== undefined) patch.targetValue = parseNumber(body.targetValue, "Valor alvo");
-    if (body.currentValue !== undefined) patch.currentValue = parseNumber(body.currentValue, "Progresso atual");
+    // `currentValue` NÃO é mais aceito aqui: o progresso é registrado como
+    // check-in (POST /api/goal-logs) e derivado dos logs do período.
 
-    const { goal, xpAwarded, coinsAwarded } = await updateGoal(profileId, goalId, patch);
-    return jsonOk({ goal, xpAwarded, coinsAwarded });
+    const { goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins } = await updateGoal(profileId, goalId, patch);
+    return jsonOk({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins });
   });
 }
 

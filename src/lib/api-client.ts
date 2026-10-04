@@ -1,5 +1,6 @@
 import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
+import type { GoalLogAction, GoalLogEntry } from "@/lib/db/goal-logs";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
 import type { StreakInfo, TaskProgress } from "@/lib/db/tasks";
@@ -112,9 +113,19 @@ export const api = {
   getGoals: () => request<Array<{ goal: GoalWithProgress; habits: HabitWithCompletion[] }>>("/api/goals"),
   createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency: GoalFrequency }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
-  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; currentValue?: number; frequency?: GoalFrequency }) =>
-    request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; frequency?: GoalFrequency }) =>
+    request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
+  /** Check-ins de metas no intervalo (heatmap/histórico/calendário). */
+  getGoalLogs: (from: string, to: string) =>
+    request<{ logs: GoalLogEntry[] }>(`/api/goal-logs?from=${from}&to=${to}`),
+  /**
+   * Aplica um check-in de meta. A conclusão NÃO é um flag: o servidor soma os
+   * logs do período (dia/semana/mês/única) e concede ou estorna a recompensa
+   * na transição — eventos equivalentes a setDoc/deleteDoc de `goalLogs`.
+   */
+  postGoalLog: (input: { goalId: number; action: GoalLogAction; date?: string; amount?: number }) =>
+    request<{ goal: GoalWithProgress; log: GoalLogEntry | null; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>("/api/goal-logs", { method: "POST", body: JSON.stringify(input) }),
   createHabit: (goalId: number, input: { title: string; frequency: HabitFrequency }) =>
     request<{ habit: HabitWithCompletion }>(`/api/goals/${goalId}/habits`, { method: "POST", body: JSON.stringify(input) }),
   updateHabit: (id: number, patch: { title?: string; active?: boolean; frequency?: HabitFrequency }) =>
