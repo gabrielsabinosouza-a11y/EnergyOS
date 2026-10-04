@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, Flame, Loader2, Target, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { HabitTracker } from "@/components/dashboard/habit-tracker";
 import { Heatmap } from "@/components/dashboard/heatmap";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -112,6 +113,8 @@ export default function ConsistenciaPage() {
             </div>
             <Heatmap year={year} days={days} today={todayIso()} />
           </section>
+
+          <HabitTracker />
         </div>
       </main>
     </AppShell>

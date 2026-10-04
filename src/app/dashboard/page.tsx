@@ -438,6 +438,10 @@ function DashboardContent() {
       const result = await api.endFocus(sessionId, focusedSeconds, false, pausedCount);
       void refreshQuests();
       api.getFocusData().then((f) => setFocusData(f));
+      // Streak cresceu? Avisa na hora: "+1 dia de sequência".
+      if (result.streak && result.streak.currentStreak > result.streak.previousStreak) {
+        setToast({ message: "+1 dia de sequência", type: "success" });
+      }
       // Re-pull the snapshot so the streak badge reflects the (possibly new)
       // streak right away — the server already ran the real-time evaluation.
       void fetchDashboard();

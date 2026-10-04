@@ -22,6 +22,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { createElement, type CSSProperties } from "react";
 import type { Category } from "@/types";
 
 /**
@@ -82,6 +83,17 @@ const CATEGORY_ICON_MAP = new Map(CATEGORY_ICON_OPTIONS.map((o) => [o.value, o.i
 export function categoryIcon(icon: string | null | undefined): LucideIcon {
   if (!icon) return Tag;
   return CATEGORY_ICON_MAP.get(icon) ?? Tag;
+}
+
+/**
+ * Resolve e devolve o ícone de uma categoria já como elemento.
+ * Existe para o React Compiler: criar um componente dinamicamente direto no
+ * corpo de um componente quebra a identidade entre renders (regra
+ * `react-hooks/static-components`); aqui a resolução acontece fora dele.
+ */
+export function renderCategoryGlyph(icon: string | null | undefined, size: number, style?: CSSProperties) {
+  const Icon = categoryIcon(icon);
+  return createElement(Icon, { size, style });
 }
 
 /**

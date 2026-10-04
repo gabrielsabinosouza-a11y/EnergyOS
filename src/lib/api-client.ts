@@ -194,7 +194,7 @@ export const api = {
   startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string, roomId?: number) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType, roomId }) }),
   endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false, pausedCount: number = 0, endedAt?: string) =>
-    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
+    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak?: { previousStreak: number; currentStreak: number } | null }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
 
   // Garden (Meu Jardim)
   getGarden: () => request<{ entries: import("@/lib/db/focus").GardenEntry[] }>("/api/garden"),

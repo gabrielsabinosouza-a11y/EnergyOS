@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       const focusedSeconds = Number(body.focusedSeconds) || 0;
       const isRoomSession = body.isRoomSession === true;
       const pausedCount = Number(body.pausedCount);
-      const { session, xpAwarded, coinsAwarded, questsUpdated } = await endFocusSession(
+      const { session, xpAwarded, coinsAwarded, questsUpdated, streak } = await endFocusSession(
         profileId,
         Number(body.sessionId),
         focusedSeconds,
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         Number.isFinite(pausedCount) && pausedCount >= 0 ? pausedCount : 0,
         typeof body.endedAt === "string" && body.endedAt ? new Date(body.endedAt).toISOString() : undefined,
       );
-      return jsonOk({ session, xpAwarded, coinsAwarded, questsUpdated });
+      return jsonOk({ session, xpAwarded, coinsAwarded, questsUpdated, streak });
     }
 
     return jsonOk({ error: "Ação inválida" }, 400);

@@ -311,7 +311,7 @@ export async function endFocusSession(
   isRoomSession: boolean = false,
   pausedCount: number = 0,
   endedAt?: string | Date,
-): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number }> {
+): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak: { previousStreak: number; currentStreak: number } | null }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
@@ -335,6 +335,7 @@ export async function endFocusSession(
       xpAwarded: Number(session.rows[0].xp_earned) || 0,
       coinsAwarded,
       questsUpdated: 0,
+      streak: null,
     };
   }
 
@@ -379,6 +380,7 @@ export async function endFocusSession(
       xpAwarded: Number(row.xp_earned) || 0,
       coinsAwarded: focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
       questsUpdated: 0,
+      streak: null,
     };
   }
 
@@ -432,8 +434,11 @@ export async function endFocusSession(
   // finalized late extends the streak on the day the focus really happened.
   const targetMinutes = session.rows[0].target_duration_minutes ?? 0;
   const completedThreshold = targetMinutes * STREAK_COMPLETION_THRESHOLD;
-  if (durationMinutes >= completedThreshold) {
-    await onFocusSessionCompleted(profileId, endDate);
+  // Streak: qualquer sessão completada (>= 1 min focado) avança a sequência;
+  // o recálculo é idempotente e roda uma única transação.
+  let streakDelta: { previousStreak: number; currentStreak: number } | null = null;
+  if (durationMinutes >= 1) {
+    streakDelta = await onFocusSessionCompleted(profileId, endDate);
   }
 
   // Garden: finalize the energy(ies) that were planted when the session started.
@@ -504,7 +509,7 @@ export async function endFocusSession(
 
   const questsUpdated = 1;
   updated.rows[0].xp_earned = xpAwarded;
-  return { session: mapFocus(updated.rows[0]), xpAwarded, coinsAwarded: coins, questsUpdated };
+  return { session: mapFocus(updated.rows[0]), xpAwarded, coinsAwarded: coins, questsUpdated, streak: streakDelta };
 }
 
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {
