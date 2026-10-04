@@ -75,6 +75,12 @@ export interface HabitCompletionResult {
   completed: boolean;
 }
 
+export interface DailyTaskHistoryEntry {
+  taskId: number;
+  date: string;
+  completedAt: string;
+}
+
 export const api = {
   // Dashboard
   getDashboard: () => request<DashboardSnapshot>("/api/dashboard"),
@@ -112,9 +118,9 @@ export const api = {
 
   // Metas e hábitos
   getGoals: () => request<Array<{ goal: GoalWithProgress; habits: HabitWithCompletion[] }>>("/api/goals"),
-  createGoal: (input: { title: string; categoryId?: number; targetValue: number; unit?: string | null; deadline?: string | null }) =>
+  createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency?: GoalFrequency; unit?: string | null; deadline?: string | null }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
-  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; unit?: string | null; deadline?: string | null }) =>
+  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; frequency?: GoalFrequency; unit?: string | null; deadline?: string | null }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
   /** Check-ins de metas no intervalo (heatmap/histórico/calendário). */
@@ -208,6 +214,8 @@ export const api = {
 
   // Daily Tasks (user-written, reset daily)
   getDailyTasks: () => request<{ tasks: UserDailyTask[]; date: string }>("/api/daily-tasks"),
+  getDailyTaskHistory: (from: string, to: string) =>
+    request<{ logs: DailyTaskHistoryEntry[] }>(`/api/daily-tasks/history?from=${from}&to=${to}`),
   createDailyTask: (title: string) =>
     request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify({ title }) }),
   toggleDailyTask: (id: number, completed: boolean) =>

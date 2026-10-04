@@ -25,7 +25,7 @@ const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 
 /**
  * Histórico de atividade de um ano: check-ins (12 requisições ao
- * streak-calendar) + goal_logs (1 intervalo). Falha parcial degrada para a
+ * streak-calendar) + check-ins de tarefas diárias (1 intervalo). Falha parcial degrada para a
  * fonte ausente; erro global só quando as duas fontes falham.
  */
 export function useActivityHistory(year: number, enabled = true): ActivityHistoryState {
@@ -35,6 +35,7 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
     best: 0,
     activeDays: 0,
     goalLogEntries: 0,
+    dailyTaskEntries: 0,
     elapsedDays: 0,
     rate: 0,
   });
@@ -59,9 +60,9 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
       try {
         const { start, end } = getYearRange(year);
         const today = todayIso();
-        const [checkinResults, goalLogsResult] = await Promise.all([
+        const [checkinResults, dailyTasksResult] = await Promise.all([
           Promise.allSettled(MONTHS.map((month) => api.getStreakCalendar(year, month))),
-          Promise.allSettled([api.getGoalLogs(start, end)]),
+          Promise.allSettled([api.getDailyTaskHistory(start, end)]),
         ]);
 
         if (cancelled) return;
@@ -77,15 +78,15 @@ export function useActivityHistory(year: number, enabled = true): ActivityHistor
         }
 
         const goalLogCounts: Record<string, number> = {};
-        const logsOutcome = goalLogsResult[0];
-        if (logsOutcome?.status === "fulfilled") {
-          for (const log of logsOutcome.value.logs) {
+        const tasksOutcome = dailyTasksResult[0];
+        if (tasksOutcome?.status === "fulfilled") {
+          for (const log of tasksOutcome.value.logs) {
             goalLogCounts[log.date] = (goalLogCounts[log.date] ?? 0) + 1;
           }
         }
 
-        const logsOk = logsOutcome?.status === "fulfilled";
-        if (checkinsOk === 0 && !logsOk) {
+        const tasksOk = tasksOutcome?.status === "fulfilled";
+        if (checkinsOk === 0 && !tasksOk) {
           throw new Error("Não foi possível carregar o histórico de atividade.");
         }
 

@@ -416,9 +416,13 @@ export function GoalsCard({
                       )}
                       <motion.button
                         whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={() => handleProgress(goal.targetValue <= 1 ? "toggle" : "increment")}
-                        aria-label={goal.targetValue <= 1 ? `Concluir ${goal.title}` : `Adicionar progresso a ${goal.title}`}
-                        title={goal.targetValue <= 1 ? "Marcar como concluída" : "Adicionar +1"}
+                        onClick={() =>
+                          handleProgress(
+                            goal.currentValue + 1 >= goal.targetValue ? "set" : "increment",
+                          )
+                        }
+                        aria-label={`Adicionar +1 a ${goal.title}`}
+                        title="Adicionar +1"
                         className="tap flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
                         style={{
                           borderColor: `${color}55`,
@@ -426,7 +430,7 @@ export function GoalsCard({
                           color,
                         }}
                       >
-                        {goal.targetValue <= 1 ? <Check size={16} strokeWidth={3} /> : <Plus size={16} strokeWidth={3} />}
+                        <Plus size={16} strokeWidth={3} />
                       </motion.button>
                     </div>
                   )}
@@ -497,6 +501,48 @@ export function GoalsCard({
             </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Metas concluídas: grupo colapsado no rodapé (current >= target) */}
+      {completedGoals.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setShowCompleted((v) => !v)}
+            aria-expanded={showCompleted}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 text-[11px] font-medium text-[var(--text-muted)] transition hover:text-[var(--text)]"
+          >
+            {showCompleted ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Concluídas ({completedGoals.length})
+          </button>
+          <AnimatePresence>
+            {showCompleted && (
+              <div className="mt-2 space-y-2">
+                {completedGoals.map((goal) => {
+                  const { color } = goal.category;
+                  return (
+                    <div
+                      key={goal.id}
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2 opacity-70"
+                    >
+                      <Check size={16} strokeWidth={3} style={{ color }} className="shrink-0" />
+                      <span
+                        className="line-clamp-1 min-w-0 flex-1 text-xs text-[var(--text-faint)] line-through"
+                        title={goal.title}
+                      >
+                        {goal.title}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
+                        {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
+                        {goal.unit ? ` ${goal.unit}` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* ── Menu dropdown portado (não fica preso ao overflow do card) ── */}
       {activeMenuGoalId !== null && menuAnchor && typeof document !== "undefined"

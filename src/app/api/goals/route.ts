@@ -2,9 +2,9 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { createGoal, listGoals, type GoalWithProgress } from "@/lib/db/goals";
+import { createGoal, listGoals, GOAL_FREQUENCY_VALUES, type GoalWithProgress } from "@/lib/db/goals";
 import { listHabits, type HabitWithCompletion } from "@/lib/db/habits";
-import { assertObject, parseNumber, parseTitle } from "@/lib/db/validation";
+import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
 import { parseOptionalDate, parseOptionalText } from "@/lib/db/optional-fields";
 import { GOAL_CREATION_XP } from "@/lib/daily-limits";
 
@@ -35,6 +35,9 @@ export async function POST(request: NextRequest) {
       title: parseTitle(body.title),
       categoryId: body.categoryId === undefined ? undefined : parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 }),
       targetValue: parseNumber(body.targetValue, "Valor alvo"),
+      frequency: body.frequency === undefined
+        ? undefined
+        : parseEnum(body.frequency, GOAL_FREQUENCY_VALUES, "Frequência"),
       unit: body.unit === undefined ? undefined : parseOptionalText(body.unit, "Unidade"),
       deadline: body.deadline === undefined ? undefined : parseOptionalDate(body.deadline, "Prazo"),
     });

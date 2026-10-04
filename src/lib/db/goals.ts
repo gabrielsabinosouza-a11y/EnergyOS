@@ -91,6 +91,7 @@ export interface CreateGoalInput {
   title: string;
   categoryId?: number;
   targetValue: number;
+  frequency?: GoalFrequency;
   /** Unidade livre opcional ("livros", "horas"...). */
   unit?: string | null;
   /** Prazo opcional (YYYY-MM-DD). */
@@ -138,13 +139,14 @@ export async function createGoal(profileId: string, input: CreateGoalInput): Pro
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
 
-  // `frequency` continua no banco (não apagamos nada), mas nasce como 'unique':
-  // meta não tem mais periodicidade.
+  const frequency = input.frequency
+    ? parseEnum(input.frequency, GOAL_FREQUENCY_VALUES, "Frequência")
+    : "unique";
   const inserted = await pool.query<{ id: string | number }>(
     `insert into goals (profile_id, title, category_id, target_value, frequency, unit, deadline)
-     values ($1, $2, $3, $4, 'unique', $5, $6::date)
+     values ($1, $2, $3, $4, $5, $6, $7::date)
      returning id`,
-    [profileId, title, categoryId, targetValue, unit, deadline],
+    [profileId, title, categoryId, targetValue, frequency, unit, deadline],
   );
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [inserted.rows[0].id]);
   const goal = withProgress(mapGoalRow(result.rows[0]));
@@ -165,6 +167,7 @@ export interface UpdateGoalPatch {
   title?: string;
   categoryId?: number;
   targetValue?: number;
+  frequency?: GoalFrequency;
   /** Unidade livre opcional ("" ou null limpa). */
   unit?: string | null;
   /** Prazo opcional (YYYY-MM-DD); null limpa. */
@@ -239,6 +242,10 @@ export async function updateGoal(
       values.push(parseNumber(patch.targetValue, "Valor alvo", { min: 0.01, max: 1_000_000 }));
       updates.push(`target_value = $${values.length}`);
     }
+    if (patch.frequency !== undefined) {
+      values.push(parseEnum(patch.frequency, GOAL_FREQUENCY_VALUES, "Frequência"));
+      updates.push(`frequency = $${values.length}`);
+    }
     if (updates.length === 0) throw new ValidationError("Nenhum campo para atualizar.");
 
     await client.query(
@@ -261,7 +268,32 @@ export async function updateGoal(
 
     // Transição de conclusão: TODA meta paga uma única vez ao atingir o alvo e tem
 // a recompensa estornada se voltar abaixo (id determinístico = xp_ledger).
-    if (nowComplete && !wasComplete) {
+    const frequencyChanged = prevGoal.frequency !== goal.frequency;
+    if (frequencyChanged) {
+      if (wasComplete) {
+        ({ revertedXp, revertedCoins } = await revertGoalCompletion(
+          client,
+          profileId,
+          prevGoal,
+          goalRewardSourceKey(goal.id, prevGoal.frequency, today),
+          today,
+        ));
+      }
+      if (nowComplete) {
+        ({ xpAwarded, coinsAwarded } = await awardGoalCompletion(
+          client,
+          profileId,
+          goal,
+          goalRewardSourceKey(goal.id, goal.frequency, today),
+        ));
+      }
+      if (wasComplete !== nowComplete) {
+        await client.query(
+          `update goals set completed_at = $2 where id = $1`,
+          [goalId, nowComplete ? new Date().toISOString() : null],
+        );
+      }
+    } else if (nowComplete && !wasComplete) {
       ({ xpAwarded, coinsAwarded } = await awardGoalCompletion(
         client,
         profileId,

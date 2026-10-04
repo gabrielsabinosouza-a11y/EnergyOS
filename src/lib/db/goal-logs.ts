@@ -68,9 +68,6 @@ export interface ApplyGoalLogResult {
  */
 export const GOAL_COMPLETE_REWARD = { coins: 50, xp: 50 } as const;
 
-/** Toda meta é "sem reset": o progresso é a soma de todos os logs. */
-export const GOAL_PERIOD_FREQUENCY = "unique" as const;
-
 /** Recompensa de conclusão (mesma para qualquer meta, pago uma única vez). */
 export function goalCompletionReward(): { xp: number; coins: number } {
   return GOAL_COMPLETE_REWARD;
@@ -78,7 +75,7 @@ export function goalCompletionReward(): { xp: number; coins: number } {
 
 /** Id determinístico da recompensa: uma meta só pode pagar uma vez (`12:u:once`). */
 export function goalRewardSourceKey(goalId: number, frequency: Goal["frequency"], dateKey: string): string {
-  return `${goalId}:${goalPeriodKey(GOAL_PERIOD_FREQUENCY, dateKey)}`;
+  return `${goalId}:${goalPeriodKey(frequency, dateKey)}`;
 }
 
 // ── Schema (lazy, idempotente, uma vez por processo) ─────────────────────────
@@ -197,7 +194,7 @@ export async function computeGoalPeriodSums(
   await ensureGoalLogsSchema();
 
   const ranges = new Map<number, DateRange | null>();
-  for (const goal of goals) ranges.set(goal.id, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
+  for (const goal of goals) ranges.set(goal.id, goalPeriodRange(goal.frequency, referenceDate));
 
   const needsAllHistory = [...ranges.values()].some((range) => range === null);
   const lowerBound = needsAllHistory
@@ -239,10 +236,10 @@ export async function computeGoalPeriodSums(
 export async function getGoalPeriodSum(
   db: Pick<PoolClient, "query">,
   profileId: string,
-  goal: Pick<Goal, "id">,
+  goal: Pick<Goal, "id" | "frequency">,
   referenceDate: string,
 ): Promise<number> {
-  return sumGoalLogs(db, profileId, goal.id, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
+  return sumGoalLogs(db, profileId, goal.id, goalPeriodRange(goal.frequency, referenceDate));
 }
 
 /** Meta única com progresso derivado dos logs do período atual. */
@@ -260,7 +257,7 @@ export async function getGoalWithLogs(
   );
   if (!result.rows[0]) throw new NotFoundError("Meta não encontrada.");
   const goal = mapGoalRow(result.rows[0]);
-  const sum = await sumGoalLogs(pool, profileId, goalId, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
+  const sum = await sumGoalLogs(pool, profileId, goalId, goalPeriodRange(goal.frequency, referenceDate));
   return withGoalProgress(goal, sum);
 }
 
@@ -360,7 +357,7 @@ async function applyOnClient(
     if (!goalRow.rows[0]) throw new NotFoundError("Meta não encontrada.");
     const goal = mapGoalRow(goalRow.rows[0]);
 
-    const range = goalPeriodRange(GOAL_PERIOD_FREQUENCY, date);
+    const range = goalPeriodRange(goal.frequency, date);
     const beforeSum = await sumGoalLogs(client, profileId, goalId, range);
     const wasDone = goal.targetValue > 0 && beforeSum >= goal.targetValue;
 

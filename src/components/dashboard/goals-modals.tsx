@@ -3,8 +3,8 @@
 /**
  * Modais de META (Nova meta / Editar meta).
  *
- * Meta = algo com FIM (alvo + prazo opcional). Não existe mais frequência aqui,
- * nem a seção "Hábitos relacionados" — hábitos é outro card.
+ * Meta = alvo com progresso único ou mensal. Hábitos relacionados não fazem
+ * parte da meta; tarefas diárias são acompanhadas no painel de consistência.
  *
  * Os dois modais usam o `Modal` compartilhado (portal em document.body) no modo
  * ESTRUTURADO: painel opaco, cabeçalho/rodapé fixos, corpo rolável, max-height
@@ -15,16 +15,18 @@ import { AnimatePresence } from "framer-motion";
 import { CalendarDays, Loader2, Minus, Plus, Trash2 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { GoalLogAction } from "@/lib/db/goal-logs";
+import type { GoalFrequency } from "@/lib/db/goals";
 import { CategoryChips } from "@/components/category-chips";
 import { CategoryForm } from "@/components/category-form";
 import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 
-/** Campos editáveis de uma meta (sem frequência). */
+/** Campos editáveis de uma meta. */
 export interface GoalDraft {
   title: string;
   categoryId: number;
   targetValue: number;
+  frequency: GoalFrequency | null;
   unit: string;
   deadline: string;
 }
@@ -34,6 +36,7 @@ export function draftFromGoal(goal: Goal): GoalDraft {
     title: goal.title,
     categoryId: goal.categoryId,
     targetValue: goal.targetValue,
+    frequency: goal.frequency === "daily" || goal.frequency === "weekly" ? null : goal.frequency,
     unit: goal.unit ?? "",
     deadline: goal.deadline ?? "",
   };
@@ -43,6 +46,7 @@ export const EMPTY_GOAL_DRAFT: GoalDraft = {
   title: "",
   categoryId: 0,
   targetValue: 1,
+  frequency: "unique",
   unit: "",
   deadline: "",
 };
@@ -69,7 +73,12 @@ interface GoalFormParts {
   error: string;
 }
 
-/** Campos comuns aos dois modais: Título, Categoria, Quantidade, Unidade, Prazo. */
+const GOAL_FREQUENCIES: { value: "unique" | "monthly"; label: string; hint: string }[] = [
+  { value: "unique", label: "Única", hint: "Única: termina quando você alcançar a quantidade" },
+  { value: "monthly", label: "Mensal", hint: "Mensal: reinicia todo mês" },
+];
+
+/** Campos comuns aos dois modais: Título, Categoria, Quantidade, Frequência, Unidade e Prazo. */
 function GoalFields({ draft, setDraft, categories, showCategoryForm, setShowCategoryForm, onCategoryCreated, error }: GoalFormParts) {
   return (
     <div className="space-y-4">
@@ -130,6 +139,31 @@ function GoalFields({ draft, setDraft, categories, showCategoryForm, setShowCate
         </Field>
       </div>
 
+      <Field label="Frequência">
+        <div className="grid grid-cols-2 gap-2">
+          {GOAL_FREQUENCIES.map((frequency) => (
+            <button
+              key={frequency.value}
+              type="button"
+              aria-pressed={draft.frequency === frequency.value}
+              onClick={() => setDraft({ ...draft, frequency: frequency.value })}
+              className={`min-h-[42px] cursor-pointer rounded-lg border px-3 text-sm font-medium transition ${
+                draft.frequency === frequency.value
+                  ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]"
+                  : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              {frequency.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-1.5 space-y-0.5">
+          {GOAL_FREQUENCIES.map((frequency) => (
+            <p key={frequency.value} className="text-[11px] text-[var(--text-faint)]">{frequency.hint}</p>
+          ))}
+        </div>
+      </Field>
+
       <Field label="Prazo" hint="Opcional. A meta aparece como atrasada quando o prazo passa sem conclusão.">
         <div className="relative">
           <CalendarDays
@@ -185,7 +219,7 @@ export function CreateGoalModal({ open, categories, onClose, onCreated }: Create
   }
 
   const handleSave = async () => {
-    if (!draft.title.trim() || !draft.categoryId || saving) return;
+    if (!draft.title.trim() || !draft.categoryId || !draft.frequency || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -193,8 +227,9 @@ export function CreateGoalModal({ open, categories, onClose, onCreated }: Create
         title: draft.title.trim(),
         categoryId: draft.categoryId,
         targetValue: Math.max(1, draft.targetValue || 1),
-        unit: draft.unit.trim() || null,
-        deadline: draft.deadline || null,
+        frequency: draft.frequency ?? "unique",
+        unit: draft.unit.trim(),
+        deadline: draft.deadline,
       });
       onCreated(goal);
     } catch (err) {
@@ -223,7 +258,7 @@ export function CreateGoalModal({ open, categories, onClose, onCreated }: Create
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={!draft.title.trim() || !draft.categoryId || saving}
+            disabled={!draft.title.trim() || !draft.categoryId || !draft.frequency || saving}
             className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : "Criar meta"}
@@ -252,13 +287,7 @@ interface EditGoalModalProps {
   categories: Category[];
   open: boolean;
   onClose: () => void;
-  onSave: (patch: {
-    title: string;
-    categoryId: number;
-    targetValue: number;
-    unit: string | null;
-    deadline: string | null;
-  }) => void;
+  onSave: (patch: GoalDraft) => void;
   /** Mesmo check-in do card: o servidor paga/estorna a recompensa. */
   onProgress?: (action: GoalLogAction) => Promise<void> | void;
   onDelete?: () => Promise<void> | void;
@@ -306,14 +335,15 @@ export function EditGoalModal({ goal, categories, open, onClose, onSave, onProgr
   };
 
   const handleSave = () => {
-    if (!draft.title.trim() || saving) return;
+    if (!draft.title.trim() || !draft.frequency || saving) return;
     setSaving(true);
     onSave({
       title: draft.title.trim(),
       categoryId: draft.categoryId,
       targetValue: Math.max(1, draft.targetValue || 1),
-      unit: draft.unit.trim() || null,
-      deadline: draft.deadline || null,
+      frequency: draft.frequency,
+      unit: draft.unit.trim(),
+      deadline: draft.deadline,
     });
   };
 
@@ -389,7 +419,7 @@ return (
             <button
               type="button"
               onClick={handleSave}
-              disabled={!draft.title.trim() || saving}
+              disabled={!draft.title.trim() || !draft.frequency || saving}
               className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : "Salvar"}
@@ -456,6 +486,11 @@ return (
           onCategoryCreated={handleCategoryCreated}
           error={error}
         />
+        {!draft.frequency ? (
+          <p className="text-[11px] text-[var(--text-faint)]">
+            Esta meta usa uma frequência antiga. Escolha Única ou Mensal para atualizá-la.
+          </p>
+        ) : null}
       </div>
     </Modal>
   );

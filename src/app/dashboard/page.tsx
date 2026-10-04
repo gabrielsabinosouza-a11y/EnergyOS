@@ -14,6 +14,7 @@ import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { DailyQuestsProvider, useDailyQuests } from "@/lib/quest-store";
 import { GoalsCard } from "@/components/dashboard/goals-card";
+import type { GoalDraft } from "@/components/dashboard/goals-modals";
 import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
@@ -536,7 +537,7 @@ function DashboardContent() {
   }
 
   /** Edição otimista de meta a partir do card do dashboard. */
-  function updateGoal(goalId: number, patch: { title: string; categoryId: number; targetValue: number; frequency: Goal["frequency"] }, prev: Goal) {
+  function updateGoal(goalId: number, patch: GoalDraft, prev: Goal) {
     setGoals((gs) =>
       (gs ?? []).map((g) =>
         g.id === goalId
@@ -545,7 +546,9 @@ function DashboardContent() {
               title: patch.title,
               categoryId: patch.categoryId,
               targetValue: patch.targetValue,
-              frequency: patch.frequency,
+              frequency: patch.frequency ?? g.frequency,
+              unit: patch.unit,
+              deadline: patch.deadline || null,
               category: categories.find((c) => c.id === patch.categoryId) ?? g.category,
             }
           : g,
@@ -556,6 +559,9 @@ function DashboardContent() {
         title: patch.title,
         categoryId: patch.categoryId,
         targetValue: patch.targetValue,
+        ...(patch.frequency ? { frequency: patch.frequency } : {}),
+        unit: patch.unit || null,
+        deadline: patch.deadline || null,
       })
       .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
         setGoals((gs) => (gs ?? []).map((g) => (g.id === goalId ? { ...g, ...goal } : g)));

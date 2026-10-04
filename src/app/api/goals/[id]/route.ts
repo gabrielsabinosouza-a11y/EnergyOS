@@ -2,8 +2,8 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { deleteGoal, updateGoal } from "@/lib/db/goals";
-import { assertObject, parseNumber, parseTitle } from "@/lib/db/validation";
+import { deleteGoal, GOAL_FREQUENCY_VALUES, updateGoal } from "@/lib/db/goals";
+import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
 import { parseOptionalDate, parseOptionalText } from "@/lib/db/optional-fields";
 
 interface RouteContext {
@@ -26,6 +26,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.title !== undefined) patch.title = parseTitle(body.title);
     if (body.categoryId !== undefined) patch.categoryId = parseNumber(body.categoryId, "Categoria", { integer: true, min: 1 });
     if (body.targetValue !== undefined) patch.targetValue = parseNumber(body.targetValue, "Valor alvo");
+    if (body.frequency !== undefined) patch.frequency = parseEnum(body.frequency, GOAL_FREQUENCY_VALUES, "Frequência");
     if (body.unit !== undefined) patch.unit = parseOptionalText(body.unit, "Unidade");
     if (body.deadline !== undefined) patch.deadline = parseOptionalDate(body.deadline, "Prazo");
     // `currentValue` NÃO é mais aceito aqui: o progresso é registrado como

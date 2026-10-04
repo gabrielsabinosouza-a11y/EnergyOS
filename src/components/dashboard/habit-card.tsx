@@ -1,8 +1,7 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
-import type { GoalWithProgress } from "@/lib/db/goals";
-import { renderCategoryGlyph } from "@/lib/categories";
+import { Check, ListTodo, Loader2 } from "lucide-react";
+import type { UserDailyTask } from "@/types";
 import { StreakIcon } from "@/components/streak-icon";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
 
@@ -28,19 +27,18 @@ function fmtDay(date: string): string {
   return `${Number(day)} de ${MONTH_LABELS[Number(month) - 1]}`;
 }
 
-/** Um dia está "feito" quando a soma dos logs do dia bate o alvo (regra do servidor). */
-function isDayDone(logs: Record<string, number>, goal: GoalWithProgress, date: string): boolean {
-  return (logs[date] ?? 0) >= Math.max(1, goal.targetValue);
+function isDayDone(logs: Record<string, boolean>, date: string): boolean {
+  return logs[date] === true;
 }
 
 /**
  * Sequência do hábito: dias consecutivos com check-in até hoje. Hoje pendente
  * NÃO quebra a sequência (pode vir a ser feito ainda); ontem perdido quebra.
  */
-function habitStreak(logs: Record<string, number>, goal: GoalWithProgress, today: string): number {
-  let cursor = isDayDone(logs, goal, today) ? today : addDaysIso(today, -1);
+function habitStreak(logs: Record<string, boolean>, today: string): number {
+  let cursor = isDayDone(logs, today) ? today : addDaysIso(today, -1);
   let streak = 0;
-  while (streak < 400 && isDayDone(logs, goal, cursor)) {
+  while (streak < 400 && isDayDone(logs, cursor)) {
     streak += 1;
     cursor = addDaysIso(cursor, -1);
   }
@@ -48,25 +46,22 @@ function habitStreak(logs: Record<string, number>, goal: GoalWithProgress, today
 }
 
 interface HabitCardProps {
-  goal: GoalWithProgress;
-  /** date (YYYY-MM-DD) → amount dos goal_logs desta meta. */
-  logs: Record<string, number>;
+  task: UserDailyTask;
+  /** Date YYYY-MM-DD -> conclusão da tarefa nesse dia. */
+  logs: Record<string, boolean>;
   /** Hoje no fuso America/Sao_Paulo. */
   today: string;
   tab: HabitTab;
-  /** `${goalId}:${date}` da ação em andamento (null = nenhuma). */
-  busyKey: string | null;
-  onToggle: (goal: GoalWithProgress, date: string, done: boolean) => void;
+  busyTaskId: number | null;
+  onToggle: (task: UserDailyTask, completed: boolean) => void;
 }
 
 /** Card de um hábito diário — ícone da categoria, sequência, check-in e mapa próprio. */
-export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCardProps) {
-  const color = goal.category?.color ?? "#71d4ff";
-  const categoryIconKey = goal.category?.icon;
-  const target = Math.max(1, goal.targetValue);
-  const streak = habitStreak(logs, goal, today);
-  const doneToday = isDayDone(logs, goal, today);
-  const todayBusy = busyKey === `${goal.id}:${today}`;
+export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: HabitCardProps) {
+  const color = ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
+  const streak = habitStreak(logs, today);
+  const doneToday = isDayDone(logs, today);
+  const todayBusy = busyTaskId === task.id;
 
   const weekStart = weekStartIso(today);
   const columns: string[][] = [];
@@ -79,10 +74,10 @@ export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCa
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-4 sm:p-5">
       <div className="flex items-center gap-3">
         <div className="shrink-0 rounded-xl p-2.5" style={{ backgroundColor: withAlpha(color, 0.15), color }}>
-          {renderCategoryGlyph(categoryIconKey, 20)}
+          <ListTodo size={20} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[15px] text-[var(--text)]">{goal.title}</p>
+          <p className="truncate font-display text-[15px] text-[var(--text)]">{task.title}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
             <StreakIcon size={13} />
             {streak} {streak === 1 ? "dia" : "dias"}
@@ -90,9 +85,9 @@ export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCa
         </div>
         <button
           type="button"
-          onClick={() => onToggle(goal, today, doneToday)}
+          onClick={() => onToggle(task, !doneToday)}
           disabled={todayBusy}
-          aria-label={doneToday ? `Desmarcar ${goal.title} hoje` : `Marcar ${goal.title} hoje`}
+          aria-label={doneToday ? `Desmarcar ${task.title} hoje` : `Marcar ${task.title} hoje`}
           title={doneToday ? "Desmarcar hoje" : "Marcar hoje"}
           className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition disabled:opacity-60"
           style={
@@ -109,7 +104,7 @@ export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCa
         <div className="mt-4 flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3.5 py-3">
           <span className="text-xs text-[var(--text-muted)]">Hoje, {fmtDay(today)}</span>
           <span className="text-xs font-semibold" style={{ color: doneToday ? color : "var(--text-muted)" }}>
-            {doneToday ? "Feito ✓" : target > 1 ? `${logs[today] ?? 0}/${target} hoje` : "Pendente"}
+            {doneToday ? "Feito ✓" : "Pendente"}
           </span>
         </div>
       )}
@@ -121,7 +116,7 @@ export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCa
               <div key={column[0]} className="grid grid-rows-7 gap-[3px]">
                 {column.map((date) => {
                   const future = date > today;
-                  const done = !future && isDayDone(logs, goal, date);
+                  const done = !future && isDayDone(logs, date);
                   const isToday = date === today;
                   const label = future
                     ? `${fmtDay(date)} — ainda vai acontecer`
@@ -157,14 +152,15 @@ export function HabitCard({ goal, logs, today, tab, busyKey, onToggle }: HabitCa
           {WEEKDAY_LABELS.map((label, i) => {
             const date = addDaysIso(weekStart, i);
             const future = date > today;
-            const done = !future && isDayDone(logs, goal, date);
-            const busy = busyKey === `${goal.id}:${date}`;
+            const done = !future && isDayDone(logs, date);
+            const busy = busyTaskId === task.id && date === today;
+            const isToday = date === today;
             return (
               <div key={label} className="flex flex-col items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => onToggle(goal, date, done)}
-                  disabled={future || busy}
+                  onClick={() => isToday && onToggle(task, !done)}
+                  disabled={future || !isToday || busy}
                   aria-label={`${done ? "Desmarcar" : "Marcar"} ${fmtDay(date)}`}
                   title={future ? `${fmtDay(date)} — ainda vai acontecer` : `${fmtDay(date)} — ${done ? "feito" : "não feito"}`}
                   className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40"

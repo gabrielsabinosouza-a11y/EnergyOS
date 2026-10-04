@@ -21,6 +21,12 @@ export interface UserDailyTask {
   completedAt?: string;
 }
 
+export interface DailyTaskHistoryEntry {
+  taskId: number;
+  date: string;
+  completedAt: string;
+}
+
 interface TemplateRow {
   id: string | number;
   title: string;
@@ -109,6 +115,38 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
     taskDate,
     isCompleted: Boolean(r["l.is_completed"]),
     completedAt: r["l.completed_at"] ? new Date(r["l.completed_at"] as string).toISOString() : undefined,
+  }));
+}
+
+export async function listDailyTaskHistory(
+  profileId: string,
+  from: string,
+  to: string,
+): Promise<DailyTaskHistoryEntry[]> {
+  parseProfileId(profileId);
+  const fromDate = parseDate(from, "Data inicial");
+  const toDate = parseDate(to, "Data final");
+  if (fromDate > toDate) throw new ValidationError("Intervalo de datas inválido.");
+  await ensureDailyTasksSchema();
+
+  const result = await pool.query<{
+    task_id: string | number;
+    date: string;
+    completed_at: Date | string;
+  }>(
+    `select l.task_id, l.log_date::text as date, l.completed_at
+     from daily_task_log l
+     join profile_daily_tasks t on t.id = l.task_id
+     where t.profile_id = $1 and l.is_completed = true
+       and l.log_date >= $2::date and l.log_date <= $3::date
+     order by l.log_date, l.task_id`,
+    [profileId, fromDate, toDate],
+  );
+
+  return result.rows.map((row) => ({
+    taskId: Number(row.task_id),
+    date: row.date,
+    completedAt: new Date(row.completed_at).toISOString(),
   }));
 }
 
@@ -207,63 +245,92 @@ export async function toggleDailyTask(
   parseProfileId(profileId);
   const date = taskDate ?? todayIso();
 
-  const t = await pool.query<TemplateRow>(
-    `select id, title from profile_daily_tasks where id = $1 and profile_id = $2`,
-    [taskId, profileId],
-  );
-  if (!t.rows[0]) {
-    throw new NotFoundError("Tarefa diária não encontrada.");
-  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`select id from profiles where id = $1 for update`, [profileId]);
 
-  const existing = await pool.query<LogRow>(
-    `select task_id, log_date, is_completed, completed_at from daily_task_log where task_id = $1 and log_date = $2::date`,
-    [taskId, date],
-  );
+    const t = await client.query<TemplateRow>(
+      `select id, title from profile_daily_tasks where id = $1 and profile_id = $2 for update`,
+      [taskId, profileId],
+    );
+    if (!t.rows[0]) throw new NotFoundError("Tarefa diária não encontrada.");
 
-  const alreadyDone = Boolean(existing.rows[0]?.is_completed);
-
-  if (completed && !alreadyDone) {
-    await pool.query(
-      `insert into daily_task_log (task_id, log_date, is_completed, completed_at)
-       values ($1, $2::date, true, now())
-       on conflict (task_id, log_date) do update set is_completed = true, completed_at = now()`,
+    const existing = await client.query<LogRow>(
+      `select task_id, log_date, is_completed, completed_at
+       from daily_task_log where task_id = $1 and log_date = $2::date for update`,
       [taskId, date],
     );
-  } else if (!completed && alreadyDone) {
-    await pool.query(
-      `update daily_task_log set is_completed = false, completed_at = null where task_id = $1 and log_date = $2::date`,
-      [taskId, date],
-    );
-  }
+    const alreadyDone = Boolean(existing.rows[0]?.is_completed);
 
-  let xpAwarded = 0;
-  let coinsAwarded = 0;
-
-  if (completed && !alreadyDone) {
-    xpAwarded = DAILY_TASK_XP;
-    coinsAwarded = DAILY_TASK_COINS;
-
-    await creditXP(profileId, "daily_task", taskId, xpAwarded, { questDate: date });
-    await recordMissionProgress(profileId, "TASKS_COMPLETED", { incrementBy: 1, questDate: date });
-    await addCoins(profileId, coinsAwarded);
-
-    const allToday = await listDailyTasks(profileId, date);
-    const allDone = allToday.length > 0 && allToday.every((t2) => t2.isCompleted);
-    if (allDone) {
-      coinsAwarded += DAILY_TASK_ALL_BONUS_COINS;
-      await addCoins(profileId, DAILY_TASK_ALL_BONUS_COINS);
+    if (completed && !alreadyDone) {
+      await client.query(
+        `insert into daily_task_log (task_id, log_date, is_completed, completed_at)
+         values ($1, $2::date, true, now())
+         on conflict (task_id, log_date) do update set is_completed = true, completed_at = now()`,
+        [taskId, date],
+      );
+    } else if (!completed && alreadyDone) {
+      await client.query(
+        `update daily_task_log set is_completed = false, completed_at = null
+         where task_id = $1 and log_date = $2::date`,
+        [taskId, date],
+      );
     }
+
+    let xpAwarded = 0;
+    let coinsAwarded = 0;
+
+    if (completed && !alreadyDone) {
+      xpAwarded = await creditXP(profileId, "daily_task", `${taskId}:${date}`, DAILY_TASK_XP, {
+        questDate: date,
+        db: client,
+      });
+      if (xpAwarded > 0) {
+        coinsAwarded = DAILY_TASK_COINS;
+        await recordMissionProgress(profileId, "TASKS_COMPLETED", {
+          incrementBy: 1,
+          questDate: date,
+          client,
+        });
+        await addCoins(profileId, coinsAwarded, client);
+
+        const allToday = await client.query<{ total: string | number; completed: string | number }>(
+          `select count(*)::int as total,
+                  count(*) filter (where l.is_completed = true)::int as completed
+           from profile_daily_tasks t
+           left join daily_task_log l on l.task_id = t.id and l.log_date = $2::date
+           where t.profile_id = $1 and t.is_active = true`,
+          [profileId, date],
+        );
+        const { total, completed: doneCount } = allToday.rows[0];
+        if (Number(total) > 0 && Number(total) === Number(doneCount)) {
+          coinsAwarded += DAILY_TASK_ALL_BONUS_COINS;
+          await addCoins(profileId, DAILY_TASK_ALL_BONUS_COINS, client);
+        }
+      }
+    }
+
+    await client.query("commit");
+
+    const task: UserDailyTask = {
+      id: taskId,
+      title: t.rows[0].title,
+      taskDate: date,
+      isCompleted: completed,
+      completedAt: completed
+        ? alreadyDone && existing.rows[0]?.completed_at
+          ? new Date(existing.rows[0].completed_at).toISOString()
+          : new Date().toISOString()
+        : undefined,
+    };
+    return { task, xpAwarded, coinsAwarded };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const task: UserDailyTask = {
-    id: taskId,
-    title: t.rows[0].title,
-    taskDate: date,
-    isCompleted: completed,
-    completedAt: completed && !alreadyDone ? new Date().toISOString() : completed ? (existing.rows[0]?.completed_at ? new Date(existing.rows[0].completed_at).toISOString() : undefined) : undefined,
-  };
-
-  return { task, xpAwarded, coinsAwarded };
 }
 
 export { todayIso } from "./dates";

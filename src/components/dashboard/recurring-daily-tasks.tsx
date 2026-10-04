@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Plus, X, Loader2, Trash2, Repeat, Pencil } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
+import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
 import { XpIcon } from "@/components/xp-icon";
@@ -85,7 +86,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
       applyMetric("XP_EARNED", { incrementBy: DAILY_TASK_XP });
     }
     try {
-      const data = await api.toggleDailyTask(task.id, completing);
+      const data = await toggleDailyTaskCompletion(task.id, completing);
       setTasks((ts) => ts.map((t) => (t.id === task.id ? data.task : t)));
       if (data.coinsAwarded > 0) {
         const newCoins = coins + data.coinsAwarded;

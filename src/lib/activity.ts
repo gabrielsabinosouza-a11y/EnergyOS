@@ -7,7 +7,7 @@ import { addDaysIso, diffDaysIso, weekStartIso, getYearRange } from "./db/dates"
  * Consolida duas fontes por dia (YYYY-MM-DD, fuso America/Sao_Paulo):
  *   - check-in do dia (daily_checkins → /api/streak-calendar): "success" |
  *     "protected" (escudo) mantêm a sequência; "lost" quebra;
- *   - check-ins de metas (goal_logs → /api/goal-logs): quantidade de registros.
+ *   - check-ins de tarefas diárias (daily_task_log → /api/daily-tasks/history).
  *
  * Todo o módulo é puro (sem I/O, sem Date()) para ser testável.
  */
@@ -15,17 +15,21 @@ export interface ActivityDay {
   date: string;
   /** Status do check-in do dia, quando houve (null = sem check-in). */
   checkin: StreakDayStatus | null;
-  /** Registros de goal_logs no dia. */
+  /** Check-ins/ações de meta registrados no dia. */
   goalLogs: number;
   /** Dia ainda não aconteceu no fuso do produto. */
   future: boolean;
+  /** @deprecated alias de goalLogs usado por integrações antigas. */
+  dailyTaskCompletions?: number;
 }
 
 export interface ActivitySource {
   /** Record<YYYY-MM-DD, StreakDayStatus> como devolvido pelo streak-calendar. */
   checkins: Record<string, StreakDayStatus>;
-  /** Record<YYYY-MM-DD, quantidade de logs>. */
-  goalLogCounts: Record<string, number>;
+  /** Record<YYYY-MM-DD, quantidade de check-ins de meta>. */
+  goalLogCounts?: Record<string, number>;
+  /** @deprecated alias de goalLogCounts usado por integrações antigas. */
+  dailyTaskCounts?: Record<string, number>;
   /** Hoje (YYYY-MM-DD) no fuso oficial do produto. */
   today: string;
 }
@@ -40,27 +44,33 @@ export interface ActivityStreaks {
 export interface ActivityStats extends ActivityStreaks {
   /** Dias com alguma atividade (check-in válido ou meta registrada). */
   activeDays: number;
-  /** Registros de goal_logs no ano. */
+  /** Check-ins de metas no ano. */
   goalLogEntries: number;
+  /** @deprecated alias de goalLogEntries usado por integrações antigas. */
+  dailyTaskEntries?: number;
   /** DiasDecorridos de 01/01 até `endpoint` (limitado ao ano). */
   elapsedDays: number;
   /** activeDays / elapsedDays, em % arredondado (0 quando sem dias). */
   rate: number;
 }
 
+function resolveGoalLogs(day: Pick<ActivityDay, "goalLogs" | "dailyTaskCompletions">): number {
+  return day.goalLogs ?? day.dailyTaskCompletions ?? 0;
+}
+
 /** Dia "conteu": check-in válido (ou protegido por escudo) OU meta registrada. */
 export function isDayActive(day: ActivityDay): boolean {
   if (day.checkin === "success" || day.checkin === "protected") return true;
-  return day.goalLogs > 0;
+  return resolveGoalLogs(day) > 0;
 }
 
 /**
  * Intensidade do dia no heatmap (0–3):
  *   score = (check-in válido ? 2 : 0) + min(goalLogs, 2)
- *   0 = nada · 1 = só 1 check-in de meta · 2 = check-in OU metas · 3 = ambos
+ *   0 = nada · 1 = só 1 meta · 2 = check-in OU metas · 3 = ambos
  */
 export function activityLevel(day: ActivityDay): 0 | 1 | 2 | 3 {
-  const score = (day.checkin === "success" || day.checkin === "protected" ? 2 : 0) + Math.min(day.goalLogs, 2);
+  const score = (day.checkin === "success" || day.checkin === "protected" ? 2 : 0) + Math.min(resolveGoalLogs(day), 2);
   if (score <= 0) return 0;
   if (score === 1) return 1;
   if (score === 2) return 2;
@@ -70,12 +80,15 @@ export function activityLevel(day: ActivityDay): 0 | 1 | 2 | 3 {
 /** Grade completa do ano (01/01 → 31/12), inclusive dias futuros. */
 export function buildActivityYear(year: number, source: ActivitySource): ActivityDay[] {
   const { start, end } = getYearRange(year);
+  const goalLogCounts = { ...(source.dailyTaskCounts ?? {}), ...(source.goalLogCounts ?? {}) };
   const days: ActivityDay[] = [];
   for (let date = start; date <= end; date = addDaysIso(date, 1)) {
+    const goalLogs = goalLogCounts[date] ?? 0;
     days.push({
       date,
       checkin: source.checkins[date] ?? null,
-      goalLogs: source.goalLogCounts[date] ?? 0,
+      goalLogs,
+      dailyTaskCompletions: goalLogs,
       future: date > source.today,
     });
   }
@@ -128,7 +141,7 @@ export function activityStats(days: ActivityDay[], endpoint: string): ActivitySt
   let goalLogEntries = 0;
   for (const day of days) {
     if (isDayActive(day)) activeDays += 1;
-    goalLogEntries += day.goalLogs;
+    goalLogEntries += resolveGoalLogs(day);
   }
 
   const elapsedDays = Math.max(0, diffDaysIso(clamped, start) + 1);
@@ -138,6 +151,7 @@ export function activityStats(days: ActivityDay[], endpoint: string): ActivitySt
     best: streaks.best,
     activeDays,
     goalLogEntries,
+    dailyTaskEntries: goalLogEntries,
     elapsedDays,
     rate: elapsedDays > 0 ? Math.round((activeDays / elapsedDays) * 100) : 0,
   };
