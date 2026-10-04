@@ -802,7 +802,7 @@ export default function GruposPage() {
 
   return (
     <AppShell>
-      <main className={`relative ${activeGroup ? "flex h-[calc(100dvh-126px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col px-5 sm:px-8 lg:h-auto lg:min-h-screen lg:px-12" : "min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
+      <main className={`relative ${activeGroup ? "flex h-[calc(100dvh-126px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col px-5 sm:px-8 lg:px-12" : "min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10"}`}>
         {!activeGroup && <Header eyebrow="Comunidade" title="Grupos" />}
 
         {error && (
@@ -1538,6 +1538,9 @@ function GroupDetailPanel({
           }}
           replyingTo={replyingTo ? groupToChatMessage(replyingTo) : null}
           onCancelReply={() => setReplyingTo(null)}
+          onReachBottom={() => {
+            api.markGroupRead(group.id).then(() => onRead(group.id)).catch(() => {});
+          }}
           inputSlot={
             <ChatComposer
               replying={Boolean(replyingTo)}
@@ -1558,7 +1561,7 @@ function GroupDetailPanel({
 
       {/* Members tab */}
       {tab === "members" && (
-        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12">
           <div className="glass-card mb-6 flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--green-bg)] text-[var(--green)]">
               <Timer size={22} />
@@ -1625,7 +1628,7 @@ function GroupDetailPanel({
 
       {/* Stats tab */}
       {tab === "stats" && (
-        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
           <WeeklyQuestWidget groupId={group.id} />
           <GroupAchievementsWidget groupId={group.id} />
           {milestones.length > 0 && <MilestoneBar milestones={milestones} totalMinutes={totalMinutes} />}
@@ -1644,7 +1647,7 @@ function GroupDetailPanel({
 
       {/* Settings tab */}
       {tab === "settings" && (
-        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:px-12 space-y-5">
           <div className="flex items-center gap-2">
             <Settings size={14} className="text-[var(--accent)]" />
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Configurações do grupo</span>

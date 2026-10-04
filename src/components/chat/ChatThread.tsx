@@ -568,7 +568,8 @@ function MessageBubble({
 
 /* ─── Main ChatThread component ────────────────────────────────────── */
 
-const SCROLL_BOTTOM_THRESHOLD = 150;
+const SCROLL_BOTTOM_THRESHOLD = 120;
+const SCROLL_BTN_THRESHOLD = 300;
 
 export interface ChatThreadProps {
   messages: ChatMessage[];
@@ -612,6 +613,9 @@ export interface ChatThreadProps {
 
   /** Called when a new message arrives while scrolled up */
   onNewMessagesClick?: () => void;
+
+  /** Called whenever the user reaches (or is at) the bottom of the list */
+  onReachBottom?: () => void;
 }
 
 export function ChatThread({
@@ -636,9 +640,13 @@ export function ChatThread({
   onNewMessagesClick,
   deleteSenderRoles,
   mentionMembers,
+  onReachBottom,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [isNearBottom, setIsNearBottom] = useState(true);
+  // "Is the user near the bottom?" lives in a ref so scroll events never
+  // trigger React re-renders; only the two floating buttons below use state.
+  const nearBottomRef = useRef(true);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const prevCountRef = useRef(messages.length);
   const [contextMenu, setContextMenu] = useState<{
@@ -657,6 +665,9 @@ export function ChatThread({
   const [pinsOpen, setPinsOpen] = useState(false);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
+  const onReachBottomRef = useRef(onReachBottom);
+  onReachBottomRef.current = onReachBottom;
+  const wasNearBottomRef = useRef(true);
   // Set true the moment the user deliberately scrolls away from the bottom
   // (reading history); the initial force-pin stops while it's true.
   const userScrolledUpRef = useRef(false);
@@ -676,11 +687,20 @@ export function ChatThread({
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distFromBottom < SCROLL_BOTTOM_THRESHOLD;
-    setIsNearBottom(near);
-    if (near) setPendingCount(0);
+    nearBottomRef.current = near;
+    if (near) {
+      setPendingCount(0);
+      // Only notify on the crossing into "near bottom", not every scroll tick.
+      if (!wasNearBottomRef.current) onReachBottomRef.current?.();
+    }
+    wasNearBottomRef.current = near;
     // "instant" scrolls never fire a scroll event with a big enough delta, so
     // use a small dead-zone to tell deliberate scrolls apart.
     userScrolledUpRef.current = !near && el.scrollTop > 0;
+    setShowScrollBtn((prev) => {
+      const next = distFromBottom > SCROLL_BTN_THRESHOLD;
+      return prev === next ? prev : next;
+    });
   }, []);
 
   // Scroll to bottom (imperative). Using direct scrollTop assignment for the
@@ -772,13 +792,18 @@ export function ChatThread({
     prevCountRef.current = messages.length;
 
     if (delta > 0) {
-      if (isNearBottom) {
+      const last = messages[messages.length - 1];
+      // Always jump when *I* sent the message; otherwise follow only if the
+      // user is already near the bottom — never yank a reader of old history.
+      if (last && last.senderId === currentUserId) {
+        scrollToBottom(true);
+      } else if (nearBottomRef.current) {
         scrollToBottom(true);
       } else {
         setPendingCount((c) => c + delta);
       }
     }
-  }, [messages.length, isNearBottom, scrollToBottom]);
+  }, [messages, scrollToBottom, currentUserId]);
 
   // Clicking pill scrolls down
   const handlePillClick = useCallback(() => {
@@ -1136,10 +1161,26 @@ export function ChatThread({
       </div>
       </div>
 
-      {/* "Novas mensagens / mensagens antigas" pill */}
+      {/* "Novas mensagens" pill */}
         <AnimatePresence>
-          {!isNearBottom && (
+          {pendingCount > 0 && (
             <NewMessagesPill count={pendingCount} onClick={handlePillClick} />
+          )}
+        </AnimatePresence>
+
+        {/* Round scroll-to-bottom button — visible when >300px from the bottom */}
+        <AnimatePresence>
+          {showScrollBtn && pendingCount === 0 && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => scrollToBottom(true)}
+              aria-label="Ir para as mensagens mais recentes"
+              className="absolute bottom-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text)] shadow-lg transition hover:brightness-125"
+            >
+              <ArrowDown size={16} />
+            </motion.button>
           )}
         </AnimatePresence>
       </div>
