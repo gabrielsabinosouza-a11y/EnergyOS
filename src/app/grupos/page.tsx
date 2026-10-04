@@ -563,6 +563,7 @@ function GroupAchievementCard({ status }: { status: GroupAchievementStatus }) {
 
       <p className="mb-1 text-xs font-medium text-[var(--text)]">{status.title}</p>
       <p className="text-[10px] text-[var(--text-faint)]">{status.description}</p>
+      <p className="mt-2 text-[10px] font-mono text-[var(--text-muted)]">{status.progressLabel}</p>
       <p className="mt-2 text-[10px]">
         {unlocked ? (
           <span className="text-[var(--accent)]">
@@ -572,6 +573,11 @@ function GroupAchievementCard({ status }: { status: GroupAchievementStatus }) {
           <span className="text-[var(--text-muted)]">🔒 {status.requirement}</span>
         )}
       </p>
+      {status.unlockedAt && (
+        <p className="mt-1 text-[10px] text-[var(--text-faint)]">
+          Desbloqueada em {new Date(status.unlockedAt).toLocaleDateString("pt-BR")}
+        </p>
+      )}
     </div>
   );
 }

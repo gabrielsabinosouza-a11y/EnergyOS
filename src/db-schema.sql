@@ -427,6 +427,17 @@ alter table group_members add column if not exists is_muted boolean not null def
 alter table group_members add column if not exists is_banned boolean not null default false;
 create index if not exists group_members_banned_idx on group_members(group_id) where is_banned;
 
+create table if not exists group_focus_room_presence (
+  group_id bigint not null references groups(id) on delete cascade,
+  room_id bigint not null references focus_rooms(id) on delete cascade,
+  profile_id text not null references profiles(id) on delete cascade,
+  started_at timestamptz not null default now(),
+  last_heartbeat timestamptz not null default now(),
+  primary key (group_id, room_id, profile_id)
+);
+create index if not exists group_focus_room_presence_fresh_idx
+  on group_focus_room_presence(group_id, room_id, last_heartbeat);
+
 -- Migrate existing groups role data (lowercase old values -> uppercase new set),
 -- and swap the single-column check constraint. Drop the old constraint first so
 -- legacy lowercase rows can be uppercased before the new check is applied.

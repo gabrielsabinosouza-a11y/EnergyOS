@@ -2,61 +2,22 @@ import pool from "../db";
 import { addCoins } from "./settings";
 import { parseProfileId } from "./validation";
 import { NotFoundError } from "../errors";
-import {
-  SYNCHRONY_ID,
-  SYNCHRONY_COINS_PER_MEMBER,
-  GROUP_ACHIEVEMENT_DEFS as SYNCHRONY_DEFS,
-} from "./group-synchrony";
+import { todayIso, weekStartIso, addDaysIso } from "./dates";
+import { getGroupRoomPresenceCounts } from "./group-room-presence";
+import { GROUP_ACHIEVEMENTS, type GroupAchievementId, type GroupAchievementUnlock } from "./group-achievement-config";
 
 // ─── Achievement definitions ──────────────────────────────────────────────────
 
-export const SQUAD_ID = "esquadrao_completo";
-export const MARATHON_ID = "maratona_coletiva";
-export const CONSISTENCY_ID = "consistencia_de_equipe";
-
-export const SQUAD_COINS_PER_MEMBER = 150;
-export const SQUAD_MIN_MEMBERS = 2;
-export const MARATHON_WEEK_MINUTES = 2000;
-export const MARATHON_COINS_PER_MEMBER = 200;
-export const CONSISTENCY_MIN_MEMBERS = 2;
-export const CONSISTENCY_CONSECUTIVE_DAYS = 5;
-export const CONSISTENCY_COINS_PER_MEMBER = 150;
-
-const GROUP_ACHIEVEMENT_COINS: Record<string, number> = {
-  [SYNCHRONY_ID]: SYNCHRONY_COINS_PER_MEMBER,
-  [SQUAD_ID]: SQUAD_COINS_PER_MEMBER,
-  [MARATHON_ID]: MARATHON_COINS_PER_MEMBER,
-  [CONSISTENCY_ID]: CONSISTENCY_COINS_PER_MEMBER,
-};
-
-export const GROUP_ACHIEVEMENT_DEFS: Record<string, { title: string; description: string; requirement: string }> = {
-  ...SYNCHRONY_DEFS,
-  [SQUAD_ID]: {
-    title: "Esquadrão Completo",
-    description: "Todos os membros ativos focando juntos na mesma sala de foco",
-    requirement: `${SQUAD_MIN_MEMBERS}+ membros focando na mesma sala ao mesmo tempo, incluindo todos os ativos`,
-  },
-  [MARATHON_ID]: {
-    title: "Maratona Coletiva",
-    description: "Muitos minutos combinados de foco em uma única semana",
-    requirement: `${MARATHON_WEEK_MINUTES.toLocaleString("pt-BR")}+ min combinados na mesma semana`,
-  },
-  [CONSISTENCY_ID]: {
-    title: "Consistência de Equipe",
-    description: "A equipe focando junto por vários dias seguidos",
-    requirement: `${CONSISTENCY_MIN_MEMBERS}+ membros focando por ${CONSISTENCY_CONSECUTIVE_DAYS} dias seguidos`,
-  },
-};
-
-export const GROUP_ACHIEVEMENT_IDS = [SYNCHRONY_ID, SQUAD_ID, MARATHON_ID, CONSISTENCY_ID];
+export const GROUP_ACHIEVEMENT_IDS = Object.values(GROUP_ACHIEVEMENTS).map((achievement) => achievement.id);
 
 export interface GroupAchievementStatus {
-  id: string;
+  id: GroupAchievementId;
   title: string;
   description: string;
   requirement: string;
   coinsPerMember: number;
   unlockedAt: string | null;
+  progressLabel: string;
 }
 
 function assertGroupId(groupId: number): void {
@@ -87,36 +48,14 @@ async function ensureGroupAchievementsSchema(): Promise<void> {
 
 // ─── Condition checks ─────────────────────────────────────────────────────────
 
-/**
- * "Esquadrão Completo": every active (non-banned) member of the group ever
- * shared a common instant inside the same focus room. A common intersection of
- * stay windows [joined_at, completed_at | gave_up_at | now()] exists iff the
- * latest join happened before the earliest departure.
- */
 async function findFullSquadOverlap(groupId: number): Promise<boolean> {
-  const result = await pool.query(
-    `select 1
-     from focus_rooms r
-     join room_participants rp
-       on rp.room_id = r.id
-     join group_members gm
-       on gm.group_id = $1 and gm.profile_id = rp.profile_id and gm.is_banned = false
-     where rp.session_status in ('focusing', 'completed')
-     group by r.id
-     having max(rp.joined_at) < min(coalesce(rp.completed_at, rp.gave_up_at, now()))
-        and count(distinct rp.profile_id) =
-            (select count(*) from group_members where group_id = $1 and is_banned = false)
-        and count(distinct rp.profile_id) >= $2
-     limit 1`,
-    [groupId, SQUAD_MIN_MEMBERS],
+  const rooms = await getGroupRoomPresenceCounts(groupId);
+  return rooms.some((room) =>
+    room.activeMemberCount >= GROUP_ACHIEVEMENTS.esquadrao_completo.minimumMembers &&
+    room.activePresentCount === room.activeMemberCount,
   );
-  return (result.rowCount ?? 0) > 0;
 }
 
-/**
- * "Maratona Coletiva": the group ever summed at least `MARATHON_WEEK_MINUTES`
- * combined focused minutes within a single calendar week (Monday start, local).
- */
 async function findMarathonWeek(groupId: number): Promise<boolean> {
   const result = await pool.query(
     `select 1
@@ -125,16 +64,11 @@ async function findMarathonWeek(groupId: number): Promise<boolean> {
      group by date_trunc('week', contributed_at at time zone 'America/Sao_Paulo')
      having sum(minutes) >= $2
      limit 1`,
-    [groupId, MARATHON_WEEK_MINUTES],
+    [groupId, GROUP_ACHIEVEMENTS.maratona_coletiva.targetMinutes],
   );
   return (result.rowCount ?? 0) > 0;
 }
 
-/**
- * "Consistência de Equipe": on at least `CONSISTENCY_CONSECUTIVE_DAYS`
- * consecutive days, at least `CONSISTENCY_MIN_MEMBERS` distinct members each
- * logged at least one focused minute.
- */
 async function findConsistencyStreak(groupId: number): Promise<boolean> {
   const result = await pool.query(
     `with member_days as (
@@ -151,7 +85,7 @@ async function findConsistencyStreak(groupId: number): Promise<boolean> {
        from team_days
      )
      select 1 from runs group by run having count(*) >= $3 limit 1`,
-    [groupId, CONSISTENCY_MIN_MEMBERS, CONSISTENCY_CONSECUTIVE_DAYS],
+    [groupId, GROUP_ACHIEVEMENTS.consistencia_de_equipe.minimumMembers, GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays],
   );
   return (result.rowCount ?? 0) > 0;
 }
@@ -163,28 +97,49 @@ async function findConsistencyStreak(groupId: number): Promise<boolean> {
  * mint the reward to every current non-banned member exactly once (the unique
  * claims constraint plus `on conflict do nothing` guards against replay).
  */
-async function unlockAndCredit(groupId: number, achievementId: string, coinsPerMember: number): Promise<void> {
-  const unlocked = await pool.query<{ unlocked_at: string }>(
-    `insert into group_achievements (id, group_id) values ($1, $2)
-     on conflict (id, group_id) do nothing
-     returning unlocked_at::text`,
-    [achievementId, groupId],
-  );
-  if (!unlocked.rows[0]) return; // already unlocked — rewards already minted
+export async function unlockAndCredit(
+  groupId: number,
+  achievementId: GroupAchievementId,
+): Promise<GroupAchievementUnlock | null> {
+  const definition = Object.values(GROUP_ACHIEVEMENTS).find((achievement) => achievement.id === achievementId);
+  if (!definition) throw new Error(`Unknown group achievement: ${achievementId}`);
 
-  const members = await pool.query<{ profile_id: string }>(
-    `select profile_id from group_members where group_id = $1 and is_banned = false`,
-    [groupId],
-  );
-  for (const { profile_id } of members.rows) {
-    const inserted = await pool.query(
-      `insert into group_achievement_claims (achievement_id, group_id, profile_id, coins_awarded)
-       values ($1, $2, $3, $4)
-       on conflict (achievement_id, group_id, profile_id) do nothing
-       returning id`,
-      [achievementId, groupId, profile_id, coinsPerMember],
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const unlocked = await client.query<{ unlocked_at: string }>(
+      `insert into group_achievements (id, group_id) values ($1, $2)
+       on conflict (id, group_id) do nothing
+       returning unlocked_at::text`,
+      [achievementId, groupId],
     );
-    if (inserted.rows[0]) await addCoins(profile_id, coinsPerMember);
+    if (!unlocked.rows[0]) {
+      await client.query("commit");
+      return null;
+    }
+
+    const members = await client.query<{ profile_id: string }>(
+      `select profile_id from group_members where group_id = $1 and is_banned = false`,
+      [groupId],
+    );
+    for (const { profile_id } of members.rows) {
+      const inserted = await client.query(
+        `insert into group_achievement_claims (achievement_id, group_id, profile_id, coins_awarded)
+         values ($1, $2, $3, $4)
+         on conflict (achievement_id, group_id, profile_id) do nothing
+         returning id`,
+        [achievementId, groupId, profile_id, definition.coinsPerMember],
+      );
+      if (inserted.rows[0]) await addCoins(profile_id, definition.coinsPerMember, client);
+    }
+
+    await client.query("commit");
+    return { id: achievementId, title: definition.title, groupId, unlockedAt: unlocked.rows[0].unlocked_at };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -194,19 +149,24 @@ async function unlockAndCredit(groupId: number, achievementId: string, coinsPerM
  * Check the three runtime group achievements after any completed focus session.
  * "Sincronia" is still handled by `checkGroupSynchrony`.
  */
-export async function checkGroupAchievements(groupId: number): Promise<void> {
+export async function checkGroupAchievements(groupId: number): Promise<GroupAchievementUnlock[]> {
   assertGroupId(groupId);
   await ensureGroupAchievementsSchema();
 
+  const unlocked: GroupAchievementUnlock[] = [];
   if (await findFullSquadOverlap(groupId)) {
-    await unlockAndCredit(groupId, SQUAD_ID, SQUAD_COINS_PER_MEMBER);
+    const item = await unlockAndCredit(groupId, GROUP_ACHIEVEMENTS.esquadrao_completo.id);
+    if (item) unlocked.push(item);
   }
   if (await findMarathonWeek(groupId)) {
-    await unlockAndCredit(groupId, MARATHON_ID, MARATHON_COINS_PER_MEMBER);
+    const item = await unlockAndCredit(groupId, GROUP_ACHIEVEMENTS.maratona_coletiva.id);
+    if (item) unlocked.push(item);
   }
   if (await findConsistencyStreak(groupId)) {
-    await unlockAndCredit(groupId, CONSISTENCY_ID, CONSISTENCY_COINS_PER_MEMBER);
+    const item = await unlockAndCredit(groupId, GROUP_ACHIEVEMENTS.consistencia_de_equipe.id);
+    if (item) unlocked.push(item);
   }
+  return unlocked;
 }
 
 /**
@@ -226,16 +186,66 @@ export async function getGroupAchievementsStatus(
     [groupId],
   );
   const unlockedAt = new Map(rows.rows.map((r) => [r.id, r.unlocked_at]));
+  const weekStart = weekStartIso(todayIso());
+  const weekEnd = addDaysIso(weekStart, 7);
+  const [presence, marathon, consistency] = await Promise.all([
+    getGroupRoomPresenceCounts(groupId),
+    pool.query<{ minutes: string | number }>(
+      `select coalesce(sum(minutes), 0)::int as minutes
+       from group_focus_contributions
+       where group_id = $1
+         and contributed_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+         and contributed_at < ($3::date)::timestamp at time zone 'America/Sao_Paulo'`,
+      [groupId, weekStart, weekEnd],
+    ),
+    pool.query<{ day: string }>(
+      `select (contributed_at at time zone 'America/Sao_Paulo')::date::text as day
+       from group_focus_contributions
+       where group_id = $1
+         and contributed_at >= ((now() at time zone 'America/Sao_Paulo')::date - 6)::timestamp at time zone 'America/Sao_Paulo'
+       group by day
+       having count(distinct profile_id) >= $2
+       order by day desc
+       limit $3`,
+      [groupId, GROUP_ACHIEVEMENTS.consistencia_de_equipe.minimumMembers, GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays],
+    ),
+  ]);
+  const maxPresent = Math.max(0, ...presence.map((room) => room.memberCount));
+  const fullSquad = presence.find((room) =>
+    room.activeMemberCount >= GROUP_ACHIEVEMENTS.esquadrao_completo.minimumMembers &&
+    room.activePresentCount === room.activeMemberCount,
+  );
+  const teamDays = new Set(consistency.rows.map((row) => row.day));
+  let consistentDays = 0;
+  let cursor = todayIso();
+  if (!teamDays.has(cursor)) cursor = addDaysIso(cursor, -1);
+  while (
+    consistentDays < GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays &&
+    teamDays.has(cursor)
+  ) {
+    consistentDays += 1;
+    cursor = addDaysIso(cursor, -1);
+  }
+  const weeklyMinutes = Number(marathon.rows[0]?.minutes ?? 0);
 
   return GROUP_ACHIEVEMENT_IDS.map((id) => {
-    const def = GROUP_ACHIEVEMENT_DEFS[id];
+    const def = Object.values(GROUP_ACHIEVEMENTS).find((achievement) => achievement.id === id);
+    if (!def) throw new Error(`Missing group achievement configuration: ${id}`);
+    const progressLabel = id === GROUP_ACHIEVEMENTS.sincronia.id
+      ? `${Math.min(maxPresent, GROUP_ACHIEVEMENTS.sincronia.targetMembers)}/${GROUP_ACHIEVEMENTS.sincronia.targetMembers} membros agora`
+      : id === GROUP_ACHIEVEMENTS.esquadrao_completo.id
+        ? `${fullSquad?.activePresentCount ?? 0}/${fullSquad?.activeMemberCount ?? 0} membros ativos agora`
+        : id === GROUP_ACHIEVEMENTS.maratona_coletiva.id
+          ? `${Math.min(weeklyMinutes, GROUP_ACHIEVEMENTS.maratona_coletiva.targetMinutes)}/${GROUP_ACHIEVEMENTS.maratona_coletiva.targetMinutes} min esta semana`
+          : `${Math.min(consistentDays, GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays)}/${GROUP_ACHIEVEMENTS.consistencia_de_equipe.consecutiveDays} dias`;
     return {
       id,
       title: def.title,
       description: def.description,
       requirement: def.requirement,
-      coinsPerMember: GROUP_ACHIEVEMENT_COINS[id],
+      coinsPerMember: def.coinsPerMember,
       unlockedAt: unlockedAt.get(id) ?? null,
+      progressLabel,
     };
   });
 }

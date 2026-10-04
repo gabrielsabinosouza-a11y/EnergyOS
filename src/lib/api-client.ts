@@ -3,6 +3,7 @@ import type { GoalFrequency } from "@/lib/db/goals";
 import type { GoalLogAction, GoalLogEntry } from "@/lib/db/goal-logs";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
 import type { GoalWithProgress } from "@/lib/db/goals";
+import type { GroupAchievementUnlock } from "@/lib/db/group-achievement-config";
 import type { StreakInfo, TaskProgress } from "@/lib/db/tasks";
 
 export interface DashboardSnapshot {
@@ -111,9 +112,9 @@ export const api = {
 
   // Metas e hábitos
   getGoals: () => request<Array<{ goal: GoalWithProgress; habits: HabitWithCompletion[] }>>("/api/goals"),
-  createGoal: (input: { title: string; categoryId?: number; targetValue: number; frequency: GoalFrequency }) =>
+  createGoal: (input: { title: string; categoryId?: number; targetValue: number; unit?: string | null; deadline?: string | null }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
-  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; frequency?: GoalFrequency }) =>
+  updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; unit?: string | null; deadline?: string | null }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
   /** Check-ins de metas no intervalo (heatmap/histórico/calendário). */
@@ -194,7 +195,7 @@ export const api = {
   startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string, roomId?: number) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType, roomId }) }),
   endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false, pausedCount: number = 0, endedAt?: string) =>
-    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak?: { previousStreak: number; currentStreak: number } | null }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
+    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak?: { previousStreak: number; currentStreak: number } | null; unlockedGroupAchievements: GroupAchievementUnlock[] }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
 
   // Garden (Meu Jardim)
   getGarden: () => request<{ entries: import("@/lib/db/focus").GardenEntry[] }>("/api/garden"),
@@ -225,6 +226,8 @@ export const api = {
   getFocusRooms: () => request<{ rooms: import("@/lib/db/focus-rooms").FocusRoom[] }>("/api/focus-rooms"),
   getFocusRoomById: (id: number) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${id}`),
   getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${code}`),
+  heartbeatFocusRoomPresence: (roomId: number) =>
+    request<{ unlockedGroupAchievements: GroupAchievementUnlock[] }>(`/api/focus-rooms/${roomId}/presence`, { method: "POST" }),
   joinFocusRoom: (code: string, energyType?: string) =>
     request<{ room?: import("@/lib/db/focus-rooms").FocusRoom; request?: import("@/lib/db/focus-rooms").RoomJoinRequest; message: string }>(`/api/focus-rooms/${code}/join`, { method: "POST", body: JSON.stringify({ energyType }) }),
   getMyFocusRoomRequests: () =>

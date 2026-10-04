@@ -471,6 +471,17 @@ export interface Goal {
   category: Category;
   targetValue: number;
   currentValue: number;
+  /** Unidade livre opcional: "livros", "horas", "páginas"... */
+  unit: string | null;
+  /** Prazo opcional (YYYY-MM-DD, fuso America/Sao_Paulo). */
+  deadline: string | null;
+  /** ISO — preenchida quando current >= target, removida se o progresso cair. */
+  completedAt: string | null;
+  /**
+   * @deprecated Metas NÃO têm mais frequência (daily/weekly/monthly). A coluna
+   * legada continua sendo lida só para migração/histórico; a UI não a usa e o
+   * servidor ignora o valor (toda meta é concluída uma única vez).
+   */
   frequency: "daily" | "weekly" | "monthly" | "unique";
 }
 

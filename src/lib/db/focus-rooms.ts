@@ -4,6 +4,7 @@ import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
 import { plantGardenEntries, getEnergyReward, endFocusSession, type GardenGrowthStage } from "./focus";
+import { clearAllGroupRoomPresence, clearGroupRoomPresence } from "./group-room-presence";
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
@@ -548,7 +549,7 @@ export async function addParticipantToRoom(roomId: number, profileId: string, se
 // Remove a participant from a room
 export async function removeParticipantFromRoom(roomId: number, profileId: string): Promise<void> {
   parseProfileId(profileId);
-  
+  await clearGroupRoomPresence(roomId, profileId);
   await pool.query(
     `delete from room_participants where room_id = $1 and profile_id = $2`,
     [roomId, profileId]
@@ -713,6 +714,7 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
     `update focus_rooms set status = 'completed', ended_at = $1 where id = $2 and status in ('active', 'paused')`,
     [now, roomId]
   );
+  await clearAllGroupRoomPresence(roomId);
   await closePendingJoinRequests(roomId);
 
   // Update participants who are still focusing to completed
@@ -756,6 +758,7 @@ export async function stopFocusRoom(roomId: number, hostProfileId: string): Prom
      where room_id = $2 and profile_id = $3`,
     [now, roomId, hostProfileId],
   );
+  await clearGroupRoomPresence(roomId, hostProfileId);
 
   const room = await pool.query<{ id: string | number; host_profile_id: string }>(
     `select id, host_profile_id from focus_rooms where id = $1`,
@@ -779,6 +782,7 @@ export async function participantGaveUp(roomId: number, profileId: string): Prom
      where room_id = $2 and profile_id = $3`,
     [now, roomId, profileId]
   );
+  await clearGroupRoomPresence(roomId, profileId);
 
   // Note: Garden withering for focus rooms is handled separately
   // via the individual session completion flow
@@ -796,6 +800,7 @@ export async function participantCompleted(roomId: number, profileId: string): P
      where room_id = $2 and profile_id = $3`,
     [now, roomId, profileId]
   );
+  await clearGroupRoomPresence(roomId, profileId);
 }
 
 // Get all focus rooms for a user.
@@ -958,6 +963,7 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
   const transitioned = Boolean(transition.rows[0]);
 
   if (transitioned) {
+    await clearAllGroupRoomPresence(roomId);
     await closePendingJoinRequests(roomId);
     await pool.query(
       `update room_participants
@@ -1088,6 +1094,7 @@ export async function restartFocusRoom(roomId: number, hostProfileId: string): P
       `update focus_rooms set status = 'restarting' where id = $1`,
       [roomId],
     );
+    await client.query(`delete from group_focus_room_presence where room_id = $1`, [roomId]);
 
     // Everyone still in the room is pending; the host (the initiator) is
     // already confirmed. Participants who left stay out (declined).

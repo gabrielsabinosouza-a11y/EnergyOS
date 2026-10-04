@@ -239,10 +239,10 @@ export async function computeGoalPeriodSums(
 export async function getGoalPeriodSum(
   db: Pick<PoolClient, "query">,
   profileId: string,
-  goal: Pick<Goal, "id" | "frequency">,
+  goal: Pick<Goal, "id">,
   referenceDate: string,
 ): Promise<number> {
-  return sumGoalLogs(db, profileId, goal.id, goalPeriodRange(goal.frequency, referenceDate));
+  return sumGoalLogs(db, profileId, goal.id, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
 }
 
 /** Meta única com progresso derivado dos logs do período atual. */
@@ -260,7 +260,7 @@ export async function getGoalWithLogs(
   );
   if (!result.rows[0]) throw new NotFoundError("Meta não encontrada.");
   const goal = mapGoalRow(result.rows[0]);
-  const sum = await sumGoalLogs(pool, profileId, goalId, goalPeriodRange(goal.frequency, referenceDate));
+  const sum = await sumGoalLogs(pool, profileId, goalId, goalPeriodRange(GOAL_PERIOD_FREQUENCY, referenceDate));
   return withGoalProgress(goal, sum);
 }
 
@@ -278,7 +278,7 @@ export async function awardGoalCompletion(
   goal: Goal,
   sourceKey: string,
 ): Promise<{ xpAwarded: number; coinsAwarded: number }> {
-  const { xp, coins } = goalCompletionReward(goal.frequency);
+  const { xp, coins } = goalCompletionReward();
   const xpAwarded = await creditXP(profileId, "goal", sourceKey, xp, { db });
   let coinsAwarded = 0;
   if (xpAwarded > 0) {
@@ -315,7 +315,7 @@ export async function revertGoalCompletion(
     `update user_xp set total_xp = greatest(0, total_xp - $2), updated_at = now() where profile_id = $1`,
     [profileId, xp],
   );
-  const { coins } = goalCompletionReward(goal.frequency);
+  const { coins } = goalCompletionReward();
   await db.query(
     `update user_settings set coins = greatest(0, coins - $2) where profile_id = $1`,
     [profileId, coins],
@@ -360,7 +360,7 @@ async function applyOnClient(
     if (!goalRow.rows[0]) throw new NotFoundError("Meta não encontrada.");
     const goal = mapGoalRow(goalRow.rows[0]);
 
-    const range = goalPeriodRange(goal.frequency, date);
+    const range = goalPeriodRange(GOAL_PERIOD_FREQUENCY, date);
     const beforeSum = await sumGoalLogs(client, profileId, goalId, range);
     const wasDone = goal.targetValue > 0 && beforeSum >= goal.targetValue;
 

@@ -9,7 +9,7 @@ import pool, {
 import type { Goal } from "@/types";
 import { ensureProfile } from "./profiles";
 import { NotFoundError } from "../errors";
-import { ValidationError, parseEnum, parseNumber, parseProfileId, parseTitle } from "./validation";
+import { ValidationError, parseDate, parseEnum, parseNumber, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { creditXP } from "./xp";
 import { todayIso } from "./dates";
@@ -66,6 +66,7 @@ async function listGoalRows(profileId: string): Promise<DbGoalRow[]> {
  */
 export async function listGoals(profileId: string): Promise<GoalWithProgress[]> {
   parseProfileId(profileId);
+  await ensureGoalsSchema();
   const goals = (await listGoalRows(profileId)).map(mapGoalRow);
   const sums = await computeGoalPeriodSums(profileId, goals, todayIso());
   return goals.map((goal) => withProgress(goal, sums.get(goal.id) ?? 0));
@@ -74,6 +75,7 @@ export async function listGoals(profileId: string): Promise<GoalWithProgress[]> 
 export async function getGoal(profileId: string, goalId: number): Promise<GoalWithProgress> {
   parseProfileId(profileId);
   assertGoalId(goalId);
+  await ensureGoalsSchema();
   const result = await pool.query<DbGoalRow>(
     `${GOAL_SELECT}
      where g.profile_id = $1 and g.id = $2`,
@@ -89,24 +91,60 @@ export interface CreateGoalInput {
   title: string;
   categoryId?: number;
   targetValue: number;
-  frequency: GoalFrequency;
+  /** Unidade livre opcional ("livros", "horas"...). */
+  unit?: string | null;
+  /** Prazo opcional (YYYY-MM-DD). */
+  deadline?: string | null;
+}
+
+/**
+ * Garante as colunas novas da meta (unidade/prazo/conclusão). Idempotente e
+ * executada uma vez por processo, no mesmo espírito do ensureGoalLogsSchema —
+ * o app funciona antes/depois da migração sem depender de ordem de deploy.
+ */
+let goalsSchemaReady: Promise<void> | null = null;
+
+export function ensureGoalsSchema(): Promise<void> {
+  goalsSchemaReady ??= (async () => {
+    await pool.query(`alter table goals add column if not exists unit text`);
+    await pool.query(`alter table goals add column if not exists deadline date`);
+    await pool.query(`alter table goals add column if not exists completed_at timestamptz`);
+    await pool.query(`create index if not exists goals_profile_deadline_idx on goals(profile_id, deadline)`);
+  })().catch((error) => {
+    goalsSchemaReady = null;
+    throw error;
+  });
+  return goalsSchemaReady;
+}
+
+/** Unidade livre: até 24 caracteres, sem espaços nas pontas. "" = sem unidade. */
+function parseUnit(unit: string | null | undefined): string | null {
+  if (unit === undefined || unit === null) return null;
+  const value = String(unit).trim();
+  if (value === "") return null;
+  if (value.length > 24) throw new ValidationError("Unidade muito longa (máx. 24).");
+  return value;
 }
 
 export async function createGoal(profileId: string, input: CreateGoalInput): Promise<GoalWithProgress> {
   parseProfileId(profileId);
+  await ensureGoalsSchema();
   await ensureProfile(profileId);
   const title = parseTitle(input.title);
-  const frequency = parseEnum(input.frequency, GOAL_FREQUENCY_VALUES, "Frequência");
   const targetValue = parseNumber(input.targetValue, "Valor alvo", { min: 0.01, max: 1_000_000 });
+  const unit = parseUnit(input.unit);
+  const deadline = input.deadline ? parseDate(input.deadline, "Prazo") : null;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
 
+  // `frequency` continua no banco (não apagamos nada), mas nasce como 'unique':
+  // meta não tem mais periodicidade.
   const inserted = await pool.query<{ id: string | number }>(
-    `insert into goals (profile_id, title, category_id, target_value, frequency)
-     values ($1, $2, $3, $4, $5)
+    `insert into goals (profile_id, title, category_id, target_value, frequency, unit, deadline)
+     values ($1, $2, $3, $4, 'unique', $5, $6::date)
      returning id`,
-    [profileId, title, categoryId, targetValue, frequency],
+    [profileId, title, categoryId, targetValue, unit, deadline],
   );
   const result = await pool.query<DbGoalRow>(`${GOAL_SELECT} where g.id = $1`, [inserted.rows[0].id]);
   const goal = withProgress(mapGoalRow(result.rows[0]));
@@ -127,7 +165,10 @@ export interface UpdateGoalPatch {
   title?: string;
   categoryId?: number;
   targetValue?: number;
-  frequency?: GoalFrequency;
+  /** Unidade livre opcional ("" ou null limpa). */
+  unit?: string | null;
+  /** Prazo opcional (YYYY-MM-DD); null limpa. */
+  deadline?: string | null;
 }
 
 export interface UpdateGoalResult {
@@ -152,6 +193,7 @@ export async function updateGoal(
 ): Promise<UpdateGoalResult> {
   parseProfileId(profileId);
   assertGoalId(goalId);
+  await ensureGoalsSchema();
 
   const client = await pool.connect();
   try {
@@ -170,7 +212,7 @@ export async function updateGoal(
     const wasComplete = prevGoal.targetValue > 0 && sumBefore >= prevGoal.targetValue;
 
     const updates: string[] = [];
-    const values: (string | number)[] = [profileId, goalId];
+    const values: (string | number | null)[] = [profileId, goalId];
 
     if (patch.title !== undefined) {
       values.push(parseTitle(patch.title));
@@ -181,9 +223,17 @@ export async function updateGoal(
       values.push(categoryId);
       updates.push(`category_id = $${values.length}`);
     }
-    if (patch.frequency !== undefined) {
-      values.push(parseEnum(patch.frequency, GOAL_FREQUENCY_VALUES, "Frequência"));
-      updates.push(`frequency = $${values.length}`);
+    if (patch.unit !== undefined) {
+      values.push(parseUnit(patch.unit));
+      updates.push(`unit = $${values.length}`);
+    }
+    if (patch.deadline !== undefined) {
+      if (patch.deadline === null) {
+        updates.push(`deadline = null`);
+      } else {
+        values.push(parseDate(patch.deadline, "Prazo"));
+        updates.push(`deadline = $${values.length}::date`);
+      }
     }
     if (patch.targetValue !== undefined) {
       values.push(parseNumber(patch.targetValue, "Valor alvo", { min: 0.01, max: 1_000_000 }));
@@ -209,17 +259,17 @@ export async function updateGoal(
     let revertedXp = 0;
     let revertedCoins = 0;
 
-    const wasRewardableComplete = prevGoal.frequency === "daily" && wasComplete;
-    const isRewardableComplete = goal.frequency === "daily" && nowComplete;
-
-    if (isRewardableComplete && !wasRewardableComplete) {
+    // Transição de conclusão: TODA meta paga uma única vez ao atingir o alvo e tem
+// a recompensa estornada se voltar abaixo (id determinístico = xp_ledger).
+    if (nowComplete && !wasComplete) {
       ({ xpAwarded, coinsAwarded } = await awardGoalCompletion(
         client,
         profileId,
         goal,
         goalRewardSourceKey(goal.id, goal.frequency, today),
       ));
-    } else if (wasRewardableComplete && !isRewardableComplete) {
+      await client.query(`update goals set completed_at = now() where id = $1`, [goalId]);
+    } else if (!nowComplete && wasComplete) {
       ({ revertedXp, revertedCoins } = await revertGoalCompletion(
         client,
         profileId,
@@ -227,6 +277,7 @@ export async function updateGoal(
         goalRewardSourceKey(goal.id, prevGoal.frequency, today),
         today,
       ));
+      await client.query(`update goals set completed_at = null where id = $1`, [goalId]);
     }
 
     await client.query("commit");

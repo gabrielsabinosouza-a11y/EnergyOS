@@ -8,9 +8,11 @@ import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 import { recordGroupContribution } from "./group-leaderboard";
-import { checkAndUnlockMilestones } from "./group-milestones";
+import { checkAndUnlockMilestones, checkGroupWeeklyQuestProgress } from "./group-milestones";
 import { checkGroupSynchrony } from "./group-synchrony";
 import { checkGroupAchievements } from "./group-achievements";
+import type { GroupAchievementUnlock } from "./group-achievement-config";
+import { clearGroupRoomPresence } from "./group-room-presence";
 import {
   FOCUS_XP_PER_MIN,
   FOCUS_COINS_MIN,
@@ -311,7 +313,7 @@ export async function endFocusSession(
   isRoomSession: boolean = false,
   pausedCount: number = 0,
   endedAt?: string | Date,
-): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak: { previousStreak: number; currentStreak: number } | null }> {
+): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak: { previousStreak: number; currentStreak: number } | null; unlockedGroupAchievements: GroupAchievementUnlock[] }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
   if (!Number.isFinite(focusedSeconds) || focusedSeconds < 0) throw new ValidationError("Duração inválida.");
@@ -336,6 +338,7 @@ export async function endFocusSession(
       coinsAwarded,
       questsUpdated: 0,
       streak: null,
+      unlockedGroupAchievements: [],
     };
   }
 
@@ -381,6 +384,7 @@ export async function endFocusSession(
       coinsAwarded: focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
       questsUpdated: 0,
       streak: null,
+      unlockedGroupAchievements: [],
     };
   }
 
@@ -486,30 +490,54 @@ export async function endFocusSession(
     await recordFocusCompanionProgress(profileId, sessionId);
   }
 
-  // Record group focus contributions for leaderboard
-  // Only record contributions for completed sessions that reached target duration
+  const unlockedGroupAchievements: GroupAchievementUnlock[] = [];
   if (durationMinutes >= completedThreshold) {
     const endedAt = updated.rows[0].ended_at;
     if (endedAt) {
-      const completedAt = typeof endedAt === "string" 
-        ? endedAt 
+      const completedAt = typeof endedAt === "string"
+        ? endedAt
         : endedAt.toISOString();
       await recordGroupContribution(profileId, sessionId, durationMinutes, completedAt);
-      // Fire-and-forget: check if any group milestone was crossed
-      const groups = await pool.query<{ group_id: number }>(
-        `select group_id from group_members where profile_id = $1`, [profileId]
-      );
-      for (const { group_id } of groups.rows) {
-        checkAndUnlockMilestones(group_id).catch(() => {});
-        checkGroupSynchrony(group_id).catch(() => {});
-        checkGroupAchievements(group_id).catch(() => {});
+    }
+  }
+
+  const groups = await pool.query<{ group_id: number }>(
+    `select group_id from group_members where profile_id = $1`,
+    [profileId],
+  );
+  for (const { group_id } of groups.rows) {
+    const checks = await Promise.allSettled([
+      checkAndUnlockMilestones(group_id),
+      checkGroupWeeklyQuestProgress(group_id),
+      checkGroupAchievements(group_id),
+      session.rows[0].room_id
+        ? checkGroupSynchrony(group_id)
+        : Promise.resolve(null),
+    ]);
+    for (const result of checks) {
+      if (result.status === "rejected") {
+        console.error(`[focus] group progression check failed for group ${group_id}`, result.reason);
+      } else if (Array.isArray(result.value)) {
+        unlockedGroupAchievements.push(...result.value);
+      } else if (result.value && typeof result.value === "object" && "title" in result.value) {
+        unlockedGroupAchievements.push(result.value);
       }
     }
+  }
+  if (session.rows[0].room_id) {
+    await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
   }
 
   const questsUpdated = 1;
   updated.rows[0].xp_earned = xpAwarded;
-  return { session: mapFocus(updated.rows[0]), xpAwarded, coinsAwarded: coins, questsUpdated, streak: streakDelta };
+  return {
+    session: mapFocus(updated.rows[0]),
+    xpAwarded,
+    coinsAwarded: coins,
+    questsUpdated,
+    streak: streakDelta,
+    unlockedGroupAchievements,
+  };
 }
 
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {

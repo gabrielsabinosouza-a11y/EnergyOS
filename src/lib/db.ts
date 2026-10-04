@@ -61,7 +61,11 @@ export interface DbGoalRow {
   title: string;
   target_value: string | number;
   current_value: string | number;
+  /** @deprecated Coluna legada. Metas não têm mais frequência: ignorada pelo servidor. */
   frequency: Goal["frequency"];
+  unit: string | null;
+  deadline: Date | string | null;
+  completed_at: Date | string | null;
   category_id: string | number;
   category_user_id: string | null;
   category_name: string;
@@ -99,8 +103,25 @@ export function mapGoalRow(row: DbGoalRow): Goal {
     },
     targetValue: Number(row.target_value),
     currentValue: Number(row.current_value),
+    unit: row.unit,
+    deadline: toIsoDate(row.deadline),
+    completedAt: toIsoTimestamp(row.completed_at),
     frequency: row.frequency,
   };
+}
+
+/** `date` do Postgres → YYYY-MM-DD (sem passar por UTC: usa a data local do banco). */
+function toIsoDate(value: Date | string | null): string | null {
+  if (value === null) return null;
+  if (typeof value === "string") return value.slice(0, 10);
+  const d = value;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** `timestamptz` do Postgres → ISO. */
+function toIsoTimestamp(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return typeof value === "string" ? value : value.toISOString();
 }
 
 export function mapHabitRow(row: DbHabitRow): HabitWithCompletion {
@@ -118,6 +139,7 @@ export function mapHabitRow(row: DbHabitRow): HabitWithCompletion {
  *  entre `db/goals.ts` (CRUD) e `db/goal-logs.ts` (check-ins por período). */
 export const GOAL_SELECT = `
   select g.id, g.profile_id, g.title, g.target_value, g.current_value, g.frequency, g.created_at,
+         g.unit, g.deadline, g.completed_at,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
          c.created_at as category_created_at

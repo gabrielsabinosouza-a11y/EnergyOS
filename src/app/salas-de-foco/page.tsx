@@ -421,6 +421,32 @@ export default function FocusRoomsPage() {
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
 
   useEffect(() => {
+    if (pageState !== "room" || currentRoom?.status !== "active" || !myProfileId) return;
+    const participant = currentRoom.participants.find((item) => item.profileId === myProfileId);
+    if (participant?.sessionStatus !== "focusing") return;
+
+    let cancelled = false;
+    const heartbeat = async () => {
+      try {
+        const result = await api.heartbeatFocusRoomPresence(currentRoom.id);
+        if (!cancelled && result.unlockedGroupAchievements.length > 0) {
+          setSuccessMessage(
+            `Conquista de grupo desbloqueada: ${result.unlockedGroupAchievements.map((item) => item.title).join(", ")}!`,
+          );
+        }
+      } catch (error) {
+        console.error("[salas] failed to update room presence", error);
+      }
+    };
+    void heartbeat();
+    const interval = window.setInterval(() => { void heartbeat(); }, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [pageState, currentRoom?.id, currentRoom?.status, myProfileId]);
+
+  useEffect(() => {
     if (!user) return;
     const poll = async () => {
       try {
@@ -573,6 +599,11 @@ export default function FocusRoomsPage() {
       const end = await api.endFocus(sess.sessionId, focusedSeconds, true, undefined, endedAtIso);
       endFocusSucceeded = true;
       setLastCoins(end.coinsAwarded);
+      if (end.unlockedGroupAchievements.length > 0) {
+        setSuccessMessage(
+          `Conquista de grupo desbloqueada: ${end.unlockedGroupAchievements.map((item) => item.title).join(", ")}!`,
+        );
+      }
       // Surface any achievement tier-up (e.g. Companheiro de Foco) immediately.
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("energyos:achievements-changed"));
