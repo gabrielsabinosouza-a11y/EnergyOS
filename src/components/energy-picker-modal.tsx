@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, Lock, Store, X } from "lucide-react";
+import { Check, Lock, X } from "lucide-react";
 import {
   AURA_DEFS,
   AURA_RARITY_COLORS,
@@ -250,7 +250,7 @@ export function EnergyPickerModal({
             onClick={handleStoreLink}
             className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-3 py-2 text-[10px] font-medium text-[var(--accent)] transition hover:bg-[var(--accent)]/20"
           >
-            <Image src="/pop-ups/store_pop-up.png" alt="" width={14} height={14} unoptimized />
+            <Image src="/pop-ups/store_pop-up.png" alt="" width={20} height={20} unoptimized />
             Ir para a Loja
           </button>
         </div>
