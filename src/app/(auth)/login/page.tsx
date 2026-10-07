@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { getRedirectResult, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -19,8 +19,27 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [passwordResetBanner, setPasswordResetBanner] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetCooldown, setResetCooldown] = useState(0);
+  const queryHandledRef = useRef(false);
 
   useEffect(() => {
+    if (!queryHandledRef.current) {
+      queryHandledRef.current = true;
+      const params = new URLSearchParams(window.location.search);
+      const requestedForgotMode = params.get("mode") === "forgot";
+      const passwordWasReset = params.get("passwordReset") === "success";
+      const resetEmail = params.get("email") ?? "";
+      queueMicrotask(() => {
+        setForgotMode(requestedForgotMode);
+        if (passwordWasReset) {
+          setPasswordResetBanner(true);
+          setEmail(resetEmail);
+        }
+      });
+    }
+
     if (!auth) return;
 
     getRedirectResult(auth)
@@ -37,6 +56,12 @@ export default function LoginPage() {
         }
       });
   }, [router]);
+
+  useEffect(() => {
+    if (resetCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResetCooldown((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resetCooldown]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -71,15 +96,16 @@ export default function LoginPage() {
   }
 
   async function handleReset() {
-    if (!email) { setError("Digite seu e-mail para recuperar a senha."); return; }
+    if (!email.trim()) { setError("Digite seu e-mail para recuperar a senha."); return; }
     setError("");
     setLoading(true);
     try {
       if (!auth) throw new Error("Firebase não configurado");
       await sendPasswordResetEmail(auth, email);
       setResetSent(true);
+      setResetCooldown(45);
     } catch {
-      setError("Não foi possível enviar o e-mail de recuperação.");
+      setError("Não foi possível enviar o link agora. Verifique sua conexão e tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -99,44 +125,62 @@ export default function LoginPage() {
           </span>
         </div>
 
-        <h1 className="font-display text-2xl tracking-[-0.03em] mb-1">Bem-vindo de volta</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Entre para continuar seu ritmo.</p>
+        <h1 className="font-display text-2xl tracking-[-0.03em] mb-1">{forgotMode ? "Recuperar senha" : "Bem-vindo de volta"}</h1>
+        <p className="text-sm text-[var(--text-muted)] mb-8">{forgotMode ? "Informe seu e-mail para receber um link de recuperação." : "Entre para continuar seu ritmo."}</p>
 
-        {resetSent && (
-          <div className="mb-5 rounded-lg border border-[#71d4ff]/20 bg-[#71d4ff]/8 px-4 py-3 text-sm text-[#71d4ff]">
-            E-mail de recuperação enviado. Verifique sua caixa de entrada.
+        {(resetSent || passwordResetBanner) && (
+          <div className="mb-5 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent-bg)] px-4 py-3 text-sm text-[var(--accent)]" role="status" aria-live="polite">
+            {passwordResetBanner ? "Senha alterada. Entre com sua nova senha." : "Se houver uma conta com este e-mail, enviaremos um link de recuperação."}
           </div>
         )}
         {error && (
           <div className="mb-5 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">{error}</div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={forgotMode ? (event) => { event.preventDefault(); void handleReset(); } : handleLogin} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">E-mail</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="auth-input" placeholder="voce@email.com" />
+            <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">E-mail</label>
+            <input id="login-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" className="auth-input" placeholder="voce@email.com" />
           </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Senha</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" placeholder="••••••••" />
-          </div>
-          <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
-            {loading ? <Loader2 size={15} className="animate-spin" /> : <>Entrar <ArrowUpRight size={15} /></>}
-          </button>
+          {!forgotMode && (
+            <>
+              <div>
+                <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Senha</label>
+                <input id="login-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" className="auth-input" placeholder="••••••••" />
+              </div>
+              <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <>Entrar <ArrowUpRight size={15} /></>}
+              </button>
+            </>
+          )}
+          {forgotMode && (
+            <button type="submit" disabled={loading || resetCooldown > 0} className="primary-button w-full justify-center mt-2">
+              {loading ? <Loader2 size={15} className="animate-spin" /> : resetCooldown > 0 ? `Enviar novamente em ${resetCooldown}s` : <>Enviar link de recuperação <ArrowUpRight size={15} /></>}
+            </button>
+          )}
         </form>
 
-        <button type="button" onClick={handleGoogleLogin} disabled={loading} className="google-button mt-3 w-full">
-          <Image src="/icons_8bits/Google.png" alt="Google" width={20} height={20} className="pixelated" />
-          Continuar com Google
-        </button>
+        {!forgotMode && (
+          <>
+            <button type="button" onClick={handleGoogleLogin} disabled={loading} className="google-button mt-3 w-full">
+              <Image src="/icons_8bits/Google.png" alt="Google" width={20} height={20} className="pixelated" />
+              Continuar com Google
+            </button>
 
-        <button onClick={handleReset} disabled={loading} className="mt-4 text-xs text-[var(--text-faint)] hover:text-[#71d4ff] transition-colors">
-          Esqueci minha senha
-        </button>
+            <button type="button" onClick={() => { setForgotMode(true); setResetSent(false); setError(""); }} className="mt-4 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+              Esqueci minha senha
+            </button>
+          </>
+        )}
 
         <p className="mt-6 border-t border-[var(--border-subtle)] pt-5 text-center text-sm text-[var(--text-muted)]">
-          Não tem conta?{" "}
-          <Link href="/cadastro" className="text-[#71d4ff] font-semibold hover:underline">Cadastre-se</Link>
+          {forgotMode ? (
+            <button type="button" onClick={() => { setForgotMode(false); setResetSent(false); setError(""); }} className="font-semibold text-[var(--accent)] hover:underline">Voltar para entrar</button>
+          ) : (
+            <>Não tem conta?{" "}
+              <Link href="/cadastro" className="text-[var(--accent)] font-semibold hover:underline">Cadastre-se</Link>
+            </>
+          )}
         </p>
       </div>
     </motion.div>

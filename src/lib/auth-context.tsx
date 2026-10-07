@@ -30,6 +30,7 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   // Mirror of `user` kept outside the render cycle so `logout` can await the
@@ -83,7 +84,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Navigate to the right screen now that the cookie is cleared and the user
     // is null. This guarantees a logged-out user always lands on the index page,
     // independent of any client-side `ifGuest` redirect.
-    const router = useRouter();
     router.replace(redirectTo);
   };
 

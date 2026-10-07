@@ -41,7 +41,9 @@ export default function CadastroPage() {
 
   function validate() {
     if (name.trim().length < 2) return "Nome deve ter ao menos 2 caracteres.";
-    if (password.length < 6) return "Senha deve ter ao menos 6 caracteres.";
+    if (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password)) {
+      return "A senha deve ter ao menos 8 caracteres, incluindo uma letra e um número.";
+    }
     if (password !== confirm) return "As senhas não coincidem.";
     return null;
   }
@@ -114,11 +116,11 @@ export default function CadastroPage() {
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Senha</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" placeholder="Mínimo 6 caracteres" />
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className="auth-input" placeholder="Mínimo 8 caracteres, com letra e número" />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Confirmar senha</label>
-            <input type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} className="auth-input" placeholder="Repita a senha" />
+            <input type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" className="auth-input" placeholder="Repita a senha" />
           </div>
           <button type="submit" disabled={loading} className="primary-button w-full justify-center mt-2">
             {loading ? <Loader2 size={15} className="animate-spin" /> : <>Criar conta <ArrowUpRight size={15} /></>}
