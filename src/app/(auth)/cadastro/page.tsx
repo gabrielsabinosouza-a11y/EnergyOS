@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, getRedirectResult, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getGoogleAuthErrorMessage } from "@/lib/firebase-auth-errors";
+import { getGoogleAuthErrorMessage, signInWithGoogle } from "@/lib/firebase-auth-errors";
 import { useAuthRedirect, setSessionCookie } from "@/lib/auth-context";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
@@ -20,6 +20,24 @@ export default function CadastroPage() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!auth) return;
+
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setSessionCookie();
+          router.replace("/dashboard");
+        }
+      })
+      .catch((e: unknown) => {
+        const code = (e as { code?: string }).code;
+        if (code !== "auth/missing-initial-state") {
+          setError(getGoogleAuthErrorMessage(e, "signup"));
+        }
+      });
+  }, [router]);
 
   function validate() {
     if (name.trim().length < 2) return "Nome deve ter ao menos 2 caracteres.";
@@ -52,10 +70,11 @@ export default function CadastroPage() {
     setLoading(true);
     try {
       if (!auth) throw new Error("Firebase não configurado");
-      const signIn = signInWithPopup(auth, new GoogleAuthProvider());
-      await signIn;
-      setSessionCookie();
-      router.push("/dashboard");
+      const result = await signInWithGoogle(auth);
+      if (result) {
+        setSessionCookie();
+        router.push("/dashboard");
+      }
     } catch (e: unknown) {
       setError(getGoogleAuthErrorMessage(e, "signup"));
     } finally {

@@ -1,4 +1,27 @@
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  type Auth,
+  type UserCredential,
+} from "firebase/auth";
+
 type GoogleAuthAction = "login" | "signup";
+
+export async function signInWithGoogle(auth: Auth): Promise<UserCredential | null> {
+  const provider = new GoogleAuthProvider();
+
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code !== "auth/popup-blocked") throw error;
+
+    console.warn("[auth/google] Popup blocked; falling back to redirect");
+    await signInWithRedirect(auth, provider);
+    return null;
+  }
+}
 
 export function getGoogleAuthErrorMessage(
   error: unknown,

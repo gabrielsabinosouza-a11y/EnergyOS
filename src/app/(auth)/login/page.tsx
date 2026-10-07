@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { getRedirectResult, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getGoogleAuthErrorMessage } from "@/lib/firebase-auth-errors";
+import { getGoogleAuthErrorMessage, signInWithGoogle } from "@/lib/firebase-auth-errors";
 import { useAuthRedirect, setSessionCookie } from "@/lib/auth-context";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
@@ -19,6 +19,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
+
+  useEffect(() => {
+    if (!auth) return;
+
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setSessionCookie();
+          router.replace("/dashboard");
+        }
+      })
+      .catch((e: unknown) => {
+        const code = (e as { code?: string }).code;
+        if (code !== "auth/missing-initial-state") {
+          setError(getGoogleAuthErrorMessage(e));
+        }
+      });
+  }, [router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -40,10 +58,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (!auth) throw new Error("Firebase não configurado");
-      const signIn = signInWithPopup(auth, new GoogleAuthProvider());
-      await signIn;
-      setSessionCookie();
-      router.push("/dashboard");
+      const result = await signInWithGoogle(auth);
+      if (result) {
+        setSessionCookie();
+        router.push("/dashboard");
+      }
     } catch (e: unknown) {
       setError(getGoogleAuthErrorMessage(e));
     } finally {
