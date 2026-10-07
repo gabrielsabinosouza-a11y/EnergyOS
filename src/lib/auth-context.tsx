@@ -52,24 +52,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const logout = async () => {
-    // Kill the session cookie first, synchronously. The proxy redirects every
-    // guest-only route (including "/") to "/dashboard" while this cookie
-    // exists, so it must be gone before the post-logout navigation runs —
-    // not just whenever Firebase's auth-state listener happens to fire.
+  const logout = async ({ redirectTo = "/" } = {}) => {
+    // Kill the session cookie first, synchronously. It must be gone before the
+    // post-logout navigation runs — not just whenever Firebase's auth-state
+    // listener happens to fire.
     clearSessionCookie();
     if (auth) {
       try {
         await signOut(auth);
       } catch {
-        // A failed Firebase call must never strand the user with a live
-        // client session; the local cleanup below still runs.
+        // A failed Firebase call must never strand the user with a live client
+        // session; the local cleanup below still runs.
       }
     }
     // Give the null user a bounded window to propagate into this provider
-    // before we resolve, so callers that navigate immediately after logout
-    // usually see the settled state. Bounded so logout can never hang, even
-    // if the Firebase listener ever stalls.
+    // before we resolve, so the state is settled when we redirect. Bounded so
+    // logout can never hang, even if the Firebase listener ever stalls.
     const deadline = Date.now() + 2500;
     while (userRef.current !== null && Date.now() < deadline) {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
@@ -81,6 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setLoading(false);
     clearSessionCookie();
+
+    // Navigate to the right screen now that the cookie is cleared and the user
+    // is null. This guarantees a logged-out user always lands on the index page,
+    // independent of any client-side `ifGuest` redirect.
+    const router = useRouter();
+    router.replace(redirectTo);
   };
 
   return (

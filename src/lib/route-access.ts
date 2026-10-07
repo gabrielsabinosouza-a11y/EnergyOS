@@ -1,4 +1,19 @@
-export const protectedRoutes = ["/dashboard", "/perfil", "/configuracoes", "/relatorio", "/api/test"] as const;
+export const protectedRoutes = [
+  "/dashboard",
+  "/dashboard/consistencia",
+  "/salas-de-foco",
+  "/amigos",
+  "/liga",
+  "/grupos",
+  "/loja",
+  "/jardim",
+  "/perfil",
+  "/perfil/[id]",
+  "/configuracoes",
+  "/relatorio",
+  "/api/test",
+] as const;
+
 export const guestOnlyRoutes = ["/", "/login", "/cadastro"] as const;
 
 export function isProtectedRoute(pathname: string) {

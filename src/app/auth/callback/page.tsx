@@ -9,13 +9,10 @@ import { Loader2 } from "lucide-react";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const [error, setError] = useState(auth ? "" : "Firebase não configurado");
 
   useEffect(() => {
-    if (!auth) {
-      setError("Firebase não configurado");
-      return;
-    }
+    if (!auth) return;
 
     getRedirectResult(auth)
       .then((result) => {

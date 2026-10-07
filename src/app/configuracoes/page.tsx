@@ -154,13 +154,10 @@ export default function ConfiguracoesPage() {
   }
 
   async function handleLogout() {
-    await logout();
-    // Safe to navigate now: `logout()` clears the session cookie synchronously
-    // and forces the null user into the shared auth context, so the proxy can
-    // no longer bounce "/" to "/dashboard" and the landing page can never see
-    // a stale signed-in user. `replace` (not `push`) also keeps the settings
-    // page out of the back-button history while logged out.
-    router.replace("/");
+    // `logout()` now centralises the navigation: it clears the session cookie,
+    // forces the null user, then `router.replace("/")` so a logged-out user
+    // always lands on the index page (no longer at "/dashboard").
+    await logout({ redirectTo: "/" });
   }
 
   async function handleDelete() {
