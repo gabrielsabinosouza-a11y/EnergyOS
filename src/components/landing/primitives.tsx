@@ -92,14 +92,17 @@ export function GlowButton({
     </Link>
   );
 }
-
 export function Section({
   children,
   id,
   className = "",
   ...props
-}: HTMLAttributes<HTMLElement> & { children: ReactNode; id?: string }) {
+}: Omit<HTMLAttributes<HTMLElement>, "onDrag"> & {
+  children: ReactNode;
+  id?: string;
+}) {
   const reducedMotion = useReducedMotion();
+
   return (
     <motion.section
       id={id}

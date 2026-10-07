@@ -1,5 +1,11 @@
-import { BarChart3, Check, Flame, Gift, Moon, Sprout, Target, Timer, Trophy, Users, Zap } from "lucide-react";
+import Image from "next/image";
+import { Gift, Trophy, Users, type LucideIcon } from "lucide-react";
 import { HabitTicker } from "./habit-ticker";
+import {
+  LANDING_ICON_SIZE_ROW,
+  LANDING_ICON_STROKE,
+  landingIcons,
+} from "./icons";
 import { LandingHero } from "./landing-hero";
 import { LandingMotion } from "./landing-motion";
 import { LandingNav } from "./landing-nav";
@@ -7,17 +13,26 @@ import { GradientHeading, GlowButton, GlassCard, GrainOverlay, LedNumber, LightB
 import { SpotlightCard } from "./spotlight-card";
 import { Storytelling } from "./storytelling";
 
-const featureCards = [
-  { icon: Timer, eyebrow: "FOCO", title: "Um espaço para focar de verdade.", text: "Use o timer de foco, acompanhe sessões e convide pessoas para salas compartilhadas.", shape: "feature-wide" },
-  { icon: Check, eyebrow: "ORGANIZAÇÃO", title: "Tarefas que saem da cabeça.", text: "Planeje a semana, organize o kanban e acompanhe tarefas recorrentes em um só lugar.", shape: "feature-tall" },
-  { icon: Target, eyebrow: "METAS E HÁBITOS", title: "Consistência sem perfeccionismo.", text: "Defina metas, acompanhe hábitos e registre o progresso com flexibilidade.", shape: "feature-card" },
-  { icon: Moon, eyebrow: "ENERGIA E BEM-ESTAR", title: "Conecte seus hábitos ao seu ritmo.", text: "Registre sono, estudo, treino e energia. Explore relatórios, calendário e tendências pessoais.", shape: "feature-card" },
-  { icon: Sprout, eyebrow: "PROGRESSO", title: "Veja seu esforço ganhar forma.", text: "Transforme sessões de foco em energias no jardim, acompanhe streaks e desbloqueie conquistas.", shape: "feature-card" },
-  { icon: Zap, eyebrow: "MISSÕES DIÁRIAS", title: "Celebre cada avanço.", text: "Complete quests, acompanhe seu XP e resgate recompensas por pequenas vitórias.", shape: "feature-card" },
+type FeatureCard = {
+  icon: LucideIcon;
+  eyebrow: string;
+  title: string;
+  text: string;
+  shape: string;
+  amber?: boolean;
+};
+
+const featureCards: FeatureCard[] = [
+  { icon: landingIcons.foco, eyebrow: "FOCO", title: "Um espaço para focar de verdade.", text: "Use o timer de foco, acompanhe sessões e convide pessoas para salas compartilhadas.", shape: "feature-wide" },
+  { icon: landingIcons.metas, eyebrow: "ORGANIZAÇÃO", title: "Tarefas que saem da cabeça.", text: "Planeje a semana, organize o kanban e acompanhe tarefas recorrentes em um só lugar.", shape: "feature-tall" },
+  { icon: landingIcons.metas, eyebrow: "METAS E HÁBITOS", title: "Consistência sem perfeccionismo.", text: "Defina metas, acompanhe hábitos e registre o progresso com flexibilidade.", shape: "feature-card" },
+  { icon: landingIcons.energia, eyebrow: "ENERGIA E BEM-ESTAR", title: "Conecte seus hábitos ao seu ritmo.", text: "Registre sono, estudo, treino e energia. Explore relatórios, calendário e tendências pessoais.", shape: "feature-card" },
+  { icon: landingIcons.constancia, eyebrow: "PROGRESSO", title: "Veja seu esforço ganhar forma.", text: "Transforme sessões de foco em energias no jardim, acompanhe streaks e desbloqueie conquistas.", shape: "feature-card", amber: true },
+  { icon: landingIcons.energia, eyebrow: "MISSÕES DIÁRIAS", title: "Celebre cada avanço.", text: "Complete quests, acompanhe seu XP e resgate recompensas por pequenas vitórias.", shape: "feature-card" },
   { icon: Users, eyebrow: "JUNTO É MAIS LEVE", title: "Compartilhe o caminho, se quiser.", text: "Encontre amigos, participe de grupos, salas de foco e ligas semanais.", shape: "feature-wide" },
   { icon: Gift, eyebrow: "PERSONALIZAÇÃO", title: "Deixe o espaço com a sua cara.", text: "Explore a loja de itens, personalize seu perfil e configure lembretes para a sua rotina.", shape: "feature-card" },
   { icon: Trophy, eyebrow: "CONQUISTAS", title: "Reconheça o caminho percorrido.", text: "Desbloqueie emblemas e acompanhe marcos individuais ou com seu grupo.", shape: "feature-card" },
-  { icon: BarChart3, eyebrow: "VISÃO PESSOAL", title: "Entenda sua evolução com contexto.", text: "Consulte calendário de consistência, resumo mensal e relatórios de sono, estudo, tarefas e metas.", shape: "feature-wide" },
+  { icon: landingIcons.clareza, eyebrow: "VISÃO PESSOAL", title: "Entenda sua evolução com contexto.", text: "Consulte calendário de consistência, resumo mensal e relatórios de sono, estudo, tarefas e metas.", shape: "feature-wide" },
 ];
 
 function TelemetryStrip() {
@@ -33,7 +48,41 @@ function TelemetryStrip() {
   );
 }
 
+function FounderEmblem() {
+  const r = 42;
+  const circ = 2 * Math.PI * r;
+  const filled = circ * 0.78;
+  const gap = circ - filled;
+
+  return (
+    <div className="founder-symbol" aria-hidden="true">
+      <svg className="founder-ring" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r={r} className="founder-ring-track" strokeWidth="6" />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          className="founder-ring-arc"
+          strokeWidth="6"
+          strokeDasharray={`${filled} ${gap}`}
+          strokeDashoffset={circ * 0.25}
+          strokeLinecap="round"
+        />
+      </svg>
+      <Image
+        src="/icons_8bits/logo.png"
+        alt=""
+        width={56}
+        height={56}
+        className="founder-logo pixelated"
+      />
+    </div>
+  );
+}
+
 export function LandingPage() {
+  const Energia = landingIcons.energia;
+
   return (
     <main className="landing-page">
       <LandingMotion />
@@ -67,9 +116,11 @@ export function LandingPage() {
           <p>Comece pelo essencial e descubra aos poucos as ferramentas que apoiam seu caminho.</p>
         </div>
         <div className="landing-feature-grid">
-          {featureCards.map(({ icon: Icon, eyebrow, title, text, shape }) => (
+          {featureCards.map(({ icon: Icon, eyebrow, title, text, shape, amber }) => (
             <SpotlightCard key={eyebrow} className={shape}>
-              <span className="feature-icon"><Icon size={18} strokeWidth={1.7} /></span>
+              <span className={`feature-icon${amber ? " is-amber" : ""}`}>
+                <Icon size={18} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
+              </span>
               <span className="landing-eyebrow">{eyebrow}</span>
               <h3>{title}</h3>
               <p>{text}</p>
@@ -84,7 +135,7 @@ export function LandingPage() {
       </Section>
 
       <Section className="landing-founder-section">
-        <div className="founder-symbol" aria-hidden="true"><span>e</span><i /></div>
+        <FounderEmblem />
         <div className="founder-copy">
           <span className="landing-eyebrow">A IDEIA POR TRÁS DO ENERGYOS</span>
           <blockquote>“Cuidar da própria rotina pode começar com uma pergunta simples: <em>como está sua energia hoje?</em>”</blockquote>
@@ -95,7 +146,10 @@ export function LandingPage() {
 
       <Section className="landing-final-section">
         <LightBeam className="final-beam" />
-        <span className="landing-eyebrow"><Zap size={13} /> SEU PRÓXIMO PASSO COMEÇA AQUI</span>
+        <span className="landing-eyebrow">
+          <Energia size={LANDING_ICON_SIZE_ROW} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
+          SEU PRÓXIMO PASSO COMEÇA AQUI
+        </span>
         <GradientHeading as="h2">Comece de onde<br /><em>você está.</em></GradientHeading>
         <p>Faça seu primeiro check-in e descubra uma forma mais consciente de organizar o dia.</p>
         <GlowButton href="/cadastro">Criar minha conta</GlowButton>
