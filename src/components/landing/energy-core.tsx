@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { EnergyCoreFallback } from "./energy-core-fallback";
 
@@ -28,18 +28,23 @@ function supportsWebGL(): boolean {
   }
 }
 
+function getClient3dCapability(): boolean {
+  const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+  const lowPowerDevice = (navigator.hardwareConcurrency || 8) < 4;
+  return !coarsePointer && !lowPowerDevice && supportsWebGL();
+}
+
+function subscribeNoop() {
+  return () => {};
+}
+
 export function EnergyCore() {
   const hostRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
   const [visible, setVisible] = useState(false);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
-  const [canRender3d, setCanRender3d] = useState(false);
-
-  useEffect(() => {
-    const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
-    const lowPowerDevice = (navigator.hardwareConcurrency || 8) < 4;
-    setCanRender3d(!reducedMotion && !coarsePointer && !lowPowerDevice && supportsWebGL());
-  }, [reducedMotion]);
+  const clientCapable = useSyncExternalStore(subscribeNoop, getClient3dCapability, () => false);
+  const canRender3d = Boolean(clientCapable && !reducedMotion);
 
   useEffect(() => {
     const element = hostRef.current;

@@ -4,6 +4,7 @@ import { Trophy, Lock, X, Plus, Users, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
+import type { LucideIcon } from "lucide-react";
 
 export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow: string }> = {
   streak: { primary: "#ff8c42", bg: "rgba(255,140,66,0.12)", glow: "rgba(255,140,66,0.4)" },
@@ -77,7 +78,8 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
   ],
 };
 
-export const ACHIEVEMENT_BADGE_ICONS: Record<string, React.ElementType> = {
+
+export const ACHIEVEMENT_BADGE_ICONS: Record<string, LucideIcon> = {
   squad_leader: Users,
   aura_collector: Sparkles,
 };

@@ -1,18 +1,9 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import * as THREE from "three";
-
-function ClearAlpha() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    gl.setClearColor(0x000000, 0);
-    scene.background = null;
-  }, [gl, scene]);
-  return null;
-}
 
 function CoreModel({ active }: { active: boolean }) {
   const group = useRef<THREE.Group>(null);
@@ -53,9 +44,11 @@ export default function EnergyCoreScene({ active }: { active: boolean }) {
       camera={{ position: [0, 0, 4.2], fov: 38 }}
       gl={{ alpha: true, antialias: true, premultipliedAlpha: false, powerPreference: "low-power" }}
       style={{ background: "transparent" }}
+      onCreated={({ gl }) => {
+        gl.setClearColor(0x000000, 0);
+      }}
       aria-label="Prévia 3D do núcleo de energia energyOS"
     >
-      <ClearAlpha />
       <ambientLight intensity={0.55} />
       <directionalLight color="#d8f5ff" intensity={1.6} position={[2, 3, 4]} />
       <CoreModel active={active} />

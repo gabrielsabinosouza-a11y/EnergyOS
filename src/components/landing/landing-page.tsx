@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Gift, Trophy, Users, type LucideIcon } from "lucide-react";
 import { HabitTicker } from "./habit-ticker";
 import {
@@ -156,7 +157,7 @@ export function LandingPage() {
       </Section>
 
       <footer className="landing-footer">
-        <a href="/" className="landing-brand"><span>energy<span>OS</span></span></a>
+        <Link href="/" className="landing-brand"><span>energy<span>OS</span></span></Link>
         <span>Seu ritmo, com clareza.</span>
         <div><a href="#como-funciona">Como funciona</a><a href="#recursos">Recursos</a><a href="/login">Entrar</a></div>
         <small>© {new Date().getFullYear()} energyOS</small>

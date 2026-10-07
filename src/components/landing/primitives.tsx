@@ -1,7 +1,15 @@
 "use client";
 
 import type { HTMLAttributes, ReactNode } from "react";
-import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
+import {
+  animate,
+  motion,
+  useInView,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type HTMLMotionProps,
+} from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
@@ -99,7 +107,7 @@ export function Section({
   id,
   className = "",
   ...props
-}: Omit<HTMLAttributes<HTMLElement>, "onDrag" | "onDragEnd"> & {
+}: HTMLMotionProps<"section"> & {
   children: ReactNode;
   id?: string;
 }) {
