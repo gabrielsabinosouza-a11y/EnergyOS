@@ -20,7 +20,7 @@ function clearSessionCookie() {
 interface AuthContextValue {
   user: FirebaseUser | null;
   loading: boolean;
-  logout: () => Promise<void>;
+  logout: (options?: { redirectTo?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
