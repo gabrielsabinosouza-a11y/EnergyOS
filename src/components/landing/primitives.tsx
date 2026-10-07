@@ -92,12 +92,14 @@ export function GlowButton({
     </Link>
   );
 }
+
+
 export function Section({
   children,
   id,
   className = "",
   ...props
-}: Omit<HTMLAttributes<HTMLElement>, "onDrag"> & {
+}: Omit<HTMLAttributes<HTMLElement>, "onDrag" | "onDragEnd"> & {
   children: ReactNode;
   id?: string;
 }) {
