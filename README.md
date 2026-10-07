@@ -33,6 +33,12 @@ Para substituir a página padrão do Firebase:
 
 Checklist manual: testar um link válido, link expirado, link já utilizado, senha fraca, senhas diferentes, envio sem conexão e layout em viewport móvel. A página trata também ações de verificação e recuperação de e-mail do Firebase.
 
+### Landing page pública
+
+A página inicial apresenta os recursos atuais do energyOS para visitantes; usuários com sessão são redirecionados ao dashboard antes da renderização. A cena 3D usa `three`, `@react-three/fiber`, `@react-three/drei` e `@react-three/postprocessing`; `lenis` fornece rolagem suave, desativada para quem prefere movimento reduzido. Em dispositivos sem WebGL, móveis ou com movimento reduzido, a página usa uma versão estática do núcleo de energia.
+
+Checklist manual: conferir navegação e seções em desktop e celular, ativar `prefers-reduced-motion`, bloquear WebGL e simular uma conexão lenta. Verificar também o redirecionamento de sessão em `/` e os links de navegação entre as seções.
+
 ### Próximos passos
 
 - Persistir check-ins e tarefas via API Routes/Server Actions + Neon.

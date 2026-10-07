@@ -1,4 +1,4 @@
-import { ArrowDown, BarChart3, Check, Flame, Gift, Heart, Moon, Sprout, Target, Timer, Trophy, Users, Zap } from "lucide-react";
+import { BarChart3, Check, Flame, Gift, Moon, Sprout, Target, Timer, Trophy, Users, Zap } from "lucide-react";
 import { HabitTicker } from "./habit-ticker";
 import { LandingHero } from "./landing-hero";
 import { LandingMotion } from "./landing-motion";

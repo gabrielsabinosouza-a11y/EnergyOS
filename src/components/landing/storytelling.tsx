@@ -76,7 +76,7 @@ export function Storytelling() {
   });
 
   return (
-    <div id="como-funciona" className="story-layout" ref={containerRef}>
+    <div className="story-layout" ref={containerRef}>
       <div className="story-copy-sticky">
         <span className="landing-eyebrow">UM DIA DE CADA VEZ</span>
         <h2 className="landing-gradient-heading">Mais clareza.<br /><em>Menos cobrança.</em></h2>

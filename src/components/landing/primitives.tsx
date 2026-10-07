@@ -83,7 +83,6 @@ export function GlowButton({
   secondary?: boolean;
   className?: string;
 }) {
-  const reducedMotion = useReducedMotion();
   return (
     <Link href={href} className={`landing-button${secondary ? " is-secondary" : ""} ${className}`}>
       <span>{children}</span>
