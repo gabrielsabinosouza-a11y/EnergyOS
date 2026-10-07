@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { getGoogleAuthErrorMessage } from "@/lib/firebase-auth-errors";
 import { useAuthRedirect, setSessionCookie } from "@/lib/auth-context";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
@@ -51,14 +52,13 @@ export default function CadastroPage() {
     setLoading(true);
     try {
       if (!auth) throw new Error("Firebase não configurado");
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const signIn = signInWithPopup(auth, new GoogleAuthProvider());
+      await signIn;
       setSessionCookie();
       router.push("/dashboard");
     } catch (e: unknown) {
-      const code = (e as { code?: string }).code;
-      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
-        setError("Não foi possível criar sua conta com o Google.");
-      }
+      setError(getGoogleAuthErrorMessage(e, "signup"));
+    } finally {
       setLoading(false);
     }
   }

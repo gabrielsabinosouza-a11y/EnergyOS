@@ -36,12 +36,26 @@ const nextConfig: NextConfig = {
   // Compilation optimizations
   compiler: {
     // Reduce bundle size in production
-    removeConsole: process.env.NODE_ENV === 'production',
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ["error"] } : false,
     // Enable styled-components optimization
     styledComponents: true,
   },
   // Enable compression
   compress: true,
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/__/auth/:path*",
+          destination: "https://energyos-bb7fd.firebaseapp.com/__/auth/:path*",
+        },
+        {
+          source: "/__/firebase/:path*",
+          destination: "https://energyos-bb7fd.firebaseapp.com/__/firebase/:path*",
+        },
+      ],
+    };
+  },
   // HTTP agent options
   httpAgentOptions: {
     keepAlive: true,

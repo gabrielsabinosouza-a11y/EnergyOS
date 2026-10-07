@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRedirectResult, GoogleAuthProvider } from "firebase/auth";
+import { getRedirectResult } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { getGoogleAuthErrorMessage } from "@/lib/firebase-auth-errors";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -27,13 +28,13 @@ export default function AuthCallbackPage() {
       })
       .catch((err: unknown) => {
         const code = (err as { code?: string })?.code;
+        const message = getGoogleAuthErrorMessage(err);
         // "missing initial state" happens when the user refreshes the
         // callback page or navigates here directly — not a real auth failure.
         if (code === "auth/missing-initial-state") {
           router.push("/login");
         } else {
-          console.error("[auth/callback] Error:", err);
-          setError("Não foi possível autenticar com o Google.");
+          setError(message);
         }
       });
   }, [router]);
