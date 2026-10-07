@@ -44,6 +44,7 @@ export function EnergyCore() {
   useEffect(() => {
     const element = hostRef.current;
     if (!element || !canRender3d) return;
+    if (typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
       setVisible(entry.isIntersecting);
       if (entry.isIntersecting) setHasBeenVisible(true);

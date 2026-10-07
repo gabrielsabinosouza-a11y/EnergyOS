@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Instrument_Serif, Inter } from "next/font/google";
+import { DM_Mono, IBM_Plex_Mono, Instrument_Serif, Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
@@ -8,10 +8,11 @@ import { ThemeProvider } from "@/lib/theme-provider";
 const inter = Inter({ subsets: ["latin"], variable: "--font-landing-body", display: "swap" });
 const instrumentSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-landing-display", display: "swap" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-landing-mono", display: "swap" });
+const dmMono = DM_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "energyOS | Seu ritmo, com clareza",
-  description: "Dashboard pessoal de energia, foco e consistência.",
+  title: "energyOS | Entenda seu ritmo. Organize seu dia.",
+  description: "Registre energia, sono e foco. Organize tarefas, acompanhe metas e cuide da sua rotina no seu próprio ritmo.",
   applicationName: "energyOS",
   appleWebApp: {
     capable: true,
@@ -39,11 +40,11 @@ const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable}`}>
+    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}>
       <head>
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body suppressHydrationWarning>
+      <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>

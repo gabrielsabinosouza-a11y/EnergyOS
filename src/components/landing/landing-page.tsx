@@ -1,12 +1,10 @@
-"use client";
-
-import { useState, type CSSProperties, type MouseEvent } from "react";
-import { motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, BarChart3, Check, Flame, Gift, Heart, Moon, Sprout, Target, Timer, Trophy, Users, Zap } from "lucide-react";
-import { EnergyCore } from "./energy-core";
+import { HabitTicker } from "./habit-ticker";
+import { LandingHero } from "./landing-hero";
 import { LandingMotion } from "./landing-motion";
 import { LandingNav } from "./landing-nav";
 import { GradientHeading, GlowButton, GlassCard, GrainOverlay, LedNumber, LightBeam, Section } from "./primitives";
+import { SpotlightCard } from "./spotlight-card";
 import { Storytelling } from "./storytelling";
 
 const featureCards = [
@@ -22,32 +20,6 @@ const featureCards = [
   { icon: BarChart3, eyebrow: "VISÃO PESSOAL", title: "Entenda sua evolução com contexto.", text: "Consulte calendário de consistência, resumo mensal e relatórios de sono, estudo, tarefas e metas.", shape: "feature-wide" },
 ];
 
-const habits = ["SONO", "FOCO", "ESTUDO", "MOVIMENTO", "PAUSAS", "HÁBITOS", "METAS", "CHECK-IN"];
-
-function FeatureCard({
-  icon: Icon,
-  eyebrow,
-  title,
-  text,
-  shape,
-}: (typeof featureCards)[number]) {
-  function trackPointer(event: MouseEvent<HTMLElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    event.currentTarget.style.setProperty("--mx", `${event.clientX - rect.left}px`);
-    event.currentTarget.style.setProperty("--my", `${event.clientY - rect.top}px`);
-  }
-
-  return (
-    <GlassCard className={`landing-feature-card ${shape}`} onMouseMove={trackPointer}>
-      <div className="feature-spotlight" aria-hidden="true" />
-      <span className="feature-icon"><Icon size={18} strokeWidth={1.7} /></span>
-      <span className="landing-eyebrow">{eyebrow}</span>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </GlassCard>
-  );
-}
-
 function TelemetryStrip() {
   return (
     <GlassCard className="telemetry-strip">
@@ -61,56 +33,14 @@ function TelemetryStrip() {
   );
 }
 
-function HabitTicker() {
-  const [paused, setPaused] = useState(false);
-  const reducedMotion = useReducedMotion();
-  return (
-    <div className={`habit-ticker${paused ? " is-paused" : ""}${reducedMotion ? " is-static" : ""}`}>
-      <div className="habit-ticker-track" aria-hidden="true">
-        {[...habits, ...habits].map((habit, index) => <span key={`${habit}-${index}`}><i />{habit}</span>)}
-      </div>
-      <button type="button" className="ticker-toggle" onClick={() => setPaused((value) => !value)} aria-pressed={paused} aria-label={paused ? "Retomar faixa de hábitos" : "Pausar faixa de hábitos"}>{paused ? "Retomar" : "Pausar"}</button>
-    </div>
-  );
-}
-
 export function LandingPage() {
-  const reducedMotion = useReducedMotion();
-  const heroStyle = { "--hero-duration": reducedMotion ? "0s" : "0.75s" } as CSSProperties;
-
   return (
-    <main className="landing-page" style={heroStyle}>
+    <main className="landing-page">
       <LandingMotion />
       <GrainOverlay />
       <LandingNav />
 
-      <section className="landing-hero" aria-labelledby="landing-title">
-        <LightBeam className="hero-beam" />
-        <div className="landing-hero-copy">
-          <motion.span className="landing-badge" initial={reducedMotion ? false : { opacity: 0, y: 12, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.65, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}>
-            <span className="badge-sparkle">✳</span> Novo: check-ins em 10 segundos
-          </motion.span>
-          <motion.h1 id="landing-title" className="landing-hero-title" initial={reducedMotion ? false : { opacity: 0, y: 20, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.75, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}>
-            Seu dia começa<br />por <em>como você está.</em>
-          </motion.h1>
-          <motion.p className="landing-hero-lede" initial={reducedMotion ? false : { opacity: 0, y: 16, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.7, delay: 0.23, ease: [0.22, 1, 0.36, 1] }}>
-            Em um minuto, registre sua energia, sono ou foco e escolha o próximo passo que cabe no seu ritmo.
-          </motion.p>
-          <motion.div className="landing-hero-actions" initial={reducedMotion ? false : { opacity: 0, y: 14, filter: "blur(8px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.7, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}>
-            <GlowButton href="/cadastro">Criar minha conta</GlowButton>
-            <GlowButton href="#como-funciona" secondary>Ver como funciona</GlowButton>
-          </motion.div>
-          <div className="hero-trust-note"><span className="trust-mark"><Heart size={13} /></span> Produtividade com presença, não pressão.</div>
-        </div>
-        <motion.div className="landing-hero-art" initial={reducedMotion ? false : { opacity: 0, scale: 0.94, filter: "blur(8px)" }} animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} transition={{ duration: 0.9, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}>
-          <div className="hero-art-orbit orbit-one" aria-hidden="true" />
-          <div className="hero-art-orbit orbit-two" aria-hidden="true" />
-          <EnergyCore />
-          <div className="hero-stat-card hero-stat-sleep"><Moon size={15} /><span><strong>SONO</strong><small>um sinal do seu dia</small></span><ArrowDown size={13} /></div>
-          <div className="hero-stat-card hero-stat-streak"><Flame size={15} /><span><strong>CONSTÂNCIA</strong><small>no seu próprio ritmo</small></span></div>
-        </motion.div>
-        <a className="hero-scroll-cue" href="#visao-geral"><span>DESCUBRA O ENERGYOS</span><ArrowDown size={14} /></a>
-      </section>
+      <LandingHero />
 
       <div id="visao-geral" className="landing-overview-wrap">
         <Section className="landing-overview">
@@ -137,7 +67,14 @@ export function LandingPage() {
           <p>Comece pelo essencial e descubra aos poucos as ferramentas que apoiam seu caminho.</p>
         </div>
         <div className="landing-feature-grid">
-          {featureCards.map((feature) => <FeatureCard key={feature.eyebrow} {...feature} />)}
+          {featureCards.map(({ icon: Icon, eyebrow, title, text, shape }) => (
+            <SpotlightCard key={eyebrow} className={shape}>
+              <span className="feature-icon"><Icon size={18} strokeWidth={1.7} /></span>
+              <span className="landing-eyebrow">{eyebrow}</span>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </SpotlightCard>
+          ))}
         </div>
       </Section>
 
