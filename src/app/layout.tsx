@@ -38,7 +38,7 @@ export const viewport: Viewport = {
 
 const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'light':t==='dark'?'dark':window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}>
       <head>

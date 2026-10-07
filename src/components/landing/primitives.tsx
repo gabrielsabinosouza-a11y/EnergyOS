@@ -101,13 +101,12 @@ export function GlowButton({
   );
 }
 
-
 export function Section({
   children,
   id,
   className = "",
   ...props
-}: HTMLMotionProps<"section"> & {
+}: Omit<HTMLAttributes<HTMLElement>, "onDrag" | "onDragEnd" | "onDragStart"> & {
   children: ReactNode;
   id?: string;
 }) {
