@@ -30,10 +30,11 @@ export default function AuthActionPage() {
   const router = useRouter();
   const reducedMotion = useReducedMotion();
   const startedRef = useRef(false);
+  const submitInProgressRef = useRef(false);
+  const oobCodeRef = useRef("");
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ActionState>("loading");
-  const [oobCode, setOobCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -63,7 +64,7 @@ export default function AuthActionPage() {
       return;
     }
 
-    setOobCode(code);
+    oobCodeRef.current = code;
     if (!auth) {
       queueMicrotask(() => {
         setError("O serviço de autenticação está indisponível no momento.");
@@ -100,7 +101,7 @@ export default function AuthActionPage() {
 
   const rules = meetsPasswordRules(password);
   const strength = Number(rules.length) + Number(rules.letter) + Number(rules.number);
-  const mismatch = confirmPassword.length > 0 && confirmPassword !== password;
+  const mismatch = confirmPassword !== password;
   const showMismatch = mismatch && (confirmTouched || submitted);
 
   useEffect(() => {
@@ -111,7 +112,7 @@ export default function AuthActionPage() {
     event.preventDefault();
     setSubmitted(true);
     setError("");
-    if (submitting) return;
+    if (submitInProgressRef.current) return;
 
     if (!rules.length || !rules.letter || !rules.number) {
       setError("Use pelo menos 8 caracteres, incluindo uma letra e um número.");
@@ -127,15 +128,17 @@ export default function AuthActionPage() {
       return;
     }
 
+    submitInProgressRef.current = true;
     setSubmitting(true);
     try {
-      await confirmPasswordReset(auth, oobCode, password);
+      await confirmPasswordReset(auth, oobCodeRef.current, password);
       setState("success");
       const loginUrl = `/login?passwordReset=success&email=${encodeURIComponent(email)}`;
       window.setTimeout(() => router.replace(loginUrl), 4000);
     } catch (submitError: unknown) {
       setError(getPasswordResetErrorMessage(submitError));
     } finally {
+      submitInProgressRef.current = false;
       setSubmitting(false);
     }
   }
@@ -166,7 +169,7 @@ export default function AuthActionPage() {
         {state === "loading" && (
           <div className="flex min-h-52 flex-col items-center justify-center gap-4 text-center" role="status" aria-live="polite">
             <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
-            <p className="text-sm text-[var(--text-muted)]">Verificando seu link...</p>
+            <h1 id="action-title" className="text-sm font-medium text-[var(--text-muted)]">Verificando seu link...</h1>
           </div>
         )}
 
@@ -246,9 +249,9 @@ export default function AuthActionPage() {
 
         {state === "success" && (
           <div className="py-3 text-center" role="status" aria-live="polite">
-            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-bg)] text-[var(--accent)] shadow-[var(--glow-cyan)]">
+            <motion.div initial={reducedMotion ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }} className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-bg)] text-[var(--accent)] shadow-[var(--glow-cyan)]">
               <Check size={26} aria-hidden="true" />
-            </div>
+            </motion.div>
             <h1 id="action-title" className="mb-2 font-display text-2xl tracking-[-0.03em]">Senha redefinida com sucesso</h1>
             <p className="mb-7 text-sm text-[var(--text-muted)]">Sua conta está protegida com a nova senha.</p>
             <button type="button" onClick={goToLogin} className="primary-button w-full justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">Ir para o login <ArrowUpRight size={15} /></button>
@@ -257,7 +260,7 @@ export default function AuthActionPage() {
 
         {state === "action-success" && (
           <div className="py-3 text-center" role="status" aria-live="polite">
-            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-bg)] text-[var(--accent)] shadow-[var(--glow-cyan)]"><Check size={26} aria-hidden="true" /></div>
+            <motion.div initial={reducedMotion ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }} className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-bg)] text-[var(--accent)] shadow-[var(--glow-cyan)]"><Check size={26} aria-hidden="true" /></motion.div>
             <h1 id="action-title" className="mb-2 font-display text-2xl tracking-[-0.03em]">Tudo certo!</h1>
             <p className="mb-7 text-sm text-[var(--text-muted)]">Sua solicitação foi confirmada.</p>
             <Link href="/login" className="primary-button w-full justify-center">Ir para o login <ArrowUpRight size={15} /></Link>
@@ -266,9 +269,9 @@ export default function AuthActionPage() {
 
         {(state === "error" || state === "invalid") && (
           <div className="py-3 text-center" role="alert" aria-live="polite">
-            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--red)]/30 bg-[var(--red-bg)] text-[var(--red)]">
+            <motion.div initial={reducedMotion ? false : { opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }} className="mx-auto mb-5 grid size-14 place-items-center rounded-full border border-[var(--red)]/30 bg-[var(--red-bg)] text-[var(--red)]">
               <AlertCircle size={26} aria-hidden="true" />
-            </div>
+            </motion.div>
             <h1 id="action-title" className="mb-2 font-display text-2xl tracking-[-0.03em]">{state === "invalid" ? "Link inválido" : "Não foi possível continuar"}</h1>
             <p className="mb-7 text-sm text-[var(--text-muted)]">{state === "invalid" ? "Este link está incompleto ou não é compatível. Solicite um novo link para continuar." : error}</p>
             <Link href="/login?mode=forgot" className="primary-button w-full justify-center">Solicitar novo link <ArrowUpRight size={15} /></Link>
