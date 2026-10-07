@@ -1,6 +1,23 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-landing-bg: var(--landing-bg);
+  --color-landing-cyan: var(--landing-cyan);
+  --color-landing-amber: var(--landing-amber);
+  --font-display: var(--font-landing-display);
+  --font-body: var(--font-landing-body);
+  --font-telemetry: var(--font-landing-mono);
+}
+
 :root { 
+  --landing-bg: #03070f;
+  --landing-bg-raised: #050d1a;
+  --landing-cyan: #6dd3ff;
+  --landing-amber: #ffb454;
+  --landing-glass: rgba(255,255,255,.04);
+  --landing-glass-border: rgba(255,255,255,.08);
+  --landing-text: #f3f7fb;
+  --landing-muted: #a9b6c5;
   --ink: #07111f; 
   --line: rgba(255,255,255,.09);
   --text: #e7f4ff;

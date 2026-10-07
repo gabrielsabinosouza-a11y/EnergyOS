@@ -1,9 +1,10 @@
 "use client";
 
 import type { HTMLAttributes, ReactNode } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 export function GlassCard({
   children,
@@ -17,14 +18,35 @@ export function LedNumber({
   value,
   label,
   amber = false,
+  countTo,
+  suffix = "",
 }: {
   value: string;
   label: string;
   amber?: boolean;
+  countTo?: number;
+  suffix?: string;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, amount: 0.8 });
+  const reducedMotion = useReducedMotion();
+  const count = useMotionValue(0);
+  const countText = useTransform(count, (value) => `${Math.round(value)}${suffix}`);
+  useEffect(() => {
+    if (!inView || countTo === undefined) return;
+    if (reducedMotion) {
+      count.set(countTo);
+      return;
+    }
+    const controls = animate(count, countTo, { duration: 1.1, ease: [0.22, 1, 0.36, 1] });
+    return controls.stop;
+  }, [count, countTo, inView, reducedMotion]);
+
   return (
-    <div className={`landing-led${amber ? " is-amber" : ""}`}>
-      <span className="landing-led-value" aria-label={value}>{value}</span>
+    <div ref={ref} className={`landing-led${amber ? " is-amber" : ""}`}>
+      {countTo === undefined
+        ? <span className="landing-led-value" data-led={value} aria-label={value}>{value}</span>
+        : <motion.span className="landing-led-value" data-led={value} aria-label={value}>{countText}</motion.span>}
       <span className="landing-led-label">{label}</span>
     </div>
   );
@@ -65,14 +87,9 @@ export function GlowButton({
   return (
     <Link href={href} className={`landing-button${secondary ? " is-secondary" : ""} ${className}`}>
       <span>{children}</span>
-      <motion.span
-        aria-hidden="true"
-        className="landing-button-arrow"
-        animate={reducedMotion ? undefined : { x: [0, 2, 0] }}
-        transition={reducedMotion ? undefined : { duration: 1.7, repeat: Infinity, ease: "easeInOut" }}
-      >
+      <span aria-hidden="true" className="landing-button-arrow">
         <ArrowRight size={16} />
-      </motion.span>
+      </span>
     </Link>
   );
 }

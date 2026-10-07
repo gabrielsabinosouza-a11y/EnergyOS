@@ -4,7 +4,7 @@ export function EnergyCoreFallback() {
       <div className="energy-core-fallback-orbit">
         <span className="energy-core-fallback-glint" />
         <div className="energy-core-fallback-center">
-          <span className="landing-led-value">78%</span>
+          <span className="landing-led-value" data-led="78%">78%</span>
           <span className="landing-led-label">ENERGIA</span>
         </div>
       </div>
