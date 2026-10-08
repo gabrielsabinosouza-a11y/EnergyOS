@@ -21,6 +21,7 @@ interface ProfileModalProps {
 export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const reduced = useReducedMotion();
   // Guard against React Strict Mode double-mount firing two identical fetches.
   const fetchingRef = useRef(false);
@@ -44,7 +45,15 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
     let active = true;
     api.getPublicProfile(profileId)
       .then((r) => { if (active) setProfile(r.profile); })
-      .catch(() => {})
+      .catch((err) => {
+        if (!active) return;
+        // Distinguish 404 (user truly not found) from 500 (server error)
+        if (err?.status === 404) {
+          setError("Perfil não encontrado.");
+        } else {
+          setError("Não foi possível carregar o perfil. Tente novamente.");
+        }
+      })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [profileId]);
@@ -69,6 +78,8 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
           </div>
+        ) : error ? (
+          <p className="py-8 text-center text-sm text-[var(--text-muted)]">{error}</p>
         ) : !profile ? (
           <p className="py-8 text-center text-sm text-[var(--text-muted)]">Perfil não encontrado.</p>
         ) : (

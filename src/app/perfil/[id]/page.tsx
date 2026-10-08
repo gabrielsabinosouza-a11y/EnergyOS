@@ -167,8 +167,14 @@ export default function FriendProfilePage() {
       .then(({ profile: p }) => {
         if (!cancelled) setProfile(p);
       })
-      .catch(() => {
-        if (!cancelled) setError("Perfil não encontrado.");
+      .catch((err) => {
+        if (cancelled) return;
+        // Distinguish 404 (user truly not found) from 500 (server error)
+        if (err?.status === 404) {
+          setError("Perfil não encontrado.");
+        } else {
+          setError("Não foi possível carregar o perfil. Tente novamente mais tarde.");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

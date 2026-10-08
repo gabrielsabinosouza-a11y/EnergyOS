@@ -296,11 +296,21 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
 
   const row = result.rows[0];
   const weekStart = sundayWeekStartIso(todayIso());
-  // Run queries in parallel (no computeStreak needed for basic profile)
-  const [minutesMap, achievements] = await Promise.all([
+  // Run queries in parallel with error isolation: one failing query must not
+  // crash the entire profile endpoint. Each failure logs the error and falls
+  // back to safe defaults so the page still renders.
+  const [minutesResult, achievementsResult] = await Promise.allSettled([
     getWeeklyFocusMinutesForProfiles([otherId], weekStart),
     listAchievementProgress(otherId),
   ]);
+  if (minutesResult.status === "rejected") {
+    console.error("[profile] getWeeklyFocusMinutesForProfiles failed for", otherId, minutesResult.reason);
+  }
+  if (achievementsResult.status === "rejected") {
+    console.error("[profile] listAchievementProgress failed for", otherId, achievementsResult.reason);
+  }
+  const minutesMap = minutesResult.status === "fulfilled" ? minutesResult.value : new Map<string, number>();
+  const achievements = achievementsResult.status === "fulfilled" ? achievementsResult.value : [];
   const featured = achievements
     .filter((item) => item.isFeatured && item.unlockedTier > 0)
     .sort((a, b) => (a.featuredOrder ?? 99) - (b.featuredOrder ?? 99));
@@ -340,18 +350,38 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   );
   if (!result.rows[0]) throw new NotFoundError("Perfil não encontrado.");
 
-  // Run all expensive queries in parallel instead of sequentially.
-  // Previously these ran one-after-another (computeStreak → getWeeklyFocusMinutesForProfiles → listAchievementProgress),
-  // which could take 6-7 seconds total. Parallel execution reduces wall-clock time to the slowest query.
+  // Run all expensive queries in parallel with error isolation.
+  // Previously these ran sequentially (6-7s total), then switched to Promise.all
+  // which reduced latency but meant one failure crashed the entire endpoint.
+  // Now each query is independently caught: a failed sub-query logs the error
+  // and falls back to safe defaults so the profile page always renders.
   const today = todayIso();
   const weekStart = sundayWeekStartIso(today);
-  const [streak, minutesMap, achievements] = await Promise.all([
+  const [streakResult, minutesResult, achievementsResult] = await Promise.allSettled([
     computeStreak(otherId, today),
     getWeeklyFocusMinutesForProfiles([otherId], weekStart),
     listAchievementProgress(otherId),
   ]);
-  const isFriend = isOwner ? undefined : true;
 
+  // Log failures with context so the root cause is visible in server logs.
+  if (streakResult.status === "rejected") {
+    console.error("[profile] computeStreak failed for", otherId, streakResult.reason);
+  }
+  if (minutesResult.status === "rejected") {
+    console.error("[profile] getWeeklyFocusMinutesForProfiles failed for", otherId, minutesResult.reason);
+  }
+  if (achievementsResult.status === "rejected") {
+    console.error("[profile] listAchievementProgress failed for", otherId, achievementsResult.reason);
+  }
+
+  // Extract values with safe fallbacks.
+  const streak = streakResult.status === "fulfilled"
+    ? streakResult.value
+    : { currentStreak: 0, longestStreak: 0, todayQualified: false, todayTotal: 0, shieldCount: 0 };
+  const minutesMap = minutesResult.status === "fulfilled" ? minutesResult.value : new Map<string, number>();
+  const achievements = achievementsResult.status === "fulfilled" ? achievementsResult.value : [];
+
+  const isFriend = isOwner ? undefined : true;
   const row = result.rows[0];
   const featured = achievements
     .filter((item) => item.isFeatured && item.unlockedTier > 0)
@@ -365,8 +395,8 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
     role: (row.role as "user" | "admin" | null) ?? "user",
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
-    currentStreak: streak.currentStreak,
-    longestStreak: Math.max(streak.longestStreak, row.longest_streak ?? 0),
+    currentStreak: streak.currentStreak ?? 0,
+    longestStreak: Math.max(streak.longestStreak ?? 0, row.longest_streak ?? 0),
     weeklyFocusMinutes: minutesMap.get(otherId) ?? 0,
     equippedDecorationId: row.equipped_decoration_id ?? undefined,
     hasCustomBanner: row.has_custom_banner ?? false,

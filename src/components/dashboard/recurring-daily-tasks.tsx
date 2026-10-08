@@ -78,11 +78,24 @@ function SortableHabitRow({
 
       <HabitIcon habit={task} size="sm" />
 
-      <div className={`flex h-8 shrink-0 items-center overflow-hidden rounded-lg border ${task.isCompleted ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`} role="group" aria-label={`${task.title}: ${task.completedCount}/${task.dailyTarget}`}>
-        <button type="button" onClick={() => onProgress(task, Math.max(0, task.completedCount - 1))} disabled={busy || task.completedCount <= 0} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Diminuir ${task.title}`}><Minus size={13} /></button>
-        <span className="min-w-11 text-center font-mono text-[11px] font-semibold" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount}/{task.dailyTarget}{task.isCompleted && <Check size={11} className="ml-1 inline" aria-label="Concluído" />}</span>
-        <button type="button" onClick={() => onProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={busy || task.isCompleted} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Aumentar ${task.title}`}><Plus size={13} /></button>
-      </div>
+      {task.dailyTarget === 1 ? (
+        <button
+          type="button"
+          onClick={() => onProgress(task, task.isCompleted ? 0 : 1)}
+          disabled={busy}
+          aria-label={`${task.isCompleted ? "Desmarcar" : "Concluir"} ${task.title}`}
+          aria-pressed={task.isCompleted}
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${task.isCompleted ? "border-[var(--accent)] bg-[var(--accent)] text-slate-950" : "border-[var(--border-strong)] text-transparent hover:border-[var(--accent)]"}`}
+        >
+          <Check size={14} />
+        </button>
+      ) : (
+        <div className={`flex h-8 shrink-0 items-center overflow-hidden rounded-lg border ${task.isCompleted ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.12)]" : task.completedCount > 0 ? "border-cyan-400/30 bg-cyan-400/5 text-cyan-200" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`} role="group" aria-label={`${task.title}: ${task.completedCount}/${task.dailyTarget}`}>
+          <button type="button" onClick={() => onProgress(task, Math.max(0, task.completedCount - 1))} disabled={busy || task.completedCount <= 0} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Diminuir ${task.title}`}><Minus size={13} /></button>
+          <span className="min-w-11 text-center font-mono text-[11px] font-semibold" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount}/{task.dailyTarget}{task.isCompleted && <Check size={11} className="ml-1 inline" aria-label="Concluído" />}</span>
+          <button type="button" onClick={() => onProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={busy || task.isCompleted} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Aumentar ${task.title}`}><Plus size={13} /></button>
+        </div>
+      )}
 
       <span className={`flex-1 text-left text-sm ${task.isCompleted ? "text-[var(--text-muted)] line-through" : "text-[var(--text)]"}`}>
         {task.title}

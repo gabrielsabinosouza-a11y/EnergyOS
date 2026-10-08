@@ -569,8 +569,26 @@ export async function updateHabitMetadata(
   }
 
   const r = result.rows[0];
-  // Preserve today's completion status
   const today = todayIso();
+  if (updates.dailyTarget !== undefined) {
+    // Keep today's count within the new target and recompute its completion
+    // state. Editing a target never awards completion rewards.
+    await pool.query(
+      `update daily_task_log
+          set completion_count = least(completion_count, $3),
+              is_completed = least(completion_count, $3) >= $3,
+              completed_at = case
+                when least(completion_count, $3) >= $3 then coalesce(completed_at, now())
+                else null
+              end,
+              rewards_claimed = case
+                when least(completion_count, $3) >= $3 then true
+                else rewards_claimed
+              end
+        where task_id = $1 and log_date = $2::date`,
+      [taskId, today, Number(r.daily_target)],
+    );
+  }
   const logResult = await pool.query<{ is_completed: boolean; completed_at: Date | string | null; completion_count: string | number | null }>(
     `select is_completed, completed_at, completion_count from daily_task_log where task_id = $1 and log_date = $2::date`,
     [taskId, today],
@@ -668,8 +686,8 @@ export async function logHabitProgress(
 
     // Log progress entry
     await client.query(
-      `insert into daily_task_log (task_id, log_date, is_completed, completed_at, progress_value)
-       values ($1, $2::date, false, null, $3)
+      `insert into daily_task_log (task_id, log_date, is_completed, completed_at, progress_value, completion_count)
+       values ($1, $2::date, false, null, $3, 0)
        on conflict (task_id, log_date) do update set progress_value = excluded.progress_value`,
       [taskId, date, progressValue],
     );
@@ -682,8 +700,8 @@ export async function logHabitProgress(
       );
       if (!existing.rows[0]?.is_completed) {
         await client.query(
-          `update daily_task_log set is_completed = true, completed_at = now() where task_id = $1 and log_date = $2::date`,
-          [taskId, date],
+          `update daily_task_log set is_completed = true, completed_at = now(), completion_count = $3, rewards_claimed = true where task_id = $1 and log_date = $2::date`,
+          [taskId, date, normalizeDailyTarget(Number(h.daily_target))],
         );
       }
     }
