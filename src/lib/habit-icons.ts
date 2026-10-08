@@ -1,119 +1,172 @@
-/**
- * Curated subset of 8‑bit icons suitable for the habit icon picker.
- * Organized by category so the picker can group them.
- * Each entry is the filename inside src/icons_8bits/ (including ".png").
- */
+/** Public, typed registry for the 8-bit habit icon assets. IDs stay stable in the DB. */
+export type HabitAssetCategory = "Foco" | "Estudo" | "Saúde" | "Alimentação" | "Geral";
+export interface HabitIconAsset { id: string; label: string; category: HabitAssetCategory; path: string; legacyFilename: string; }
 
-export interface HabitIconCategory {
-  name: string;
-  emoji: string;
-  icons: string[];
-}
-
-export const HABIT_ICON_CATEGORIES: HabitIconCategory[] = [
-  {
-    name: "Exercício",
-    emoji: "💪",
-    icons: [
-      "FitBod.png",
-      "Google Fit.png",
-      "Nike Run Club.png",
-      "Strava.png",
-      "Under Armour.png",
-    ],
-  },
-  {
-    name: "Estudo",
-    emoji: "📚",
-    icons: [
-      "Duolingo.png",
-      "Evernote.png",
-      "Google Docs.png",
-      "Google Keep.png",
-      "Google Classroom.png",
-    ],
-  },
-  {
-    name: "Sono",
-    emoji: "😴",
-    icons: [
-      "Google Sleep.png",
-      "Sleep Cycle.png",
-      "Pillow.png",
-      "Google Calendar.png",
-    ],
-  },
-  {
-    name: "Alimentação",
-    emoji: "🍎",
-    icons: [
-      "Deliveroo.png",
-      "Glovo.png",
-      "Uber Eats.png",
-      "Amazon Shopping.png",
-    ],
-  },
-  {
-    name: "Foco",
-    emoji: "🎯",
-    icons: [
-      "Google Calendar.png",
-      "Google Tasks.png",
-      "Microsoft To Do.png",
-      "Todoist.png",
-      "TickTick.png",
-    ],
-  },
-  {
-    name: "Água",
-    emoji: "💧",
-    icons: [
-      "Google Fit.png",
-      "Strava.png",
-      "Nike Run Club.png",
-      "Under Armour.png",
-    ],
-  },
-  {
-    name: "Leitura",
-    emoji: "📖",
-    icons: [
-      "Google Books.png",
-      "Google Playstore.png",
-      "Kindle.png",
-      "Audible.png",
-    ],
-  },
-  {
-    name: "Meditação",
-    emoji: "🧘",
-    icons: [
-      "Calm.png",
-      "Headspace.png",
-      "Google Podcasts.png",
-      "Spotify.png",
-    ],
-  },
-  {
-    name: "Geral",
-    emoji: "⭐",
-    icons: [
-      "Google Chrome.png",
-      "Discord.png",
-      "Spotify.png",
-      "YouTube.png",
-      "Target.png",
-    ],
-  },
+export const HABIT_ICON_ASSETS: readonly HabitIconAsset[] = [
+  { id: "arzone", label: "ARZone", category: "Geral", path: "/habit-icons/ARZone.png", legacyFilename: "ARZone.png" },
+  { id: "air-europa", label: "Air Europa", category: "Geral", path: "/habit-icons/Air Europa.png", legacyFilename: "Air Europa.png" },
+  { id: "airbnb", label: "AirBnB", category: "Geral", path: "/habit-icons/AirBnB.png", legacyFilename: "AirBnB.png" },
+  { id: "amazon-prime", label: "Amazon Prime", category: "Geral", path: "/habit-icons/Amazon Prime.png", legacyFilename: "Amazon Prime.png" },
+  { id: "amazon-shopping", label: "Amazon Shopping", category: "Geral", path: "/habit-icons/Amazon Shopping.png", legacyFilename: "Amazon Shopping.png" },
+  { id: "amazon", label: "Amazon", category: "Geral", path: "/habit-icons/Amazon.png", legacyFilename: "Amazon.png" },
+  { id: "artstation", label: "ArtStation", category: "Geral", path: "/habit-icons/ArtStation.png", legacyFilename: "ArtStation.png" },
+  { id: "authy", label: "Authy", category: "Geral", path: "/habit-icons/Authy.png", legacyFilename: "Authy.png" },
+  { id: "battle", label: "Battle", category: "Geral", path: "/habit-icons/Battle.png", legacyFilename: "Battle.png" },
+  { id: "booking", label: "Booking", category: "Geral", path: "/habit-icons/Booking.png", legacyFilename: "Booking.png" },
+  { id: "citymapper", label: "CityMapper", category: "Geral", path: "/habit-icons/CityMapper.png", legacyFilename: "CityMapper.png" },
+  { id: "cuenta-dni", label: "Cuenta DNI", category: "Geral", path: "/habit-icons/Cuenta DNI.png", legacyFilename: "Cuenta DNI.png" },
+  { id: "deliveroo", label: "Deliveroo", category: "Alimentação", path: "/habit-icons/Deliveroo.png", legacyFilename: "Deliveroo.png" },
+  { id: "deviantart", label: "Deviantart", category: "Geral", path: "/habit-icons/Deviantart.png", legacyFilename: "Deviantart.png" },
+  { id: "discord", label: "Discord", category: "Geral", path: "/habit-icons/Discord.png", legacyFilename: "Discord.png" },
+  { id: "duolingo", label: "Duolingo", category: "Estudo", path: "/habit-icons/Duolingo.png", legacyFilename: "Duolingo.png" },
+  { id: "evernote", label: "Evernote", category: "Estudo", path: "/habit-icons/Evernote.png", legacyFilename: "Evernote.png" },
+  { id: "express-vpn", label: "Express VPN", category: "Geral", path: "/habit-icons/Express VPN.png", legacyFilename: "Express VPN.png" },
+  { id: "facebook-messenger", label: "Facebook Messenger", category: "Geral", path: "/habit-icons/Facebook Messenger.png", legacyFilename: "Facebook Messenger.png" },
+  { id: "facebook", label: "Facebook", category: "Geral", path: "/habit-icons/Facebook.png", legacyFilename: "Facebook.png" },
+  { id: "firefox", label: "Firefox", category: "Geral", path: "/habit-icons/Firefox.png", legacyFilename: "Firefox.png" },
+  { id: "fitbod", label: "FitBod", category: "Saúde", path: "/habit-icons/FitBod.png", legacyFilename: "FitBod.png" },
+  { id: "galaxy-store", label: "Galaxy Store", category: "Geral", path: "/habit-icons/Galaxy Store.png", legacyFilename: "Galaxy Store.png" },
+  { id: "glovo", label: "Glovo", category: "Alimentação", path: "/habit-icons/Glovo.png", legacyFilename: "Glovo.png" },
+  { id: "gmail", label: "Gmail", category: "Geral", path: "/habit-icons/Gmail.png", legacyFilename: "Gmail.png" },
+  { id: "google-authentificator-old", label: "Google Authentificator Old", category: "Geral", path: "/habit-icons/Google Authentificator Old.png", legacyFilename: "Google Authentificator Old.png" },
+  { id: "google-authentificator", label: "Google Authentificator", category: "Geral", path: "/habit-icons/Google Authentificator.png", legacyFilename: "Google Authentificator.png" },
+  { id: "google-calendar", label: "Google Calendar", category: "Foco", path: "/habit-icons/Google Calendar.png", legacyFilename: "Google Calendar.png" },
+  { id: "google-chrome", label: "Google Chrome", category: "Geral", path: "/habit-icons/Google Chrome.png", legacyFilename: "Google Chrome.png" },
+  { id: "google-currents", label: "Google Currents", category: "Geral", path: "/habit-icons/Google Currents.png", legacyFilename: "Google Currents.png" },
+  { id: "google-docs", label: "Google Docs", category: "Estudo", path: "/habit-icons/Google Docs.png", legacyFilename: "Google Docs.png" },
+  { id: "google-drive", label: "Google Drive", category: "Geral", path: "/habit-icons/Google Drive.png", legacyFilename: "Google Drive.png" },
+  { id: "google-files", label: "Google Files", category: "Geral", path: "/habit-icons/Google Files.png", legacyFilename: "Google Files.png" },
+  { id: "google-fit", label: "Google Fit", category: "Geral", path: "/habit-icons/Google Fit.png", legacyFilename: "Google Fit.png" },
+  { id: "google-forms", label: "Google Forms", category: "Geral", path: "/habit-icons/Google Forms.png", legacyFilename: "Google Forms.png" },
+  { id: "google-hangouts", label: "Google Hangouts", category: "Geral", path: "/habit-icons/Google Hangouts.png", legacyFilename: "Google Hangouts.png" },
+  { id: "google-keep", label: "Google Keep", category: "Estudo", path: "/habit-icons/Google Keep.png", legacyFilename: "Google Keep.png" },
+  { id: "google-launcher", label: "Google Launcher", category: "Geral", path: "/habit-icons/Google Launcher.png", legacyFilename: "Google Launcher.png" },
+  { id: "google-maps-old", label: "Google Maps Old", category: "Geral", path: "/habit-icons/Google Maps Old.png", legacyFilename: "Google Maps Old.png" },
+  { id: "google-maps", label: "Google Maps", category: "Geral", path: "/habit-icons/Google Maps.png", legacyFilename: "Google Maps.png" },
+  { id: "google-photos", label: "Google Photos", category: "Geral", path: "/habit-icons/Google Photos.png", legacyFilename: "Google Photos.png" },
+  { id: "google-playstore", label: "Google Playstore", category: "Geral", path: "/habit-icons/Google Playstore.png", legacyFilename: "Google Playstore.png" },
+  { id: "google-podcasts", label: "Google Podcasts", category: "Geral", path: "/habit-icons/Google Podcasts.png", legacyFilename: "Google Podcasts.png" },
+  { id: "google-sheets", label: "Google Sheets", category: "Estudo", path: "/habit-icons/Google Sheets.png", legacyFilename: "Google Sheets.png" },
+  { id: "google-slides", label: "Google Slides", category: "Estudo", path: "/habit-icons/Google Slides.png", legacyFilename: "Google Slides.png" },
+  { id: "google-tv", label: "Google TV", category: "Geral", path: "/habit-icons/Google TV.png", legacyFilename: "Google TV.png" },
+  { id: "google-talkback", label: "Google TalkBack", category: "Geral", path: "/habit-icons/Google TalkBack.png", legacyFilename: "Google TalkBack.png" },
+  { id: "google-text-to-speech", label: "Google Text to Speech", category: "Geral", path: "/habit-icons/Google Text to Speech.png", legacyFilename: "Google Text to Speech.png" },
+  { id: "google-translate", label: "Google Translate", category: "Geral", path: "/habit-icons/Google Translate.png", legacyFilename: "Google Translate.png" },
+  { id: "google-wallet", label: "Google Wallet", category: "Geral", path: "/habit-icons/Google Wallet.png", legacyFilename: "Google Wallet.png" },
+  { id: "google", label: "Google", category: "Geral", path: "/habit-icons/Google.png", legacyFilename: "Google.png" },
+  { id: "idealista", label: "Idealista", category: "Geral", path: "/habit-icons/Idealista.png", legacyFilename: "Idealista.png" },
+  { id: "instagram-old", label: "Instagram Old", category: "Geral", path: "/habit-icons/Instagram Old.png", legacyFilename: "Instagram Old.png" },
+  { id: "instagram", label: "Instagram", category: "Geral", path: "/habit-icons/Instagram.png", legacyFilename: "Instagram.png" },
+  { id: "itch-io", label: "Itch io", category: "Geral", path: "/habit-icons/Itch io.png", legacyFilename: "Itch io.png" },
+  { id: "ko-fi", label: "Ko Fi", category: "Geral", path: "/habit-icons/Ko Fi.png", legacyFilename: "Ko Fi.png" },
+  { id: "letterboxd", label: "Letterboxd", category: "Geral", path: "/habit-icons/Letterboxd.png", legacyFilename: "Letterboxd.png" },
+  { id: "linkedin", label: "LinkedIn", category: "Geral", path: "/habit-icons/LinkedIn.png", legacyFilename: "LinkedIn.png" },
+  { id: "lloyds-bank", label: "Lloyds Bank", category: "Geral", path: "/habit-icons/Lloyds Bank.png", legacyFilename: "Lloyds Bank.png" },
+  { id: "london-guide", label: "London Guide", category: "Geral", path: "/habit-icons/London Guide.png", legacyFilename: "London Guide.png" },
+  { id: "london-offline-map", label: "London Offline Map", category: "Geral", path: "/habit-icons/London Offline Map.png", legacyFilename: "London Offline Map.png" },
+  { id: "london-tube-map", label: "London Tube Map", category: "Geral", path: "/habit-icons/London Tube Map.png", legacyFilename: "London Tube Map.png" },
+  { id: "mercadolibre", label: "Mercadolibre", category: "Alimentação", path: "/habit-icons/Mercadolibre.png", legacyFilename: "Mercadolibre.png" },
+  { id: "mercadopago", label: "Mercadopago", category: "Alimentação", path: "/habit-icons/Mercadopago.png", legacyFilename: "Mercadopago.png" },
+  { id: "mi-argentina", label: "Mi Argentina", category: "Geral", path: "/habit-icons/Mi Argentina.png", legacyFilename: "Mi Argentina.png" },
+  { id: "microsoft-access", label: "Microsoft Access", category: "Estudo", path: "/habit-icons/Microsoft Access.png", legacyFilename: "Microsoft Access.png" },
+  { id: "microsoft-authentificator", label: "Microsoft Authentificator", category: "Geral", path: "/habit-icons/Microsoft Authentificator.png", legacyFilename: "Microsoft Authentificator.png" },
+  { id: "microsoft-edge", label: "Microsoft Edge", category: "Geral", path: "/habit-icons/Microsoft Edge.png", legacyFilename: "Microsoft Edge.png" },
+  { id: "microsoft-excel", label: "Microsoft Excel", category: "Estudo", path: "/habit-icons/Microsoft Excel.png", legacyFilename: "Microsoft Excel.png" },
+  { id: "microsoft-launcher", label: "Microsoft Launcher", category: "Geral", path: "/habit-icons/Microsoft Launcher.png", legacyFilename: "Microsoft Launcher.png" },
+  { id: "microsoft-link-to-windows", label: "Microsoft Link to Windows", category: "Geral", path: "/habit-icons/Microsoft Link to Windows.png", legacyFilename: "Microsoft Link to Windows.png" },
+  { id: "microsoft-office", label: "Microsoft Office", category: "Geral", path: "/habit-icons/Microsoft Office.png", legacyFilename: "Microsoft Office.png" },
+  { id: "microsoft-onedrive", label: "Microsoft OneDrive", category: "Geral", path: "/habit-icons/Microsoft OneDrive.png", legacyFilename: "Microsoft OneDrive.png" },
+  { id: "microsoft-onenote", label: "Microsoft OneNote", category: "Estudo", path: "/habit-icons/Microsoft OneNote.png", legacyFilename: "Microsoft OneNote.png" },
+  { id: "microsoft-powerpoint", label: "Microsoft PowerPoint", category: "Estudo", path: "/habit-icons/Microsoft PowerPoint.png", legacyFilename: "Microsoft PowerPoint.png" },
+  { id: "microsoft-publisher", label: "Microsoft Publisher", category: "Estudo", path: "/habit-icons/Microsoft Publisher.png", legacyFilename: "Microsoft Publisher.png" },
+  { id: "microsoft-to-do", label: "Microsoft To Do", category: "Geral", path: "/habit-icons/Microsoft To Do.png", legacyFilename: "Microsoft To Do.png" },
+  { id: "microsoft-word", label: "Microsoft Word", category: "Estudo", path: "/habit-icons/Microsoft Word.png", legacyFilename: "Microsoft Word.png" },
+  { id: "miro", label: "Miro", category: "Geral", path: "/habit-icons/Miro.png", legacyFilename: "Miro.png" },
+  { id: "moj", label: "Moj", category: "Geral", path: "/habit-icons/Moj.png", legacyFilename: "Moj.png" },
+  { id: "my-fitness-pal", label: "My Fitness Pal", category: "Saúde", path: "/habit-icons/My Fitness Pal.png", legacyFilename: "My Fitness Pal.png" },
+  { id: "netflix-v2", label: "Netflix v2", category: "Geral", path: "/habit-icons/Netflix v2.png", legacyFilename: "Netflix v2.png" },
+  { id: "netflix", label: "Netflix", category: "Geral", path: "/habit-icons/Netflix.png", legacyFilename: "Netflix.png" },
+  { id: "notion", label: "Notion", category: "Estudo", path: "/habit-icons/Notion.png", legacyFilename: "Notion.png" },
+  { id: "nova-launcher", label: "Nova Launcher", category: "Geral", path: "/habit-icons/Nova Launcher.png", legacyFilename: "Nova Launcher.png" },
+  { id: "nuffield-health", label: "Nuffield Health", category: "Saúde", path: "/habit-icons/Nuffield Health.png", legacyFilename: "Nuffield Health.png" },
+  { id: "opera", label: "Opera", category: "Geral", path: "/habit-icons/Opera.png", legacyFilename: "Opera.png" },
+  { id: "outlook", label: "Outlook", category: "Geral", path: "/habit-icons/Outlook.png", legacyFilename: "Outlook.png" },
+  { id: "patreon", label: "Patreon", category: "Geral", path: "/habit-icons/Patreon.png", legacyFilename: "Patreon.png" },
+  { id: "paypal", label: "PayPal", category: "Geral", path: "/habit-icons/PayPal.png", legacyFilename: "PayPal.png" },
+  { id: "pedidosya", label: "PedidosYa", category: "Alimentação", path: "/habit-icons/PedidosYa.png", legacyFilename: "PedidosYa.png" },
+  { id: "pikmin", label: "Pikmin", category: "Geral", path: "/habit-icons/Pikmin.png", legacyFilename: "Pikmin.png" },
+  { id: "pinterest", label: "Pinterest", category: "Geral", path: "/habit-icons/Pinterest.png", legacyFilename: "Pinterest.png" },
+  { id: "reddit", label: "Reddit", category: "Geral", path: "/habit-icons/Reddit.png", legacyFilename: "Reddit.png" },
+  { id: "rubiks-cube", label: "Rubiks Cube", category: "Geral", path: "/habit-icons/Rubiks Cube.png", legacyFilename: "Rubiks Cube.png" },
+  { id: "safari", label: "Safari", category: "Geral", path: "/habit-icons/Safari.png", legacyFilename: "Safari.png" },
+  { id: "samsung-free", label: "Samsung Free", category: "Geral", path: "/habit-icons/Samsung Free.png", legacyFilename: "Samsung Free.png" },
+  { id: "santander", label: "Santander", category: "Geral", path: "/habit-icons/Santander.png", legacyFilename: "Santander.png" },
+  { id: "skype", label: "Skype", category: "Geral", path: "/habit-icons/Skype.png", legacyFilename: "Skype.png" },
+  { id: "slack-v2", label: "Slack v2", category: "Geral", path: "/habit-icons/Slack v2.png", legacyFilename: "Slack v2.png" },
+  { id: "slack", label: "Slack", category: "Geral", path: "/habit-icons/Slack.png", legacyFilename: "Slack.png" },
+  { id: "snapchat", label: "Snapchat", category: "Geral", path: "/habit-icons/Snapchat.png", legacyFilename: "Snapchat.png" },
+  { id: "socioplus", label: "SocioPlus", category: "Geral", path: "/habit-icons/SocioPlus.png", legacyFilename: "SocioPlus.png" },
+  { id: "soundcloud", label: "SoundCloud", category: "Geral", path: "/habit-icons/SoundCloud.png", legacyFilename: "SoundCloud.png" },
+  { id: "spareroom", label: "Spareroom", category: "Geral", path: "/habit-icons/Spareroom.png", legacyFilename: "Spareroom.png" },
+  { id: "spotify", label: "Spotify", category: "Geral", path: "/habit-icons/Spotify.png", legacyFilename: "Spotify.png" },
+  { id: "steam", label: "Steam", category: "Geral", path: "/habit-icons/Steam.png", legacyFilename: "Steam.png" },
+  { id: "tarjeta-transporte-madrid", label: "Tarjeta Transporte Madrid", category: "Saúde", path: "/habit-icons/Tarjeta Transporte Madrid.png", legacyFilename: "Tarjeta Transporte Madrid.png" },
+  { id: "telegram", label: "Telegram", category: "Geral", path: "/habit-icons/Telegram.png", legacyFilename: "Telegram.png" },
+  { id: "terraria", label: "Terraria", category: "Geral", path: "/habit-icons/Terraria.png", legacyFilename: "Terraria.png" },
+  { id: "tfl-go", label: "Tfl Go", category: "Geral", path: "/habit-icons/Tfl Go.png", legacyFilename: "Tfl Go.png" },
+  { id: "tfl-oyster", label: "Tfl Oyster", category: "Geral", path: "/habit-icons/Tfl Oyster.png", legacyFilename: "Tfl Oyster.png" },
+  { id: "ticktick", label: "TickTick", category: "Foco", path: "/habit-icons/TickTick.png", legacyFilename: "TickTick.png" },
+  { id: "tiktok", label: "TikTok", category: "Geral", path: "/habit-icons/TikTok.png", legacyFilename: "TikTok.png" },
+  { id: "tinder", label: "Tinder", category: "Geral", path: "/habit-icons/Tinder.png", legacyFilename: "Tinder.png" },
+  { id: "todoist", label: "Todoist", category: "Foco", path: "/habit-icons/Todoist.png", legacyFilename: "Todoist.png" },
+  { id: "toggl-blue-icon", label: "Toggl Blue Icon", category: "Foco", path: "/habit-icons/Toggl Blue Icon.png", legacyFilename: "Toggl Blue Icon.png" },
+  { id: "toggl-hire", label: "Toggl Hire", category: "Foco", path: "/habit-icons/Toggl Hire.png", legacyFilename: "Toggl Hire.png" },
+  { id: "toggl-plan", label: "Toggl Plan", category: "Foco", path: "/habit-icons/Toggl Plan.png", legacyFilename: "Toggl Plan.png" },
+  { id: "toggl-track", label: "Toggl Track", category: "Foco", path: "/habit-icons/Toggl Track.png", legacyFilename: "Toggl Track.png" },
+  { id: "toggl", label: "Toggl", category: "Foco", path: "/habit-icons/Toggl.png", legacyFilename: "Toggl.png" },
+  { id: "trello-v2", label: "Trello v2", category: "Geral", path: "/habit-icons/Trello v2.png", legacyFilename: "Trello v2.png" },
+  { id: "trello", label: "Trello", category: "Geral", path: "/habit-icons/Trello.png", legacyFilename: "Trello.png" },
+  { id: "tumblr", label: "Tumblr", category: "Geral", path: "/habit-icons/Tumblr.png", legacyFilename: "Tumblr.png" },
+  { id: "twitch", label: "Twitch", category: "Geral", path: "/habit-icons/Twitch.png", legacyFilename: "Twitch.png" },
+  { id: "twitter", label: "Twitter", category: "Geral", path: "/habit-icons/Twitter.png", legacyFilename: "Twitter.png" },
+  { id: "uber-eats", label: "Uber Eats", category: "Alimentação", path: "/habit-icons/Uber Eats.png", legacyFilename: "Uber Eats.png" },
+  { id: "uber", label: "Uber", category: "Geral", path: "/habit-icons/Uber.png", legacyFilename: "Uber.png" },
+  { id: "vitality-gp", label: "Vitality GP", category: "Saúde", path: "/habit-icons/Vitality GP.png", legacyFilename: "Vitality GP.png" },
+  { id: "vitality", label: "Vitality", category: "Saúde", path: "/habit-icons/Vitality.png", legacyFilename: "Vitality.png" },
+  { id: "vivaldi", label: "Vivaldi", category: "Geral", path: "/habit-icons/Vivaldi.png", legacyFilename: "Vivaldi.png" },
+  { id: "vodafone", label: "Vodafone", category: "Geral", path: "/habit-icons/Vodafone.png", legacyFilename: "Vodafone.png" },
+  { id: "whatsapp", label: "Whatsapp", category: "Geral", path: "/habit-icons/Whatsapp.png", legacyFilename: "Whatsapp.png" },
+  { id: "wikipedia", label: "Wikipedia", category: "Geral", path: "/habit-icons/Wikipedia.png", legacyFilename: "Wikipedia.png" },
+  { id: "winrar", label: "WinRAR", category: "Geral", path: "/habit-icons/WinRAR.png", legacyFilename: "WinRAR.png" },
+  { id: "youtube", label: "Youtube", category: "Geral", path: "/habit-icons/Youtube.png", legacyFilename: "Youtube.png" },
+  { id: "zoom", label: "Zoom", category: "Geral", path: "/habit-icons/Zoom.png", legacyFilename: "Zoom.png" },
+  { id: "cigarretes-removebg-preview", label: "cigarretes-removebg-preview", category: "Geral", path: "/habit-icons/cigarretes-removebg-preview.png", legacyFilename: "cigarretes-removebg-preview.png" },
+  { id: "frame", label: "frame", category: "Geral", path: "/habit-icons/frame.png", legacyFilename: "frame.png" },
+  { id: "gift-removebg-preview", label: "gift-removebg-preview", category: "Geral", path: "/habit-icons/gift-removebg-preview.png", legacyFilename: "gift-removebg-preview.png" },
+  { id: "logo", label: "logo", category: "Geral", path: "/habit-icons/logo.png", legacyFilename: "logo.png" },
+  { id: "lupa-removebg-preview", label: "lupa-removebg-preview", category: "Geral", path: "/habit-icons/lupa-removebg-preview.png", legacyFilename: "lupa-removebg-preview.png" },
+  { id: "notes-removebg-preview", label: "notes-removebg-preview", category: "Foco", path: "/habit-icons/notes-removebg-preview.png", legacyFilename: "notes-removebg-preview.png" },
+  { id: "pallete-removebg-preview", label: "pallete-removebg-preview", category: "Geral", path: "/habit-icons/pallete-removebg-preview.png", legacyFilename: "pallete-removebg-preview.png" },
+  { id: "pencil-removebg-preview", label: "pencil-removebg-preview", category: "Foco", path: "/habit-icons/pencil-removebg-preview.png", legacyFilename: "pencil-removebg-preview.png" },
+  { id: "storm-removebg-preview", label: "storm-removebg-preview", category: "Geral", path: "/habit-icons/storm-removebg-preview.png", legacyFilename: "storm-removebg-preview.png" },
+  { id: "thunderstorm-removebg-preview", label: "thunderstorm-removebg-preview", category: "Geral", path: "/habit-icons/thunderstorm-removebg-preview.png", legacyFilename: "thunderstorm-removebg-preview.png" },
+  { id: "tropheu-removebg-preview", label: "tropheu-removebg-preview", category: "Geral", path: "/habit-icons/tropheu-removebg-preview.png", legacyFilename: "tropheu-removebg-preview.png" },
+  { id: "wine-removebg-preview", label: "wine-removebg-preview", category: "Geral", path: "/habit-icons/wine-removebg-preview.png", legacyFilename: "wine-removebg-preview.png" },
 ];
 
-/** Flat list of all curated icon filenames. */
-export const ALL_HABIT_ICONS = HABIT_ICON_CATEGORIES.flatMap((c) => c.icons);
+export const HABIT_ICON_CATEGORIES = (["Foco", "Estudo", "Saúde", "Alimentação", "Geral"] as const).map((name) => ({
+  name,
+  icons: HABIT_ICON_ASSETS.filter((asset) => asset.category === name),
+}));
 
-/**
- * Resolve the import path for an icon filename.
- * Icons live in src/icons_8bits/ and are loaded via next/dynamic import.
- */
-export function getIconPath(filename: string): string {
-  return `/icons_8bits/${filename}`;
+export const DEFAULT_HABIT_ICON_ID = "target";
+const byId = new Map(HABIT_ICON_ASSETS.map((asset) => [asset.id, asset]));
+const byLegacy = new Map(HABIT_ICON_ASSETS.map((asset) => [asset.legacyFilename.toLowerCase(), asset]));
+
+export function getHabitAsset(value?: string | null): HabitIconAsset {
+  return byId.get(value ?? "") ?? byLegacy.get((value ?? "").split("/").pop()!.toLowerCase()) ?? byId.get(DEFAULT_HABIT_ICON_ID)!;
+}
+
+export function getIconPath(value?: string | null): string {
+  return getHabitAsset(value).path;
 }

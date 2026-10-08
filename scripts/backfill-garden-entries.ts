@@ -19,6 +19,8 @@ async function backfill() {
 
   // Non-room sessions that already ended: resolve status/stage from the
   // authoritative session record (mirrors finalizeGardenEntries).
+  // Each garden entry stores its fraction of the session duration so that
+  // the SUM across all entries for a session equals the real focused minutes.
   const sessions = await pool.query(
     `update garden_entries ge
      set status = case
@@ -30,7 +32,12 @@ async function backfill() {
            when fs.duration_minutes >= 30 then 'young'
            else 'sprout'
          end,
-         duration_minutes = fs.duration_minutes
+         duration_minutes = round(
+           (fs.duration_minutes / greatest(
+             (select count(*) from garden_entries ge2 where ge2.session_id = ge.session_id),
+             1
+           ))::numeric, 2
+         )
      from focus_sessions fs
      where ge.session_id = fs.id
        and ge.status = 'growing'

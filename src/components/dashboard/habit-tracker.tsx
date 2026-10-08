@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarCheck, Check, Loader2, Plus } from "lucide-react";
+import { AlertCircle, CalendarCheck, Loader2, Plus } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";

@@ -112,15 +112,23 @@ function buildChartData(period: Period, entries: GardenEntry[], range: PeriodRan
   const distribute = (entry: GardenEntry, buckets: BarDatum[], step: "hour" | "day" | "month", bucketIndex: (date: Date) => number) => {
     const start = new Date(entry.startedAt ?? entry.plantedAt).getTime();
     const end = new Date(entry.endedAt ?? entry.plantedAt).getTime();
+    // If timestamps are missing or invalid, bucket the entire entry by its plantedAt.
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
       const fallback = new Date(entry.plantedAt);
       const index = bucketIndex(fallback);
-      if (index >= 0 && index < buckets.length) buckets[index].minutes += entry.durationMinutes;
+      if (index >= 0 && index < buckets.length) {
+        buckets[index].minutes += entry.durationMinutes;
+      }
       return;
     }
+    // For entries with valid start/end, distribute proportionally across buckets.
+    // Cap the iteration to avoid infinite loops on pathological data.
     const elapsed = end - start;
     let cursor = start;
-    while (cursor < end) {
+    let iterations = 0;
+    const maxIterations = 1000;
+    while (cursor < end && iterations < maxIterations) {
+      iterations++;
       const date = new Date(cursor);
       const next = new Date(date);
       if (step === "hour") next.setHours(date.getHours() + 1, 0, 0, 0);
@@ -163,7 +171,7 @@ function buildChartData(period: Period, entries: GardenEntry[], range: PeriodRan
         minutes: 0,
       };
     });
-    for (const e of entries) distribute(e, buckets, "day", (date) => date.getMonth() === start.getMonth() ? date.getDate() - 1 : -1);
+    for (const e of entries) distribute(e, buckets, "day", (date) => date.getFullYear() === start.getFullYear() && date.getMonth() === start.getMonth() ? date.getDate() - 1 : -1);
     return buckets;
   }
   const buckets = MONTH_SHORT.map((label) => ({ label, fullLabel: label, minutes: 0 }));
@@ -178,8 +186,9 @@ function labelStepFor(period: Period, len: number): number {
 }
 
 function formatMinutes(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
+  const rounded = Math.round(total * 100) / 100;
+  const h = Math.floor(rounded / 60);
+  const m = Math.round(rounded % 60);
   if (h === 0) return `${m}min`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
@@ -187,8 +196,9 @@ function formatMinutes(total: number): string {
 
 /** Formato estendido pt-BR para valores de um único dia: "55 minutos", "1 hora", "1 hora 5 minutos", "5 horas 45 minutos". */
 function formatMinutesLong(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
+  const rounded = Math.round(total * 100) / 100;
+  const h = Math.floor(rounded / 60);
+  const m = Math.round(rounded % 60);
   if (h === 0) return m === 1 ? "1 minuto" : `${m} minutos`;
   const hours = h === 1 ? "1 hora" : `${h} horas`;
   if (m === 0) return hours;
@@ -291,16 +301,25 @@ export default function JardimPage() {
 
   const range = useMemo(() => getPeriodRange(period, anchor), [period, anchor]);
 
+  // Single source of truth: filter entries by plantedAt (session start time)
+  // within the selected period. Both the counter/grid and the chart/total
+  // derive from this same array so they can never disagree.
   const periodEntries = useMemo(() => {
     const start = range.start.getTime();
     const end = range.end.getTime();
     return entries.filter((e) => {
       const t = new Date(e.plantedAt).getTime();
-      return t >= start && t < end;
+      return Number.isFinite(t) && t >= start && t < end;
     });
   }, [entries, range]);
 
-  const totalMinutes = periodEntries.reduce((acc, e) => acc + e.durationMinutes, 0);
+  // Total minutes is the sum of durationMinutes across all period entries.
+  // Each entry's durationMinutes is already the fraction of the session
+  // (split evenly across energies), so the sum equals the real focused time.
+  // Round to avoid floating-point artifacts (e.g., 25.000000001).
+  const totalMinutes = Math.round(periodEntries.reduce((sum, entry) => sum + Math.max(0, entry.durationMinutes), 0) * 100) / 100;
+
+  // Chart data uses the same period entries, distributed by weekday/hour/month.
   const chartData = useMemo(() => buildChartData(period, periodEntries, range), [period, periodEntries, range]);
   const chartLabelStep = labelStepFor(period, chartData.length);
   const isCurrent = rangeIsCurrent(period, anchor);

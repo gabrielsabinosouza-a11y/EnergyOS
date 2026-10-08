@@ -97,7 +97,7 @@ export async function getGardenEntries(profileId: string): Promise<GardenEntry[]
   parseProfileId(profileId);
   const result = await pool.query<GardenRow>(
     `with ranked as (
-       select ge.id, ge.profile_id, ge.session_id, ge.energy_type, ge.reward,
+       select ge.id, ge.profile_id, ge.session_id, ge.energy_type, ge.reward, ge.status, ge.growth_stage,
               fs.duration_minutes, fs.target_duration_minutes, fs.started_at, fs.ended_at,
               row_number() over (partition by ge.session_id order by ge.id) as energy_number
          from garden_entries ge
@@ -112,7 +112,7 @@ export async function getGardenEntries(profileId: string): Promise<GardenEntry[]
             round(duration_minutes::numeric / case when duration_minutes >= 90 then 4 when duration_minutes >= 60 then 2 else 1 end, 2) as duration_minutes,
             reward, started_at as planted_at, started_at, ended_at,
             case when duration_minutes >= 60 then 'mature' when duration_minutes >= 30 then 'young' else 'sprout' end as growth_stage,
-            'alive' as status
+            coalesce(status, 'alive') as status
        from ranked
       where energy_number <= case when duration_minutes >= 90 then 4 when duration_minutes >= 60 then 2 else 1 end
       order by started_at desc, id desc`,
@@ -168,10 +168,23 @@ export async function plantGardenEntries(
   durationMinutes: number,
   status: GardenStatus = "growing"
 ): Promise<void> {
+  parseProfileId(profileId);
+  if (sessionId === null) return; // Legacy imports handled separately
   const reward = getEnergyReward(durationMinutes);
   if (reward <= 0 || durationMinutes <= 0) return;
   const perEnergy = Math.round((durationMinutes / reward) * 100) / 100;
   const growthStage = getGrowthStage(durationMinutes);
+
+  // Idempotent: if garden entries already exist for this session (e.g. a
+  // previous call to startFocusSession planted them), skip the insert.
+  // This prevents duplicate rows from retries, React Strict Mode, or
+  // focus-room + solo-session double-start.
+  const existing = await pool.query<{ count: string }>(
+    `select count(*)::int as count from garden_entries where profile_id = $1 and session_id = $2`,
+    [profileId, sessionId],
+  );
+  if (Number(existing.rows[0]?.count ?? 0) > 0) return;
+
   const values: unknown[] = [];
   const placeholders: string[] = [];
   for (let i = 0; i < reward; i++) {

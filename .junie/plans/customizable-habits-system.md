@@ -298,7 +298,7 @@ Rename all UI references, update the dashboard widget and Consistência tracker 
 - Add completion animation (transform/opacity only) respecting prefers-reduced-motion
 - Ensure loading and error states show toasts in Portuguese
 
-### * Step 4: Add tests, validate, and finalize
+### ✓ Step 4: Add tests, validate, and finalize
 Add tests for frequency and reward logic, run linter and build, verify all naming is consistent.
 
 - Create `src/lib/habit-frequency.test.ts`: Test isHabitScheduledToday() for daily, weekdays, and times_per_week modes
