@@ -255,7 +255,7 @@ export function XPBadge({
                   {processing === "buy" ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : (
-                    <><CoinIcon size={13} /> Comprar · {XP_BOOST_COST}</>
+                    <><CoinIcon size={13} /> Comprar poção · {XP_BOOST_COST}</>
                   )}
                 </button>
               )}

@@ -954,6 +954,14 @@ export function KanbanBoard({
     setEditingTask(task);
   }, []);
 
+  const handleSaveEdit = useCallback(
+    async (updates: Partial<Omit<KanbanTask, "id" | "profileId" | "category" | "createdAt" | "updatedAt">>) => {
+      if (!editingTask) return;
+      await handleUpdate(editingTask.id, updates);
+    },
+    [editingTask, handleUpdate]
+  );
+
   const columnTasks = useMemo(() => {
     return COLUMNS.map((col) => ({
       ...col,
@@ -1037,6 +1045,17 @@ export function KanbanBoard({
             categories={categories}
             onClose={() => setCreateStatus(null)}
             onCreate={onCreate}
+            onCreateLabel={onCreateLabel}
+          />
+        )}
+        {editingTask && (
+          <TaskDetailModal
+            task={editingTask}
+            labels={labels}
+            categories={categories}
+            onClose={() => setEditingTask(null)}
+            onSave={handleSaveEdit}
+            onDelete={onDelete}
             onCreateLabel={onCreateLabel}
           />
         )}

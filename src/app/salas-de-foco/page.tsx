@@ -101,7 +101,10 @@ const ROOM_STATUS_META: Record<string, { label: string; pill: string; dot: strin
   paused:    { label: "Pausada",       pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
   completed: { label: "Concluída",     pill: "border-emerald-400/25 bg-emerald-400/5  text-emerald-300/80", dot: "bg-emerald-400" },
   restarting:{ label: "Reiniciando",   pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
+  confirming:{ label: "Confirmando",   pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
 };
+
+const DURATION_PRESETS = [15, 25, 30, 45, 60, 90, 120] as const;
 
 const ROOM_STATUS_FALLBACK = { label: "Expirada", pill: "border-white/10 bg-white/5 text-[var(--text-faint)]", dot: "bg-[var(--text-faint)]" };
 
@@ -292,6 +295,8 @@ export default function FocusRoomsPage() {
   const [lastCoins, setLastCoins] = useState(0);
   const [showEnergyPicker, setShowEnergyPicker] = useState(false);
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
+  const [customDuration, setCustomDuration] = useState<string>("");
+  const [showCustomDurationInput, setShowCustomDurationInput] = useState(false);
   // The user's app-level profile id (Firebase UID hashed the same way the
   // server derives profile ids). Server comparisons such as hostProfileId are
   // done against THIS value, never against the raw Firebase user.uid.
@@ -394,7 +399,7 @@ export default function FocusRoomsPage() {
         setCurrentRoom(null);
         setPageState("list");
         fetchRooms();
-      } else if ((currentRoom.status === "completed" || currentRoom.status === "restarting") && next.status === "active") {
+      } else if (currentRoom.status === "confirming" && next.status === "active") {
         // Everyone confirmed the host's "Play Again" request → the room flipped
         // back to active with elapsed_seconds=0 (fresh shared countdown) and
         // every confirmed participant was reset to "focusing" server-side.
@@ -408,14 +413,14 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom, fetchRooms]);
 
-  // Poll while in a waiting, active, paused, completed or restarting room view.
+  // Poll while in a waiting, active, paused, completed, confirming or restarting room view.
   // Completed rooms keep being polled so participants waiting for the host to
-  // restart ("Play Again") receive the confirm/cancel prompt; restarting rooms
+  // restart ("Play Again") receive the confirm/cancel prompt; confirming rooms
   // keep being polled so the host sees confirmations arriving and everyone
   // transitions into the new round the moment the last confirmation lands.
   useEffect(() => {
     if (pageState !== "room" || !currentRoom) return;
-    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed" && currentRoom.status !== "restarting") return;
+    if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed" && currentRoom.status !== "confirming" && currentRoom.status !== "restarting") return;
     const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
@@ -1279,12 +1284,16 @@ export default function FocusRoomsPage() {
             <h2 className="font-display text-xl">
               {room.status === "waiting" ? "Sala de Foco" :
                room.status === "active" ? "Foco em Grupo" :
-               room.status === "paused" ? "Sessão Pausada" : "Sessão Concluída"}
+               room.status === "paused" ? "Sessão Pausada" :
+               room.status === "confirming" ? "Confirmando Reinício" :
+               room.status === "restarting" ? "Reiniciando" : "Sessão Concluída"}
             </h2>
             <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
               {room.status === "waiting" && <><Clock size={12} /> Aguardando início</>}
               {room.status === "active" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-400" /> Em andamento</motion.span>}
               {room.status === "paused" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" /> Pausada</motion.span>}
+              {room.status === "confirming" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" /> Confirmando</motion.span>}
+              {room.status === "restarting" && <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" /> Reiniciando</motion.span>}
               {room.status === "completed" && <><CheckCircle size={12} className="text-green-400" /> Concluída</>}
             </span>
           </div>
@@ -1304,7 +1313,7 @@ export default function FocusRoomsPage() {
                 );
               })}
               {/* "+" invite slot — only meaningful while the room is live */}
-              {(room.status === "waiting" || room.status === "active" || room.status === "paused") && (
+              {(room.status === "waiting" || room.status === "active" || room.status === "paused" || room.status === "confirming") && (
                 <button onClick={shareRoom} className="flex flex-col items-center gap-1" title="Convidar">
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                     className="w-11 h-11 rounded-full border-2 border-dashed border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
@@ -1381,6 +1390,90 @@ export default function FocusRoomsPage() {
               {room.status === "waiting" && !isHost && (
                 <span className="mt-1 text-[10px] text-[var(--text-muted)]">Duração definida pelo anfitrião</span>
               )}
+              {/* Duration selector for host when room is waiting or completed */}
+              {isHost && (room.status === "waiting" || room.status === "completed") && (
+                <div className="mt-3 flex flex-col items-center gap-2">
+                  {!showCustomDurationInput ? (
+                    <div className="flex flex-wrap justify-center gap-1.5">
+                      {[15, 25, 30, 45, 60, 90, 120].map((minutes) => (
+                        <motion.button
+                          key={minutes}
+                          onClick={() => handleUpdateDuration(minutes)}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                            room.durationMinutes === minutes
+                              ? "bg-[var(--accent)] text-white"
+                              : "bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                          }`}
+                        >
+                          {minutes}m
+                        </motion.button>
+                      ))}
+                      <motion.button
+                        onClick={() => setShowCustomDurationInput(true)}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                      >
+                        Custom
+                      </motion.button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={FOCUS_DURATION_MIN_MINUTES}
+                        max={FOCUS_DURATION_MAX_MINUTES}
+                        value={customDuration}
+                        onChange={(e) => setCustomDuration(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const minutes = parseInt(customDuration, 10);
+                            if (minutes >= FOCUS_DURATION_MIN_MINUTES && minutes <= FOCUS_DURATION_MAX_MINUTES) {
+                              handleUpdateDuration(minutes);
+                              setShowCustomDurationInput(false);
+                              setCustomDuration("");
+                            }
+                          } else if (e.key === "Escape") {
+                            setShowCustomDurationInput(false);
+                            setCustomDuration("");
+                          }
+                        }}
+                        className="w-20 px-2 py-1 rounded-lg bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] text-center text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                        placeholder="min"
+                        autoFocus
+                      />
+                      <motion.button
+                        onClick={() => {
+                          const minutes = parseInt(customDuration, 10);
+                          if (minutes >= FOCUS_DURATION_MIN_MINUTES && minutes <= FOCUS_DURATION_MAX_MINUTES) {
+                            handleUpdateDuration(minutes);
+                            setShowCustomDurationInput(false);
+                            setCustomDuration("");
+                          }
+                        }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--accent)] text-white transition-colors"
+                      >
+                        OK
+                      </motion.button>
+                      <motion.button
+                        onClick={() => {
+                          setShowCustomDurationInput(false);
+                          setCustomDuration("");
+                        }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                      >
+                        <X size={12} />
+                      </motion.button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-faint)]">
@@ -1389,7 +1482,7 @@ export default function FocusRoomsPage() {
           </div>
 
           {/* Live progress panel — active/paused session */}
-          {(room.status === "active" || room.status === "paused") && room.participants.length > 0 && (
+          {(room.status === "active" || room.status === "paused" || room.status === "confirming") && room.participants.length > 0 && (
             <div className="mt-6 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-4">
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] mb-3 block">Progresso da sala</span>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1421,7 +1514,7 @@ export default function FocusRoomsPage() {
                       <div className="min-w-0">
                         <p className="text-[10px] font-medium text-[var(--text)] truncate">{p.profile?.displayName || "Anônimo"}{isMe ? " (você)" : ""}</p>
                         <p className="text-[8px]" style={{ color }}>
-                          {p.sessionStatus === "left" ? "Desistiu" : p.sessionStatus === "completed" ? "Concluído" : `${Math.round(prog)}%`}
+                          {p.sessionStatus === "left" ? "Desistiu" : p.sessionStatus === "completed" ? "Concluído" : room.status === "confirming" ? (p.restartChoice === "confirmed" ? "Confirmado" : "Aguardando") : `${Math.round(prog)}%`}
                         </p>
                       </div>
                     </div>
@@ -1524,6 +1617,52 @@ export default function FocusRoomsPage() {
                   <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
                     {loadingAction === "leaving" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Sair da Sala"}
                   </button>
+                </div>
+              )
+            )}
+
+            {/* Confirming → the host asked to "Play Again": every still-present
+                participant must Confirm (join the next round) or Cancel (leave
+                the room). The room flips back to active — with the countdown
+                reset — only after EVERYONE confirms; the host sees live
+                progress and can abort the request. */}
+            {room.status === "confirming" && myParticipant?.sessionStatus !== "left" && (
+              isHost ? (
+                <div className="space-y-2">
+                  <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                    <Loader2 size={14} className="animate-spin" />
+                    {`Aguardando confirmações (${room.participants.filter((p) => p.sessionStatus !== "left" && p.restartChoice === "confirmed").length}/${room.participants.filter((p) => p.sessionStatus !== "left").length})...`}
+                  </motion.div>
+                  <button onClick={handleCancelRestart} disabled={loadingAction === "restart-cancel"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                    {loadingAction === "restart-cancel" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Cancelar reinício"}
+                  </button>
+                </div>
+              ) : myParticipant?.restartChoice === "confirmed" ? (
+                <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.6, repeat: Infinity }} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <Loader2 size={14} className="animate-spin" /> Confirmado! Aguardando os demais participantes...
+                </motion.div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-4 py-3 text-sm text-[var(--text)]">
+                    O anfitrião quer jogar novamente — nova sessão de {room.durationMinutes} min. Confirme para participar ou cancele para sair da sala.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <motion.button
+                      onClick={() => handleRespondRestart(true)}
+                      disabled={loadingAction !== null}
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                      className="primary-button"
+                    >
+                      {loadingAction === "restart-accept" ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Confirmar</>}
+                    </motion.button>
+                    <button
+                      onClick={() => handleRespondRestart(false)}
+                      disabled={loadingAction !== null}
+                      className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingAction === "restart-decline" ? <Loader2 size={16} className="animate-spin" /> : <><X size={16} /> Cancelar e sair</>}
+                    </button>
+                  </div>
                 </div>
               )
             )}
@@ -1725,7 +1864,7 @@ export default function FocusRoomsPage() {
             still-present participant gets a forced confirm/cancel prompt. The
             modal can't be dismissed (onClose is a no-op) — it only disappears
             when the user answers, the host cancels, or the room restarts. */}
-        {currentRoom && currentRoom.status === "restarting" && myProfileId && currentRoom.hostProfileId !== myProfileId &&
+        {currentRoom && (currentRoom.status === "confirming" || currentRoom.status === "restarting") && myProfileId && currentRoom.hostProfileId !== myProfileId &&
           currentRoom.participants.find((p) => p.profileId === myProfileId && p.sessionStatus !== "left")?.restartChoice === "pending" && (
           <Modal onClose={() => { /* must be answered via Confirmar/Cancelar */ }}>
             <div className="glass-card w-full max-w-sm p-6">

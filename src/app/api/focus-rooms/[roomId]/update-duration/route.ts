@@ -32,8 +32,8 @@ export async function POST(
       throw new ForbiddenError("Only the host can update the room duration");
     }
 
-    // Room must be in waiting state
-    if (room.status !== "waiting") {
+    // Room must be in waiting or completed state (not during a session)
+    if (room.status !== "waiting" && room.status !== "completed") {
       return badRequest("Cannot update duration once the room has started");
     }
 

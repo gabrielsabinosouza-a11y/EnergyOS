@@ -1,21 +1,30 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Gift, Trophy, Users, type LucideIcon } from "lucide-react";
+import { Gift, Trophy, Users } from "lucide-react";
 import { HabitTicker } from "./habit-ticker";
+import { LANDING_ICON_SIZE_ROW, LANDING_ICON_STROKE } from "./icons";
 import {
-  LANDING_ICON_SIZE_ROW,
-  LANDING_ICON_STROKE,
-  landingIcons,
-} from "./icons";
+  StaticIcon,
+  isLandingAssetIcon,
+  type LandingIcon,
+} from "./landing-assets";
 import { LandingHero } from "./landing-hero";
 import { LandingMotion } from "./landing-motion";
 import { LandingNav } from "./landing-nav";
-import { GradientHeading, GlowButton, GlassCard, GrainOverlay, LedNumber, LightBeam, Section } from "./primitives";
+import {
+  GradientHeading,
+  GlowButton,
+  GlassCard,
+  GrainOverlay,
+  LedNumber,
+  LightBeam,
+  Section,
+} from "./primitives";
 import { SpotlightCard } from "./spotlight-card";
-import { Storytelling } from "./storytelling";
+import { HowItWorksSection } from "./how-it-works-section";
 
 type FeatureCard = {
-  icon: LucideIcon;
+  icon: LandingIcon;
   eyebrow: string;
   title: string;
   text: string;
@@ -27,9 +36,9 @@ const featureCards: FeatureCard[] = [
   { icon: landingIcons.foco, eyebrow: "FOCO", title: "Um espaço para focar de verdade.", text: "Use o timer de foco, acompanhe sessões e convide pessoas para salas compartilhadas.", shape: "feature-wide" },
   { icon: landingIcons.metas, eyebrow: "ORGANIZAÇÃO", title: "Tarefas que saem da cabeça.", text: "Planeje a semana, organize o kanban e acompanhe tarefas recorrentes em um só lugar.", shape: "feature-tall" },
   { icon: landingIcons.metas, eyebrow: "METAS E HÁBITOS", title: "Consistência sem perfeccionismo.", text: "Defina metas, acompanhe hábitos e registre o progresso com flexibilidade.", shape: "feature-card" },
-  { icon: landingIcons.energia, eyebrow: "ENERGIA E BEM-ESTAR", title: "Conecte seus hábitos ao seu ritmo.", text: "Registre sono, estudo, treino e energia. Explore relatórios, calendário e tendências pessoais.", shape: "feature-card" },
-  { icon: landingIcons.constancia, eyebrow: "PROGRESSO", title: "Veja seu esforço ganhar forma.", text: "Transforme sessões de foco em energias no jardim, acompanhe streaks e desbloqueie conquistas.", shape: "feature-card", amber: true },
-  { icon: landingIcons.energia, eyebrow: "MISSÕES DIÁRIAS", title: "Celebre cada avanço.", text: "Complete quests, acompanhe seu XP e resgate recompensas por pequenas vitórias.", shape: "feature-card" },
+  { icon: "xp", eyebrow: "ENERGIA E BEM-ESTAR", title: "Conecte seus hábitos ao seu ritmo.", text: "Registre sono, estudo, treino e energia. Explore relatórios, calendário e tendências pessoais.", shape: "feature-card" },
+  { icon: "streakAlive", eyebrow: "PROGRESSO", title: "Veja seu esforço ganhar forma.", text: "Transforme sessões de foco em energias no jardim, acompanhe streaks e desbloqueie conquistas.", shape: "feature-card", amber: true },
+  { icon: "xp", eyebrow: "MISSÕES DIÁRIAS", title: "Celebre cada avanço.", text: "Complete quests, acompanhe seu XP e resgate recompensas por pequenas vitórias.", shape: "feature-card" },
   { icon: Users, eyebrow: "JUNTO É MAIS LEVE", title: "Compartilhe o caminho, se quiser.", text: "Encontre amigos, participe de grupos, salas de foco e ligas semanais.", shape: "feature-wide" },
   { icon: Gift, eyebrow: "PERSONALIZAÇÃO", title: "Deixe o espaço com a sua cara.", text: "Explore a loja de itens, personalize seu perfil e configure lembretes para a sua rotina.", shape: "feature-card" },
   { icon: Trophy, eyebrow: "CONQUISTAS", title: "Reconheça o caminho percorrido.", text: "Desbloqueie emblemas e acompanhe marcos individuais ou com seu grupo.", shape: "feature-card" },
@@ -82,7 +91,6 @@ function FounderEmblem() {
 }
 
 export function LandingPage() {
-  const Energia = landingIcons.energia;
 
   return (
     <main className="landing-page">
@@ -108,7 +116,7 @@ export function LandingPage() {
           <span className="landing-eyebrow">COMO FUNCIONA</span>
           <p>Do check-in à próxima pequena vitória.</p>
         </div>
-        <Storytelling />
+        <HowItWorksSection />
       </Section>
 
       <Section id="recursos" className="landing-features-section">
@@ -120,7 +128,9 @@ export function LandingPage() {
           {featureCards.map(({ icon: Icon, eyebrow, title, text, shape, amber }) => (
             <SpotlightCard key={eyebrow} className={shape}>
               <span className={`feature-icon${amber ? " is-amber" : ""}`}>
-                <Icon size={18} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
+                {isLandingAssetIcon(Icon)
+                  ? <StaticIcon name={Icon as LandingAssetKey} size={18} />
+                  : <Icon size={18} strokeWidth={LANDING_ICON_STROKE} aria-hidden />}
               </span>
               <span className="landing-eyebrow">{eyebrow}</span>
               <h3>{title}</h3>
@@ -148,7 +158,7 @@ export function LandingPage() {
       <Section className="landing-final-section">
         <LightBeam className="final-beam" />
         <span className="landing-eyebrow">
-          <Energia size={LANDING_ICON_SIZE_ROW} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
+          <StaticIcon name="xp" size={LANDING_ICON_SIZE_ROW} alt="XP" />
           SEU PRÓXIMO PASSO COMEÇA AQUI
         </span>
         <GradientHeading as="h2">Comece de onde<br /><em>você está.</em></GradientHeading>

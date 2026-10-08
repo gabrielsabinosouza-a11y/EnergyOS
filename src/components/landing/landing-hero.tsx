@@ -2,19 +2,12 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
-import { EnergyCore } from "./energy-core";
-import {
-  LANDING_ICON_SIZE_CHIP,
-  LANDING_ICON_STROKE,
-  landingIcons,
-} from "./icons";
+import { StaticIcon, type LandingAssetKey } from "./landing-assets";
 import { GlowButton, LightBeam } from "./primitives";
+import { HeroPreviewCard } from "./hero-preview-card";
 
 export function LandingHero() {
   const reducedMotion = useReducedMotion();
-  const Sono = landingIcons.sono;
-  const Constancia = landingIcons.constancia;
-  const Energia = landingIcons.energia;
 
   return (
     <section className="landing-hero" aria-labelledby="landing-title">
@@ -60,7 +53,7 @@ export function LandingHero() {
         </motion.div>
         <div className="hero-trust-note">
           <span className="trust-mark" aria-hidden>
-            <Energia size={13} strokeWidth={LANDING_ICON_STROKE} />
+            <StaticIcon name="xp" size={14} alt="XP" />
           </span>
           Produtividade com presença, não pressão.
         </div>
@@ -73,19 +66,7 @@ export function LandingHero() {
       >
         <div className="hero-art-orbit orbit-one" aria-hidden="true" />
         <div className="hero-art-orbit orbit-two" aria-hidden="true" />
-        <EnergyCore />
-        <div className="hero-stat-card hero-stat-sleep">
-          <Sono size={LANDING_ICON_SIZE_CHIP} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
-          <span>
-            <strong>Sono · 7h 30m</strong>
-          </span>
-        </div>
-        <div className="hero-stat-card hero-stat-streak">
-          <Constancia size={LANDING_ICON_SIZE_CHIP} strokeWidth={LANDING_ICON_STROKE} aria-hidden />
-          <span>
-            <strong>Constância · 12 dias</strong>
-          </span>
-        </div>
+        <HeroPreviewCard />
       </motion.div>
       <a className="hero-scroll-cue" href="#visao-geral">
         <span>DESCUBRA O ENERGYOS</span>

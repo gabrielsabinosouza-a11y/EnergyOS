@@ -276,6 +276,12 @@ export const api = {
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart/respond`, { method: "POST", body: JSON.stringify({ accepted }) }),
   cancelRestart: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart/cancel`, { method: "POST" }),
+  respondToConfirmation: (roomId: number, accepted: boolean) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/respond-confirmation`, { method: "POST", body: JSON.stringify({ accepted }) }),
+  cancelConfirmation: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/cancel-confirmation`, { method: "POST" }),
+  removeParticipantFromRoom: (roomId: number, participantProfileId: string) =>
+    request<{ message: string }>(`/api/focus-rooms/${roomId}/remove-participant`, { method: "POST", body: JSON.stringify({ participantProfileId }) }),
   cleanupFocusRooms: () =>
     request<{ ok: true; expired: number; deleted: number }>("/api/focus-rooms/cleanup", { method: "POST" }),
 

@@ -8,7 +8,7 @@ import { clearAllGroupRoomPresence, clearGroupRoomPresence, ensureGroupRoomPrese
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
 // Types matching the database schema
-export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired" | "restarting";
+export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired" | "restarting" | "confirming";
 export type RestartChoice = "pending" | "confirmed" | "declined";
 export type ParticipantSessionStatus = "waiting" | "focusing" | "completed" | "left";
 
@@ -441,27 +441,59 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
     throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos.`);
   }
 
-  // Verify host
-  const room = await pool.query<{ host_profile_id: string }>(
-    `select host_profile_id from focus_rooms where id = $1`,
-    [roomId]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    
+    // Verify host and room state
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId]
+    );
 
-  if (!room.rows[0]) {
-    throw new NotFoundError("Room not found");
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Room not found");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can update the room duration");
+    }
+
+    // Can only update duration when room is waiting or completed (not during a session)
+    if (room.rows[0].status !== "waiting" && room.rows[0].status !== "completed") {
+      await client.query("rollback");
+      throw new ConflictError("Cannot update duration once the room has started");
+    }
+
+    // If in confirming state, cancel the confirmation and reset responses
+    if (room.rows[0].status === "confirming") {
+      await client.query(
+        `update focus_rooms set status = 'waiting' where id = $1`,
+        [roomId]
+      );
+      await client.query(
+        `update room_participants set restart_choice = 'pending' where room_id = $1 and session_status <> 'left'`,
+        [roomId]
+      );
+    }
+
+    const result = await client.query<FocusRoomRow>(
+      `update focus_rooms set duration_minutes = $1 where id = $2 returning *`,
+      [durationMinutes, roomId]
+    );
+
+    await client.query("commit");
+
+    const participants = await getRoomParticipants(roomId);
+    return mapFocusRoom(result.rows[0], participants);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new ForbiddenError("Only the host can update the room duration");
-  }
-
-  const result = await pool.query<FocusRoomRow>(
-    `update focus_rooms set duration_minutes = $1 where id = $2 returning *`,
-    [durationMinutes, roomId]
-  );
-
-  const participants = await getRoomParticipants(roomId);
-  return mapFocusRoom(result.rows[0], participants);
 }
 
 // Add a participant to a room (idempotent).
@@ -556,44 +588,89 @@ export async function removeParticipantFromRoom(roomId: number, profileId: strin
   );
 }
 
-// Start a focus room (host only)
+// Start a focus room (host only) - enters confirming state for group sessions
 export async function startFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
   
-  // Verify host
-  const room = await pool.query<{ host_profile_id: string; status: string }>(
-    `select host_profile_id, status from focus_rooms where id = $1`,
-    [roomId]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    
+    // Verify host and room state
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId]
+    );
 
-  if (!room.rows[0]) {
-    throw new NotFoundError("Room not found");
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Room not found");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can start the room");
+    }
+
+    if (room.rows[0].status !== "waiting") {
+      await client.query("rollback");
+      throw new ConflictError("Room is not in waiting state");
+    }
+
+    // Check if there are other participants (group session)
+    const participants = await client.query<{ count: string }>(
+      `select count(*)::int as count from room_participants where room_id = $1 and profile_id != $2`,
+      [roomId, hostProfileId]
+    );
+    const hasOtherParticipants = Number(participants.rows[0]?.count ?? 0) > 0;
+
+    if (hasOtherParticipants) {
+      // Group session: enter confirming state
+      const now = new Date().toISOString();
+      await client.query(
+        `update focus_rooms set status = 'confirming' where id = $1`,
+        [roomId]
+      );
+      
+      // Reset all participant confirmation choices
+      await client.query(
+        `update room_participants set restart_choice = 'pending' where room_id = $1 and session_status <> 'left'`,
+        [roomId]
+      );
+      
+      // Host is auto-confirmed
+      await client.query(
+        `update room_participants set restart_choice = 'confirmed' where room_id = $1 and profile_id = $2`,
+        [roomId, hostProfileId]
+      );
+      
+      await client.query("commit");
+    } else {
+      // Solo session: start immediately
+      const now = new Date().toISOString();
+      await client.query(
+        `update focus_rooms set status = 'active', started_at = $1, elapsed_seconds = 0, last_resumed_at = $1 where id = $2`,
+        [now, roomId]
+      );
+
+      // Update all participants to focusing status
+      await client.query(
+        `update room_participants set session_status = 'focusing' where room_id = $1`,
+        [roomId]
+      );
+
+      await client.query("commit");
+    }
+
+    // Fetch updated room
+    const startedRoom = await getFocusRoomById(hostProfileId, roomId);
+    return startedRoom!;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (room.rows[0].host_profile_id !== hostProfileId) {
-    throw new ForbiddenError("Only the host can start the room");
-  }
-
-  if (room.rows[0].status !== "waiting") {
-    throw new ConflictError("Room is not in waiting state");
-  }
-
-  const now = new Date().toISOString();
-
-  await pool.query(
-    `update focus_rooms set status = 'active', started_at = $1, elapsed_seconds = 0, last_resumed_at = $1 where id = $2`,
-    [now, roomId]
-  );
-
-  // Update all participants to focusing status
-  await pool.query(
-    `update room_participants set session_status = 'focusing' where room_id = $1`,
-    [roomId]
-  );
-
-  // Fetch updated room
-  const startedRoom = await getFocusRoomById(hostProfileId, roomId);
-  return startedRoom!;
 }
 
 // Pause an active focus room (host only)
@@ -1056,17 +1133,17 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
 
 // Restart a COMPLETED focus room for another round (host only, "Play Again").
 // Instead of immediately flipping the room back to ACTIVE, the restart now
-// enters a "restarting" state: every still-present participant is notified and
+// enters a "confirming" state: every still-present participant is notified and
 // must answer the prompt (Confirm → join the new round, Cancel → leave). The
 // room actually restarts (status 'active') only once EVERY non-left participant
-// has confirmed — see maybeFinalizeRestart. Participants who already left stay
+// has confirmed — see maybeFinalizeConfirmation. Participants who already left stay
 // out of the voting. The host is auto-confirmed (they were the one who asked).
 export async function restartFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
   await ensureGroupRoomPresenceSchema();
 
   // Transaction with a row lock: guards restart vs restart/complete races so
-  // the completed→restarting transition can't be double-applied.
+  // the completed→confirming transition can't be double-applied.
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -1090,9 +1167,9 @@ export async function restartFocusRoom(roomId: number, hostProfileId: string): P
       throw new ConflictError("A sala só pode ser reiniciada após a conclusão");
     }
 
-    // Mark the room as awaiting restart confirmation.
+    // Mark the room as awaiting confirmation.
     await client.query(
-      `update focus_rooms set status = 'restarting' where id = $1`,
+      `update focus_rooms set status = 'confirming' where id = $1`,
       [roomId],
     );
     await client.query(`delete from group_focus_room_presence where room_id = $1`, [roomId]);
@@ -1111,8 +1188,8 @@ export async function restartFocusRoom(roomId: number, hostProfileId: string): P
     );
 
     // If every participant already answered before this call flocked through
-    // (e.g. the host is the only member), finalize the restart right away.
-    await maybeFinalizeRestart(client, roomId);
+    // (e.g. the host is the only member), finalize the confirmation right away.
+    await maybeFinalizeConfirmation(client, roomId);
 
     await client.query("commit");
   } catch (error) {
@@ -1157,6 +1234,211 @@ async function maybeFinalizeRestart(client: import("pg").PoolClient, roomId: num
      where room_id = $1 and restart_choice = 'confirmed'`,
     [roomId],
   );
+}
+
+/**
+ * When no non-left participant is still 'pending' in the confirming state,
+ * the session starts: the room flips to ACTIVE with a fresh countdown and every
+ * confirmed participant is reset to "focusing" for the new round.
+ * MUST be called inside an open transaction (client) with the room row locked.
+ */
+async function maybeFinalizeConfirmation(client: import("pg").PoolClient, roomId: number): Promise<void> {
+  const waiting = await client.query<{ n: string | number }>(
+    `select count(*)::int as n
+     from room_participants
+     where room_id = $1 and session_status <> 'left' and restart_choice <> 'confirmed'`,
+    [roomId],
+  );
+  if (Number(waiting.rows[0]?.n ?? 0) > 0) return;
+
+  const now = new Date().toISOString();
+  await client.query(
+    `update focus_rooms
+     set status = 'active', started_at = $1, ended_at = null, elapsed_seconds = 0, last_resumed_at = $1
+     where id = $2 and status = 'confirming',
+     [now, roomId],
+  );
+
+  // All confirmed participants start focusing
+  await client.query(
+    `update room_participants
+     set session_status = 'focusing', completed_at = null, gave_up_at = null
+     where room_id = $1 and restart_choice = 'confirmed'`,
+    [roomId],
+  );
+}
+
+/**
+ * Answer the pending confirmation prompt (any participant). `accepted` = true keeps
+ * the user in the room for the session; false marks them as left (they leave
+ * the room). When every remaining participant has confirmed, the room flips
+ * back to ACTIVE automatically.
+ */
+export async function respondToConfirmation(roomId: number, profileId: string, accepted: boolean): Promise<FocusRoom> {
+  parseProfileId(profileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ status: RoomStatus }>(
+      `select status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    const mine = await client.query<{ id: string | number }>(
+      `select id from room_participants where room_id = $1 and profile_id = $2`,
+      [roomId, profileId],
+    );
+    if (!mine.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Você não faz parte desta sala.");
+    }
+
+    if (room.rows[0].status !== "confirming") {
+      await client.query("rollback");
+      throw new ConflictError("Não há nenhuma confirmação pendente nesta sala.");
+    }
+
+    const now = new Date().toISOString();
+
+    if (accepted) {
+      await client.query(
+        `update room_participants
+         set restart_choice = 'confirmed'
+         where room_id = $1 and profile_id = $2 and session_status <> 'left'`,
+        [roomId, profileId],
+      );
+    } else {
+      // Decline = leave the room; the participant sits out this session
+      await client.query(
+        `update room_participants
+         set session_status = 'left', gave_up_at = coalesce(gave_up_at, $3), restart_choice = 'declined'
+         where room_id = $1 and profile_id = $2`,
+        [roomId, profileId, now],
+      );
+      await clearGroupRoomPresence(roomId, profileId);
+    }
+
+    await maybeFinalizeConfirmation(client, roomId);
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const room = await getFocusRoomById(profileId, roomId);
+  return room!;
+}
+
+/**
+ * Cancel a pending confirmation (host only): the room goes back to 'waiting' or 'completed'
+ * and every answer is reset so the host can ask again later.
+ */
+export async function cancelConfirmation(roomId: number, hostProfileId: string): Promise<FocusRoom> {
+  parseProfileId(hostProfileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can cancel the confirmation");
+    }
+
+    if (room.rows[0].status !== "confirming") {
+      await client.query("rollback");
+      throw new ConflictError("Não há nenhuma confirmação pendente para cancelar");
+    }
+
+    // Revert to previous state (waiting if first session, completed if restart)
+    await client.query(
+      `update focus_rooms set status = 'waiting' where id = $1 and status = 'confirming'`,
+      [roomId],
+    );
+    await client.query(
+      `update room_participants set restart_choice = 'pending' where room_id = $1 and session_status <> 'left'`,
+      [roomId],
+    );
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const room = await getFocusRoomById(hostProfileId, roomId);
+  return room!;
+}
+
+/**
+ * Remove a participant from the room during confirmation (host only).
+ * The participant is marked as 'left' and can rejoin later.
+ */
+export async function removeParticipantFromRoomDuringConfirmation(roomId: number, hostProfileId: string, participantProfileId: string): Promise<void> {
+  parseProfileId(hostProfileId);
+  parseProfileId(participantProfileId);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
+      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+
+    if (!room.rows[0]) {
+      await client.query("rollback");
+      throw new NotFoundError("Sala não encontrada.");
+    }
+
+    if (room.rows[0].host_profile_id !== hostProfileId) {
+      await client.query("rollback");
+      throw new ForbiddenError("Only the host can remove participants");
+    }
+
+    if (room.rows[0].status !== "confirming") {
+      await client.query("rollback");
+      throw new ConflictError("Só é possível remover participantes durante a confirmação pendente");
+    }
+
+    const now = new Date().toISOString();
+    await client.query(
+      `update room_participants
+       set session_status = 'left', gave_up_at = coalesce(gave_up_at, $1), restart_choice = 'declined'
+       where room_id = $2 and profile_id = $3`,
+      [now, roomId, participantProfileId],
+    );
+    await clearGroupRoomPresence(roomId, participantProfileId);
+
+    await maybeFinalizeConfirmation(client, roomId);
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -1253,7 +1535,7 @@ export async function cancelRestart(roomId: number, hostProfileId: string): Prom
       throw new ForbiddenError("Only the host can cancel the restart");
     }
 
-    if (room.rows[0].status !== "restarting") {
+    if (room.rows[0].status !== "restarting" && room.rows[0].status !== "confirming") {
       await client.query("rollback");
       throw new ConflictError("Não há nenhun reinício pendente para cancelar");
     }
@@ -1306,11 +1588,11 @@ export async function cleanupStaleRooms(
   await pool.query(`update room_join_requests r set status = 'rejected', responded_at = coalesce(responded_at, now())
     from focus_rooms f where r.room_id = f.id and f.status = 'expired' and r.status = 'pending'`);
 
-  // Unanswered restart requests are rolled back to the completed state.
+  // Unanswered restart/confirmation requests are rolled back to the completed state.
   await pool.query(
     `update focus_rooms
      set status = 'completed'
-     where status = 'restarting' and coalesce(ended_at, created_at) < $1`,
+     where status in ('restarting', 'confirming') and coalesce(ended_at, created_at) < $1`,
     [waitingCutoff],
   );
 

@@ -156,6 +156,9 @@ do $$ begin
   alter type room_status add value if not exists 'restarting';
 exception when duplicate_object then null; end $$;
 do $$ begin
+  alter type room_status add value if not exists 'confirming';
+exception when duplicate_object then null; end $$;
+do $$ begin
   alter type room_status add value if not exists 'expired';
 exception when duplicate_object then null; end $$;
 do $$ begin
