@@ -104,8 +104,6 @@ const ROOM_STATUS_META: Record<string, { label: string; pill: string; dot: strin
   confirming:{ label: "Confirmando",   pill: "border-amber-400/30 bg-amber-400/10 text-amber-300",     dot: "bg-amber-400" },
 };
 
-const DURATION_PRESETS = [15, 25, 30, 45, 60, 90, 120] as const;
-
 const ROOM_STATUS_FALLBACK = { label: "Expirada", pill: "border-white/10 bg-white/5 text-[var(--text-faint)]", dot: "bg-[var(--text-faint)]" };
 
 function energyConfigFor(type: string | null | undefined): EnergyConfig {
@@ -193,8 +191,8 @@ function SharedRing({
 }) {
   const cfg = ENERGY_CONFIGS[myEnergy as EnergyType] || ENERGY_CONFIGS.flame;
 
-  // idle / waiting — host can drag, others see live-updated read-only circle
-  if (room.status === "waiting") {
+  // idle / waiting / completed — host can drag, others see live-updated read-only circle
+  if (room.status === "waiting" || room.status === "completed") {
     if (isHost) {
       return (
         <CircularDurationPicker
@@ -295,8 +293,6 @@ export default function FocusRoomsPage() {
   const [lastCoins, setLastCoins] = useState(0);
   const [showEnergyPicker, setShowEnergyPicker] = useState(false);
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
-  const [customDuration, setCustomDuration] = useState<string>("");
-  const [showCustomDurationInput, setShowCustomDurationInput] = useState(false);
   // The user's app-level profile id (Firebase UID hashed the same way the
   // server derives profile ids). Server comparisons such as hostProfileId are
   // done against THIS value, never against the raw Firebase user.uid.
@@ -1389,90 +1385,6 @@ export default function FocusRoomsPage() {
               )}
               {room.status === "waiting" && !isHost && (
                 <span className="mt-1 text-[10px] text-[var(--text-muted)]">Duração definida pelo anfitrião</span>
-              )}
-              {/* Duration selector for host when room is waiting or completed */}
-              {isHost && (room.status === "waiting" || room.status === "completed") && (
-                <div className="mt-3 flex flex-col items-center gap-2">
-                  {!showCustomDurationInput ? (
-                    <div className="flex flex-wrap justify-center gap-1.5">
-                      {[15, 25, 30, 45, 60, 90, 120].map((minutes) => (
-                        <motion.button
-                          key={minutes}
-                          onClick={() => handleUpdateDuration(minutes)}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            room.durationMinutes === minutes
-                              ? "bg-[var(--accent)] text-white"
-                              : "bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                          }`}
-                        >
-                          {minutes}m
-                        </motion.button>
-                      ))}
-                      <motion.button
-                        onClick={() => setShowCustomDurationInput(true)}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                      >
-                        Custom
-                      </motion.button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={FOCUS_DURATION_MIN_MINUTES}
-                        max={FOCUS_DURATION_MAX_MINUTES}
-                        value={customDuration}
-                        onChange={(e) => setCustomDuration(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const minutes = parseInt(customDuration, 10);
-                            if (minutes >= FOCUS_DURATION_MIN_MINUTES && minutes <= FOCUS_DURATION_MAX_MINUTES) {
-                              handleUpdateDuration(minutes);
-                              setShowCustomDurationInput(false);
-                              setCustomDuration("");
-                            }
-                          } else if (e.key === "Escape") {
-                            setShowCustomDurationInput(false);
-                            setCustomDuration("");
-                          }
-                        }}
-                        className="w-20 px-2 py-1 rounded-lg bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] text-center text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
-                        placeholder="min"
-                        autoFocus
-                      />
-                      <motion.button
-                        onClick={() => {
-                          const minutes = parseInt(customDuration, 10);
-                          if (minutes >= FOCUS_DURATION_MIN_MINUTES && minutes <= FOCUS_DURATION_MAX_MINUTES) {
-                            handleUpdateDuration(minutes);
-                            setShowCustomDurationInput(false);
-                            setCustomDuration("");
-                          }
-                        }}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--accent)] text-white transition-colors"
-                      >
-                        OK
-                      </motion.button>
-                      <motion.button
-                        onClick={() => {
-                          setShowCustomDurationInput(false);
-                          setCustomDuration("");
-                        }}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                      >
-                        <X size={12} />
-                      </motion.button>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
 
