@@ -53,19 +53,19 @@ function isDayDone(logs: Record<string, boolean>, date: string): boolean {
 /**
  * Sequência do hábito: dias consecutivos com check-in até hoje.
  */
-function habitStreak(task: UserDailyTask, logs: Record<string, boolean>, today: string): number {
+function habitStreakDates(task: UserDailyTask, logs: Record<string, boolean>, today: string): string[] {
   let cursor = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today) && !isDayDone(logs, today)
     ? addDaysIso(today, -1)
     : today;
-  let streak = 0;
-  while (streak < 400) {
+  const dates: string[] = [];
+  while (dates.length < 400) {
     if (isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, cursor)) {
       if (!isDayDone(logs, cursor)) break;
-      streak += 1;
+      dates.push(cursor);
     }
     cursor = addDaysIso(cursor, -1);
   }
-  return streak;
+  return dates;
 }
 
 interface HabitCardProps {
@@ -84,7 +84,8 @@ interface HabitCardProps {
 /** Card de um hábito — ícone, nome, sequência, check-in e mapa de contribuição. */
 export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
   const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
-  const streak = habitStreak(task, logs, today);
+  const streakDates = habitStreakDates(task, logs, today);
+  const streak = streakDates.length;
   const doneToday = isDayDone(logs, today);
   const scheduledToday = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today);
   const todayBusy = busyTaskId === task.id;
@@ -152,7 +153,7 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
       {/* Geral tab — full-width heatmap */}
       {tab === "geral" && (
         <motion.div key="geral" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3">
-          <ConsistencyHeatmap year={year} days={heatmapDays} today={today} accent={color} variant="habit" summary={`${heatmapDays.filter((day) => day.dailyTaskCompletions).length} check-ins em ${year}`} />
+          <ConsistencyHeatmap year={year} days={heatmapDays} today={today} accent={color} variant="habit" streakDates={streakDates} summary={`${heatmapDays.filter((day) => day.dailyTaskCompletions).length} check-ins em ${year}`} />
         </motion.div>
       )}
 

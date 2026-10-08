@@ -129,6 +129,20 @@ export function activityStreaks(days: ActivityDay[], endpoint: string): Activity
   return { current, best };
 }
 
+/** Date keys included in the current streak, using the same rules as activityStreaks. */
+export function activityCurrentStreakDates(days: ActivityDay[], endpoint: string): string[] {
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const dates: string[] = [];
+  for (let i = 0; i < 400; i += 1) {
+    const cursor = addDaysIso(endpoint, -i);
+    const active = byDate.has(cursor) && isDayActive(byDate.get(cursor)!);
+    if (i === 0 && !active) continue;
+    if (active) dates.push(cursor);
+    else break;
+  }
+  return dates;
+}
+
 /** Estatísticas do ano exibido. `endpoint` = hoje (ano atual) ou 31/12 (ano passado). */
 export function activityStats(days: ActivityDay[], endpoint: string): ActivityStats {
   const { start, end } = days.length

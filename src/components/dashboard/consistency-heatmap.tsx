@@ -17,6 +17,7 @@ export interface ConsistencyHeatmapProps {
   accent?: string;
   variant?: "year" | "habit";
   summary?: string;
+  streakDates?: string[];
   onSelectDay?: (day: ActivityDay) => void;
 }
 
@@ -24,13 +25,14 @@ interface HeatCellProps {
   day: ActivityDay | null;
   level: number;
   isToday: boolean;
+  isStreak: boolean;
   accent: string;
   tabStop: boolean;
   onFocusDate: (date: string) => void;
   onSelect: (day: ActivityDay) => void;
 }
 
-const HeatCell = memo(function HeatCell({ day, level, isToday, accent, tabStop, onFocusDate, onSelect }: HeatCellProps) {
+const HeatCell = memo(function HeatCell({ day, level, isToday, isStreak, accent, tabStop, onFocusDate, onSelect }: HeatCellProps) {
   const date = day?.date ?? "";
   const label = day ? describeDay(day, level) : "";
   return (
@@ -52,11 +54,12 @@ const HeatCell = memo(function HeatCell({ day, level, isToday, accent, tabStop, 
         const current = Array.from(cells).indexOf(event.currentTarget);
         cells[Math.max(0, Math.min(cells.length - 1, current + move))]?.focus();
       }}
-      className={`consistency-heat-cell relative aspect-square min-w-0 rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-white/90 ${isToday ? "consistency-heat-today" : ""}`}
+      className={`consistency-heat-cell relative aspect-square min-w-0 rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-white/90 ${isToday ? "consistency-heat-today" : ""} ${isStreak ? "consistency-heat-streak" : ""}`}
       style={{
         "--heat-color": accent,
         "--heat-level": level,
         "--heat-intensity": level === 0 ? 0 : level / 4,
+        "--heat-streak": isStreak ? 0.32 : 0,
         backgroundColor: day ? `var(--heat-${level})` : "transparent",
         cursor: day ? "pointer" : "default",
       } as React.CSSProperties}
@@ -75,7 +78,7 @@ function describeDay(day: ActivityDay, level: number) {
   return `${weekday}, ${date} de ${MONTHS[month - 1].toLowerCase()} ${year} — ${detail}; nível ${level} de 4`;
 }
 
-export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", variant = "year", summary, onSelectDay }: ConsistencyHeatmapProps) {
+export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", variant = "year", summary, streakDates = [], onSelectDay }: ConsistencyHeatmapProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -87,6 +90,7 @@ export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", vari
   const totalCells = columns.length * 7;
   const firstDate = columns.flat().find((day) => day !== null)?.date;
   const tabStopDate = focusedDate ?? (today.startsWith(`${year}-`) ? today : firstDate);
+  const streakDateSet = useMemo(() => new Set(streakDates), [streakDates]);
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
@@ -166,7 +170,7 @@ export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", vari
                   {column.map((day, rowIndex) => {
                     const activity = day && !day.future ? activityLevel(day) : 0;
                     const level = activity === 0 ? 0 : activity === 1 ? 1 : activity === 2 ? 3 : 4;
-                    return <HeatCell key={day?.date ?? `empty-${weekIndex}-${rowIndex}`} day={day} level={level} isToday={day?.date === today} accent={accent} tabStop={day?.date === tabStopDate} onFocusDate={setFocusedDate} onSelect={selectDay} />;
+                    return <HeatCell key={day?.date ?? `empty-${weekIndex}-${rowIndex}`} day={day} level={level} isToday={day?.date === today} isStreak={Boolean(day && streakDateSet.has(day.date))} accent={accent} tabStop={day?.date === tabStopDate} onFocusDate={setFocusedDate} onSelect={selectDay} />;
                   })}
                 </motion.div>
               ))}

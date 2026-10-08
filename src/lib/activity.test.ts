@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { StreakDayStatus } from "@/types";
 import {
   activityLevel,
+  activityCurrentStreakDates,
   activityStats,
   activityStreaks,
   buildActivityYear,
@@ -71,6 +72,9 @@ test("activityStreaks: hoje pendente não quebra; dia perdido quebra", () => {
   const { current, best } = activityStreaks(days, "2026-01-10");
   assert.equal(current, 6);
   assert.equal(best, 6);
+  assert.deepEqual(activityCurrentStreakDates(days, "2026-01-10"), [
+    "2026-01-09", "2026-01-08", "2026-01-07", "2026-01-06", "2026-01-05", "2026-01-04",
+  ]);
 
   // Com o mesmo cenário mas 09/01 "lost", a sequência quebra antes de hoje.
   const lost = [...days];
