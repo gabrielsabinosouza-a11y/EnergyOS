@@ -53,6 +53,27 @@ export interface CategoryIconOption {
   icon: LucideIcon;
 }
 
+/** Smart planner categories with emojis for the weekly planner modal. */
+export interface SmartCategory {
+  id: number;
+  name: string;
+  emoji: string;
+  icon: LucideIcon;
+  color: string;
+}
+
+export const SMART_PLANNER_CATEGORIES: readonly SmartCategory[] = [
+  { id: 1, name: "Fé", emoji: "⛪", icon: Heart, color: "#e879f9" },
+  { id: 2, name: "Estudo", emoji: "📚", icon: BookOpen, color: "#71d4ff" },
+  { id: 3, name: "Trabalho", emoji: "💼", icon: Briefcase, color: "#94a3b8" },
+  { id: 4, name: "Treino", emoji: "🏋️", icon: Dumbbell, color: "#ffb86b" },
+  { id: 5, name: "Metas", emoji: "🎯", icon: Star, color: "#6bffb8" },
+  { id: 6, name: "Hobby", emoji: "🎮", icon: Gamepad2, color: "#b69cff" },
+  { id: 7, name: "Família", emoji: "👨‍👩‍👧", icon: Heart, color: "#f472b6" },
+  { id: 8, name: "Aprendizado", emoji: "🧠", icon: Brain, color: "#a3e635" },
+  { id: 9, name: "Outros", emoji: "✨", icon: Zap, color: "#ffd471" },
+];
+
 /** Ícones curados para categorias personalizadas (~18 opções). */
 export const CATEGORY_ICON_OPTIONS: readonly CategoryIconOption[] = [
   { value: "book", label: "Livro", icon: BookOpen },

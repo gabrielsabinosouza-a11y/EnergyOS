@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, Minus, Loader2, Trash2, Pencil, GripVertical } from "lucide-react";
+import { Check, Plus, Minus, Loader2, Trash2, Pencil, GripVertical, Sparkles } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
@@ -48,6 +48,7 @@ function SortableHabitRow({
   onDelete: (id: number) => void;
   onEdit: (task: UserDailyTask) => void;
 }) {
+  const [progressOpen, setProgressOpen] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
   });
@@ -56,16 +57,25 @@ function SortableHabitRow({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+  const remainingCount = Math.max(0, task.dailyTarget - task.completedCount);
+  const progressPercent = Math.round((task.completedCount / task.dailyTarget) * 100);
 
   return (
     <motion.div
       ref={setNodeRef}
-      style={style}
       key={task.id}
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 16, height: 0 }}
-      className="group flex items-center gap-2 border-b border-[var(--border-subtle)] py-2.5 last:border-0"
+      className="group relative flex items-center gap-2 border-b border-[var(--border-subtle)] py-2.5 last:border-0"
+      onMouseEnter={() => { if (task.dailyTarget > 1) setProgressOpen(true); }}
+      onMouseLeave={() => setProgressOpen(false)}
+      onFocusCapture={() => { if (task.dailyTarget > 1) setProgressOpen(true); }}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProgressOpen(false);
+      }}
+      aria-busy={busy}
+      style={{ ...style, zIndex: progressOpen ? 40 : undefined }}
     >
       <button
         {...attributes}
@@ -90,10 +100,68 @@ function SortableHabitRow({
           <Check size={14} />
         </button>
       ) : (
-        <div className={`flex h-8 shrink-0 items-center overflow-hidden rounded-lg border ${task.isCompleted ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.12)]" : task.completedCount > 0 ? "border-cyan-400/30 bg-cyan-400/5 text-cyan-200" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`} role="group" aria-label={`${task.title}: ${task.completedCount}/${task.dailyTarget}`}>
-          <button type="button" onClick={() => onProgress(task, Math.max(0, task.completedCount - 1))} disabled={busy || task.completedCount <= 0} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Diminuir ${task.title}`}><Minus size={13} /></button>
-          <span className="min-w-11 text-center font-mono text-[11px] font-semibold" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount}/{task.dailyTarget}{task.isCompleted && <Check size={11} className="ml-1 inline" aria-label="Concluído" />}</span>
-          <button type="button" onClick={() => onProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={busy || task.isCompleted} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Aumentar ${task.title}`}><Plus size={13} /></button>
+        <div className="group/target relative shrink-0">
+          <button
+            type="button"
+            id={`habit-progress-trigger-${task.id}`}
+            onClick={() => {
+              if (window.matchMedia("(hover: hover)").matches) setProgressOpen(true);
+              else setProgressOpen((isOpen) => !isOpen);
+            }}
+            aria-expanded={progressOpen}
+            aria-haspopup="dialog"
+            aria-controls={`habit-progress-tooltip-${task.id}`}
+            aria-label={`Ver check-ins de hoje para ${task.title}: ${task.completedCount} de ${task.dailyTarget}`}
+            title={`Check-ins de hoje: ${task.completedCount}/${task.dailyTarget}`}
+            className={`flex h-7 items-center gap-1.5 rounded-full border px-2 text-[10px] font-mono font-semibold transition hover:-translate-y-px focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${task.isCompleted ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-300" : task.completedCount > 0 ? "border-cyan-400/40 bg-cyan-400/5 text-cyan-200" : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-cyan-400/40 hover:text-cyan-200"}`}
+          >
+            <Plus size={12} />
+            <span>{task.completedCount}/{task.dailyTarget}</span>
+            {task.isCompleted && <Check size={11} aria-label="Meta concluída" />}
+          </button>
+          <AnimatePresence>
+          {progressOpen && task.dailyTarget > 1 && <motion.div
+            id={`habit-progress-tooltip-${task.id}`}
+            initial={{ opacity: 0, scale: 0.9, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22 }}
+            style={{
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+              background: "linear-gradient(145deg, rgba(12,24,43,0.94), rgba(10,15,30,0.78))",
+              boxShadow: "0 20px 48px rgba(0,0,0,0.48), 0 0 24px rgba(70,190,255,0.14), inset 0 1px 0 rgba(210,245,255,0.12)",
+              transformOrigin: "bottom center",
+            }}
+            role="dialog"
+            aria-label={`Check-ins de hoje para ${task.title}`}
+            className="absolute bottom-full left-1/2 z-30 mb-3 w-64 -translate-x-1/2 rounded-2xl border border-cyan-200/15 p-4 shadow-xl"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 truncate text-[11px] font-semibold text-[var(--text)]"><Sparkles size={12} className="text-cyan-200" /> Progresso de hoje</span>
+              <span className={`font-mono text-xs font-semibold ${task.isCompleted ? "text-emerald-300" : "text-cyan-200"}`}>{task.completedCount}/{task.dailyTarget}</span>
+            </div>
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <span className="font-mono text-sm font-semibold">{task.completedCount} de {task.dailyTarget} check-ins</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{remainingCount === 0 ? "Concluído" : remainingCount + " restante" + (remainingCount === 1 ? "" : "s")}</span>
+            </div>
+            <div className="mb-3 h-2 overflow-hidden rounded-full bg-white/[0.08] shadow-inner">
+              <motion.div
+                className={`h-full rounded-full ${task.isCompleted ? "bg-gradient-to-r from-emerald-400 to-lime-300" : "bg-gradient-to-r from-cyan-400 to-sky-300"}`}
+                initial={{ width: 0 }}
+                animate={{ width: progressPercent + "%" }}
+                transition={{ type: "spring", stiffness: 170, damping: 24 }}
+                style={{ boxShadow: task.isCompleted ? "0 0 12px rgba(74,222,128,0.55)" : "0 0 12px rgba(56,189,248,0.55)" }}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-black/10 p-1">
+              <button type="button" onClick={() => onProgress(task, Math.max(0, task.completedCount - 1))} disabled={busy || task.completedCount <= 0} className="grid h-8 w-9 place-items-center rounded-md text-[var(--text-secondary)] transition hover:bg-white/5 hover:text-white disabled:opacity-30" aria-label={`Diminuir check-ins de ${task.title}`}><Minus size={14} /></button>
+              <span className="font-mono text-sm font-semibold text-[var(--text)]" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount} / {task.dailyTarget}</span>
+              <button type="button" onClick={() => onProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={busy || task.isCompleted} className="grid h-8 w-9 place-items-center rounded-md text-[var(--text-secondary)] transition hover:bg-white/5 hover:text-white disabled:opacity-30" aria-label={`Adicionar check-in para ${task.title}`}><Plus size={14} /></button>
+            </div>
+            {task.isCompleted && <p className="mt-2 text-center text-[10px] font-medium text-emerald-300">Meta diária concluída</p>}
+          </motion.div>}
+          </AnimatePresence>
         </div>
       )}
 

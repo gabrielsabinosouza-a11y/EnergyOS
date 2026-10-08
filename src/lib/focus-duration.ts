@@ -42,5 +42,6 @@ export function formatCountdownMmSs(totalSeconds: number): string {
 export function isValidFocusDurationMinutes(value: number): boolean {
   return Number.isInteger(value)
     && value >= FOCUS_DURATION_MIN_MINUTES
-    && value <= FOCUS_DURATION_MAX_MINUTES;
+    && value <= FOCUS_DURATION_MAX_MINUTES
+    && (value - FOCUS_DURATION_MIN_MINUTES) % FOCUS_DURATION_SNAP_MINUTES === 0;
 }

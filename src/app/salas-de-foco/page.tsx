@@ -41,7 +41,6 @@ import {
   FOCUS_DURATION_MAX_MINUTES,
   FOCUS_DURATION_MIN_MINUTES,
   FOCUS_DURATION_SNAP_MINUTES,
-  focusDurationProgress,
   formatCountdownMmSs,
 } from "@/lib/focus-duration";
 import {
@@ -178,6 +177,7 @@ function SharedRing({
   room,
   isHost,
   onDurationChange,
+  onDurationCommit,
   disabled,
   remainingMs,
   myEnergy,
@@ -185,6 +185,7 @@ function SharedRing({
   room: FocusRoom;
   isHost: boolean;
   onDurationChange: (m: number) => void;
+  onDurationCommit: (m: number) => void;
   disabled: boolean;
   remainingMs: number | null;
   myEnergy: string;
@@ -198,6 +199,7 @@ function SharedRing({
         <CircularDurationPicker
           value={room.durationMinutes}
           onChange={onDurationChange}
+          onCommit={onDurationCommit}
           maxDurationMinutes={FOCUS_DURATION_MAX_MINUTES}
           snapIncrement={FOCUS_DURATION_SNAP_MINUTES}
           minMinutes={FOCUS_DURATION_MIN_MINUTES}
@@ -209,32 +211,18 @@ function SharedRing({
       );
     }
 
-    const frac = focusDurationProgress(room.durationMinutes);
-    const radius = (RING_SIZE - 16) / 2;
-    const circumference = 2 * Math.PI * radius;
     return (
-      <svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`} style={{ maxWidth: "100%", height: "auto", display: "block" }}>
-        <defs>
-          <filter id="shared-ring-glow">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-        <circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={6} opacity={0.5} />
-        <circle
-          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none"
-          stroke={cfg.accent} strokeWidth={8} strokeLinecap="round"
-          strokeDasharray={`${frac * circumference} ${circumference - frac * circumference}`}
-          transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-          style={{ filter: "url(#shared-ring-glow)", transition: "stroke-dasharray 0.2s ease-out, stroke 0.4s ease" }}
-        />
-        <circle
-          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={radius} fill="none"
-          stroke={cfg.accent} strokeWidth={4}
-          strokeDasharray={`${frac * circumference * 0.02} ${circumference}`}
-          strokeLinecap="round" opacity={0.6}
-        />
-      </svg>
+      <CircularDurationPicker
+        value={room.durationMinutes}
+        onChange={() => {}}
+        maxDurationMinutes={FOCUS_DURATION_MAX_MINUTES}
+        snapIncrement={FOCUS_DURATION_SNAP_MINUTES}
+        minMinutes={FOCUS_DURATION_MIN_MINUTES}
+        size={RING_SIZE}
+        accentColor={cfg.accent}
+        disabled
+        centerContent={null}
+      />
     );
   }
 
@@ -271,6 +259,7 @@ export default function FocusRoomsPage() {
   const [pageState, setPageState] = useState<PageState>("list");
   const [rooms, setRooms] = useState<FocusRoom[]>([]);
   const [currentRoom, setCurrentRoom] = useState<FocusRoom | null>(null);
+  const pendingDurationRef = useRef<number | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [selectedEnergyType, setSelectedEnergyType] = useState<string>("flame");
   const [selectedDuration, setSelectedDuration] = useState<number>(DEFAULT_DURATION);
@@ -388,14 +377,24 @@ export default function FocusRoomsPage() {
     try {
       const data = await api.getFocusRoomById(currentRoom.id);
       const next = data.room;
-      setCurrentRoom(next);
-
-      // If the room disappeared (deleted), fall back to list
       if (!next) {
+        pendingDurationRef.current = null;
         setCurrentRoom(null);
         setPageState("list");
         fetchRooms();
-      } else if (currentRoom.status === "confirming" && next.status === "active") {
+        return;
+      }
+      setCurrentRoom(() => {
+        const pendingDuration = pendingDurationRef.current;
+        if (pendingDuration !== null && next.durationMinutes !== pendingDuration) {
+          return { ...next, durationMinutes: pendingDuration };
+        }
+        if (pendingDuration !== null) pendingDurationRef.current = null;
+        return next;
+      });
+
+      // If the room disappeared (deleted), fall back to list
+      if (currentRoom.status === "confirming" && next.status === "active") {
         // Everyone confirmed the host's "Play Again" request → the room flipped
         // back to active with elapsed_seconds=0 (fresh shared countdown) and
         // every confirmed participant was reset to "focusing" server-side.
@@ -716,7 +715,7 @@ export default function FocusRoomsPage() {
   }, [roomCode, selectedEnergyType]);
 
   const handleStartRoom = useCallback(async () => {
-    if (!currentRoom) return;
+    if (!currentRoom || loadingAction !== null) return;
     setLoadingAction("starting");
     setError(null);
     // Unlock the audio context inside this host gesture so the room completion
@@ -731,7 +730,7 @@ export default function FocusRoomsPage() {
     } finally {
       setLoadingAction(null);
     }
-  }, [currentRoom]);
+  }, [currentRoom, loadingAction]);
 
   const handleTogglePause = useCallback(async () => {
     if (!currentRoom) return;
@@ -792,15 +791,24 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom, myProfileId, finalizeSession]);
 
+  const handlePreviewDuration = useCallback((minutes: number) => {
+    pendingDurationRef.current = minutes;
+    setCurrentRoom((room) => room ? { ...room, durationMinutes: minutes } : room);
+  }, []);
+
   const handleUpdateDuration = useCallback(async (minutes: number) => {
-    if (!currentRoom) return;
+    if (!currentRoom || loadingAction !== null) return;
+    setLoadingAction("updating-duration");
     try {
       const result = await api.updateRoomDuration(currentRoom.id, minutes);
+      pendingDurationRef.current = null;
       setCurrentRoom(result.room);
-    } catch {
-      // silent — synced via poll
+    } catch (err) {
+      pendingDurationRef.current = null;
+      setError(err instanceof Error ? err.message : "Não foi possível sincronizar a duração da sala.");
     }
-  }, [currentRoom]);
+    finally { setLoadingAction(null); }
+  }, [currentRoom, loadingAction]);
 
   const handleSelectEnergy = useCallback(async (energyType: string) => {
     if (!currentRoom || !user) return;
@@ -1346,7 +1354,8 @@ export default function FocusRoomsPage() {
               <SharedRing
                 room={room}
                 isHost={isHost}
-                onDurationChange={handleUpdateDuration}
+                onDurationChange={handlePreviewDuration}
+                onDurationCommit={handleUpdateDuration}
                 disabled={loadingAction !== null}
                 remainingMs={running ? sharedRemainingMs : null}
                 myEnergy={myEnergy}
@@ -1465,7 +1474,7 @@ export default function FocusRoomsPage() {
                 secondary Sair so the host can back out before starting. */}
             {room.status === "waiting" && isHost && (
               <div className="space-y-2">
-                <motion.button onClick={handleStartRoom} disabled={loadingAction === "starting"} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
+                <motion.button onClick={handleStartRoom} disabled={loadingAction !== null} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="primary-button w-full">
                   {loadingAction === "starting" ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} /> Iniciar sessão para todos</>}
                 </motion.button>
                 <button onClick={handleLeaveRoom} disabled={loadingAction === "leaving"} className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:text-red-400 transition-colors">

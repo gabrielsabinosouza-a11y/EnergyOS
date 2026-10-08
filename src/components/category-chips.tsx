@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Plus, X } from "lucide-react";
 import type { Category } from "@/types";
-import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
+import { categoryIcon, sortCategoriesForPicker, type SmartCategory } from "@/lib/categories";
 
 function withAlpha(hex: string, alpha: number): string {
   const short = hex.replace("#", "");
@@ -80,6 +80,52 @@ export function CategoryChips({ categories, selectedId, onSelect, onAdd, addActi
           Nova categoria
         </motion.button>
       )}
+    </div>
+  );
+}
+
+/** Premium emoji-based category chips for the weekly planner modal. */
+interface SmartCategoryChipsProps {
+  categories: readonly SmartCategory[];
+  selectedId: number;
+  onSelect: (id: number) => void;
+}
+
+export function SmartCategoryChips({ categories, selectedId, onSelect }: SmartCategoryChipsProps) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {categories.map((cat) => {
+        const selected = cat.id === selectedId;
+        return (
+          <motion.button
+            key={cat.id}
+            type="button"
+            layout
+            onClick={() => onSelect(cat.id)}
+            whileTap={{ scale: 0.95 }}
+            animate={{ scale: selected ? 1.04 : 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 font-medium transition-all duration-200 cursor-pointer ${
+              selected
+                ? ""
+                : "border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--text-faint)] hover:border-[var(--border-strong)] hover:text-[var(--text-muted)]"
+            }`}
+            style={
+              selected
+                ? {
+                    borderColor: withAlpha(cat.color, 0.5),
+                    backgroundColor: withAlpha(cat.color, 0.12),
+                    color: cat.color,
+                    boxShadow: `0 0 20px -6px ${withAlpha(cat.color, 0.5)}`,
+                  }
+                : undefined
+            }
+          >
+            <span className="text-xl leading-none">{cat.emoji}</span>
+            <span className="text-[11px] font-medium">{cat.name}</span>
+          </motion.button>
+        );
+      })}
     </div>
   );
 }

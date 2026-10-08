@@ -5,13 +5,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Plus, Check, X, Loader2, Repeat, Pencil, SkipForward } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
-import { sortCategoriesForPicker } from "@/lib/categories";
+import { sortCategoriesForPicker, SMART_PLANNER_CATEGORIES } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 import { Modal } from "@/components/modal";
 import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_ITEMS_PER_CARD = 4;
+
+/** Find the smart category emoji for a given DB category by name match. */
+function getCategoryEmoji(category: Category): string {
+  const smart = SMART_PLANNER_CATEGORIES.find(
+    (sc) => sc.name.toLowerCase() === category.name.toLowerCase()
+  );
+  return smart?.emoji ?? "📋";
+}
 
 interface WeeklyPlanProps {
   plans: WeeklyPlanItem[];
@@ -172,12 +180,17 @@ export function WeeklyPlan({
     <div className="panel p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Calendar size={16} className="text-[var(--accent)]" />
+          <Calendar size={18} className="text-[var(--accent)]" />
           <span className="eyebrow muted">PLANO DA SEMANA</span>
         </div>
-        <button onClick={handleCreate} className="icon-button small" title="Novo plano">
+        <motion.button
+          onClick={handleCreate}
+          whileTap={{ scale: 0.92 }}
+          className="icon-button small"
+          title="Novo plano"
+        >
           <Plus size={18} />
-        </button>
+        </motion.button>
       </div>
 
       {/* Week strip */}
@@ -207,9 +220,18 @@ export function WeeklyPlan({
               </div>
 
               {day.plans.length === 0 && (
-                <div className="flex h-full items-center justify-center">
-                  <span className="text-[10px] text-[var(--text-faint)]">Nada planejado</span>
-                </div>
+                <motion.button
+                  onClick={() => {
+                    setModalPrefillDate(day.date);
+                    setShowModal(true);
+                  }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-subtle)] py-2 text-[10px] font-medium text-[var(--text-faint)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                >
+                  <Plus size={12} />
+                  Adicionar
+                </motion.button>
               )}
 
               <div className="space-y-1">
@@ -230,12 +252,13 @@ export function WeeklyPlan({
                   />
                 ))}
                 {day.plans.length > MAX_ITEMS_PER_CARD && (
-                  <button
+                  <motion.button
                     onClick={(e) => { e.stopPropagation(); setPopoverDay({ date: day.date, items: day.plans }); }}
-                    className="block w-full text-center text-[10px] font-medium text-[var(--accent)] hover:underline"
+                    whileTap={{ scale: 0.95 }}
+                    className="block w-full text-center text-[10px] font-medium rounded-md px-1.5 py-1 text-[var(--accent)] hover:bg-[var(--accent-bg)] transition-colors"
                   >
                     +{day.plans.length - MAX_ITEMS_PER_CARD} mais
-                  </button>
+                  </motion.button>
                 )}
               </div>
             </div>
@@ -404,20 +427,26 @@ export function WeeklyPlan({
 
 function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit: () => void; onToggle: () => void }) {
   const displayColor = plan.color || plan.category.color;
+  const emoji = getCategoryEmoji(plan.category);
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className={`group flex items-center gap-1.5 rounded-lg p-1.5 text-[10px] leading-tight cursor-pointer ${
-        plan.completedAt ? "line-through opacity-50" : ""
-      } ${plan.skipped ? "opacity-30" : ""}`}
-      style={{ borderLeft: `2px solid ${displayColor}` }}
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`group flex items-center gap-2 rounded-lg p-1.5 text-[11px] leading-tight cursor-pointer transition-colors hover:bg-[var(--bg-surface-hover)] ${
+        plan.completedAt ? "line-through opacity-40" : ""
+      } ${plan.skipped ? "opacity-25" : ""}`}
+      style={{ borderLeft: `2.5px solid ${displayColor}` }}
       onClick={onEdit}
       title={`${plan.title}${plan.startTime ? " · " + plan.startTime : ""}`}
     >
+      <span className="shrink-0 text-base leading-none" aria-hidden="true">{emoji}</span>
+      <div className="flex flex-1 min-w-0 items-center gap-1.5">
+        {plan.startTime && (
+          <span className="shrink-0 text-[10px] font-medium text-[var(--text-faint)] tabular-nums">{plan.startTime}</span>
+        )}
+        <span className="text-[var(--text)] block truncate">{plan.title}</span>
+      </div>
       {plan.isRecurring && <Repeat size={10} className="shrink-0 text-[var(--text-faint)]" />}
-      {plan.startTime && <span className="shrink-0 text-[var(--text-faint)]">{plan.startTime}</span>}
-      <span className="text-[var(--text)] block truncate flex-1">{plan.title}</span>
       <button
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
         className={`shrink-0 rounded p-0.5 transition ${

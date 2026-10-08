@@ -22,10 +22,13 @@ interface CircularDurationPickerProps {
   trackColor?: string;
   label?: string;
   centerContent?: React.ReactNode;
+  progressOverride?: number;
+  showTicks?: boolean;
+  onCommit?: (minutes: number) => void;
 }
 
 function clampAndSnap(raw: number, min: number, max: number, snap: number): number {
-  const snapped = Math.round(raw / snap) * snap;
+  const snapped = min + Math.round((raw - min) / snap) * snap;
   return Math.max(min, Math.min(max, snapped));
 }
 
@@ -41,6 +44,9 @@ export function CircularDurationPicker({
   trackColor = "var(--border-subtle)",
   label,
   centerContent,
+  progressOverride,
+  showTicks = true,
+  onCommit,
 }: CircularDurationPickerProps) {
   const effectiveMaxMinutes = Math.min(maxDurationMinutes, FOCUS_DURATION_MAX_MINUTES);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -69,9 +75,11 @@ export function CircularDurationPicker({
   const circumference = 2 * Math.PI * radius;
   const strokeWidth = 6;
   const handleRadius = 10;
-  const safeValue = Math.max(minMinutes, Math.min(effectiveMaxMinutes, value));
+  const safeValue = clampAndSnap(value, minMinutes, effectiveMaxMinutes, snapIncrement);
 
-  const fraction = focusDurationProgress(safeValue, minMinutes, effectiveMaxMinutes);
+  const fraction = progressOverride === undefined
+    ? focusDurationProgress(safeValue, minMinutes, effectiveMaxMinutes)
+    : Math.max(0, Math.min(1, progressOverride));
   const arcLength = fraction * circumference;
 
   const handleAngleDeg = fraction * 360;
@@ -139,6 +147,9 @@ export function CircularDurationPicker({
       const up = () => {
         draggingRef.current = false;
         setDragging(false);
+        const committedValue = clampAndSnap(runningValueRef.current, minMinutes, effectiveMaxMinutes, snapIncrement);
+        valueRef.current = committedValue;
+        onCommit?.(committedValue);
         clearWindowListeners(move, up);
       };
 
@@ -147,24 +158,22 @@ export function CircularDurationPicker({
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", up);
     },
-    [computeAngleDegrees, minutesPerDegree, minMinutes, effectiveMaxMinutes, snapIncrement, onChange],
+    [computeAngleDegrees, minutesPerDegree, minMinutes, effectiveMaxMinutes, snapIncrement, onChange, onCommit],
   );
 
-  useEffect(() => {
-    if (!dragging) return;
-
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "ArrowUp" || e.key === "ArrowRight") {
-        e.preventDefault();
-        onChange(clampAndSnap(valueRef.current + snapIncrement, minMinutes, effectiveMaxMinutes, snapIncrement));
-      } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        onChange(clampAndSnap(valueRef.current - snapIncrement, minMinutes, effectiveMaxMinutes, snapIncrement));
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [dragging, onChange, snapIncrement, minMinutes, effectiveMaxMinutes]);
+  const onKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
+    let next: number | null = null;
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") next = valueRef.current + snapIncrement;
+    else if (event.key === "ArrowDown" || event.key === "ArrowLeft") next = valueRef.current - snapIncrement;
+    else if (event.key === "Home") next = minMinutes;
+    else if (event.key === "End") next = effectiveMaxMinutes;
+    if (next === null) return;
+    event.preventDefault();
+    const committedValue = clampAndSnap(next, minMinutes, effectiveMaxMinutes, snapIncrement);
+    valueRef.current = committedValue;
+    onChange(committedValue);
+    onCommit?.(committedValue);
+  }, [effectiveMaxMinutes, minMinutes, onChange, onCommit, snapIncrement]);
 
   const minutes = Math.round(safeValue);
   const displayText = `${minutes}`;
@@ -178,7 +187,14 @@ export function CircularDurationPicker({
         viewBox={`0 0 ${size} ${size}`}
         className="circular-duration-svg"
         style={{ touchAction: "none", cursor: disabled ? "default" : "grab", maxWidth: "100%", height: "auto", display: "block" }}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label="Duração do foco em minutos"
+        aria-valuemin={minMinutes}
+        aria-valuemax={effectiveMaxMinutes}
+        aria-valuenow={minutes}
         onPointerDown={onPointerDown}
+        onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
       >
         <defs>
@@ -206,7 +222,7 @@ export function CircularDurationPicker({
         />
 
         {/* Tick marks at snap intervals (min-aware positions) */}
-        {Array.from({ length: Math.floor((effectiveMaxMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
+        {showTicks && Array.from({ length: Math.floor((effectiveMaxMinutes - minMinutes) / snapIncrement) + 1 }, (_, i) => {
           const tickMinutes = minMinutes + i * snapIncrement;
           const tickFrac = focusDurationProgress(tickMinutes, minMinutes, effectiveMaxMinutes);
           const tickAngle = tickFrac * 360 - 90;
@@ -268,7 +284,20 @@ export function CircularDurationPicker({
 
       {/* Center content — hidden when caller passes centerContent={<></>} */}
       {centerContent !== undefined ? (
-        centerContent
+        <div
+          className="circular-duration-center"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          {centerContent}
+        </div>
       ) : (
         <div
           className="circular-duration-center"

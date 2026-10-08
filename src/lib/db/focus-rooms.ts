@@ -5,7 +5,7 @@ import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
 import { endFocusSession } from "./focus";
 import { clearAllGroupRoomPresence, clearGroupRoomPresence, ensureGroupRoomPresenceSchema } from "./group-room-presence";
-import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
+import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES, isValidFocusDurationMinutes } from "../focus-duration";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired" | "restarting" | "confirming";
@@ -141,8 +141,8 @@ export async function createFocusRoom(
 ): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
   if (!hostProfileId) throw new ValidationError("Host profile ID is required");
-  if (!Number.isInteger(durationMinutes) || durationMinutes < FOCUS_DURATION_MIN_MINUTES || durationMinutes > FOCUS_DURATION_MAX_MINUTES) {
-    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos.`);
+  if (!isValidFocusDurationMinutes(durationMinutes)) {
+    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos, em passos de 5.`);
   }
 
   // Generate a unique code
@@ -437,8 +437,8 @@ export async function updateParticipantEnergyType(roomId: number, profileId: str
 // Update the room's duration (host only)
 export async function updateRoomDuration(roomId: number, hostProfileId: string, durationMinutes: number): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  if (!Number.isInteger(durationMinutes) || durationMinutes < FOCUS_DURATION_MIN_MINUTES || durationMinutes > FOCUS_DURATION_MAX_MINUTES) {
-    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos.`);
+  if (!isValidFocusDurationMinutes(durationMinutes)) {
+    throw new ValidationError(`Duração deve ser entre ${FOCUS_DURATION_MIN_MINUTES} e ${FOCUS_DURATION_MAX_MINUTES} minutos, em passos de 5.`);
   }
 
   const client = await pool.connect();
