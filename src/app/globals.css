@@ -379,6 +379,9 @@ body { overflow-wrap: break-word; }
 .consistency-heat-cell:not(:disabled):hover, .consistency-heat-cell:not(:disabled):focus-visible { z-index: 2; transform: scale(1.22); filter: brightness(1.3); box-shadow: 0 0 12px var(--heat-glow), inset 0 0 0 1px rgba(255,255,255,.28); }
 .consistency-heat-cell:not(:disabled):active { transform: scale(1.12); }
 .consistency-heat-cell[style*="--heat-level: 0"] { box-shadow: inset 0 0 0 1px rgba(190,225,255,.025); }
+.consistency-heatmap-habit .consistency-heat-cell-done::before { box-shadow: 0 0 6px color-mix(in srgb, var(--heat-color) 55%, transparent), 0 0 13px color-mix(in srgb, var(--heat-color) 18%, transparent); opacity: .9; }
+.consistency-heatmap-habit .consistency-heat-cell:not(.consistency-heat-cell-done) { box-shadow: inset 0 0 0 1px rgba(190,225,255,.035); }
+.consistency-heatmap-no-legend { justify-content: flex-start; }
 .consistency-heat-today { outline: 1.5px solid rgba(255,255,255,.9); outline-offset: 2px; }
 .consistency-heat-today::after { position: absolute; inset: -3px; border: 1px solid var(--heat-color); border-radius: 6px; content: ""; opacity: .7; pointer-events: none; animation: consistency-led-pulse 2.6s ease-in-out infinite; }
 @keyframes consistency-led-pulse { 0%, 100% { transform: scale(.92); opacity: .75; } 50% { transform: scale(1.08); opacity: .28; } }
@@ -392,7 +395,11 @@ body { overflow-wrap: break-word; }
 .consistency-map-card { position: relative; overflow: hidden; border: 1px solid rgba(157,212,255,.16); background: linear-gradient(135deg, rgba(17,37,58,.8), rgba(9,22,38,.92)); box-shadow: 0 16px 44px rgba(0,0,0,.18), inset 0 1px rgba(225,245,255,.08), 0 0 34px rgba(70,185,255,.035); backdrop-filter: blur(18px); }
 .consistency-map-card::before { position: absolute; inset: 0 8% auto; height: 1px; content: ""; background: linear-gradient(90deg, transparent, rgba(183,232,255,.25), transparent); }
 .consistency-stats-grid > * { border: 1px solid rgba(157,212,255,.12); background: linear-gradient(145deg, rgba(16,34,53,.86), rgba(10,23,39,.92)); box-shadow: 0 10px 30px rgba(0,0,0,.12), inset 0 1px rgba(225,245,255,.055); backdrop-filter: blur(12px); }
+.habit-streak-icon-active { animation: habit-streak-idle 3s ease-in-out infinite; }
+.habit-streak-icon-inactive { opacity: .48; filter: grayscale(.78); }
+@keyframes habit-streak-idle { 0%, 100% { opacity: .86; transform: scale(1); } 50% { opacity: 1; transform: scale(1.07); } }
 @media (prefers-reduced-motion: reduce) {
   .consistency-heat-today { animation: none; }
   .consistency-heat-cell { transition: none; }
+  .habit-streak-icon-active { animation: none; }
 }

@@ -568,6 +568,66 @@ export interface WeeklyPlan {
   allDay: boolean;
 }
 
+// ── Recurring weekly plan series ─────────────────────────────────────────
+
+export type PlanRepeatType = "once" | "weekly" | "interval";
+export type PlanEndType = "never" | "date" | "count";
+
+export interface WeeklyPlanSeries {
+  id: number;
+  profileId: string;
+  title: string;
+  categoryId: number;
+  category: Category;
+  iconType: "asset" | "emoji" | "image" | null;
+  iconValue: string | null;
+  color: string | null;
+  note: string | null;
+  repeatType: PlanRepeatType;
+  repeatDays: number[] | null;
+  repeatInterval: number | null;
+  startTime: string | null;
+  durationMinutes: number | null;
+  startDate: string;
+  endType: PlanEndType;
+  endDate: string | null;
+  endCount: number | null;
+  timezone: string;
+  archived: boolean;
+  createdAt: string;
+}
+
+export interface WeeklyPlanOccurrence {
+  id: number;
+  seriesId: number;
+  occurrenceDate: string;
+  completedAt: string | null;
+  skipped: boolean;
+  overrideTitle: string | null;
+  overrideStartTime: string | null;
+}
+
+/** Unified type for the UI — combines old WeeklyPlan and new series occurrences. */
+export interface WeeklyPlanItem {
+  id: number; // occurrence id or old plan id
+  seriesId: number | null; // null for old one-time plans
+  planDate: string;
+  title: string;
+  categoryId: number;
+  category: Category;
+  iconType: "asset" | "emoji" | "image" | null;
+  iconValue: string | null;
+  color: string | null;
+  note: string | null;
+  completedAt: string | null;
+  skipped: boolean;
+  startTime: string | null;
+  durationMinutes: number | null;
+  repeatType: PlanRepeatType | null;
+  repeatDays: number[] | null;
+  isRecurring: boolean;
+}
+
 export interface FocusSession {
   id: number;
   profileId: string;

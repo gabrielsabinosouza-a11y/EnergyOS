@@ -47,6 +47,9 @@ export const KANBAN_DONE_COINS = 25;
 export const WEEKLY_PLAN_DONE_XP = 10;
 export const WEEKLY_PLAN_DONE_COINS = 10;
 
+/** Maximum number of active recurring plan series per user. */
+export const WEEKLY_PLAN_SERIES_LIMIT = 200;
+
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;
 

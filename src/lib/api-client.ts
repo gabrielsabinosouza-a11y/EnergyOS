@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan, WeeklyPlanItem, WeeklyPlanSeries } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { GoalLogAction, GoalLogEntry } from "@/lib/db/goal-logs";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
@@ -181,10 +181,10 @@ export const api = {
   deleteKanbanLabel: (id: number) =>
     request<{ ok: true }>(`/api/kanban/labels/${id}`, { method: "DELETE" }),
 
-  // Weekly Plans
+  // Weekly Plans (legacy one-time items)
   getWeeklyPlans: (weekStart?: string) => {
     const params = weekStart ? `?weekStart=${weekStart}` : "";
-    return request<WeeklyPlan[]>(`/api/weekly-plans${params}`);
+    return request<WeeklyPlanItem[]>(`/api/weekly-plans${params}`);
   },
   createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
@@ -195,6 +195,31 @@ export const api = {
   updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
+
+  // Weekly Plan Series (recurring items)
+  getWeeklyPlanSeries: () => request<{ series: WeeklyPlanSeries[] }>("/api/weekly-plans/series"),
+  createWeeklyPlanSeries: (input: {
+    title: string; categoryId?: number;
+    iconType?: "asset" | "emoji" | "image" | null; iconValue?: string | null; color?: string | null; note?: string | null;
+    repeatType: "once" | "weekly" | "interval"; repeatDays?: number[] | null; repeatInterval?: number | null;
+    startTime?: string | null; durationMinutes?: number | null; startDate: string;
+    endType?: "never" | "date" | "count"; endDate?: string | null; endCount?: number | null; timezone?: string;
+  }) => request<{ series: WeeklyPlanSeries }>("/api/weekly-plans/series", { method: "POST", body: JSON.stringify(input) }),
+  updateWeeklyPlanSeries: (id: number, input: {
+    title?: string; categoryId?: number;
+    iconType?: "asset" | "emoji" | "image" | null; iconValue?: string | null; color?: string | null; note?: string | null;
+    repeatType?: "once" | "weekly" | "interval"; repeatDays?: number[] | null; repeatInterval?: number | null;
+    startTime?: string | null; durationMinutes?: number | null; startDate?: string;
+    endType?: "never" | "date" | "count"; endDate?: string | null; endCount?: number | null;
+  }) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  deleteWeeklyPlanSeries: (id: number) => request<{ ok: true }>(`/api/weekly-plans/series/${id}`, { method: "DELETE" }),
+  getWeeklyPlanSeriesById: (id: number) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`),
+  setPlanOccurrenceCompleted: (seriesId: number, date: string, completed: boolean) =>
+    request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+  skipPlanOccurrence: (seriesId: number, date: string) =>
+    request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/skip`, { method: "PATCH" }),
+  updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null }) =>
+    request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/override`, { method: "PATCH", body: JSON.stringify(input) }),
 
   // Focus
   getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP; lifetimeFocusMinutes: number }>("/api/focus"),

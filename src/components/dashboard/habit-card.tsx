@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, Flame, Loader2, Pencil } from "lucide-react";
+import { Check, Loader2, Pencil } from "lucide-react";
+import Image from "next/image";
 import type { UserDailyTask } from "@/types";
 import { HabitIcon } from "./habit-icon";
 import { isHabitScheduledOnDate } from "@/lib/habit-schedule";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
 import { ConsistencyHeatmap, activityDayFromHabit } from "./consistency-heatmap";
 import { AnimatePresence, motion } from "framer-motion";
+import { STREAK_LOST_IMAGE, STREAK_SAVED_IMAGE } from "@/components/streak-icon";
 
 /** Abas do painel de hábitos (Hoje | Geral | Semanal). */
 export type HabitTab = "hoje" | "geral" | "semanal";
@@ -95,6 +97,7 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
   const heatmapDays = Object.entries(logs)
     .filter(([date]) => date.startsWith(`${year}-`))
     .map(([date, completed]) => activityDayFromHabit(date, completed, today));
+  const yearlyCheckIns = heatmapDays.filter((day) => day.dailyTaskCompletions).length;
   return (
     <div
       className="group/card rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-3.5 sm:p-4 transition-colors hover:border-[var(--border-strong)]"
@@ -105,12 +108,18 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
         <HabitIcon habit={task} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-[15px] text-[var(--text)]">{task.title}</p>
-          {streak > 0 && (
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)]">
-              <Flame size={12} className="text-orange-400" />
-              {streak} {streak === 1 ? "dia" : "dias"}
-            </p>
-          )}
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)]">
+            <Image
+              src={streak > 0 ? STREAK_SAVED_IMAGE : STREAK_LOST_IMAGE}
+              alt={streak > 0 ? "Sequência ativa" : "Sem sequência ativa"}
+              width={17}
+              height={17}
+              unoptimized
+              className={streak > 0 ? "habit-streak-icon-active" : "habit-streak-icon-inactive"}
+              style={{ width: 17, height: 17, objectFit: "contain" }}
+            />
+            {streak} {streak === 1 ? "dia" : "dias"}
+          </p>
         </div>
         {onEdit && (
           <button
@@ -133,7 +142,7 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
           style={
             doneToday
               ? { backgroundColor: color, color: checkIconColor }
-              : { border: `2px solid ${hexAlpha(color, 0.4)}`, background: hexAlpha(color, 0.08), color }
+              : { border: `2px solid ${color}`, background: "transparent", color }
           }
         >
           {todayBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} strokeWidth={3} />}
@@ -153,7 +162,7 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
       {/* Geral tab — full-width heatmap */}
       {tab === "geral" && (
         <motion.div key="geral" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3">
-          <ConsistencyHeatmap year={year} days={heatmapDays} today={today} accent={color} variant="habit" streakDates={streakDates} summary={`${heatmapDays.filter((day) => day.dailyTaskCompletions).length} check-ins em ${year}`} />
+          <ConsistencyHeatmap year={year} days={heatmapDays} today={today} accent={color} variant="habit" showLegend={false} streakDates={streakDates} summary={`${yearlyCheckIns} check-in${yearlyCheckIns === 1 ? "" : "s"} em ${year}`} />
         </motion.div>
       )}
 

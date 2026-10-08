@@ -16,6 +16,7 @@ export interface ConsistencyHeatmapProps {
   today: string;
   accent?: string;
   variant?: "year" | "habit";
+  showLegend?: boolean;
   summary?: string;
   streakDates?: string[];
   onSelectDay?: (day: ActivityDay) => void;
@@ -26,15 +27,17 @@ interface HeatCellProps {
   level: number;
   isToday: boolean;
   isStreak: boolean;
+  isDone: boolean;
+  habit: boolean;
   accent: string;
   tabStop: boolean;
   onFocusDate: (date: string) => void;
   onSelect: (day: ActivityDay) => void;
 }
 
-const HeatCell = memo(function HeatCell({ day, level, isToday, isStreak, accent, tabStop, onFocusDate, onSelect }: HeatCellProps) {
+const HeatCell = memo(function HeatCell({ day, level, isToday, isStreak, isDone, habit, accent, tabStop, onFocusDate, onSelect }: HeatCellProps) {
   const date = day?.date ?? "";
-  const label = day ? describeDay(day, level) : "";
+  const label = day ? describeDay(day, level, habit, isDone) : "";
   return (
     <button
       type="button"
@@ -54,13 +57,13 @@ const HeatCell = memo(function HeatCell({ day, level, isToday, isStreak, accent,
         const current = Array.from(cells).indexOf(event.currentTarget);
         cells[Math.max(0, Math.min(cells.length - 1, current + move))]?.focus();
       }}
-      className={`consistency-heat-cell relative aspect-square min-w-0 rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-white/90 ${isToday ? "consistency-heat-today" : ""} ${isStreak ? "consistency-heat-streak" : ""}`}
+      className={`consistency-heat-cell relative aspect-square min-w-0 rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-white/90 ${isToday ? "consistency-heat-today" : ""} ${isStreak ? "consistency-heat-streak" : ""} ${isDone ? "consistency-heat-cell-done" : ""}`}
       style={{
         "--heat-color": accent,
         "--heat-level": level,
         "--heat-intensity": level === 0 ? 0 : level / 4,
         "--heat-streak": isStreak ? 0.32 : 0,
-        backgroundColor: day ? `var(--heat-${level})` : "transparent",
+        backgroundColor: !day ? "transparent" : habit ? (isDone ? accent : "var(--heat-0)") : `var(--heat-${level})`,
         cursor: day ? "pointer" : "default",
       } as React.CSSProperties}
       data-date={date}
@@ -68,9 +71,10 @@ const HeatCell = memo(function HeatCell({ day, level, isToday, isStreak, accent,
   );
 });
 
-function describeDay(day: ActivityDay, level: number) {
+function describeDay(day: ActivityDay, level: number, habit = false, done = false, longDate = false) {
   const [year, month, date] = day.date.split("-").map(Number);
   const weekday = WEEKDAYS[(new Date(Date.UTC(year, month - 1, date)).getUTCDay() + 6) % 7].toLowerCase();
+  if (habit) return `${weekday}, ${date}${longDate ? " de" : ""} ${MONTHS[month - 1].toLowerCase()}${longDate ? " de" : ""} ${year} · ${done ? "feito" : "não feito"}`;
   const completions = day.dailyTaskCompletions ?? day.goalLogs ?? 0;
   const detail = day.future
     ? "ainda vai acontecer"
@@ -78,7 +82,7 @@ function describeDay(day: ActivityDay, level: number) {
   return `${weekday}, ${date} de ${MONTHS[month - 1].toLowerCase()} ${year} — ${detail}; nível ${level} de 4`;
 }
 
-export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", variant = "year", summary, streakDates = [], onSelectDay }: ConsistencyHeatmapProps) {
+export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", variant = "year", showLegend, summary, streakDates = [], onSelectDay }: ConsistencyHeatmapProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -86,6 +90,7 @@ export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", vari
   const [focusedDate, setFocusedDate] = useState<string | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const isHabit = variant === "habit";
+  const shouldShowLegend = showLegend ?? !isHabit;
   const columns = useMemo(() => buildConsistencyWeeks(year, days, today), [days, today, year]);
   const totalCells = columns.length * 7;
   const firstDate = columns.flat().find((day) => day !== null)?.date;
@@ -169,8 +174,9 @@ export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", vari
                 <motion.div key={column[0]?.date ?? `week-${weekIndex}`} className={`consistency-heatmap-week ${weekStarts.has(weekIndex) ? "consistency-month-divider" : ""}`} initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: reduceMotion ? 0 : weekIndex * 0.006 }}>
                   {column.map((day, rowIndex) => {
                     const activity = day && !day.future ? activityLevel(day) : 0;
-                    const level = activity === 0 ? 0 : activity === 1 ? 1 : activity === 2 ? 3 : 4;
-                    return <HeatCell key={day?.date ?? `empty-${weekIndex}-${rowIndex}`} day={day} level={level} isToday={day?.date === today} isStreak={Boolean(day && streakDateSet.has(day.date))} accent={accent} tabStop={day?.date === tabStopDate} onFocusDate={setFocusedDate} onSelect={selectDay} />;
+                    const completed = Boolean(day && (day.dailyTaskCompletions ?? day.goalLogs ?? 0) > 0);
+                    const level = isHabit ? (completed ? 4 : 0) : activity === 0 ? 0 : activity === 1 ? 1 : activity === 2 ? 3 : 4;
+                    return <HeatCell key={day?.date ?? `empty-${weekIndex}-${rowIndex}`} day={day} level={level} isToday={day?.date === today} isStreak={Boolean(day && streakDateSet.has(day.date))} isDone={isHabit && completed} habit={isHabit} accent={accent} tabStop={day?.date === tabStopDate} onFocusDate={setFocusedDate} onSelect={selectDay} />;
                   })}
                 </motion.div>
               ))}
@@ -179,13 +185,13 @@ export function ConsistencyHeatmap({ days, year, today, accent = "#71d4ff", vari
           <div ref={tooltipRef} className="consistency-heat-tooltip" role="tooltip" hidden />
         </div>
       </div>
-      <div className="consistency-heatmap-footer">
+      <div className={`consistency-heatmap-footer ${shouldShowLegend ? "" : "consistency-heatmap-no-legend"}`}>
         <p className="text-[11px] text-[var(--text-muted)]">{summaryText}<span className="sr-only">. Navegue pelas células com as setas do teclado.</span></p>
-        <div className="consistency-heat-legend" aria-label="Legenda: menos atividade a mais atividade"><span>Menos</span>{[0, 1, 2, 3, 4].map((level) => <span key={level} className="consistency-heat-legend-cell" style={{ backgroundColor: `var(--heat-${level})` }} />)}<span>Mais</span></div>
+        {shouldShowLegend && <div className="consistency-heat-legend" aria-label="Legenda: menos atividade a mais atividade"><span>Menos</span>{[0, 1, 2, 3, 4].map((level) => <span key={level} className="consistency-heat-legend-cell" style={{ backgroundColor: `var(--heat-${level})` }} />)}<span>Mais</span></div>}
       </div>
       <AnimatePresence mode="wait">
         {selected && <motion.div key={selected.date} className="consistency-selected-day" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }}>
-          <span>{describeDay(selected, activityLevel(selected))}</span>
+          <span>{isHabit ? describeDay(selected, 0, true, (selected.dailyTaskCompletions ?? selected.goalLogs ?? 0) > 0, true) : describeDay(selected, activityLevel(selected))}</span>
           <button type="button" onClick={() => setSelected(null)} aria-label="Fechar detalhe do dia">×</button>
         </motion.div>}
       </AnimatePresence>

@@ -2,38 +2,55 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, Check, X, Loader2 } from "lucide-react";
-import type { Category, WeeklyPlan } from "@/types";
+import { Calendar, Plus, Check, X, Loader2, Repeat, Pencil, SkipForward } from "lucide-react";
+import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { sortCategoriesForPicker } from "@/lib/categories";
 import { CategoryChips } from "@/components/category-chips";
 import { Modal } from "@/components/modal";
+import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const MAX_ITEMS_PER_CARD = 4;
 
 interface WeeklyPlanProps {
-  plans: WeeklyPlan[];
+  plans: WeeklyPlanItem[];
   categories: Category[];
   onDelete: (id: number) => void;
   onCreate: (planDate: string, title: string, categoryId: number) => Promise<void>;
   onUpdate: (id: number, title: string, categoryId: number, planDate: string) => Promise<void>;
   onToggleCompleted: (id: number, completed: boolean) => Promise<void>;
+  onCreateSeries?: (payload: CreateSeriesPayload) => Promise<void>;
+  onToggleOccurrence?: (seriesId: number, date: string, completed: boolean) => Promise<void>;
+  onSkipOccurrence?: (seriesId: number, date: string) => Promise<void>;
+  onDeleteSeries?: (seriesId: number) => Promise<void>;
 }
 
-export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted }: WeeklyPlanProps) {
+export function WeeklyPlan({
+  plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
+  onCreateSeries, onToggleOccurrence, onSkipOccurrence, onDeleteSeries,
+}: WeeklyPlanProps) {
   const sortedCategories = sortCategoriesForPicker(categories);
-  const firstCategoryId = sortedCategories[0]?.id ?? 0;
-  const [showForm, setShowForm] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string>(todayIso());
-  const [newTitle, setNewTitle] = useState("");
-  const [newCategoryId, setNewCategoryId] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<WeeklyPlan | null>(null);
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [modalPrefillDate, setModalPrefillDate] = useState<string>(todayIso());
+
+  // Edit modal state
+  const [editingPlan, setEditingPlan] = useState<WeeklyPlanItem | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCategoryId, setEditCategoryId] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  const selectedCategoryId = newCategoryId || firstCategoryId;
+  // Day popover state
+  const [popoverDay, setPopoverDay] = useState<{ date: string; items: WeeklyPlanItem[] } | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const currentCategory = editingPlan
+    ? sortedCategories.find((c) => c.id === editCategoryId) || editingPlan.category
+    : undefined;
 
   const today = todayIso();
   const weekStart = weekStartIso(today);
@@ -44,38 +61,41 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
   });
 
   async function handleCreate() {
-    if (!newTitle.trim() || !selectedDay || !selectedCategoryId) return;
-    setSaving(true);
-    await onCreate(selectedDay, newTitle.trim(), selectedCategoryId);
-    setNewTitle("");
-    setShowForm(false);
-    setSaving(false);
+    setModalPrefillDate(today);
+    setShowModal(true);
   }
 
-  const [toggling, setToggling] = useState(false);
-  const [savingEdit, setSavingEdit] = useState(false);
-
-  const currentCategory = editingPlan
-    ? sortedCategories.find((c) => c.id === editCategoryId) || editingPlan.category
-    : undefined;
-
-  // Mobile: the 7-day strip becomes a horizontal snap scroller; on load the
-  // current day is auto-scrolled into view (horizontally only — never scrolls
-  // the page itself).
-  const weekScrollerRef = useRef<HTMLDivElement>(null);
-  const todayCellRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const scroller = weekScrollerRef.current;
-    const cell = todayCellRef.current;
-    if (!scroller || !cell) return;
-    scroller.scrollTo({
-      left: Math.max(0, cell.offsetLeft - (scroller.clientWidth - cell.offsetWidth) / 2),
-    });
-  }, []);
+  async function handleCreateSeries(payload: CreateSeriesPayload) {
+    if (onCreateSeries) {
+      await onCreateSeries(payload);
+    } else {
+      // Fallback: create a one-time legacy plan
+      await onCreate(payload.startDate, payload.title, payload.categoryId);
+    }
+    setShowModal(false);
+  }
 
   async function handleToggleComplete() {
     if (!editingPlan) return;
     const nextCompleted = !editingPlan.completedAt;
+
+    // For recurring items, use the occurrence API
+    if (editingPlan.seriesId && onToggleOccurrence) {
+      setToggling(true);
+      try {
+        await onToggleOccurrence(editingPlan.seriesId, editingPlan.planDate, nextCompleted);
+        setEditingPlan((prev) =>
+          prev ? { ...prev, completedAt: nextCompleted ? new Date().toISOString() : null } : null
+        );
+      } catch {
+        // rollback handled by parent re-fetch
+      } finally {
+        setToggling(false);
+      }
+      return;
+    }
+
+    // Legacy: use the old API
     setEditingPlan((prev) =>
       prev ? { ...prev, completedAt: nextCompleted ? new Date().toISOString() : null } : null
     );
@@ -102,6 +122,52 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
     }
   }
 
+  async function handleDelete() {
+    if (!editingPlan) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    // For recurring items, delete the series
+    if (editingPlan.seriesId && onDeleteSeries) {
+      await onDeleteSeries(editingPlan.seriesId);
+    } else {
+      await onDelete(editingPlan.id);
+    }
+    setEditingPlan(null);
+  }
+
+  async function handleSkip() {
+    if (!editingPlan || !editingPlan.seriesId || !onSkipOccurrence) return;
+    await onSkipOccurrence(editingPlan.seriesId, editingPlan.planDate);
+    setEditingPlan(null);
+  }
+
+  // Mobile: the 7-day strip becomes a horizontal snap scroller
+  const weekScrollerRef = useRef<HTMLDivElement>(null);
+  const todayCellRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scroller = weekScrollerRef.current;
+    const cell = todayCellRef.current;
+    if (!scroller || !cell) return;
+    scroller.scrollTo({
+      left: Math.max(0, cell.offsetLeft - (scroller.clientWidth - cell.offsetWidth) / 2),
+    });
+  }, []);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!popoverDay) return;
+    function handler(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverDay(null);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [popoverDay]);
+
   return (
     <div className="panel p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -109,40 +175,12 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
           <Calendar size={16} className="text-[var(--accent)]" />
           <span className="eyebrow muted">PLANO DA SEMANA</span>
         </div>
-        <button onClick={() => { setShowForm((v) => !v); setSelectedDay(today); }} className="icon-button small">
-          {showForm ? <X size={16} /> : <Plus size={18} />}
+        <button onClick={handleCreate} className="icon-button small" title="Novo plano">
+          <Plus size={18} />
         </button>
       </div>
 
-      {/* Add form */}
-      <AnimatePresence>
-        {showForm && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-4">
-            <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 space-y-2">
-              <div className="flex gap-2">
-                <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreate()} className="auth-input flex-1 text-sm" placeholder="O que planejar..." />
-                <button onClick={handleCreate} disabled={saving || !newTitle.trim()} className="icon-button small">
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                </button>
-              </div>
-              <div className="flex gap-1 flex-wrap">
-                {days.map((d) => (
-                  <button key={d.date} onClick={() => setSelectedDay(d.date)} className={`min-h-[34px] rounded-full px-3 py-1 text-[11px] font-medium transition-all ${selectedDay === d.date ? "bg-[var(--accent)] text-[var(--bg-primary)]" : "text-[var(--text-faint)] hover:text-[var(--text-muted)]"}`}>{d.dayName}</button>
-                ))}
-              </div>
-              <CategoryChips
-                categories={sortedCategories}
-                selectedId={selectedCategoryId}
-                onSelect={setNewCategoryId}
-                compact
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Week strip — horizontal snap scroller on mobile (today auto-scrolled
-          into view), full 7-column grid from `sm:` up. */}
+      {/* Week strip */}
       <div
         ref={weekScrollerRef}
         className="-mx-5 overflow-x-auto px-5 pb-1 pt-1 scrollbar-hide sm:mx-0 sm:overflow-visible sm:px-0 sm:pt-0"
@@ -152,36 +190,112 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`w-[124px] shrink-0 snap-start rounded-xl p-2 min-h-[88px] border transition-colors sm:w-auto sm:min-h-[80px] ${day.isToday ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]"}`}
+              className={`w-[124px] shrink-0 snap-start rounded-xl p-2 min-h-[88px] border transition-colors sm:w-auto sm:min-h-[80px] ${
+                day.isToday
+                  ? "border-[var(--accent)] bg-[var(--accent-bg)]"
+                  : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]"
+              }`}
+              onClick={() => {
+                if (day.plans.length === 0) {
+                  setModalPrefillDate(day.date);
+                  setShowModal(true);
+                }
+              }}
             >
               <div className={`text-center text-[10px] font-medium mb-1.5 ${day.isToday ? "text-[var(--accent)]" : "text-[var(--text-faint)]"}`}>
                 {day.dayName} <span className="block text-[9px]">{day.date.slice(8, 10)}</span>
               </div>
+
+              {day.plans.length === 0 && (
+                <div className="flex h-full items-center justify-center">
+                  <span className="text-[10px] text-[var(--text-faint)]">Nada planejado</span>
+                </div>
+              )}
+
               <div className="space-y-1">
-                {day.plans.map((plan) => (
-                  <motion.div
+                {day.plans.slice(0, MAX_ITEMS_PER_CARD).map((plan) => (
+                  <PlanItemRow
                     key={plan.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className={`cursor-pointer rounded-lg p-1.5 text-[10px] leading-tight ${plan.completedAt ? "line-through opacity-50" : ""}`}
-                    style={{ borderLeft: `2px solid ${plan.category.color}` }}
-                    onClick={() => {
+                    plan={plan}
+                    onEdit={() => {
                       setEditingPlan(plan);
                       setEditTitle(plan.title);
                       setEditCategoryId(plan.categoryId);
                       setConfirmDelete(false);
                     }}
-                    title={`${plan.title} · ${plan.category.name}`}
-                  >
-                    <span className="text-[var(--text)] block truncate">{plan.title}</span>
-                  </motion.div>
+                    onToggle={() => {
+                      setEditingPlan(plan);
+                      void handleToggleComplete();
+                    }}
+                  />
                 ))}
+                {day.plans.length > MAX_ITEMS_PER_CARD && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPopoverDay({ date: day.date, items: day.plans }); }}
+                    className="block w-full text-center text-[10px] font-medium text-[var(--accent)] hover:underline"
+                  >
+                    +{day.plans.length - MAX_ITEMS_PER_CARD} mais
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Day popover */}
+      <AnimatePresence>
+        {popoverDay && (
+          <motion.div
+            ref={popoverRef}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-2xl"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-[var(--text)]">
+                {popoverDay.date.slice(8)}/{popoverDay.date.slice(5, 7)} — {popoverDay.items.length} itens
+              </span>
+              <button onClick={() => setPopoverDay(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {popoverDay.items.map((plan) => (
+                <PlanItemRow
+                  key={plan.id}
+                  plan={plan}
+                  onEdit={() => {
+                    setPopoverDay(null);
+                    setEditingPlan(plan);
+                    setEditTitle(plan.title);
+                    setEditCategoryId(plan.categoryId);
+                    setConfirmDelete(false);
+                  }}
+                  onToggle={() => {
+                    setPopoverDay(null);
+                    setEditingPlan(plan);
+                    void handleToggleComplete();
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Create/Edit modal */}
+      {showModal && (
+        <WeeklyPlanModal
+          categories={categories}
+          prefillDate={modalPrefillDate}
+          onClose={() => setShowModal(false)}
+          onSave={handleCreateSeries}
+        />
+      )}
+
+      {/* Edit modal (legacy style, for one-time items) */}
       {editingPlan && (
         <Modal onClose={() => setEditingPlan(null)}>
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
@@ -190,16 +304,21 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
                 <div
                   className="w-3 h-3 rounded-full"
                   style={{
-                    background: currentCategory?.color || editingPlan.category.color,
-                    boxShadow: `0 0 6px ${currentCategory?.color || editingPlan.category.color}40`,
+                    background: editingPlan.color || currentCategory?.color || editingPlan.category.color,
+                    boxShadow: `0 0 6px ${editingPlan.color || currentCategory?.color || editingPlan.category.color}40`,
                   }}
                 />
                 <span className="text-sm font-medium text-[var(--text)]">
-                  {editingPlan.completedAt ? "Plano concluído" : "Detalhes do plano"}
+                  {editingPlan.completedAt ? "Plano concluído" : "Editar plano"}
                 </span>
                 {editingPlan.completedAt && (
                   <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">
                     Concluído
+                  </span>
+                )}
+                {editingPlan.isRecurring && (
+                  <span className="flex items-center gap-1 rounded-full bg-[var(--accent-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                    <Repeat size={10} /> Recorrente
                   </span>
                 )}
               </div>
@@ -229,7 +348,7 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
               </div>
             </div>
 
-            <div className="mt-6 flex gap-2 justify-end items-center">
+            <div className="mt-6 flex gap-2 justify-end items-center flex-wrap">
               <button
                 type="button"
                 onClick={handleToggleComplete}
@@ -244,16 +363,19 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
                 {editingPlan.completedAt ? "Reabrir" : "Concluir"}
               </button>
 
+              {editingPlan.isRecurring && onSkipOccurrence && (
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer"
+                >
+                  <SkipForward size={13} /> Pular esta vez
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => {
-                  if (!confirmDelete) {
-                    setConfirmDelete(true);
-                    return;
-                  }
-                  onDelete(editingPlan.id);
-                  setEditingPlan(null);
-                }}
+                onClick={handleDelete}
                 className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                   confirmDelete
                     ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
@@ -277,5 +399,41 @@ export function WeeklyPlan({ plans, categories, onDelete, onCreate, onUpdate, on
         </Modal>
       )}
     </div>
+  );
+}
+
+function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit: () => void; onToggle: () => void }) {
+  const displayColor = plan.color || plan.category.color;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className={`group flex items-center gap-1.5 rounded-lg p-1.5 text-[10px] leading-tight cursor-pointer ${
+        plan.completedAt ? "line-through opacity-50" : ""
+      } ${plan.skipped ? "opacity-30" : ""}`}
+      style={{ borderLeft: `2px solid ${displayColor}` }}
+      onClick={onEdit}
+      title={`${plan.title}${plan.startTime ? " · " + plan.startTime : ""}`}
+    >
+      {plan.isRecurring && <Repeat size={10} className="shrink-0 text-[var(--text-faint)]" />}
+      {plan.startTime && <span className="shrink-0 text-[var(--text-faint)]">{plan.startTime}</span>}
+      <span className="text-[var(--text)] block truncate flex-1">{plan.title}</span>
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className={`shrink-0 rounded p-0.5 transition ${
+          plan.completedAt ? "text-[var(--green)]" : "text-[var(--text-faint)] opacity-0 group-hover:opacity-100"
+        }`}
+        title={plan.completedAt ? "Reabrir" : "Concluir"}
+      >
+        <Check size={12} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        className="shrink-0 rounded p-0.5 text-[var(--text-faint)] opacity-0 group-hover:opacity-100 transition"
+        title="Editar"
+      >
+        <Pencil size={12} />
+      </button>
+    </motion.div>
   );
 }

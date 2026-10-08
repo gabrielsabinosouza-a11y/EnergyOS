@@ -7,7 +7,7 @@ import { Check, Loader2, Shield, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
-import type { Goal, KanbanTask, KanbanLabel, Category, WeeklyPlan as WeeklyPlanType, FocusSession, UserXP, KanbanStatus, StreakDayStatus } from "@/types";
+import type { Goal, KanbanTask, KanbanLabel, Category, WeeklyPlanItem, FocusSession, UserXP, KanbanStatus, StreakDayStatus } from "@/types";
 import type { GoalLogAction } from "@/lib/db/goal-logs";
 import type { DashboardSnapshotResponse } from "@/lib/db/dashboard";
 import { api } from "@/lib/api-client";
@@ -101,7 +101,7 @@ function DashboardContent() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
-  const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanType[]>([]);
+  const [weeklyPlans, setWeeklyPlans] = useState<WeeklyPlanItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [focusData, setFocusData] = useState<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP } | null>(null);
   const [coins, setCoins] = useState(0);
@@ -367,7 +367,27 @@ function DashboardContent() {
     if (completed) applyMetric("WEEKLY_PLAN_COMPLETED", { incrementBy: 1 });
     try {
       const result = await api.setWeeklyPlanCompleted(id, completed);
-      setWeeklyPlans((ps) => ps.map((p) => (p.id === id ? result.plan : p)));
+      // Convert legacy WeeklyPlan to WeeklyPlanItem
+      const item: WeeklyPlanItem = {
+        id: result.plan.id,
+        seriesId: null,
+        planDate: result.plan.planDate,
+        title: result.plan.title,
+        categoryId: result.plan.categoryId,
+        category: result.plan.category,
+        iconType: null,
+        iconValue: null,
+        color: null,
+        note: null,
+        completedAt: result.plan.completedAt ?? null,
+        skipped: false,
+        startTime: result.plan.startTime ?? null,
+        durationMinutes: null,
+        repeatType: null,
+        repeatDays: null,
+        isRecurring: false,
+      };
+      setWeeklyPlans((ps) => ps.map((p) => (p.id === id ? item : p)));
       if (completed) {
         void refreshQuests();
         // Same reward feedback as the kanban "Feito" transition.
@@ -394,7 +414,26 @@ function DashboardContent() {
   async function updatePlan(id: number, title: string, categoryId: number, planDate: string) {
     try {
       const result = await api.updateWeeklyPlan(id, { title, categoryId, planDate });
-      setWeeklyPlans((ps) => ps.map((p) => p.id === id ? result.plan : p));
+      const item: WeeklyPlanItem = {
+        id: result.plan.id,
+        seriesId: null,
+        planDate: result.plan.planDate,
+        title: result.plan.title,
+        categoryId: result.plan.categoryId,
+        category: result.plan.category,
+        iconType: null,
+        iconValue: null,
+        color: null,
+        note: null,
+        completedAt: result.plan.completedAt ?? null,
+        skipped: false,
+        startTime: result.plan.startTime ?? null,
+        durationMinutes: null,
+        repeatType: null,
+        repeatDays: null,
+        isRecurring: false,
+      };
+      setWeeklyPlans((ps) => ps.map((p) => p.id === id ? item : p));
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel atualizar o plano.");
     }
@@ -414,9 +453,83 @@ function DashboardContent() {
   async function createPlan(planDate: string, title: string, categoryId: number) {
     try {
       const result = await api.createWeeklyPlan({ planDate, title, categoryId });
-      setWeeklyPlans((prev) => [...prev, result.plan]);
+      const item: WeeklyPlanItem = {
+        id: result.plan.id,
+        seriesId: null,
+        planDate: result.plan.planDate,
+        title: result.plan.title,
+        categoryId: result.plan.categoryId,
+        category: result.plan.category,
+        iconType: null,
+        iconValue: null,
+        color: null,
+        note: null,
+        completedAt: result.plan.completedAt ?? null,
+        skipped: false,
+        startTime: result.plan.startTime ?? null,
+        durationMinutes: null,
+        repeatType: null,
+        repeatDays: null,
+        isRecurring: false,
+      };
+      setWeeklyPlans((prev) => [...prev, item]);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Nao foi possivel criar o plano.");
+    }
+  }
+
+  async function createPlanSeries(payload: {
+    title: string; categoryId: number;
+    iconType: "asset" | "emoji" | "image" | null; iconValue: string | null; color: string | null; note: string | null;
+    repeatType: "once" | "weekly" | "interval"; repeatDays: number[] | null; repeatInterval: number | null;
+    startTime: string | null; durationMinutes: number | null; startDate: string;
+    endType: "never" | "date" | "count"; endDate: string | null; endCount: number | null;
+  }) {
+    try {
+      await api.createWeeklyPlanSeries(payload);
+      // Refresh the week's plans to pick up the new series occurrences
+      const ws = weekStartIso(todayIso());
+      const updated = await api.getWeeklyPlans(ws);
+      setWeeklyPlans(updated);
+      showSuccess("Plano criado com sucesso!");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível criar o plano.");
+    }
+  }
+
+  async function togglePlanOccurrence(seriesId: number, date: string, completed: boolean) {
+    try {
+      await api.setPlanOccurrenceCompleted(seriesId, date, completed);
+      // Refresh the week's plans
+      const ws = weekStartIso(todayIso());
+      const updated = await api.getWeeklyPlans(ws);
+      setWeeklyPlans(updated);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível atualizar o plano.");
+    }
+  }
+
+  async function skipPlanOccurrence(seriesId: number, date: string) {
+    try {
+      await api.skipPlanOccurrence(seriesId, date);
+      const ws = weekStartIso(todayIso());
+      const updated = await api.getWeeklyPlans(ws);
+      setWeeklyPlans(updated);
+      showSuccess("Ocorrência pulada!");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível pular o plano.");
+    }
+  }
+
+  async function deletePlanSeries(seriesId: number) {
+    try {
+      await api.deleteWeeklyPlanSeries(seriesId);
+      const ws = weekStartIso(todayIso());
+      const updated = await api.getWeeklyPlans(ws);
+      setWeeklyPlans(updated);
+      showSuccess("Plano excluído!");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível excluir o plano.");
     }
   }
 
@@ -726,7 +839,18 @@ function DashboardContent() {
 
         {/* Weekly Plan */}
         <section className="mb-8">
-          <WeeklyPlan plans={weeklyPlans} categories={categories} onDelete={deletePlan} onCreate={createPlan} onUpdate={updatePlan} onToggleCompleted={togglePlanCompleted} />
+          <WeeklyPlan
+            plans={weeklyPlans}
+            categories={categories}
+            onDelete={deletePlan}
+            onCreate={createPlan}
+            onUpdate={updatePlan}
+            onToggleCompleted={togglePlanCompleted}
+            onCreateSeries={createPlanSeries}
+            onToggleOccurrence={togglePlanOccurrence}
+            onSkipOccurrence={skipPlanOccurrence}
+            onDeleteSeries={deletePlanSeries}
+          />
         </section>
 
         {/* Kanban */}
