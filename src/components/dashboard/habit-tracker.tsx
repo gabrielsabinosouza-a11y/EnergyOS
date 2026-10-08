@@ -6,8 +6,8 @@ import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { addDaysIso, todayIso } from "@/lib/db/dates";
-import { Modal } from "@/components/modal";
 import { HabitCard, type HabitTab } from "./habit-card";
+import { HabitModal, type HabitPayload } from "./habit-modal";
 
 const TABS: { id: HabitTab; label: string }[] = [
   { id: "hoje", label: "Hoje" },
@@ -46,15 +46,15 @@ export function HabitTracker() {
     loading: true,
     error: "",
   });
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [showHabitModal, setShowHabitModal] = useState(false);
+  const [modalHabit, setModalHabit] = useState<UserDailyTask | null>(null);
+  const [saveNotice, setSaveNotice] = useState("");
 
   const load = useCallback(async () => {
     try {
       const from = addDaysIso(today, -HISTORY_DAYS);
       const [taskResult, historyResult] = await Promise.all([
-        api.getDailyTasks(),
+        api.getDailyTasks(true),
         api.getDailyTaskHistory(from, today),
       ]);
       setState({
@@ -76,27 +76,25 @@ export function HabitTracker() {
     void load();
   }, [load]);
 
-  async function createTask() {
-    const title = newTitle.trim();
-    if (!title || creating) return;
-    setCreating(true);
+  async function saveHabit(payload: HabitPayload) {
     try {
-      const result = await api.createDailyTask(title);
+      const result = modalHabit
+        ? await api.updateDailyTask(modalHabit.id, payload)
+        : await api.createDailyTask(payload);
+      const savedTask = result.task;
       setState((prev) => ({
         ...prev,
-        tasks: [...prev.tasks, result.task],
-        logsByTask: { ...prev.logsByTask, [result.task.id]: {} },
+        tasks: modalHabit
+          ? prev.tasks.map((task) => task.id === savedTask.id ? savedTask : task)
+          : [...prev.tasks, savedTask],
+        logsByTask: modalHabit ? prev.logsByTask : { ...prev.logsByTask, [savedTask.id]: {} },
         error: "",
       }));
-      setNewTitle("");
-      setShowCreateForm(false);
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : "Não foi possível criar a tarefa diária.",
-      }));
-    } finally {
-      setCreating(false);
+      setSaveNotice(modalHabit ? "Alterações salvas." : "Hábito criado.");
+      setShowHabitModal(false);
+      setModalHabit(null);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Não foi possível salvar o hábito.");
     }
   }
 
@@ -175,7 +173,7 @@ export function HabitTracker() {
           <p className="text-sm text-[var(--text-muted)]">Crie seu primeiro hábito</p>
           <button
             type="button"
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => { setModalHabit(null); setShowHabitModal(true); }}
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
           >
             <Plus size={15} /> Criar primeiro hábito
@@ -192,58 +190,22 @@ export function HabitTracker() {
               tab={tab}
               busyTaskId={busyTaskId}
               onToggle={(selected, completed) => void toggle(selected, completed)}
+              onEdit={(selected) => { setModalHabit(selected); setShowHabitModal(true); }}
             />
           ))}
         </div>
       )}
 
-      <Modal
-        open={showCreateForm}
-        onClose={() => setShowCreateForm(false)}
-        title="Novo hábito"
-        description="Hábitos se repetem conforme a frequência escolhida e reiniciam a cada manhã."
-        panelClassName="sm:max-w-md"
-        footerClassName="justify-end"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setShowCreateForm(false)}
-              className="min-h-[42px] cursor-pointer rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)] transition hover:text-[var(--text)]"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => void createTask()}
-              disabled={!newTitle.trim() || creating}
-              className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
-            >
-              {creating ? <Loader2 size={15} className="animate-spin" /> : "Criar tarefa"}
-            </button>
-          </>
-        }
-      >
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void createTask();
-          }}
-        >
-          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-            Nome da tarefa
-          </label>
-          <input
-            autoFocus
-            value={newTitle}
-            onChange={(event) => setNewTitle(event.target.value)}
-            placeholder="Tarefa que você repete todo dia..."
-            maxLength={120}
-            className="auth-input"
-            disabled={creating}
-          />
-        </form>
-      </Modal>
+      {saveNotice && <p role="status" className="mt-3 text-xs text-[var(--green)]">{saveNotice}</p>}
+      {showHabitModal && (
+        <HabitModal
+          key={modalHabit?.id ?? "new"}
+          habit={modalHabit}
+          habitCount={state.tasks.length}
+          onClose={() => { setShowHabitModal(false); setModalHabit(null); }}
+          onSave={saveHabit}
+        />
+      )}
     </section>
   );
 }

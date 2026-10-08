@@ -23,7 +23,7 @@ interface ColorPaletteProps {
 
 export function ColorPalette({ selectedColor, onSelect }: ColorPaletteProps) {
   return (
-    <div className="grid grid-cols-6 gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {HABIT_COLORS.map((color) => (
         <button
           key={color}
@@ -31,7 +31,7 @@ export function ColorPalette({ selectedColor, onSelect }: ColorPaletteProps) {
           onClick={() => onSelect(color)}
           aria-label={`Cor ${color}`}
           title={color}
-          className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
+          className={`flex h-7 w-7 items-center justify-center rounded-full transition ${
             selectedColor === color ? "ring-2 ring-offset-2 ring-offset-[var(--bg-primary)]" : ""
           }`}
           style={{

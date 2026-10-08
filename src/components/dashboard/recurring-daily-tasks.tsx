@@ -9,7 +9,8 @@ import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
-import { HabitModal } from "./habit-modal";
+import { HabitModal, type HabitPayload } from "./habit-modal";
+import { HabitIcon } from "./habit-icon";
 import { HABIT_XP, HABIT_COINS, HABIT_ALL_BONUS_COINS } from "@/lib/daily-limits";
 import {
   DndContext,
@@ -33,24 +34,6 @@ interface RecurringDailyTasksProps {
   coins: number;
   onCoinsChange: (coins: number) => void;
   onXpGain?: (xp: number) => void;
-}
-
-function HabitIcon({ task }: { task: UserDailyTask }) {
-  if (task.iconType === "emoji") {
-    return <span className="text-lg">{task.iconValue}</span>;
-  }
-  if (task.iconType === "image") {
-    return (
-      <img src={task.iconValue} alt={task.title} className="h-5 w-5 rounded object-cover" />
-    );
-  }
-  return (
-    <img
-      src={`/icons_8bits/${task.iconValue}`}
-      alt={task.iconValue.replace(".png", "")}
-      className="h-5 w-5 rounded"
-    />
-  );
 }
 
 function SortableHabitRow({
@@ -96,7 +79,7 @@ function SortableHabitRow({
         className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg"
         style={{ backgroundColor: `${task.color}20` }}
       >
-        <HabitIcon task={task} />
+        <HabitIcon habit={task} size={22} />
       </div>
 
       <button
@@ -145,6 +128,8 @@ function SortableHabitRow({
 export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: RecurringDailyTasksProps) {
   const { applyMetric, refresh: refreshQuests } = useDailyQuests();
   const [tasks, setTasks] = useState<UserDailyTask[]>([]);
+  const [habitCount, setHabitCount] = useState(0);
+  const [saveNotice, setSaveNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ id: number; xp: number; coins: number } | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
@@ -162,11 +147,11 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getDailyTasks()
-      .then((data) => {
+    Promise.all([api.getDailyTasks(), api.getDailyTasks(true)])
+      .then(([data, all]) => {
         if (!cancelled) {
           setTasks(data.tasks);
+          setHabitCount(all.tasks.length);
           setLoading(false);
         }
       })
@@ -211,61 +196,33 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     setTasks((ts) => ts.filter((t) => t.id !== id));
     try {
       await api.deleteDailyTask(id);
+      setHabitCount((count) => Math.max(0, count - 1));
     } catch {
       setTasks(prev);
     }
   }
 
-  async function handleCreate(payload: {
-    title: string;
-    iconType: string;
-    iconValue: string;
-    color: string;
-    frequencyType: string;
-    frequencyDays: number[] | null;
-    frequencyTarget: number | null;
-    goalType: string;
-    targetValue: number | null;
-    unit: string | null;
-    description: string | null;
-    category: string | null;
-    startDate: string | null;
-    reminderTime: string | null;
-  }) {
-    const prev = tasks;
+  async function handleCreate(payload: HabitPayload) {
     try {
       const data = await api.createDailyTask(payload);
       setTasks((t) => [...t, data.task]);
+      setHabitCount((count) => count + 1);
+      setSaveNotice("Hábito criado.");
       setModalState(null);
-    } catch {
-      setTasks(prev);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Não foi possível criar o hábito.");
     }
   }
 
-  async function handleEdit(payload: {
-    title: string;
-    iconType: string;
-    iconValue: string;
-    color: string;
-    frequencyType: string;
-    frequencyDays: number[] | null;
-    frequencyTarget: number | null;
-    goalType: string;
-    targetValue: number | null;
-    unit: string | null;
-    description: string | null;
-    category: string | null;
-    startDate: string | null;
-    reminderTime: string | null;
-  }) {
+  async function handleEdit(payload: HabitPayload) {
     if (!modalState?.habit) return;
-    const prev = tasks;
     try {
       const data = await api.updateDailyTask(modalState.habit.id, payload);
       setTasks((ts) => ts.map((t) => (t.id === data.task.id ? data.task : t)));
+      setSaveNotice("Alterações salvas.");
       setModalState(null);
-    } catch {
-      setTasks(prev);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Não foi possível salvar as alterações.");
     }
   }
 
@@ -292,7 +249,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
           <span className="eyebrow muted">HÁBITOS</span>
         </div>
         <button
-          onClick={() => setModalState({ mode: "create" })}
+          onClick={() => { setSaveNotice(""); setModalState({ mode: "create" }); }}
           className="icon-button small"
           aria-label="Adicionar hábito"
         >
@@ -305,6 +262,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
         <span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{HABIT_COINS} moedas</b></span>
         {HABIT_ALL_BONUS_COINS > 0 && <> — e{" "}<span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{HABIT_ALL_BONUS_COINS} moedas</b></span> de bônus ao completar todos</>}.
       </p>
+      {saveNotice && <p role="status" className="mb-3 text-xs text-[var(--green)]">{saveNotice}</p>}
 
       {/* Progress bar */}
       {total > 0 && (
@@ -355,7 +313,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
       <HabitModal
         key={modalState.mode === "edit" ? modalState.habit!.id : "new"}
         habit={modalState.mode === "edit" ? modalState.habit : undefined}
-        habitCount={tasks.length}
+          habitCount={habitCount}
         onClose={() => setModalState(null)}
         onSave={modalState.mode === "edit" ? handleEdit : handleCreate}
       />
@@ -363,4 +321,3 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     </>
   );
 }
-

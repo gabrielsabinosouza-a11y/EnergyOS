@@ -1,11 +1,9 @@
 import { Check } from "lucide-react";
 import { StaticIcon } from "./landing-assets";
 import { LANDING_ICON_SIZE_ROW } from "./icons";
-import { WEEK_DOTS } from "./how-step-constants";
+import { WEEK_DOTS, STREAK_DAYS } from "./how-step-constants";
 
 export function HowStepConstancia() {
-  const completed = WEEK_DOTS.filter(Boolean).length;
-
   return (
     <div className="how-step how-step--constancia">
       <div className="how-step__kicker">METAS · Prévia ilustrativa</div>
@@ -16,7 +14,7 @@ export function HowStepConstancia() {
           <StaticIcon name="streakAlive" size={LANDING_ICON_SIZE_ROW * 5} />
         </div>
         <span className="how-step__streak-count">
-          {completed} <strong>dias</strong>
+          {STREAK_DAYS} <strong>dias</strong>
         </span>
       </div>
 

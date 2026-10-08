@@ -2,12 +2,15 @@ import pool from "../db";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { parseDate, parseProfileId, ValidationError } from "./validation";
 import { todayIso } from "./dates";
+import { isHabitScheduledOnDate } from "../habit-schedule";
+import { getHabitAsset } from "../habit-icons";
 import { recordMissionProgress } from "./daily-quests";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 
 import {
   HABIT_LIMIT,
+  HABIT_DAILY_REWARD_LIMIT,
   HABIT_XP,
   HABIT_COINS,
   HABIT_ALL_BONUS_COINS,
@@ -70,6 +73,9 @@ export interface DailyTaskHistoryEntry {
 interface TemplateRow {
   id: string | number;
   title: string;
+  frequency_type: HabitFrequencyType;
+  frequency_days: unknown;
+  frequency_target: string | number | null;
 }
 
 interface LogRow {
@@ -104,15 +110,6 @@ interface ListDailyRow {
 }
 
 /** Check if a habit is scheduled for a given day (0=Sun, 1=Mon, ... 6=Sat). */
-function isHabitScheduledToday(frequencyType: HabitFrequencyType, frequencyDays: number[] | null, frequencyTarget: number | null, dayOfWeek: number): boolean {
-  if (frequencyType === "daily") return true;
-  if (frequencyType === "weekdays" && frequencyDays) {
-    return frequencyDays.includes(dayOfWeek);
-  }
-  // times_per_week: treat as daily for now (simplified; full logic tracks weekly count)
-  return true;
-}
-
 /** Map a row to a UserDailyTask, applying defaults for missing fields. */
 function rowToTask(r: ListDailyRow, taskDate: string): UserDailyTask {
   return {
@@ -191,6 +188,14 @@ export async function ensureDailyTasksSchema(): Promise<void> {
     )
   `);
   await pool.query(`
+    create table if not exists daily_habit_bonus_log (
+      profile_id text not null references profiles(id) on delete cascade,
+      bonus_date date not null,
+      coins_awarded integer not null,
+      primary key (profile_id, bonus_date)
+    )
+  `);
+  await pool.query(`
     do $$ begin
       alter table xp_ledger drop constraint if exists xp_ledger_source_check;
     exception when undefined_object then null;
@@ -211,10 +216,6 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
   parseProfileId(profileId);
   await ensureDailyTasksSchema();
 
-  // Get day of week (0=Sun, 1=Mon, ... 6=Sat) for frequency filtering
-  const date = new Date(taskDate + "T12:00:00Z");
-  const dayOfWeek = date.getUTCDay();
-
   const result = await pool.query<ListDailyRow>(
     `select
         t.id as "t.id", t.title as "t.title",
@@ -234,7 +235,7 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
   );
 
   const tasks = result.rows.map((r) => rowToTask(r, taskDate));
-  return tasks.filter((t) => isHabitScheduledToday(t.frequencyType, t.frequencyDays, t.frequencyTarget, dayOfWeek));
+  return tasks.filter((t) => isHabitScheduledOnDate(t.frequencyType, t.frequencyDays, t.frequencyTarget, taskDate));
 }
 
 /**
@@ -315,6 +316,21 @@ export interface CreateHabitPayload {
   reminderTime?: string | null;
 }
 
+function validateHabitIcon(type: HabitIconType, value: string): string {
+  if (type === "asset") return getHabitAsset(value).id;
+  if (type === "emoji") {
+    if (!value || value.length > 16) throw new ValidationError("Emoji de hábito inválido.");
+    return value;
+  }
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  let url: URL;
+  try { url = new URL(value); } catch { throw new ValidationError("URL da imagem inválida."); }
+  if (!cloudName || url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || !url.pathname.startsWith(`/${cloudName}/image/upload/`)) {
+    throw new ValidationError("A imagem precisa estar hospedada na conta Cloudinary do energyOS.");
+  }
+  return url.toString();
+}
+
 export async function createDailyTask(
   profileId: string,
   taskDate: string,
@@ -338,8 +354,9 @@ export async function createDailyTask(
     throw new ForbiddenError(`Você pode ter no máximo ${HABIT_LIMIT} hábitos ativos.`);
   }
 
-  const iconType: HabitIconType = p.iconType || "asset";
-  const iconValue = p.iconValue || "target";
+  const iconType = p.iconType || "asset";
+  if (!["asset", "emoji", "image"].includes(iconType)) throw new ValidationError("Tipo de ícone inválido.");
+  const iconValue = validateHabitIcon(iconType, p.iconValue || "target");
   const color = p.color || "#71d4ff";
   const frequencyType: HabitFrequencyType = p.frequencyType || "daily";
   const frequencyDays = p.frequencyDays ?? null;
@@ -437,6 +454,19 @@ export async function updateHabitMetadata(
   },
 ): Promise<UserDailyTask> {
   parseProfileId(profileId);
+
+  const existingIcon = await pool.query<{ icon_type: HabitIconType; icon_value: string }>(
+    `select icon_type, icon_value from profile_daily_tasks where id = $1 and profile_id = $2`,
+    [taskId, profileId],
+  );
+  if (!existingIcon.rows[0]) throw new NotFoundError("Hábito não encontrado.");
+  const nextIconType = updates.iconType ?? existingIcon.rows[0].icon_type;
+  const nextIconValue = updates.iconValue ?? existingIcon.rows[0].icon_value;
+  if (!["asset", "emoji", "image"].includes(nextIconType)) throw new ValidationError("Tipo de ícone inválido.");
+  const normalizedIconValue = validateHabitIcon(nextIconType, nextIconValue);
+  if (updates.iconValue !== undefined || updates.iconType !== undefined) {
+    updates = { ...updates, iconType: nextIconType, iconValue: normalizedIconValue };
+  }
 
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -714,10 +744,17 @@ export async function toggleDailyTask(
     await client.query(`select id from profiles where id = $1 for update`, [profileId]);
 
     const t = await client.query<TemplateRow>(
-      `select id, title from profile_daily_tasks where id = $1 and profile_id = $2 for update`,
+      `select id, title, frequency_type, frequency_days, frequency_target
+         from profile_daily_tasks where id = $1 and profile_id = $2 for update`,
       [taskId, profileId],
     );
     if (!t.rows[0]) throw new NotFoundError("Tarefa diária não encontrada.");
+    const taskDays = t.rows[0].frequency_days
+      ? (Array.isArray(t.rows[0].frequency_days) ? t.rows[0].frequency_days : JSON.parse(String(t.rows[0].frequency_days))) as number[]
+      : null;
+    if (completed && !isHabitScheduledOnDate(t.rows[0].frequency_type, taskDays, Number(t.rows[0].frequency_target) || null, date)) {
+      throw new ValidationError("Este hábito não está programado para hoje.");
+    }
 
     const existing = await client.query<LogRow>(
       `select task_id, log_date, is_completed, completed_at
@@ -745,29 +782,54 @@ export async function toggleDailyTask(
     let coinsAwarded = 0;
 
     if (completed && !alreadyDone) {
-      xpAwarded = await creditXP(profileId, "daily_task", `${taskId}:${date}`, HABIT_XP, {
-        questDate: date,
-        db: client,
-      });
-      if (xpAwarded > 0) {
-        coinsAwarded = HABIT_COINS;
-        await recordMissionProgress(profileId, "TASKS_COMPLETED", {
-          incrementBy: 1,
+      const rewardedToday = await client.query<{ n: string | number }>(
+        `select count(*)::int as n from xp_ledger
+          where profile_id = $1 and source = 'daily_task' and source_id like '%:' || $2::text`,
+        [profileId, date],
+      );
+      if (Number(rewardedToday.rows[0]?.n ?? 0) < HABIT_DAILY_REWARD_LIMIT) {
+        xpAwarded = await creditXP(profileId, "daily_task", `${taskId}:${date}`, HABIT_XP, {
           questDate: date,
-          client,
+          db: client,
         });
-        await addCoins(profileId, coinsAwarded, client);
+        if (xpAwarded > 0) {
+          coinsAwarded = HABIT_COINS;
+          await addCoins(profileId, coinsAwarded, client);
+        }
+      }
 
-        const allToday = await client.query<{ total: string | number; completed: string | number }>(
-          `select count(*)::int as total,
-                  count(*) filter (where l.is_completed = true)::int as completed
+      await recordMissionProgress(profileId, "TASKS_COMPLETED", {
+        incrementBy: 1,
+        questDate: date,
+        client,
+      });
+
+      const scheduled = await client.query<{
+        id: string | number;
+        frequency_type: HabitFrequencyType;
+        frequency_days: unknown;
+        frequency_target: string | number | null;
+        is_completed: boolean | null;
+      }>(
+        `select t.id, t.frequency_type, t.frequency_days, t.frequency_target, l.is_completed
            from profile_daily_tasks t
            left join daily_task_log l on l.task_id = t.id and l.log_date = $2::date
-           where t.profile_id = $1 and t.is_active = true and t.archived = false`,
-          [profileId, date],
+          where t.profile_id = $1 and t.is_active = true and t.archived = false`,
+        [profileId, date],
+      );
+      const dueToday = scheduled.rows.filter((row) => {
+        const days = row.frequency_days
+          ? (Array.isArray(row.frequency_days) ? row.frequency_days : JSON.parse(String(row.frequency_days))) as number[]
+          : null;
+        return isHabitScheduledOnDate(row.frequency_type, days, Number(row.frequency_target) || null, date);
+      });
+      if (dueToday.length > 0 && dueToday.every((row) => row.is_completed)) {
+        const bonus = await client.query(
+          `insert into daily_habit_bonus_log (profile_id, bonus_date, coins_awarded)
+           values ($1, $2::date, $3) on conflict (profile_id, bonus_date) do nothing returning profile_id`,
+          [profileId, date, HABIT_ALL_BONUS_COINS],
         );
-        const { total, completed: doneCount } = allToday.rows[0];
-        if (Number(total) > 0 && Number(total) === Number(doneCount)) {
+        if (bonus.rowCount) {
           coinsAwarded += HABIT_ALL_BONUS_COINS;
           await addCoins(profileId, HABIT_ALL_BONUS_COINS, client);
         }

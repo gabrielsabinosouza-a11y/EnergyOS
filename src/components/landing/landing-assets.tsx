@@ -11,6 +11,12 @@ export const LANDING_ASSETS = {
   streakAlive: "/streak/streak_alive.png",
   goodSleep: "/sleep/good_sleep.png",
   focus: "/Onboard/focus.png",
+  calendar: "/icons_8bits/calendar.png",
+  target: "/icons_8bits/target.png",
+  graph: "/icons_8bits/graph.png",
+  friends: "/sidebar_menu/friends.png",
+  store: "/sidebar_menu/store.png",
+  firstPlace: "/places/first_place.png",
 } as const;
 
 export type LandingAssetKey = keyof typeof LANDING_ASSETS;

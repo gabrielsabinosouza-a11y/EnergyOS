@@ -1,8 +1,10 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Pencil } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { StreakIcon } from "@/components/streak-icon";
+import { HabitIcon } from "./habit-icon";
+import { isHabitScheduledOnDate } from "@/lib/habit-schedule";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
 
 /** Abas do painel de hábitos (Hoje | Geral | Semanal). */
@@ -35,11 +37,16 @@ function isDayDone(logs: Record<string, boolean>, date: string): boolean {
  * Sequência do hábito: dias consecutivos com check-in até hoje. Hoje pendente
  * NÃO quebra a sequência (pode vir a ser feito ainda); ontem perdido quebra.
  */
-function habitStreak(logs: Record<string, boolean>, today: string): number {
-  let cursor = isDayDone(logs, today) ? today : addDaysIso(today, -1);
+function habitStreak(task: UserDailyTask, logs: Record<string, boolean>, today: string): number {
+  let cursor = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today) && !isDayDone(logs, today)
+    ? addDaysIso(today, -1)
+    : today;
   let streak = 0;
-  while (streak < 400 && isDayDone(logs, cursor)) {
-    streak += 1;
+  while (streak < 400) {
+    if (isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, cursor)) {
+      if (!isDayDone(logs, cursor)) break;
+      streak += 1;
+    }
     cursor = addDaysIso(cursor, -1);
   }
   return streak;
@@ -54,13 +61,15 @@ interface HabitCardProps {
   tab: HabitTab;
   busyTaskId: number | null;
   onToggle: (task: UserDailyTask, completed: boolean) => void;
+  onEdit?: (task: UserDailyTask) => void;
 }
 
 /** Card de um hábito diário — ícone personalizado, sequência, check-in e mapa próprio. */
-export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: HabitCardProps) {
+export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
   const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
-  const streak = habitStreak(logs, today);
+  const streak = habitStreak(task, logs, today);
   const doneToday = isDayDone(logs, today);
+  const scheduledToday = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today);
   const todayBusy = busyTaskId === task.id;
 
   const weekStart = weekStartIso(today);
@@ -70,28 +79,11 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: Habi
     columns.push(Array.from({ length: 7 }, (_, d) => addDaysIso(start, d)));
   }
 
-  // Render icon
-  const renderIcon = () => {
-    if (task.iconType === "emoji") {
-      return <span className="text-xl">{task.iconValue}</span>;
-    }
-    if (task.iconType === "image") {
-      return <img src={task.iconValue} alt={task.title} className="h-5 w-5 rounded object-cover" />;
-    }
-    return (
-      <img
-        src={`/icons_8bits/${task.iconValue}`}
-        alt={task.iconValue.replace(".png", "")}
-        className="h-5 w-5 rounded"
-      />
-    );
-  };
-
   return (
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-4 sm:p-5">
       <div className="flex items-center gap-3">
         <div className="shrink-0 rounded-xl p-2.5" style={{ backgroundColor: withAlpha(color, 0.15), color }}>
-          {renderIcon()}
+          <HabitIcon habit={task} size={22} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-[15px] text-[var(--text)]">{task.title}</p>
@@ -100,11 +92,21 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: Habi
             {streak} {streak === 1 ? "dia" : "dias"}
           </p>
         </div>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(task)}
+            aria-label={`Editar ${task.title}`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+          >
+            <Pencil size={14} />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onToggle(task, !doneToday)}
-          disabled={todayBusy}
-          aria-label={doneToday ? `Desmarcar ${task.title} hoje` : `Marcar ${task.title} hoje`}
+          disabled={todayBusy || !scheduledToday}
+          aria-label={!scheduledToday ? `${task.title} não está programado para hoje` : doneToday ? `Desmarcar ${task.title} hoje` : `Marcar ${task.title} hoje`}
           title={doneToday ? "Desmarcar hoje" : "Marcar hoje"}
           className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition disabled:opacity-60"
           style={
@@ -121,7 +123,7 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: Habi
         <div className="mt-4 flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3.5 py-3">
           <span className="text-xs text-[var(--text-muted)]">Hoje, {fmtDay(today)}</span>
           <span className="text-xs font-semibold" style={{ color: doneToday ? color : "var(--text-muted)" }}>
-            {doneToday ? "Feito ✓" : "Pendente"}
+            {doneToday ? "Feito ✓" : scheduledToday ? "Pendente" : "Não programado"}
           </span>
         </div>
       )}

@@ -11,3 +11,6 @@ export const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
 /** Per-day check state for the consistency step (Friday = low activity). */
 export const WEEK_DOTS = [true, true, true, true, false, true, true];
+
+/** Total illustrative streak shown in the Constância step. */
+export const STREAK_DAYS = 12;

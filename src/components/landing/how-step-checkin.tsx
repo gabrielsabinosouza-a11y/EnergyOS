@@ -5,8 +5,16 @@ import { Check, Plus, BookOpen, Dumbbell } from "lucide-react";
 import { StaticIcon } from "./landing-assets";
 import { LANDING_ICON_SIZE_ROW } from "./icons";
 
+type EnergyLevel = "baixa" | "boa" | "alta";
+
+const ENERGY_OPTIONS: { id: EnergyLevel; label: string }[] = [
+  { id: "baixa", label: "Baixa" },
+  { id: "boa", label: "Boa" },
+  { id: "alta", label: "Alta" },
+];
+
 export function HowStepCheckin() {
-  const [energy, setEnergy] = useState<"baixa" | "boa" | "alta">("boa");
+  const [energy, setEnergy] = useState<EnergyLevel | null>(null);
   const [sonoDone, setSonoDone] = useState(false);
   const [estudoDone, setEstudoDone] = useState(false);
 
@@ -36,7 +44,7 @@ export function HowStepCheckin() {
 
       {energy && (
         <div
-          className={`how-step__feedback${energy === "boa" ? " is-registered" : ""}`}
+          className="how-step__feedback is-registered"
           role="status"
           aria-live="polite"
         >

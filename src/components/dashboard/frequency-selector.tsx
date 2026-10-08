@@ -3,13 +3,8 @@
 import type { HabitFrequencyType } from "@/types";
 
 const WEEKDAYS = [
-  { key: "seg", label: "Seg", day: 1 },
-  { key: "ter", label: "Ter", day: 2 },
-  { key: "qua", label: "Qua", day: 3 },
-  { key: "qui", label: "Qui", day: 4 },
-  { key: "sex", label: "Sex", day: 5 },
-  { key: "sab", label: "Sáb", day: 6 },
-  { key: "dom", label: "Dom", day: 0 },
+  { label: "Seg", day: 1 }, { label: "Ter", day: 2 }, { label: "Qua", day: 3 },
+  { label: "Qui", day: 4 }, { label: "Sex", day: 5 }, { label: "Sáb", day: 6 }, { label: "Dom", day: 0 },
 ];
 
 interface FrequencySelectorProps {
@@ -19,99 +14,41 @@ interface FrequencySelectorProps {
   onChange: (type: HabitFrequencyType, days: number[] | null, target: number | null) => void;
 }
 
-export function FrequencySelector({
-  frequencyType,
-  frequencyDays,
-  frequencyTarget,
-  onChange,
-}: FrequencySelectorProps) {
+export function FrequencySelector({ frequencyType, frequencyDays, frequencyTarget, onChange }: FrequencySelectorProps) {
   const toggleDay = (day: number) => {
     const days = frequencyDays ? [...frequencyDays] : [];
-    const idx = days.indexOf(day);
-    if (idx >= 0) {
-      days.splice(idx, 1);
-    } else {
-      days.push(day);
-    }
-    onChange(frequencyType, days.length ? days : null, frequencyTarget);
+    const index = days.indexOf(day);
+    if (index >= 0) days.splice(index, 1);
+    else days.push(day);
+    onChange("weekdays", days.length ? days : null, null);
   };
 
   return (
-    <div className="space-y-4">
-      {/* Frequency type radio */}
-      <div className="space-y-2">
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-          Frequência
-        </label>
-        {([
-          { value: "daily" as const, label: "Todo dia" },
-          { value: "weekdays" as const, label: "Dias da semana" },
-          { value: "times_per_week" as const, label: "X vezes por semana" },
-        ]).map((option) => (
-          <label
-            key={option.value}
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition ${
-              frequencyType === option.value
-                ? "border-[var(--accent)] bg-[var(--accent-bg)]"
-                : "border-[var(--border-subtle)] hover:border-[var(--text-muted)]"
-            }`}
-          >
-            <input
-              type="radio"
-              name="frequencyType"
-              value={option.value}
-              checked={frequencyType === option.value}
-              onChange={() => onChange(option.value, option.value === "weekdays" ? frequencyDays : null, option.value === "times_per_week" ? frequencyTarget : null)}
-              className="accent-[var(--accent)]"
-            />
-            <span className="text-sm">{option.label}</span>
-          </label>
+    <div>
+      <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Frequência</span>
+      <div className="grid grid-cols-3 rounded-lg border border-[var(--border-subtle)] p-1">
+        {([ ["daily", "Todo dia"], ["weekdays", "Dias fixos"], ["times_per_week", "Por semana"] ] as const).map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={frequencyType === value} onClick={() => onChange(value, value === "weekdays" ? frequencyDays : null, value === "times_per_week" ? frequencyTarget ?? 3 : null)} className={`min-h-9 rounded-md px-1 text-[11px] font-medium ${frequencyType === value ? "bg-[var(--accent-bg)] text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text)]"}`}>
+            {label}
+          </button>
         ))}
       </div>
-
-      {/* Weekday toggles */}
       {frequencyType === "weekdays" && (
-        <div className="flex gap-1.5">
-          {WEEKDAYS.map((wd) => {
-            const isActive = frequencyDays?.includes(wd.day);
-            return (
-              <button
-                key={wd.key}
-                type="button"
-                onClick={() => toggleDay(wd.day)}
-                aria-pressed={isActive}
-                title={wd.label}
-                className={`flex h-9 w-11 items-center justify-center rounded-lg text-xs font-medium transition ${
-                  isActive
-                    ? "bg-[var(--accent)] text-[var(--bg-primary)]"
-                    : "bg-[var(--bg-surface-hover)] text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
-                }`}
-              >
-                {wd.label}
-              </button>
-            );
+        <div className="mt-2 flex gap-1">
+          {WEEKDAYS.map(({ label, day }) => {
+            const selected = frequencyDays?.includes(day) ?? false;
+            return <button key={day} type="button" onClick={() => toggleDay(day)} aria-pressed={selected} aria-label={label} className={`min-h-8 flex-1 rounded-md text-[10px] font-semibold ${selected ? "bg-[var(--accent)] text-[var(--bg-primary)]" : "bg-[var(--bg-surface-hover)] text-[var(--text-muted)]"}`}>{label}</button>;
           })}
         </div>
       )}
-
-      {/* Times per week input */}
       {frequencyType === "times_per_week" && (
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold text-[var(--text-muted)]">
-            Quantas vezes por semana?
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={7}
-            value={frequencyTarget ?? 3}
-            onChange={(e) => {
-              const val = Math.min(7, Math.max(1, Number(e.target.value) || 1));
-              onChange(frequencyType, null, val);
-            }}
-            className="auth-input w-20"
-          />
-        </div>
+        <label className="mt-2 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          Dias por semana
+          <select value={frequencyTarget ?? 3} onChange={(event) => onChange(frequencyType, null, Number(event.target.value))} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-2 py-1 text-[var(--text)]">
+            {Array.from({ length: 7 }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}×</option>)}
+          </select>
+          <span className="text-[10px]">dias fixos distribuídos pela semana</span>
+        </label>
       )}
     </div>
   );

@@ -1,11 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Gift, Trophy, Users } from "lucide-react";
 import { HabitTicker } from "./habit-ticker";
 import { LANDING_ICON_SIZE_ROW, LANDING_ICON_STROKE } from "./icons";
 import {
   StaticIcon,
   isLandingAssetIcon,
+  type LandingAssetKey,
   type LandingIcon,
 } from "./landing-assets";
 import { LandingHero } from "./landing-hero";
@@ -33,16 +33,16 @@ type FeatureCard = {
 };
 
 const featureCards: FeatureCard[] = [
-  { icon: landingIcons.foco, eyebrow: "FOCO", title: "Um espaço para focar de verdade.", text: "Use o timer de foco, acompanhe sessões e convide pessoas para salas compartilhadas.", shape: "feature-wide" },
-  { icon: landingIcons.metas, eyebrow: "ORGANIZAÇÃO", title: "Tarefas que saem da cabeça.", text: "Planeje a semana, organize o kanban e acompanhe tarefas recorrentes em um só lugar.", shape: "feature-tall" },
-  { icon: landingIcons.metas, eyebrow: "METAS E HÁBITOS", title: "Consistência sem perfeccionismo.", text: "Defina metas, acompanhe hábitos e registre o progresso com flexibilidade.", shape: "feature-card" },
+  { icon: "focus", eyebrow: "FOCO", title: "Um espaço para focar de verdade.", text: "Use o timer de foco, acompanhe sessões e convide pessoas para salas compartilhadas.", shape: "feature-wide" },
+  { icon: "calendar", eyebrow: "ORGANIZAÇÃO", title: "Tarefas que saem da cabeça.", text: "Planeje a semana, organize o kanban e acompanhe tarefas recorrentes em um só lugar.", shape: "feature-tall" },
+  { icon: "target", eyebrow: "METAS E HÁBITOS", title: "Consistência sem perfeccionismo.", text: "Defina metas, acompanhe hábitos e registre o progresso com flexibilidade.", shape: "feature-card" },
   { icon: "xp", eyebrow: "ENERGIA E BEM-ESTAR", title: "Conecte seus hábitos ao seu ritmo.", text: "Registre sono, estudo, treino e energia. Explore relatórios, calendário e tendências pessoais.", shape: "feature-card" },
   { icon: "streakAlive", eyebrow: "PROGRESSO", title: "Veja seu esforço ganhar forma.", text: "Transforme sessões de foco em energias no jardim, acompanhe streaks e desbloqueie conquistas.", shape: "feature-card", amber: true },
   { icon: "xp", eyebrow: "MISSÕES DIÁRIAS", title: "Celebre cada avanço.", text: "Complete quests, acompanhe seu XP e resgate recompensas por pequenas vitórias.", shape: "feature-card" },
-  { icon: Users, eyebrow: "JUNTO É MAIS LEVE", title: "Compartilhe o caminho, se quiser.", text: "Encontre amigos, participe de grupos, salas de foco e ligas semanais.", shape: "feature-wide" },
-  { icon: Gift, eyebrow: "PERSONALIZAÇÃO", title: "Deixe o espaço com a sua cara.", text: "Explore a loja de itens, personalize seu perfil e configure lembretes para a sua rotina.", shape: "feature-card" },
-  { icon: Trophy, eyebrow: "CONQUISTAS", title: "Reconheça o caminho percorrido.", text: "Desbloqueie emblemas e acompanhe marcos individuais ou com seu grupo.", shape: "feature-card" },
-  { icon: landingIcons.clareza, eyebrow: "VISÃO PESSOAL", title: "Entenda sua evolução com contexto.", text: "Consulte calendário de consistência, resumo mensal e relatórios de sono, estudo, tarefas e metas.", shape: "feature-wide" },
+  { icon: "friends", eyebrow: "JUNTO É MAIS LEVE", title: "Compartilhe o caminho, se quiser.", text: "Encontre amigos, participe de grupos, salas de foco e ligas semanais.", shape: "feature-wide" },
+  { icon: "store", eyebrow: "PERSONALIZAÇÃO", title: "Deixe o espaço com a sua cara.", text: "Explore a loja de itens, personalize seu perfil e configure lembretes para a sua rotina.", shape: "feature-card" },
+  { icon: "firstPlace", eyebrow: "CONQUISTAS", title: "Reconheça o caminho percorrido.", text: "Desbloqueie emblemas e acompanhe marcos individuais ou com seu grupo.", shape: "feature-card" },
+  { icon: "graph", eyebrow: "VISÃO PESSOAL", title: "Entenda sua evolução com contexto.", text: "Consulte calendário de consistência, resumo mensal e relatórios de sono, estudo, tarefas e metas.", shape: "feature-wide" },
 ];
 
 function TelemetryStrip() {

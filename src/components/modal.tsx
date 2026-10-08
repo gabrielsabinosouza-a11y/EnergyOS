@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
@@ -45,6 +45,7 @@ export function Modal({
   headerClassName = "",
   footerClassName = "",
 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const isBottom = variant === "bottom-sheet";
   const isSide = variant === "side-right";
@@ -73,10 +74,29 @@ export function Modal({
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusable?.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    requestAnimationFrame(() => {
+      const autofocus = dialogRef.current?.querySelector<HTMLElement>("[autofocus]");
+      (autofocus ?? dialogRef.current)?.focus();
+    });
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
@@ -86,7 +106,7 @@ export function Modal({
   if (typeof document === "undefined") return null;
 
   const structuredPanelClass =
-    "flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl border border-[var(--border)] " +
+    "flex max-h-[min(90dvh,720px)] w-full flex-col overflow-hidden rounded-2xl border border-[var(--border)] max-sm:max-h-[96dvh] max-sm:rounded-b-none " +
     // `bg-primary` é totalmente opaco (fundo base do app): nada de trasparência.
     "bg-[var(--bg-primary)] shadow-[0_24px_60px_-12px_rgba(0,0,0,.65)]";
 
@@ -140,8 +160,10 @@ export function Modal({
             aria-hidden
           />
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
+            tabIndex={-1}
             className={`relative ${structured ? structuredPanelClass : panelDefaultClass} ${panelClassName}`}
             initial={panelStart}
             animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}

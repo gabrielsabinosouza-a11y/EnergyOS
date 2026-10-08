@@ -4,7 +4,13 @@ import { FOCUS_DURATION_MIN_MINUTES } from "./focus-duration";
 export const DAILY_MISSION_LIMIT = 3;
 
 /** Max active habits per user. */
-export const HABIT_LIMIT = 10;
+export const HABIT_LIMIT = 30;
+
+/** Only the first 10 habit check-ins each day earn per-habit rewards. */
+export const HABIT_DAILY_REWARD_LIMIT = 10;
+
+/** Custom habit icons are limited to 5 MiB before client-side resizing. */
+export const HABIT_ICON_MAX_BYTES = 5 * 1024 * 1024;
 
 /** XP per completed habit. */
 export const HABIT_XP = 10;

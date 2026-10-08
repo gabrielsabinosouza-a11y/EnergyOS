@@ -2,7 +2,7 @@
 
 import { type KeyboardEvent } from "react";
 import { LANDING_ICON_SIZE_ROW, LANDING_ICON_STROKE } from "./icons";
-import { isLandingAssetIcon, StaticIcon } from "./landing-assets";
+import { isLandingAssetIcon, StaticIcon, type LandingAssetKey } from "./landing-assets";
 import { STEPS, type Step } from "./how-it-works-data";
 
 /**

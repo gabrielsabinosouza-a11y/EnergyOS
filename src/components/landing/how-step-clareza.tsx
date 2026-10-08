@@ -1,4 +1,4 @@
-import { CHART_BARS } from "./how-step-constants";
+import { CHART_BARS, WEEK_DAYS } from "./how-step-constants";
 
 export function HowStepClareza() {
   return (
@@ -7,7 +7,7 @@ export function HowStepClareza() {
       <h3>Energia nos últimos 7 dias</h3>
       <svg
         className="how-step__chart"
-        viewBox="0 0 280 110"
+        viewBox="0 0 280 126"
         role="img"
         aria-label="Gráfico ilustrativo de energia em 7 dias"
       >
@@ -18,15 +18,24 @@ export function HowStepClareza() {
           const y = 100 - h;
           const last = i === CHART_BARS.length - 1;
           return (
-            <rect
-              key={i}
-              x={x}
-              y={y}
-              width={22}
-              height={h}
-              rx={4}
-              className={last ? "how-step__chart-bar is-last" : "how-step__chart-bar"}
-            />
+            <g key={i}>
+              <rect
+                x={x}
+                y={y}
+                width={22}
+                height={h}
+                rx={4}
+                className={last ? "how-step__chart-bar is-last" : "how-step__chart-bar"}
+              />
+              <text
+                x={x + 11}
+                y={116}
+                textAnchor="middle"
+                className="how-step__chart-label"
+              >
+                {WEEK_DAYS[i]}
+              </text>
+            </g>
           );
         })}
       </svg>
