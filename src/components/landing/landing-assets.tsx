@@ -11,6 +11,7 @@ export const LANDING_ASSETS = {
   streakAlive: "/streak/streak_alive.png",
   goodSleep: "/sleep/good_sleep.png",
   focus: "/Onboard/focus.png",
+  energyFlame: "/energies/flame/flame_full.png",
   calendar: "/icons_8bits/calendar.png",
   target: "/icons_8bits/target.png",
   graph: "/icons_8bits/graph.png",

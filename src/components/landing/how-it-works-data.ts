@@ -1,8 +1,3 @@
-import {
-  ClipboardCheck,
-  ChartNoAxesColumn,
-  type LucideIcon,
-} from "lucide-react";
 import { type LandingAssetKey } from "./landing-assets";
 
 /**
@@ -18,33 +13,33 @@ export interface Step {
   label: string;
   title: string;
   text: string;
-  Icon: LucideIcon | LandingAssetKey;
+  Icon: LandingAssetKey;
 }
 
 export const STEPS: Step[] = [
   {
     key: "checkin",
     number: "01",
-    label: "CHECK-IN",
-    title: "Comece pelo que você sente.",
-    text: "Registre sono, energia, estudo e treino em um check-in rápido. Sem planilhas, sem complicação.",
-    Icon: ClipboardCheck,
+    label: "CONSISTÊNCIA",
+    title: "Seu ano em quadrados.",
+    text: "Cada check-in vira um quadrado. Veja sua constância ganhar forma.",
+    Icon: "calendar",
   },
   {
     key: "clareza",
     number: "02",
-    label: "CLAREZA",
-    title: "Encontre seu próprio ritmo.",
-    text: "Veja tendências e históricos para entender como seus hábitos se conectam aos seus dias.",
-    Icon: ChartNoAxesColumn,
+    label: "REGISTROS",
+    title: "Cada sessão deixa uma marca.",
+    text: "Cada sessão de foco planta uma energia no seu jardim.",
+    Icon: "energyFlame",
   },
   {
     key: "constancia",
     number: "03",
-    label: "CONSTÂNCIA",
-    title: "Transforme intenção em pequenas vitórias.",
-    text: "Organize tarefas, acompanhe metas e celebre o progresso sem exigir perfeição.",
-    Icon: "streakAlive" as LandingAssetKey,
+    label: "MEDIDA",
+    title: "Foco no seu ritmo.",
+    text: "Escolha de 10 a 120 minutos e foque no seu ritmo.",
+    Icon: "focus",
   },
 ] as const;
 

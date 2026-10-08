@@ -1,8 +1,8 @@
 "use client";
 
 import { type KeyboardEvent } from "react";
-import { LANDING_ICON_SIZE_ROW, LANDING_ICON_STROKE } from "./icons";
-import { isLandingAssetIcon, StaticIcon, type LandingAssetKey } from "./landing-assets";
+import { LANDING_ICON_SIZE_ROW } from "./icons";
+import { StaticIcon } from "./landing-assets";
 import { STEPS, type Step } from "./how-it-works-data";
 
 /**
@@ -84,12 +84,5 @@ export function HowItWorksStepper({
 }
 
 function IconRender({ step, size }: { step: Step; size: number }) {
-  if (isLandingAssetIcon(step.Icon)) {
-    return (
-      <span className="story-step-icon" aria-hidden="true">
-        <StaticIcon name={step.Icon as LandingAssetKey} size={size} />
-      </span>
-    );
-  }
-  return <step.Icon size={size} strokeWidth={LANDING_ICON_STROKE} aria-hidden />;
+  return <span className="story-step-icon" aria-hidden="true"><StaticIcon name={step.Icon} size={size} alt="" /></span>;
 }

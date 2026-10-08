@@ -7,6 +7,7 @@ import {
   useInView,
   useMotionValue,
   useReducedMotion,
+  useSpring,
   useTransform,
 } from "framer-motion";
 import { ArrowRight } from "lucide-react";
@@ -19,6 +20,26 @@ export function GlassCard({
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
   return <div className={`landing-glass ${className}`} {...props}>{children}</div>;
+}
+
+export function LedBorder({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`led-border-shell ${className}`}>{children}</div>;
+}
+
+export function TiltCard({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const reduced = useReducedMotion();
+  const pointerX = useMotionValue(0);
+  const pointerY = useMotionValue(0);
+  const springX = useSpring(pointerX, { stiffness: 180, damping: 22, mass: .5 });
+  const springY = useSpring(pointerY, { stiffness: 180, damping: 22, mass: .5 });
+  const rotateX = useTransform(springY, [-.5, .5], [6, -6]);
+  const rotateY = useTransform(springX, [-.5, .5], [-6, 6]);
+  return <motion.div className={className} style={{ rotateX: reduced ? 0 : rotateX, rotateY: reduced ? 0 : rotateY, transformPerspective: 1000, transformStyle: "preserve-3d" }} onPointerMove={(event) => {
+    if (reduced || event.pointerType === "touch") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    pointerX.set((event.clientX - rect.left) / rect.width - .5);
+    pointerY.set((event.clientY - rect.top) / rect.height - .5);
+  }} onPointerLeave={() => { pointerX.set(0); pointerY.set(0); }}>{children}</motion.div>;
 }
 
 export function LedNumber({

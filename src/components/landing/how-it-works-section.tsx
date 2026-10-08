@@ -15,14 +15,15 @@ import { HowItWorksPreview } from "./how-it-works-preview";
 export function HowItWorksSection() {
   const [activeStep, setActiveStep] = useState(0);
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
-    if (hasInteracted) return;
+    if (hasInteracted || hovered) return;
     const id = window.setInterval(() => {
       setActiveStep((i) => (i + 1) % STEPS.length);
     }, 5000);
     return () => window.clearInterval(id);
-  }, [hasInteracted]);
+  }, [hasInteracted, hovered]);
 
   const selectStep = (index: number) => {
     setActiveStep(index);
@@ -30,15 +31,11 @@ export function HowItWorksSection() {
   };
 
   return (
-    <section className="landing-story-section">
-      <div className="landing-section-heading">
-        <span className="landing-eyebrow">COMO FUNCIONA</span>
-        <p>Do check-in à próxima pequena vitória.</p>
-      </div>
+    <div className="how-it-works-section">
       <div className="story-layout">
         <HowItWorksStepper activeStep={activeStep} onSelect={selectStep} />
-        <HowItWorksPreview activeStep={activeStep} />
+        <HowItWorksPreview activeStep={activeStep} onInteract={() => setHasInteracted(true)} onHoverChange={setHovered} />
       </div>
-    </section>
+    </div>
   );
 }

@@ -1,24 +1,25 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { GlassCard } from "./primitives";
-import { HowStepCheckin } from "./how-step-checkin";
-import { HowStepClareza } from "./how-step-clareza";
-import { HowStepConstancia } from "./how-step-constancia";
+import { GlassCard, LedBorder, TiltCard } from "./primitives";
+import { HowStepConsistency } from "./how-step-consistency";
+import { HowStepGarden } from "./how-step-garden";
+import { HowStepTimer } from "./how-step-timer";
 
 const STEP_COMPONENTS = {
-  checkin: HowStepCheckin,
-  clareza: HowStepClareza,
-  constancia: HowStepConstancia,
+  checkin: HowStepConsistency,
+  clareza: HowStepGarden,
+  constancia: HowStepTimer,
 } as const;
 
-export function HowItWorksPreview({ activeStep }: { activeStep: number }) {
+export function HowItWorksPreview({ activeStep, onInteract, onHoverChange }: { activeStep: number; onInteract: () => void; onHoverChange: (hovered: boolean) => void }) {
   const stepKeys = ["checkin", "clareza", "constancia"] as const;
-  const Component = STEP_COMPONENTS[stepKeys[activeStep] ?? "checkin"];
+  const key = stepKeys[activeStep] ?? "checkin";
+  const Component = STEP_COMPONENTS[key];
 
   return (
-    <GlassCard className="how-it-works-preview">
-      <div className="how-it-works-preview__content">
+    <TiltCard className="how-preview-tilt"><LedBorder className="how-preview-border"><GlassCard className="how-it-works-preview" onPointerDownCapture={onInteract} onMouseEnter={() => onHoverChange(true)} onMouseLeave={() => onHoverChange(false)} onFocusCapture={onInteract}>
+      <div id={`how-step-panel-${key}`} role="tabpanel" aria-labelledby={`how-step-tab-${key}`} className="how-it-works-preview__content">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeStep}
@@ -39,6 +40,6 @@ export function HowItWorksPreview({ activeStep }: { activeStep: number }) {
           </motion.div>
         </AnimatePresence>
       </div>
-    </GlassCard>
+    </GlassCard></LedBorder></TiltCard>
   );
 }
