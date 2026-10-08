@@ -351,3 +351,48 @@ body { overflow-wrap: break-word; }
 @media (prefers-reduced-motion: reduce) {
   .garden-float, .garden-breathe { animation: none; }
 }
+
+/* Consistência — GitHub-style date grid with energyOS navy and cyan LEDs. */
+.consistency-heatmap {
+  --heat-0: #142437;
+  --heat-1: color-mix(in srgb, var(--heat-color) 34%, #142437);
+  --heat-2: color-mix(in srgb, var(--heat-color) 54%, #122238);
+  --heat-3: color-mix(in srgb, var(--heat-color) 76%, #102035);
+  --heat-4: color-mix(in srgb, var(--heat-color) 94%, #d8f7ff);
+  --heat-glow: color-mix(in srgb, var(--heat-color) 58%, transparent);
+  min-width: 0;
+}
+.consistency-heatmap-body { display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 8px; align-items: start; }
+.consistency-heatmap-habit .consistency-heatmap-body { grid-template-columns: 20px minmax(0, 1fr); gap: 5px; }
+.consistency-weekday-labels { position: sticky; left: 0; z-index: 4; display: grid; grid-template-rows: 22px repeat(7, var(--heat-cell-size, 11px)); gap: 3px; background: linear-gradient(90deg, var(--bg-tertiary, #0c1a2a) 82%, transparent); }
+.consistency-weekday-labels > span:not(.consistency-weekday-spacer) { display: flex; align-items: center; color: var(--text-faint); font-size: 9px; line-height: 1; }
+.consistency-heatmap-habit .consistency-weekday-labels > span:not(.consistency-weekday-spacer) { justify-content: center; font-size: 9px; }
+.consistency-heatmap-scroll { position: relative; min-width: 0; overflow-x: auto; overflow-y: visible; padding: 1px 2px 7px; scrollbar-width: thin; scrollbar-color: rgba(113,212,255,.25) transparent; mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent); }
+.consistency-heatmap-content { width: max-content; min-width: 100%; }
+.consistency-month-row { display: grid; height: 22px; gap: var(--heat-gap); }
+.consistency-month-label { position: absolute; left: 0; top: 2px; white-space: nowrap; color: var(--text-faint); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.consistency-heatmap-grid { display: grid; grid-auto-flow: column; grid-auto-columns: var(--heat-cell-size, 11px); gap: var(--heat-gap); width: max-content; }
+.consistency-heatmap-week { display: grid; grid-template-rows: repeat(7, var(--heat-cell-size, 11px)); gap: var(--heat-gap); }
+.consistency-heatmap-week.consistency-month-divider { box-shadow: inset 1px 0 rgba(168,220,255,.18); }
+.consistency-heat-cell { width: var(--heat-cell-size, 11px); box-shadow: inset 0 0 0 1px rgba(190,225,255,.025); transition: transform .18s cubic-bezier(.2,.8,.2,1), filter .16s ease, box-shadow .16s ease; }
+.consistency-heat-cell::before { position: absolute; inset: -1px; border-radius: inherit; content: ""; box-shadow: 0 0 9px var(--heat-glow); opacity: calc(var(--heat-intensity) * .18); pointer-events: none; }
+.consistency-heat-cell:not(:disabled):hover, .consistency-heat-cell:not(:disabled):focus-visible { z-index: 2; transform: scale(1.22); filter: brightness(1.3); box-shadow: 0 0 12px var(--heat-glow), inset 0 0 0 1px rgba(255,255,255,.28); }
+.consistency-heat-cell:not(:disabled):active { transform: scale(1.12); }
+.consistency-heat-cell[style*="--heat-level: 0"] { box-shadow: inset 0 0 0 1px rgba(190,225,255,.025); }
+.consistency-heat-today { outline: 1.5px solid rgba(255,255,255,.9); outline-offset: 2px; }
+.consistency-heat-today::after { position: absolute; inset: -3px; border: 1px solid var(--heat-color); border-radius: 6px; content: ""; opacity: .7; pointer-events: none; animation: consistency-led-pulse 2.6s ease-in-out infinite; }
+@keyframes consistency-led-pulse { 0%, 100% { transform: scale(.92); opacity: .75; } 50% { transform: scale(1.08); opacity: .28; } }
+.consistency-heatmap-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; }
+.consistency-heat-legend { display: flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 10px; }
+.consistency-heat-legend-cell { width: 11px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(190,225,255,.04); }
+.consistency-heatmap-habit .consistency-heat-legend-cell { width: 9px; height: 9px; }
+.consistency-heat-tooltip { position: absolute; z-index: 12; max-width: min(260px, calc(100vw - 32px)); padding: 7px 10px; border: 1px solid rgba(150,215,255,.25); border-radius: 9px; color: #e4f3ff; background: rgba(8,19,33,.94); box-shadow: 0 8px 30px rgba(0,0,0,.32), 0 0 18px rgba(63,190,255,.1); backdrop-filter: blur(14px); font-size: 11px; line-height: 1.4; pointer-events: none; }
+.consistency-selected-day { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; padding: 9px 11px; border: 1px solid rgba(113,212,255,.18); border-radius: 10px; color: var(--text-secondary); background: rgba(113,212,255,.055); font-size: 11px; }
+.consistency-selected-day button { color: var(--text-muted); font-size: 18px; line-height: 1; }
+.consistency-map-card { position: relative; overflow: hidden; border: 1px solid rgba(157,212,255,.16); background: linear-gradient(135deg, rgba(17,37,58,.8), rgba(9,22,38,.92)); box-shadow: 0 16px 44px rgba(0,0,0,.18), inset 0 1px rgba(225,245,255,.08), 0 0 34px rgba(70,185,255,.035); backdrop-filter: blur(18px); }
+.consistency-map-card::before { position: absolute; inset: 0 8% auto; height: 1px; content: ""; background: linear-gradient(90deg, transparent, rgba(183,232,255,.25), transparent); }
+.consistency-stats-grid > * { border: 1px solid rgba(157,212,255,.12); background: linear-gradient(145deg, rgba(16,34,53,.86), rgba(10,23,39,.92)); box-shadow: 0 10px 30px rgba(0,0,0,.12), inset 0 1px rgba(225,245,255,.055); backdrop-filter: blur(12px); }
+@media (prefers-reduced-motion: reduce) {
+  .consistency-heat-today { animation: none; }
+  .consistency-heat-cell { transition: none; }
+}

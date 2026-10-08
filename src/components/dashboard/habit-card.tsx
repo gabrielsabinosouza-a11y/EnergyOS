@@ -5,11 +5,11 @@ import type { UserDailyTask } from "@/types";
 import { HabitIcon } from "./habit-icon";
 import { isHabitScheduledOnDate } from "@/lib/habit-schedule";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
+import { ConsistencyHeatmap, activityDayFromHabit } from "./consistency-heatmap";
+import { AnimatePresence, motion } from "framer-motion";
 
 /** Abas do painel de hábitos (Hoje | Geral | Semanal). */
 export type HabitTab = "hoje" | "geral" | "semanal";
-
-const WEEKS = 20;
 const MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 function hexAlpha(hex: string, alpha: number): string {
@@ -74,17 +74,15 @@ interface HabitCardProps {
   logs: Record<string, boolean>;
   /** Hoje no fuso America/Sao_Paulo. */
   today: string;
+  year: number;
   tab: HabitTab;
   busyTaskId: number | null;
   onToggle: (task: UserDailyTask, completed: boolean) => void;
   onEdit?: (task: UserDailyTask) => void;
 }
 
-/** Heatmap intensity levels based on habit color. */
-const HEATMAP_LEVELS = [0.12, 0.35, 0.55, 0.85];
-
 /** Card de um hábito — ícone, nome, sequência, check-in e mapa de contribuição. */
-export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
+export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
   const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
   const streak = habitStreak(task, logs, today);
   const doneToday = isDayDone(logs, today);
@@ -93,23 +91,9 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
   const checkIconColor = luminance(color) > 0.4 ? "#07111f" : "#ffffff";
 
   const weekStart = weekStartIso(today);
-  const columns: string[][] = [];
-  for (let i = WEEKS - 1; i >= 0; i -= 1) {
-    const start = addDaysIso(weekStart, -i * 7);
-    columns.push(Array.from({ length: 7 }, (_, d) => addDaysIso(start, d)));
-  }
-
-  // Group columns by month for labels
-  const monthBoundaries: { month: number; colIndex: number }[] = [];
-  let prevMonth = -1;
-  columns.forEach((col, ci) => {
-    const month = Number(col[0].split("-")[1]);
-    if (month !== prevMonth) {
-      monthBoundaries.push({ month, colIndex: ci });
-      prevMonth = month;
-    }
-  });
-
+  const heatmapDays = Object.entries(logs)
+    .filter(([date]) => date.startsWith(`${year}-`))
+    .map(([date, completed]) => activityDayFromHabit(date, completed, today));
   return (
     <div
       className="group/card rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-3.5 sm:p-4 transition-colors hover:border-[var(--border-strong)]"
@@ -155,99 +139,26 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
         </button>
       </div>
 
-      {/* Hoje tab */}
+      <AnimatePresence mode="wait" initial={false}>
       {tab === "hoje" && (
-        <div className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2.5">
+        <motion.div key="hoje" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2.5">
           <span className="text-xs text-[var(--text-muted)]">Hoje, {fmtDay(today)}</span>
           <span className="text-xs font-semibold" style={{ color: doneToday ? color : "var(--text-muted)" }}>
             {doneToday ? "Feito" : scheduledToday ? "Pendente" : "Não programado"}
           </span>
-        </div>
+        </motion.div>
       )}
 
       {/* Geral tab — full-width heatmap */}
       {tab === "geral" && (
-        <div className="mt-3">
-          {/* Weekday labels on the left — align with rows 0 (Seg), 2 (Qua), 4 (Sex) */}
-          <div className="flex">
-            <div className="shrink-0 pr-1" style={{ width: 22 }}>
-              {Array.from({ length: 7 }, (_, row) => {
-                const label = row === 0 ? "Seg" : row === 2 ? "Qua" : row === 4 ? "Sex" : "";
-                return (
-                  <div key={row} className="flex h-[14px] items-center text-[9px] text-[var(--text-faint)]">
-                    {label}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-              {/* Month labels */}
-              <div className="relative mb-0.5">
-                {monthBoundaries.map(({ month, colIndex }) => (
-                  <span
-                    key={colIndex}
-                    className="absolute text-[9px] text-[var(--text-faint)]"
-                    style={{ left: `${(colIndex / WEEKS) * 100}%` }}
-                  >
-                    {MONTH_LABELS[month - 1]}
-                  </span>
-                ))}
-              </div>
-              {/* Grid */}
-              <div className="flex gap-[3px]">
-                {columns.map((column) => (
-                  <div key={column[0]} className="grid grid-rows-7 gap-[3px]">
-                    {column.map((date) => {
-                      const future = date > today;
-                      const done = !future && isDayDone(logs, date);
-                      const isToday = date === today;
-                      const label = future
-                        ? `${fmtDay(date)} — ainda vai acontecer`
-                        : done
-                          ? `${fmtDay(date)} — feito`
-                          : `${fmtDay(date)} — não feito`;
-                      return (
-                        <div
-                          key={date}
-                          role="gridcell"
-                          aria-label={label}
-                          title={label}
-                          tabIndex={0}
-                          className="h-[14px] w-[14px] rounded-[3px] transition-colors"
-                          style={{
-                            backgroundColor: future
-                              ? "var(--bg-surface-hover)"
-                              : done
-                                ? hexAlpha(color, HEATMAP_LEVELS[3])
-                                : hexAlpha(color, HEATMAP_LEVELS[0]),
-                            boxShadow: isToday ? `0 0 0 1.5px ${color}` : undefined,
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-              {/* Legend */}
-              <div className="mt-1.5 flex items-center justify-end gap-1 text-[9px] text-[var(--text-faint)]">
-                <span>Menos</span>
-                {HEATMAP_LEVELS.map((level, i) => (
-                  <div
-                    key={i}
-                    className="h-[10px] w-[10px] rounded-[2px]"
-                    style={{ backgroundColor: hexAlpha(color, level) }}
-                  />
-                ))}
-                <span>Mais</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <motion.div key="geral" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3">
+          <ConsistencyHeatmap year={year} days={heatmapDays} today={today} accent={color} variant="habit" summary={`${heatmapDays.filter((day) => day.dailyTaskCompletions).length} check-ins em ${year}`} />
+        </motion.div>
       )}
 
       {/* Semanal tab */}
       {tab === "semanal" && (
-        <div className="mt-3 flex items-start justify-between gap-1">
+        <motion.div key="semanal" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3 flex items-start justify-between gap-1">
           {(["seg", "ter", "qua", "qui", "sex", "sáb", "dom"] as const).map((label, i) => {
             const date = addDaysIso(weekStart, i);
             const future = date > today;
@@ -281,8 +192,9 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
               </div>
             );
           })}
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,5 +1,8 @@
+"use client";
+
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
 
 interface StatCardProps {
   label: string;
@@ -13,8 +16,19 @@ interface StatCardProps {
 
 /** Card de métrica da página Consistência (mesmo visual dos painéis do relatório). */
 export function StatCard({ label, value, hint, icon: Icon, iconContent, color }: StatCardProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: "0px 0px -35px 0px" });
+  const reducedMotion = useReducedMotion();
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, (current) => Math.round(current).toLocaleString("pt-BR"));
+  useEffect(() => {
+    if (typeof value !== "number" || !inView) return;
+    if (reducedMotion) { count.set(value); return; }
+    const controls = animate(count, value, { duration: 0.8, ease: [0.22, 1, 0.36, 1] });
+    return controls.stop;
+  }, [count, inView, reducedMotion, value]);
   return (
-    <div className="panel p-6">
+    <div ref={ref} className="panel rounded-2xl p-4 sm:p-6">
       <div className="mb-4 flex items-center gap-3">
         <div
           className="rounded-full p-2.5"
@@ -29,7 +43,7 @@ export function StatCard({ label, value, hint, icon: Icon, iconContent, color }:
         <span className="text-sm text-[var(--text-secondary)]">{label}</span>
       </div>
       <div className="font-display text-4xl tracking-[-0.04em]" style={{ color }}>
-        {value}
+        {typeof value === "number" ? <motion.span>{rounded}</motion.span> : value}
       </div>
       {hint && <div className="mt-1 text-xs text-[var(--text-muted)]">{hint}</div>}
     </div>

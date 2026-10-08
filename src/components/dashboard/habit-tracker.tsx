@@ -5,7 +5,7 @@ import { AlertCircle, CalendarCheck, Loader2, Plus } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
-import { addDaysIso, todayIso } from "@/lib/db/dates";
+import { todayIso } from "@/lib/db/dates";
 import { HabitCard, type HabitTab } from "./habit-card";
 import { HabitModal, type HabitPayload } from "./habit-modal";
 
@@ -14,8 +14,6 @@ const TABS: { id: HabitTab; label: string }[] = [
   { id: "geral", label: "Geral" },
   { id: "semanal", label: "Semanal" },
 ];
-
-const HISTORY_DAYS = 200;
 
 interface HabitTrackerState {
   tasks: UserDailyTask[];
@@ -36,7 +34,7 @@ function indexTaskHistory(tasks: UserDailyTask[], entries: { taskId: number; dat
 }
 
 /** Tarefas diárias e seus check-ins reais; nenhuma meta é lida nesta seção. */
-export function HabitTracker() {
+export function HabitTracker({ year }: { year: number }) {
   const today = useMemo(() => todayIso(), []);
   const [tab, setTab] = useState<HabitTab>("geral");
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
@@ -52,10 +50,12 @@ export function HabitTracker() {
 
   const load = useCallback(async () => {
     try {
-      const from = addDaysIso(today, -HISTORY_DAYS);
+      const currentYear = Number(today.slice(0, 4));
+      const from = `${Math.min(year, currentYear)}-01-01`;
+      const to = year < currentYear ? today : `${year}-12-31`;
       const [taskResult, historyResult] = await Promise.all([
         api.getDailyTasks(true),
-        api.getDailyTaskHistory(from, today),
+        api.getDailyTaskHistory(from, to),
       ]);
       setState({
         tasks: taskResult.tasks,
@@ -70,7 +70,7 @@ export function HabitTracker() {
         error: err instanceof Error ? err.message : "Não foi possível carregar as tarefas diárias.",
       }));
     }
-  }, [today]);
+  }, [today, year]);
 
   useEffect(() => {
     void load();
@@ -187,6 +187,7 @@ export function HabitTracker() {
               task={task}
               logs={state.logsByTask[task.id] ?? {}}
               today={today}
+              year={year}
               tab={tab}
               busyTaskId={busyTaskId}
               onToggle={(selected, completed) => void toggle(selected, completed)}
