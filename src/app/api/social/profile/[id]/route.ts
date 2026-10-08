@@ -12,7 +12,7 @@ export async function GET(
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const { id } = await params;
-    
+
     // Try to get full profile (requires friendship)
     try {
       const profile = await getPublicProfile(profileId, id);
@@ -23,12 +23,16 @@ export async function GET(
         const basicProfile = await getBasicPublicProfile(profileId, id);
         return NextResponse.json({ profile: basicProfile, isLimited: true });
       }
+      // NotFoundError extends AppError, so re-throwing it will be caught
+      // by the outer catch and return 404 correctly
       throw error;
     }
   } catch (error) {
     if (error instanceof AppError) {
+      // NotFoundError (404), ValidationError (400), etc.
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    console.error("[profile] Unhandled error:", error);
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

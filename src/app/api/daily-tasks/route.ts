@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { listDailyTasks, getAllHabits, createDailyTask } from "@/lib/db/daily-tasks";
+import { listDailyTasks, getAllHabits, createDailyTask, type CreateHabitPayload } from "@/lib/db/daily-tasks";
 import { todayIso } from "@/lib/db/dates";
 
 export async function GET(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
     const today = todayIso();
-    const task = await createDailyTask(profileId, today, body);
+    const task = await createDailyTask(profileId, today, body as unknown as CreateHabitPayload);
     return jsonOk({ task, date: today });
   });
 }

@@ -1,8 +1,7 @@
 "use client";
 
-import { Check, Loader2, Pencil } from "lucide-react";
+import { Check, Flame, Loader2, Pencil } from "lucide-react";
 import type { UserDailyTask } from "@/types";
-import { StreakIcon } from "@/components/streak-icon";
 import { HabitIcon } from "./habit-icon";
 import { isHabitScheduledOnDate } from "@/lib/habit-schedule";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
@@ -11,22 +10,40 @@ import { addDaysIso, weekStartIso } from "@/lib/db/dates";
 export type HabitTab = "hoje" | "geral" | "semanal";
 
 const WEEKS = 20;
-const MONTH_LABELS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-const WEEKDAY_LABELS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+const MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-function withAlpha(hex: string, alpha: number): string {
+function hexAlpha(hex: string, alpha: number): string {
   const short = hex.replace("#", "");
   const full = short.length === 3 ? short.split("").map((c) => c + c).join("") : short;
   const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return `rgba(113, 212, 255, ${alpha})`;
   const r = (num >> 16) & 255;
   const g = (num >> 8) & 255;
   const b = num & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Compute relative luminance to decide check icon color (white vs dark). */
+function luminance(hex: string): number {
+  const short = hex.replace("#", "");
+  const full = short.length === 3 ? short.split("").map((c) => c + c).join("") : short;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return 1;
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
 function fmtDay(date: string): string {
   const [, month, day] = date.split("-");
-  return `${Number(day)} de ${MONTH_LABELS[Number(month) - 1]}`;
+  return `${Number(day)} ${MONTH_LABELS[Number(month) - 1]}`;
+}
+
+function fmtDayShort(date: string): string {
+  const [, , day] = date.split("-");
+  return day;
 }
 
 function isDayDone(logs: Record<string, boolean>, date: string): boolean {
@@ -34,8 +51,7 @@ function isDayDone(logs: Record<string, boolean>, date: string): boolean {
 }
 
 /**
- * Sequência do hábito: dias consecutivos com check-in até hoje. Hoje pendente
- * NÃO quebra a sequência (pode vir a ser feito ainda); ontem perdido quebra.
+ * Sequência do hábito: dias consecutivos com check-in até hoje.
  */
 function habitStreak(task: UserDailyTask, logs: Record<string, boolean>, today: string): number {
   let cursor = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today) && !isDayDone(logs, today)
@@ -64,13 +80,17 @@ interface HabitCardProps {
   onEdit?: (task: UserDailyTask) => void;
 }
 
-/** Card de um hábito diário — ícone personalizado, sequência, check-in e mapa próprio. */
+/** Heatmap intensity levels based on habit color. */
+const HEATMAP_LEVELS = [0.12, 0.35, 0.55, 0.85];
+
+/** Card de um hábito — ícone, nome, sequência, check-in e mapa de contribuição. */
 export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
   const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
   const streak = habitStreak(task, logs, today);
   const doneToday = isDayDone(logs, today);
   const scheduledToday = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today);
   const todayBusy = busyTaskId === task.id;
+  const checkIconColor = luminance(color) > 0.4 ? "#07111f" : "#ffffff";
 
   const weekStart = weekStartIso(today);
   const columns: string[][] = [];
@@ -79,25 +99,41 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
     columns.push(Array.from({ length: 7 }, (_, d) => addDaysIso(start, d)));
   }
 
+  // Group columns by month for labels
+  const monthBoundaries: { month: number; colIndex: number }[] = [];
+  let prevMonth = -1;
+  columns.forEach((col, ci) => {
+    const month = Number(col[0].split("-")[1]);
+    if (month !== prevMonth) {
+      monthBoundaries.push({ month, colIndex: ci });
+      prevMonth = month;
+    }
+  });
+
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-4 sm:p-5">
+    <div
+      className="group/card rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-3.5 sm:p-4 transition-colors hover:border-[var(--border-strong)]"
+      style={{ "--habit-color": color } as React.CSSProperties}
+    >
+      {/* Header row: icon + name/streak + edit + check */}
       <div className="flex items-center gap-3">
-        <div className="shrink-0 rounded-xl p-2.5" style={{ backgroundColor: withAlpha(color, 0.15), color }}>
-          <HabitIcon habit={task} size={22} />
-        </div>
+        <HabitIcon habit={task} size="md" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[15px] text-[var(--text)]">{task.title}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-            <StreakIcon size={13} />
-            {streak} {streak === 1 ? "dia" : "dias"}
-          </p>
+          <p className="truncate font-semibold text-[15px] text-[var(--text)]">{task.title}</p>
+          {streak > 0 && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)]">
+              <Flame size={12} className="text-orange-400" />
+              {streak} {streak === 1 ? "dia" : "dias"}
+            </p>
+          )}
         </div>
         {onEdit && (
           <button
             type="button"
             onClick={() => onEdit(task)}
             aria-label={`Editar ${task.title}`}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+            title="Editar hábito"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] opacity-0 transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)] focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] group-hover/card:opacity-100"
           >
             <Pencil size={14} />
           </button>
@@ -108,67 +144,111 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
           disabled={todayBusy || !scheduledToday}
           aria-label={!scheduledToday ? `${task.title} não está programado para hoje` : doneToday ? `Desmarcar ${task.title} hoje` : `Marcar ${task.title} hoje`}
           title={doneToday ? "Desmarcar hoje" : "Marcar hoje"}
-          className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition disabled:opacity-60"
+          className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
           style={
             doneToday
-              ? { backgroundColor: color, color: "#07111f" }
-              : { border: `2px solid ${withAlpha(color, 0.45)}`, background: withAlpha(color, 0.08), color }
+              ? { backgroundColor: color, color: checkIconColor }
+              : { border: `2px solid ${hexAlpha(color, 0.4)}`, background: hexAlpha(color, 0.08), color }
           }
         >
           {todayBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} strokeWidth={3} />}
         </button>
       </div>
 
+      {/* Hoje tab */}
       {tab === "hoje" && (
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3.5 py-3">
+        <div className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2.5">
           <span className="text-xs text-[var(--text-muted)]">Hoje, {fmtDay(today)}</span>
           <span className="text-xs font-semibold" style={{ color: doneToday ? color : "var(--text-muted)" }}>
-            {doneToday ? "Feito ✓" : scheduledToday ? "Pendente" : "Não programado"}
+            {doneToday ? "Feito" : scheduledToday ? "Pendente" : "Não programado"}
           </span>
         </div>
       )}
 
+      {/* Geral tab — full-width heatmap */}
       {tab === "geral" && (
-        <div className="mt-4 overflow-x-auto pb-1">
-          <div className="flex w-max gap-[3px]">
-            {columns.map((column) => (
-              <div key={column[0]} className="grid grid-rows-7 gap-[3px]">
-                {column.map((date) => {
-                  const future = date > today;
-                  const done = !future && isDayDone(logs, date);
-                  const isToday = date === today;
-                  const label = future
-                    ? `${fmtDay(date)} — ainda vai acontecer`
-                    : done
-                      ? `${fmtDay(date)} — feito`
-                      : `${fmtDay(date)} — não feito`;
-                  return (
-                    <div
-                      key={date}
-                      role="gridcell"
-                      aria-label={label}
-                      title={label}
-                      className="h-3 w-3 rounded-[3px] transition-colors"
-                      style={{
-                        backgroundColor: future
-                          ? "var(--bg-surface-hover)"
-                          : done
-                            ? withAlpha(color, 0.9)
-                            : withAlpha(color, 0.14),
-                        boxShadow: isToday ? "0 0 0 1.5px var(--accent)" : undefined,
-                      }}
-                    />
-                  );
-                })}
+        <div className="mt-3">
+          {/* Weekday labels on the left — align with rows 0 (Seg), 2 (Qua), 4 (Sex) */}
+          <div className="flex">
+            <div className="shrink-0 pr-1" style={{ width: 22 }}>
+              {Array.from({ length: 7 }, (_, row) => {
+                const label = row === 0 ? "Seg" : row === 2 ? "Qua" : row === 4 ? "Sex" : "";
+                return (
+                  <div key={row} className="flex h-[14px] items-center text-[9px] text-[var(--text-faint)]">
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="min-w-0 flex-1 overflow-x-auto pb-1">
+              {/* Month labels */}
+              <div className="relative mb-0.5">
+                {monthBoundaries.map(({ month, colIndex }) => (
+                  <span
+                    key={colIndex}
+                    className="absolute text-[9px] text-[var(--text-faint)]"
+                    style={{ left: `${(colIndex / WEEKS) * 100}%` }}
+                  >
+                    {MONTH_LABELS[month - 1]}
+                  </span>
+                ))}
               </div>
-            ))}
+              {/* Grid */}
+              <div className="flex gap-[3px]">
+                {columns.map((column) => (
+                  <div key={column[0]} className="grid grid-rows-7 gap-[3px]">
+                    {column.map((date) => {
+                      const future = date > today;
+                      const done = !future && isDayDone(logs, date);
+                      const isToday = date === today;
+                      const label = future
+                        ? `${fmtDay(date)} — ainda vai acontecer`
+                        : done
+                          ? `${fmtDay(date)} — feito`
+                          : `${fmtDay(date)} — não feito`;
+                      return (
+                        <div
+                          key={date}
+                          role="gridcell"
+                          aria-label={label}
+                          title={label}
+                          tabIndex={0}
+                          className="h-[14px] w-[14px] rounded-[3px] transition-colors"
+                          style={{
+                            backgroundColor: future
+                              ? "var(--bg-surface-hover)"
+                              : done
+                                ? hexAlpha(color, HEATMAP_LEVELS[3])
+                                : hexAlpha(color, HEATMAP_LEVELS[0]),
+                            boxShadow: isToday ? `0 0 0 1.5px ${color}` : undefined,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              {/* Legend */}
+              <div className="mt-1.5 flex items-center justify-end gap-1 text-[9px] text-[var(--text-faint)]">
+                <span>Menos</span>
+                {HEATMAP_LEVELS.map((level, i) => (
+                  <div
+                    key={i}
+                    className="h-[10px] w-[10px] rounded-[2px]"
+                    style={{ backgroundColor: hexAlpha(color, level) }}
+                  />
+                ))}
+                <span>Mais</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Semanal tab */}
       {tab === "semanal" && (
-        <div className="mt-4 flex items-start justify-between gap-1">
-          {WEEKDAY_LABELS.map((label, i) => {
+        <div className="mt-3 flex items-start justify-between gap-1">
+          {(["seg", "ter", "qua", "qui", "sex", "sáb", "dom"] as const).map((label, i) => {
             const date = addDaysIso(weekStart, i);
             const future = date > today;
             const done = !future && isDayDone(logs, date);
@@ -182,18 +262,20 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle, onEdit
                   disabled={future || !isToday || busy}
                   aria-label={`${done ? "Desmarcar" : "Marcar"} ${fmtDay(date)}`}
                   title={future ? `${fmtDay(date)} — ainda vai acontecer` : `${fmtDay(date)} — ${done ? "feito" : "não feito"}`}
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                   style={
                     done
-                      ? { backgroundColor: color, color: "#07111f" }
-                      : { background: future ? "var(--bg-surface-hover)" : withAlpha(color, 0.14), color }
+                      ? { backgroundColor: color, color: checkIconColor }
+                      : { background: future ? "var(--bg-surface-hover)" : hexAlpha(color, 0.14), color: hexAlpha(color, 0.6) }
                   }
                 >
                   {busy ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : done ? (
                     <Check size={14} strokeWidth={3} />
-                  ) : null}
+                  ) : (
+                    <span className="text-[10px] text-[var(--text-muted)]">{fmtDayShort(date)}</span>
+                  )}
                 </button>
                 <span className="text-[10px] text-[var(--text-muted)]">{label}</span>
               </div>

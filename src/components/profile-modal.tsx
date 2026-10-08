@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { X, Timer } from "lucide-react";
 import Image from "next/image";
@@ -22,6 +22,8 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const reduced = useReducedMotion();
+  // Guard against React Strict Mode double-mount firing two identical fetches.
+  const fetchingRef = useRef(false);
 
   const containerV: Variants = {
     hidden: {},
@@ -37,6 +39,8 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
   };
 
   useEffect(() => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     let active = true;
     api.getPublicProfile(profileId)
       .then((r) => { if (active) setProfile(r.profile); })

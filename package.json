@@ -17,7 +17,7 @@
     "db:recompute-xp": "node scripts/recompute-user-xp.mjs",
     "db:restore-messages": "node scripts/restore-messages.mjs",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/db/dates.test.ts src/lib/activity.test.ts"
+    "test": "node --import tsx --test src/lib/db/dates.test.ts src/lib/activity.test.ts src/lib/habit-schedule.test.ts src/lib/habit-icons.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

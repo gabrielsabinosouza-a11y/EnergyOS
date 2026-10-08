@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { AppShell } from "@/components/app-shell";
@@ -154,9 +154,13 @@ export default function FriendProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedAchievement, setSelectedAchievement] = useState<AchievementProgress | null>(null);
   const [requestSent, setRequestSent] = useState(false);
+  // Guard against React Strict Mode double-mount firing two identical fetches.
+  const fetchingRef = useRef(false);
 
   useEffect(() => {
     if (authLoading || !user || !id) return;
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     let cancelled = false;
     api
       .getPublicProfile(id)

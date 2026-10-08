@@ -180,7 +180,7 @@ export function HabitTracker() {
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {state.tasks.map((task) => (
             <HabitCard
               key={task.id}

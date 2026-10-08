@@ -11,7 +11,7 @@ import { CoinIcon } from "@/components/coin-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { HabitModal, type HabitPayload } from "./habit-modal";
 import { HabitIcon } from "./habit-icon";
-import { HABIT_XP, HABIT_COINS, HABIT_ALL_BONUS_COINS } from "@/lib/daily-limits";
+import { HABIT_DAILY_REWARD_LIMIT, HABIT_XP, HABIT_COINS, HABIT_ALL_BONUS_COINS } from "@/lib/daily-limits";
 import {
   DndContext,
   closestCenter,
@@ -75,12 +75,7 @@ function SortableHabitRow({
         <GripVertical size={14} />
       </button>
 
-      <div
-        className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg"
-        style={{ backgroundColor: `${task.color}20` }}
-      >
-        <HabitIcon habit={task} size={22} />
-      </div>
+      <HabitIcon habit={task} size="sm" />
 
       <button
         onClick={() => onToggle(task)}
@@ -131,7 +126,6 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const [habitCount, setHabitCount] = useState(0);
   const [saveNotice, setSaveNotice] = useState("");
   const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState<{ id: number; xp: number; coins: number } | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
   const [modalState, setModalState] = useState<{ mode: "create" | "edit"; habit?: UserDailyTask } | null>(null);
 
@@ -169,7 +163,6 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, isCompleted: completing } : t)));
     if (completing) {
       applyMetric("TASKS_COMPLETED", { incrementBy: 1 });
-      applyMetric("XP_EARNED", { incrementBy: HABIT_XP });
     }
     try {
       const data = await toggleDailyTaskCompletion(task.id, completing);
@@ -180,10 +173,6 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
         setRewardModal({ coins: data.coinsAwarded, xp: data.xpAwarded, balance: newCoins });
       }
       if (data.xpAwarded > 0) onXpGain?.(data.xpAwarded);
-      if (data.xpAwarded > 0 || data.coinsAwarded > 0) {
-        setFeedback({ id: task.id, xp: data.xpAwarded, coins: data.coinsAwarded });
-        setTimeout(() => setFeedback(null), 1600);
-      }
       void refreshQuests();
     } catch {
       setTasks(prev);
@@ -258,7 +247,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-[var(--text-muted)]">
-        Complete cada hábito para ganhar <b className="text-[var(--green)] font-mono">+{HABIT_XP} XP</b> e{" "}
+        Os primeiros {HABIT_DAILY_REWARD_LIMIT} hábitos concluídos no dia rendem <b className="text-[var(--green)] font-mono">+{HABIT_XP} XP</b> e{" "}
         <span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{HABIT_COINS} moedas</b></span>
         {HABIT_ALL_BONUS_COINS > 0 && <> — e{" "}<span className="inline-flex items-baseline gap-1"><CoinIcon size={12} /><b className="text-[var(--green)] font-mono">+{HABIT_ALL_BONUS_COINS} moedas</b></span> de bônus ao completar todos</>}.
       </p>

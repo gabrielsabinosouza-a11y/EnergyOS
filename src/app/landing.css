@@ -454,12 +454,6 @@
   .landing-button { min-height: 45px; gap: .55rem; padding: .65rem .85rem .65rem 1rem; font-size: .69rem; }
   .hero-trust-note { margin-top: 1.5rem; font-size: .67rem; }
   .landing-hero-art { min-height: 300px; margin-top: .8rem; }
-  .energy-core-host { width: min(86vw, 390px); }
-  .hero-stat-sleep { top: 13%; left: 0; }
-  .hero-stat-streak { right: -2%; bottom: 10%; }
-  .hero-stat-card { gap: .48rem; padding: .65rem .68rem; border-radius: 11px; }
-  .hero-stat-card strong { font-size: .48rem; }
-  .hero-stat-card small { font-size: .55rem; }
   .hero-scroll-cue { right: auto; bottom: 1rem; left: 0; font-size: .52rem; }
   .hero-beam { top: -20rem; right: -18rem; width: 120vw; }
 

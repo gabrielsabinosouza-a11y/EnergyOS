@@ -48,7 +48,7 @@ export function DailyTasksWidget() {
     setAdding(true);
     setError(null);
     try {
-      const result = await api.createDailyTask(title);
+      const result = await api.createDailyTask({ title });
       setTasks((prev) => [...prev, result.task]);
       setDraft("");
     } catch (e) {

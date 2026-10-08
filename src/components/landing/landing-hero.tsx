@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
-import { StaticIcon, type LandingAssetKey } from "./landing-assets";
+import { StaticIcon } from "./landing-assets";
 import { GlowButton, LightBeam } from "./primitives";
 import { HeroPreviewCard } from "./hero-preview-card";
 

@@ -286,6 +286,7 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
   const otherId = parseProfileId(targetId);
   if (viewerId === otherId) return getPublicProfile(viewerId, otherId);
 
+  // Check the profile exists before running expensive queries
   const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null; has_custom_banner: boolean | null; banner_image_url: string | null }>(
     `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id, has_custom_banner, banner_image_url
      from profiles where id = $1`,
@@ -295,6 +296,7 @@ export async function getBasicPublicProfile(viewerId: string, targetId: string):
 
   const row = result.rows[0];
   const weekStart = sundayWeekStartIso(todayIso());
+  // Run queries in parallel (no computeStreak needed for basic profile)
   const [minutesMap, achievements] = await Promise.all([
     getWeeklyFocusMinutesForProfiles([otherId], weekStart),
     listAchievementProgress(otherId),
@@ -330,6 +332,7 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const isOwner = viewerId === otherId;
   if (!isOwner) await assertFriends(viewerId, otherId);
 
+  // Check the profile exists before running expensive queries
   const result = await pool.query<ProfileLiteRow & { longest_streak: number | null; created_at: Date | string | null; role: string | null; equipped_decoration_id: string | null; has_custom_banner: boolean | null; banner_image_url: string | null }>(
     `select id, display_name, username, photo_url, last_active_at, current_streak, longest_streak, created_at, role, equipped_decoration_id, has_custom_banner, banner_image_url
      from profiles where id = $1`,
@@ -337,11 +340,16 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   );
   if (!result.rows[0]) throw new NotFoundError("Perfil não encontrado.");
 
-  const streak = await computeStreak(otherId, todayIso());
-  const weekStart = sundayWeekStartIso(todayIso());
-  const minutesMap = await getWeeklyFocusMinutesForProfiles([otherId], weekStart);
-  const achievements = await listAchievementProgress(otherId);
-  const friendIds = isOwner ? [] : [viewerId];
+  // Run all expensive queries in parallel instead of sequentially.
+  // Previously these ran one-after-another (computeStreak → getWeeklyFocusMinutesForProfiles → listAchievementProgress),
+  // which could take 6-7 seconds total. Parallel execution reduces wall-clock time to the slowest query.
+  const today = todayIso();
+  const weekStart = sundayWeekStartIso(today);
+  const [streak, minutesMap, achievements] = await Promise.all([
+    computeStreak(otherId, today),
+    getWeeklyFocusMinutesForProfiles([otherId], weekStart),
+    listAchievementProgress(otherId),
+  ]);
   const isFriend = isOwner ? undefined : true;
 
   const row = result.rows[0];

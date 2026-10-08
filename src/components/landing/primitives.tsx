@@ -8,7 +8,6 @@ import {
   useMotionValue,
   useReducedMotion,
   useTransform,
-  type HTMLMotionProps,
 } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -106,7 +105,7 @@ export function Section({
   id,
   className = "",
   ...props
-}: Omit<HTMLAttributes<HTMLElement>, "onDrag" | "onDragEnd" | "onDragStart"> & {
+}: Omit<HTMLAttributes<HTMLElement>, "onAnimationStart" | "onAnimationEnd" | "onDrag" | "onDragEnd" | "onDragStart"> & {
   children: ReactNode;
   id?: string;
 }) {

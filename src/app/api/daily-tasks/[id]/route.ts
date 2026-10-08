@@ -9,7 +9,8 @@ import {
   updateHabitMetadata,
   reorderHabits,
 } from "@/lib/db/daily-tasks";
-import { assertObject, ValidationError } from "@/lib/db/validation";
+import { assertObject, ValidationError, parseEnum } from "@/lib/db/validation";
+import type { HabitFrequencyType, HabitGoalType, HabitIconType } from "@/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -35,37 +36,47 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     // Otherwise, treat as metadata update
-    const updates: {
-      title?: string;
-      iconType?: string;
-      iconValue?: string;
-      color?: string;
-      frequencyType?: string;
-      frequencyDays?: number[] | null;
-      frequencyTarget?: number | null;
-      goalType?: string;
-      targetValue?: number | null;
-      unit?: string | null;
-      description?: string | null;
-      category?: string | null;
-      startDate?: string | null;
-      reminderTime?: string | null;
-    } = {};
+    const updates: Parameters<typeof updateHabitMetadata>[2] = {};
+    const text = (key: string, nullable = false): string | null | undefined => {
+      const value = body[key];
+      if (value === undefined) return undefined;
+      if (nullable && value === null) return null;
+      if (typeof value !== "string") throw new ValidationError(`${key} deve ser texto.`);
+      return value;
+    };
+    const requiredText = (key: string): string | undefined => {
+      const value = text(key);
+      if (value === null) throw new ValidationError(`${key} não pode ser nulo.`);
+      return value;
+    };
+    const number = (key: string, nullable = false): number | null | undefined => {
+      const value = body[key];
+      if (value === undefined) return undefined;
+      if (nullable && value === null) return null;
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new ValidationError(`${key} deve ser numérico.`);
+      return value;
+    };
 
-    if (body.title !== undefined) updates.title = body.title;
-    if (body.iconType !== undefined) updates.iconType = body.iconType;
-    if (body.iconValue !== undefined) updates.iconValue = body.iconValue;
-    if (body.color !== undefined) updates.color = body.color;
-    if (body.frequencyType !== undefined) updates.frequencyType = body.frequencyType;
-    if (body.frequencyDays !== undefined) updates.frequencyDays = body.frequencyDays;
-    if (body.frequencyTarget !== undefined) updates.frequencyTarget = body.frequencyTarget;
-    if (body.goalType !== undefined) updates.goalType = body.goalType;
-    if (body.targetValue !== undefined) updates.targetValue = body.targetValue;
-    if (body.unit !== undefined) updates.unit = body.unit;
-    if (body.description !== undefined) updates.description = body.description;
-    if (body.category !== undefined) updates.category = body.category;
-    if (body.startDate !== undefined) updates.startDate = body.startDate;
-    if (body.reminderTime !== undefined) updates.reminderTime = body.reminderTime;
+    const title = requiredText("title"); if (title !== undefined) updates.title = title;
+    const iconType = body.iconType === undefined ? undefined : parseEnum<HabitIconType>(body.iconType, ["asset", "emoji", "image"], "Ícone");
+    if (iconType !== undefined) updates.iconType = iconType;
+    const iconValue = requiredText("iconValue"); if (iconValue !== undefined) updates.iconValue = iconValue;
+    const color = requiredText("color"); if (color !== undefined) updates.color = color;
+    const frequencyType = body.frequencyType === undefined ? undefined : parseEnum<HabitFrequencyType>(body.frequencyType, ["daily", "weekdays", "times_per_week"], "Frequência");
+    if (frequencyType !== undefined) updates.frequencyType = frequencyType;
+    if (body.frequencyDays !== undefined) {
+      if (body.frequencyDays !== null && (!Array.isArray(body.frequencyDays) || body.frequencyDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6))) throw new ValidationError("Dias da semana inválidos.");
+      updates.frequencyDays = body.frequencyDays as number[] | null;
+    }
+    const frequencyTarget = number("frequencyTarget", true); if (frequencyTarget !== undefined) updates.frequencyTarget = frequencyTarget;
+    const goalType = body.goalType === undefined ? undefined : parseEnum<HabitGoalType>(body.goalType, ["check", "measurable"], "Tipo de meta");
+    if (goalType !== undefined) updates.goalType = goalType;
+    const targetValue = number("targetValue", true); if (targetValue !== undefined) updates.targetValue = targetValue;
+    const unit = text("unit", true); if (unit !== undefined) updates.unit = unit;
+    const description = text("description", true); if (description !== undefined) updates.description = description;
+    const category = text("category", true); if (category !== undefined) updates.category = category;
+    const startDate = text("startDate", true); if (startDate !== undefined) updates.startDate = startDate;
+    const reminderTime = text("reminderTime", true); if (reminderTime !== undefined) updates.reminderTime = reminderTime;
 
     if (Object.keys(updates).length === 0) {
       throw new ValidationError("Nenhuma alteração fornecida.");

@@ -120,9 +120,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
         <div className="flex items-end gap-3">
           <div className="shrink-0">
             <span className={labelClass}>Ícone</span>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}24` }}>
-              <HabitIcon habit={{ title, iconType, iconValue, color }} size={28} />
-            </div>
+            <HabitIcon habit={{ title, iconType, iconValue, color }} size="lg" />
           </div>
           <label className="min-w-0 flex-1">
             <span className={labelClass}>Nome</span>

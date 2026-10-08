@@ -462,7 +462,7 @@ export async function updateRoomDuration(roomId: number, hostProfileId: string, 
     }
 
     // Can only update duration when room is waiting or completed (not during a session)
-    if (room.rows[0].status !== "waiting" && room.rows[0].status !== "completed") {
+    if (room.rows[0].status !== "waiting" && room.rows[0].status !== "completed" && room.rows[0].status !== "confirming") {
       await client.query("rollback");
       throw new ConflictError("Cannot update duration once the room has started");
     }

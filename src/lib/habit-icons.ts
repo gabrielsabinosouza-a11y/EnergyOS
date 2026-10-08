@@ -3,6 +3,11 @@ export type HabitAssetCategory = "Foco" | "Estudo" | "Saúde" | "Alimentação" 
 export interface HabitIconAsset { id: string; label: string; category: HabitAssetCategory; path: string; legacyFilename: string; }
 
 export const HABIT_ICON_ASSETS: readonly HabitIconAsset[] = [
+  { id: "target", label: "Alvo", category: "Foco", path: "/icons_8bits/target.png", legacyFilename: "target.png" },
+  { id: "map", label: "Mapa", category: "Geral", path: "/icons_8bits/map.png", legacyFilename: "map.png" },
+  { id: "graph", label: "Gráfico", category: "Foco", path: "/icons_8bits/graph.png", legacyFilename: "graph.png" },
+  { id: "calendar", label: "Calendário", category: "Foco", path: "/icons_8bits/calendar.png", legacyFilename: "calendar.png" },
+  { id: "logo", label: "energyOS", category: "Geral", path: "/icons_8bits/logo.png", legacyFilename: "logo.png" },
   { id: "arzone", label: "ARZone", category: "Geral", path: "/habit-icons/ARZone.png", legacyFilename: "ARZone.png" },
   { id: "air-europa", label: "Air Europa", category: "Geral", path: "/habit-icons/Air Europa.png", legacyFilename: "Air Europa.png" },
   { id: "airbnb", label: "AirBnB", category: "Geral", path: "/habit-icons/AirBnB.png", legacyFilename: "AirBnB.png" },

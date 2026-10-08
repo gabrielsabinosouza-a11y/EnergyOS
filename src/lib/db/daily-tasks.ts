@@ -73,9 +73,22 @@ export interface DailyTaskHistoryEntry {
 interface TemplateRow {
   id: string | number;
   title: string;
+  icon_type: HabitIconType | null;
+  icon_value: string | null;
+  color: string | null;
   frequency_type: HabitFrequencyType;
   frequency_days: unknown;
   frequency_target: string | number | null;
+  goal_type: HabitGoalType | null;
+  target_value: string | number | null;
+  unit: string | null;
+  current_progress: string | number | null;
+  description: string | null;
+  category: string | null;
+  start_date: string | null;
+  reminder_time: string | null;
+  archived: boolean | null;
+  sort_order: string | number | null;
 }
 
 interface LogRow {
@@ -337,96 +350,78 @@ export async function createDailyTask(
   payload: string | CreateHabitPayload,
 ): Promise<UserDailyTask> {
   parseProfileId(profileId);
-
-  // Support legacy string title
   const p = typeof payload === "string" ? { title: payload } : payload;
+  if (!p || typeof p.title !== "string") throw new ValidationError("Digite o nome do hábito.");
   const trimmed = p.title.trim();
   if (!trimmed) throw new ValidationError("Digite o nome do hábito.");
   if (trimmed.length > 40) throw new ValidationError("Nome muito longo (máx. 40 caracteres).");
-
   await ensureDailyTasksSchema();
-
-  const count = await pool.query<{ n: string | number }>(
-    `select count(*)::int as n from profile_daily_tasks where profile_id = $1 and is_active = true and archived = false`,
-    [profileId],
-  );
-  if (Number(count.rows[0]?.n ?? 0) >= HABIT_LIMIT) {
-    throw new ForbiddenError(`Você pode ter no máximo ${HABIT_LIMIT} hábitos ativos.`);
-  }
 
   const iconType = p.iconType || "asset";
   if (!["asset", "emoji", "image"].includes(iconType)) throw new ValidationError("Tipo de ícone inválido.");
   const iconValue = validateHabitIcon(iconType, p.iconValue || "target");
   const color = p.color || "#71d4ff";
   const frequencyType: HabitFrequencyType = p.frequencyType || "daily";
+  if (!["daily", "weekdays", "times_per_week"].includes(frequencyType)) throw new ValidationError("Frequência inválida.");
   const frequencyDays = p.frequencyDays ?? null;
+  if (frequencyDays && (!Array.isArray(frequencyDays) || frequencyDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6))) throw new ValidationError("Dias da semana inválidos.");
   const frequencyTarget = p.frequencyTarget ?? null;
+  if (frequencyType === "times_per_week" && (!Number.isInteger(frequencyTarget) || Number(frequencyTarget) < 1 || Number(frequencyTarget) > 7)) throw new ValidationError("Escolha de 1 a 7 dias por semana.");
   const goalType: HabitGoalType = p.goalType || "check";
+  if (!["check", "measurable"].includes(goalType)) throw new ValidationError("Tipo de meta inválido.");
   const targetValue = p.targetValue ?? null;
-  const unit = p.unit ?? null;
-  const description = p.description ?? null;
-  const category = p.category ?? null;
-  const startDate = p.startDate ?? null;
-  const reminderTime = p.reminderTime ?? null;
+  if (targetValue !== null && (!Number.isFinite(Number(targetValue)) || Number(targetValue) <= 0)) throw new ValidationError("Valor alvo inválido.");
 
-  const result = await pool.query<{
-    id: string | number;
-    title: string;
-    icon_type: string;
-    icon_value: string;
-    color: string;
-    frequency_type: string;
-    frequency_days: unknown;
-    frequency_target: string | number | null;
-    goal_type: string;
-    target_value: string | number | null;
-    unit: string | null;
-    current_progress: string | number;
-    description: string | null;
-    category: string | null;
-    start_date: string | null;
-    reminder_time: string | null;
-    archived: boolean;
-    sort_order: string | number;
-  }>(
-    `insert into profile_daily_tasks (
-      profile_id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-      goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order
-    )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13, $14, $15, false,
-       (select coalesce(max(sort_order), 0) + 1 from profile_daily_tasks where profile_id = $1))
-     returning id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-       goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order`,
-    [
-      profileId, trimmed, iconType, iconValue, color, frequencyType,
-      frequencyDays ? `{${frequencyDays.join(",")}}` : null, frequencyTarget,
-      goalType, targetValue, unit, description, category, startDate, reminderTime,
-    ],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`select id from profiles where id = $1 for update`, [profileId]);
+    const count = await client.query<{ n: string | number }>(
+      `select count(*)::int as n from profile_daily_tasks where profile_id = $1 and is_active = true and archived = false`,
+      [profileId],
+    );
+    if (Number(count.rows[0]?.n ?? 0) >= HABIT_LIMIT) {
+      throw new ForbiddenError(`Você pode ter no máximo ${HABIT_LIMIT} hábitos ativos.`);
+    }
 
-  const r = result.rows[0];
-  return {
-    id: Number(r.id),
-    title: r.title,
-    taskDate,
-    isCompleted: false,
-    iconType: r.icon_type as HabitIconType,
-    iconValue: r.icon_value,
-    color: r.color,
-    frequencyType: r.frequency_type as HabitFrequencyType,
-    frequencyDays: r.frequency_days ? (Array.isArray(r.frequency_days) ? r.frequency_days : JSON.parse(r.frequency_days as string)) : null,
-    frequencyTarget: r.frequency_target ? Number(r.frequency_target) : null,
-    goalType: r.goal_type as HabitGoalType,
-    targetValue: r.target_value ? Number(r.target_value) : null,
-    unit: r.unit,
-    currentProgress: Number(r.current_progress ?? 0),
-    description: r.description,
-    category: r.category,
-    startDate: r.start_date,
-    reminderTime: r.reminder_time,
-    archived: Boolean(r.archived),
-    sortOrder: Number(r.sort_order ?? 0),
-  };
+    const result = await client.query<{
+      id: string | number; title: string; icon_type: string; icon_value: string; color: string;
+      frequency_type: string; frequency_days: unknown; frequency_target: string | number | null;
+      goal_type: string; target_value: string | number | null; unit: string | null;
+      current_progress: string | number; description: string | null; category: string | null;
+      start_date: string | null; reminder_time: string | null; archived: boolean; sort_order: string | number;
+    }>(
+      `insert into profile_daily_tasks (
+        profile_id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
+        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13, $14, $15, false,
+        (select coalesce(max(sort_order), 0) + 1 from profile_daily_tasks where profile_id = $1))
+      returning id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
+        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order`,
+      [profileId, trimmed, iconType, iconValue, color, frequencyType,
+        frequencyDays ? `{${frequencyDays.join(",")}}` : null, frequencyTarget,
+        goalType, targetValue, p.unit ?? null, p.description ?? null, p.category ?? null,
+        p.startDate ?? null, p.reminderTime ?? null],
+    );
+    await client.query("commit");
+    const r = result.rows[0];
+    return {
+      id: Number(r.id), title: r.title, taskDate, isCompleted: false,
+      iconType: r.icon_type as HabitIconType, iconValue: r.icon_value, color: r.color,
+      frequencyType: r.frequency_type as HabitFrequencyType,
+      frequencyDays: r.frequency_days ? (Array.isArray(r.frequency_days) ? r.frequency_days : JSON.parse(r.frequency_days as string)) : null,
+      frequencyTarget: r.frequency_target ? Number(r.frequency_target) : null,
+      goalType: r.goal_type as HabitGoalType, targetValue: r.target_value ? Number(r.target_value) : null,
+      unit: r.unit, currentProgress: Number(r.current_progress ?? 0), description: r.description,
+      category: r.category, startDate: r.start_date, reminderTime: r.reminder_time,
+      archived: Boolean(r.archived), sortOrder: Number(r.sort_order ?? 0),
+    };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -737,6 +732,7 @@ export async function toggleDailyTask(
 ): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
   const date = taskDate ?? todayIso();
+  await ensureDailyTasksSchema();
 
   const client = await pool.connect();
   try {
@@ -744,7 +740,8 @@ export async function toggleDailyTask(
     await client.query(`select id from profiles where id = $1 for update`, [profileId]);
 
     const t = await client.query<TemplateRow>(
-      `select id, title, frequency_type, frequency_days, frequency_target
+      `select id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
+              goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order
          from profile_daily_tasks where id = $1 and profile_id = $2 for update`,
       [taskId, profileId],
     );
@@ -839,6 +836,7 @@ export async function toggleDailyTask(
     await client.query("commit");
 
     const task: UserDailyTask = {
+      ...DEFAULT_HABIT_FIELDS,
       id: taskId,
       title: t.rows[0].title,
       taskDate: date,
@@ -848,6 +846,22 @@ export async function toggleDailyTask(
           ? new Date(existing.rows[0].completed_at).toISOString()
           : new Date().toISOString()
         : undefined,
+      iconType: t.rows[0].icon_type || DEFAULT_HABIT_FIELDS.iconType,
+      iconValue: t.rows[0].icon_value || DEFAULT_HABIT_FIELDS.iconValue,
+      color: t.rows[0].color || DEFAULT_HABIT_FIELDS.color,
+      frequencyType: t.rows[0].frequency_type || DEFAULT_HABIT_FIELDS.frequencyType,
+      frequencyDays: taskDays,
+      frequencyTarget: t.rows[0].frequency_target ? Number(t.rows[0].frequency_target) : null,
+      goalType: t.rows[0].goal_type || DEFAULT_HABIT_FIELDS.goalType,
+      targetValue: t.rows[0].target_value ? Number(t.rows[0].target_value) : null,
+      unit: t.rows[0].unit,
+      currentProgress: Number(t.rows[0].current_progress ?? 0),
+      description: t.rows[0].description,
+      category: t.rows[0].category,
+      startDate: t.rows[0].start_date,
+      reminderTime: t.rows[0].reminder_time,
+      archived: Boolean(t.rows[0].archived),
+      sortOrder: Number(t.rows[0].sort_order ?? 0),
     };
     return { task, xpAwarded, coinsAwarded };
   } catch (error) {

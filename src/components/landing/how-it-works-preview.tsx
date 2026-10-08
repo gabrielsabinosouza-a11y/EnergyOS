@@ -13,10 +13,8 @@ const STEP_COMPONENTS = {
 } as const;
 
 export function HowItWorksPreview({ activeStep }: { activeStep: number }) {
-  const Component =
-    STEP_COMPONENTS[
-      ["checkin", "clareza", "constancia"][activeStep]
-    ] as React.ComponentType<{ className?: string }>;
+  const stepKeys = ["checkin", "clareza", "constancia"] as const;
+  const Component = STEP_COMPONENTS[stepKeys[activeStep] ?? "checkin"];
 
   return (
     <GlassCard className="how-it-works-preview">
