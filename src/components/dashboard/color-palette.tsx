@@ -1,0 +1,51 @@
+"use client";
+
+/** Preset colors for habit icons, checkboxes, and progress indicators. */
+export const HABIT_COLORS = [
+  "#71d4ff", // cyan (default)
+  "#b69cff", // purple
+  "#a3e635", // lime
+  "#ffb86b", // orange
+  "#6bffb8", // mint
+  "#ff6b8a", // pink
+  "#ffd166", // yellow
+  "#6bcaff", // blue
+  "#ff9e6b", // coral
+  "#9b6bff", // violet
+  "#6bffa8", // green
+  "#ff6b6b", // red
+];
+
+interface ColorPaletteProps {
+  selectedColor: string;
+  onSelect: (color: string) => void;
+}
+
+export function ColorPalette({ selectedColor, onSelect }: ColorPaletteProps) {
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      {HABIT_COLORS.map((color) => (
+        <button
+          key={color}
+          type="button"
+          onClick={() => onSelect(color)}
+          aria-label={`Cor ${color}`}
+          title={color}
+          className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
+            selectedColor === color ? "ring-2 ring-offset-2 ring-offset-[var(--bg-primary)]" : ""
+          }`}
+          style={{
+            backgroundColor: color,
+            boxShadow: selectedColor === color ? `0 0 0 2px var(--bg-primary), 0 0 0 4px ${color}` : undefined,
+          }}
+        >
+          {selectedColor === color && (
+            <span className="text-white" style={{ textShadow: "0 0 2px rgba(0,0,0,0.5)" }}>
+              ✓
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}

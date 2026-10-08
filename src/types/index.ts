@@ -654,12 +654,39 @@ export interface QuestProgressWithQuest extends UserQuestProgress {
   quest: DailyQuest;
 }
 
+/** Icon source type for a habit. */
+export type HabitIconType = "asset" | "emoji" | "image";
+
+/** Frequency schedule type for a habit. */
+export type HabitFrequencyType = "daily" | "weekdays" | "times_per_week";
+
+/** Goal tracking type for a habit. */
+export type HabitGoalType = "check" | "measurable";
+
 export interface UserDailyTask {
   id: number;
   title: string;
   taskDate: string;
   isCompleted: boolean;
   completedAt?: string;
+
+  // ── Customizable habit fields ──
+  iconType: HabitIconType;
+  iconValue: string;
+  color: string;
+  frequencyType: HabitFrequencyType;
+  frequencyDays: number[] | null;
+  frequencyTarget: number | null;
+  goalType: HabitGoalType;
+  targetValue: number | null;
+  unit: string | null;
+  currentProgress: number;
+  description: string | null;
+  category: string | null;
+  startDate: string | null;
+  reminderTime: string | null;
+  archived: boolean;
+  sortOrder: number;
 }
 
 export type DecorationRarity = "common" | "rare" | "epic" | "legendary";

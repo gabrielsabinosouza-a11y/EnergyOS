@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ListTodo, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { StreakIcon } from "@/components/streak-icon";
 import { addDaysIso, weekStartIso } from "@/lib/db/dates";
@@ -56,9 +56,9 @@ interface HabitCardProps {
   onToggle: (task: UserDailyTask, completed: boolean) => void;
 }
 
-/** Card de um hábito diário — ícone da categoria, sequência, check-in e mapa próprio. */
+/** Card de um hábito diário — ícone personalizado, sequência, check-in e mapa próprio. */
 export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: HabitCardProps) {
-  const color = ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
+  const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
   const streak = habitStreak(logs, today);
   const doneToday = isDayDone(logs, today);
   const todayBusy = busyTaskId === task.id;
@@ -70,11 +70,28 @@ export function HabitCard({ task, logs, today, tab, busyTaskId, onToggle }: Habi
     columns.push(Array.from({ length: 7 }, (_, d) => addDaysIso(start, d)));
   }
 
+  // Render icon
+  const renderIcon = () => {
+    if (task.iconType === "emoji") {
+      return <span className="text-xl">{task.iconValue}</span>;
+    }
+    if (task.iconType === "image") {
+      return <img src={task.iconValue} alt={task.title} className="h-5 w-5 rounded object-cover" />;
+    }
+    return (
+      <img
+        src={`/icons_8bits/${task.iconValue}`}
+        alt={task.iconValue.replace(".png", "")}
+        className="h-5 w-5 rounded"
+      />
+    );
+  };
+
   return (
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-4 sm:p-5">
       <div className="flex items-center gap-3">
         <div className="shrink-0 rounded-xl p-2.5" style={{ backgroundColor: withAlpha(color, 0.15), color }}>
-          <ListTodo size={20} />
+          {renderIcon()}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-[15px] text-[var(--text)]">{task.title}</p>

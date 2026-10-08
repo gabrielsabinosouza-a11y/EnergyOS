@@ -3,17 +3,26 @@ import { FOCUS_DURATION_MIN_MINUTES } from "./focus-duration";
 /** Max daily missions shown per user (random pick from the pool). */
 export const DAILY_MISSION_LIMIT = 3;
 
-/** Max user-written daily tasks per day. */
-export const DAILY_TASK_LIMIT = 3;
+/** Max active habits per user. */
+export const HABIT_LIMIT = 10;
 
-/** XP per completed user daily task. */
-export const DAILY_TASK_XP = 10;
+/** XP per completed habit. */
+export const HABIT_XP = 10;
 
-/** Coins per completed user daily task. */
-export const DAILY_TASK_COINS = 5;
+/** Coins per completed habit. */
+export const HABIT_COINS = 5;
 
-/** Bonus coins when all daily tasks are completed. */
-export const DAILY_TASK_ALL_BONUS_COINS = 10;
+/** Bonus coins when all habits are completed. */
+export const HABIT_ALL_BONUS_COINS = 10;
+
+/** @deprecated Renamed to HABIT_LIMIT. */
+export const DAILY_TASK_LIMIT = HABIT_LIMIT;
+/** @deprecated Renamed to HABIT_XP. */
+export const DAILY_TASK_XP = HABIT_XP;
+/** @deprecated Renamed to HABIT_COINS. */
+export const DAILY_TASK_COINS = HABIT_COINS;
+/** @deprecated Renamed to HABIT_ALL_BONUS_COINS. */
+export const DAILY_TASK_ALL_BONUS_COINS = HABIT_ALL_BONUS_COINS;
 
 // ── Check-in ──────────────────────────────────────────────────────────────────
 export const CHECKIN_XP = 15;

@@ -22,7 +22,7 @@ function formatTooltip(day: ActivityDay): string {
   else if (day.checkin === "lost") parts.push("sequência perdida");
   const dailyTaskCompletions = day.dailyTaskCompletions ?? day.goalLogs ?? 0;
   if (dailyTaskCompletions > 0) {
-    parts.push(`${dailyTaskCompletions} tarefa${dailyTaskCompletions > 1 ? "s" : ""} diária${dailyTaskCompletions > 1 ? "s" : ""} feita${dailyTaskCompletions > 1 ? "s" : ""}`);
+    parts.push(`${dailyTaskCompletions} hábito${dailyTaskCompletions > 1 ? "s" : ""} completado${dailyTaskCompletions > 1 ? "s" : ""}`);
   }
   if (parts.length === 0) parts.push("sem atividade");
   return `${label} — ${parts.join(" · ")}`;

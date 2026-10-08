@@ -212,18 +212,20 @@ export const api = {
   getDailyQuests: (date?: string) => request<{ quests: QuestProgressWithQuest[]; date: string; resetAt: string }>(`/api/daily-quests${date ? `?date=${date}` : ''}`),
   claimQuestReward: (questProgressId: number) => request<{ coinsAwarded: number; xpAwarded: number; baseXp: number; quest: DailyQuest; message: string }>(`/api/daily-quests/${questProgressId}`, { method: "POST" }),
 
-  // Daily Tasks (user-written, reset daily)
-  getDailyTasks: () => request<{ tasks: UserDailyTask[]; date: string }>("/api/daily-tasks"),
+  // Daily Tasks / Habits (user-written, reset daily)
+  getDailyTasks: (all?: boolean) => request<{ tasks: UserDailyTask[]; date: string }>(all ? "/api/daily-tasks?all=true" : "/api/daily-tasks"),
   getDailyTaskHistory: (from: string, to: string) =>
     request<{ logs: DailyTaskHistoryEntry[] }>(`/api/daily-tasks/history?from=${from}&to=${to}`),
-  createDailyTask: (title: string) =>
-    request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify({ title }) }),
+  createDailyTask: (payload: { title: string; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
+    request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify(payload) }),
   toggleDailyTask: (id: number, completed: boolean) =>
     request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
-  updateDailyTask: (id: number, title: string) =>
-    request<{ task: UserDailyTask }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  updateDailyTask: (id: number, updates: { title?: string; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
+    request<{ task: UserDailyTask }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   deleteDailyTask: (id: number) =>
     request<{ ok: boolean }>(`/api/daily-tasks/${id}`, { method: "DELETE" }),
+  reorderDailyTasks: (order: number[]) =>
+    request<{ ok: boolean }>(`/api/daily-tasks/reorder`, { method: "PUT", body: JSON.stringify({ order }) }),
 
   // Env / config status (diagnostic: masked values, never full secrets)
   getEnvStatus: () => request<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean }>("/api/env-status"),

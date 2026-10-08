@@ -96,9 +96,9 @@ export default function ConsistenciaPage() {
               color="#6bffb8"
             />
             <StatCard
-              label="Tarefas diárias feitas"
+              label="Hábitos completados"
               value={stats.dailyTaskEntries}
-              hint="check-ins de tarefas no ano"
+              hint="check-ins de hábitos no ano"
               icon={Target}
               iconContent={<Image src="/icons_8bits/target.png" alt="" width={32} height={32} unoptimized />}
               color="#b69cff"
@@ -113,7 +113,7 @@ export default function ConsistenciaPage() {
               <div>
                 <h2 className="font-display text-xl">Mapa do ano</h2>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Cada quadrado é um dia — quanto mais intenso, mais você fez (check-in + tarefas diárias).
+                  Cada quadrado é um dia — quanto mais intenso, mais você fez (check-in + hábitos).
                 </p>
               </div>
             </div>

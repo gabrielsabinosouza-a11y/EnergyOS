@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { listDailyTasks, createDailyTask } from "@/lib/db/daily-tasks";
+import { listDailyTasks, getAllHabits, createDailyTask } from "@/lib/db/daily-tasks";
 import { todayIso } from "@/lib/db/dates";
 
 export async function GET(request: NextRequest) {
@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const today = todayIso();
-    const tasks = await listDailyTasks(profileId, today);
+    const url = new URL(request.url);
+    const all = url.searchParams.get("all") === "true";
+    const tasks = all ? await getAllHabits(profileId, today) : await listDailyTasks(profileId, today);
     return jsonOk({ tasks, date: today });
   });
 }
@@ -20,9 +22,8 @@ export async function POST(request: NextRequest) {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const body = await readJsonBody(request);
-    const title = typeof body.title === "string" ? body.title : "";
     const today = todayIso();
-    const task = await createDailyTask(profileId, today, title);
+    const task = await createDailyTask(profileId, today, body);
     return jsonOk({ task, date: today });
   });
 }

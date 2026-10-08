@@ -60,6 +60,8 @@ export interface GardenEntry {
   plantedAt: string;
   growthStage: GardenGrowthStage;
   status: GardenStatus;
+  startedAt?: string;
+  endedAt?: string;
 }
 
 interface GardenRow {
@@ -72,6 +74,8 @@ interface GardenRow {
   planted_at: Date | string;
   growth_stage: string;
   status: string;
+  started_at?: Date | string;
+  ended_at?: Date | string | null;
 }
 
 function mapGardenRow(row: GardenRow): GardenEntry {
@@ -83,82 +87,36 @@ function mapGardenRow(row: GardenRow): GardenEntry {
     plantedAt: typeof row.planted_at === "string" ? row.planted_at : row.planted_at.toISOString(),
     growthStage: (row.growth_stage || "sprout") as GardenGrowthStage,
     status: (row.status || "growing") as GardenStatus,
+    startedAt: row.started_at ? (typeof row.started_at === "string" ? row.started_at : row.started_at.toISOString()) : undefined,
+    endedAt: row.ended_at ? (typeof row.ended_at === "string" ? row.ended_at : row.ended_at.toISOString()) : undefined,
   };
 }
 
-/** Busca as energias plantadas pelo usuário, da mais recente para a mais antiga.
- *
- * Self-heals historical rows that never got finalized: entries whose focus
- * session already ended are reconciled to their true state (alive/withered +
- * stage), so a completed energy never renders as an eternal "Crescendo...".
- * Sessions that were never ended at all (the client closed the tab before the
- * timer fired and nothing stamped ended_at) are swept below as well. */
+/** Busca apenas energias ligadas a sessões concluídas. Esta leitura não altera dados. */
 export async function getGardenEntries(profileId: string): Promise<GardenEntry[]> {
   parseProfileId(profileId);
-
-  // Stale open sessions: a session that was never ended (client closed the
-  // tab mid-session and never came back through the end flow) can no longer
-  // complete by itself once it is well past its target — yet its garden
-  // plants stayed "growing" forever. Mark those plants withered so they stop
-  // rendering as an eternal "Crescendo...". The session row itself is left
-  // untouched (rewards are unaffected): if the client later returns and the
-  // persisted timer still ends the session for real, finalizeGardenEntries
-  // flips the plants back to their true state.
-  await pool.query(
-    `update garden_entries ge
-        set status = 'withered'
-       from focus_sessions fs
-      where ge.profile_id = $1
-        and ge.session_id = fs.id
-        and ge.status = 'growing'
-        and fs.ended_at is null
-        and now() > fs.started_at
-                    + (coalesce(fs.target_duration_minutes, 25) * interval '1 minute')
-                    + interval '2 hours'`,
-    [profileId],
-  );
-
-  // Rows linked to a (non-room) session that already ended: resolve precisely.
-  await pool.query(
-    `update garden_entries ge
-     set status = case
-           when fs.duration_minutes >= fs.target_duration_minutes then 'alive'
-           else 'withered'
-         end,
-         growth_stage = case
-           when fs.duration_minutes >= 60 then 'mature'
-           when fs.duration_minutes >= 30 then 'young'
-           else 'sprout'
-         end,
-         duration_minutes = fs.duration_minutes
-     from focus_sessions fs
-     where ge.profile_id = $1
-       and ge.session_id = fs.id
-       and ge.status = 'growing'
-       and fs.ended_at is not null`,
-    [profileId],
-  );
-
-  // Legacy imports represent already-completed focus sessions — never "growing".
-  await pool.query(
-    `update garden_entries
-     set status = 'alive',
-         growth_stage = case
-           when duration_minutes >= 60 then 'mature'
-           when duration_minutes >= 30 then 'young'
-           else 'sprout'
-         end
-     where profile_id = $1
-       and status = 'growing'
-       and session_id is null
-       and legacy_key is not null`,
-    [profileId],
-  );
-
   const result = await pool.query<GardenRow>(
-    `select id, profile_id, session_id, energy_type, duration_minutes, reward, planted_at, growth_stage, status
-     from garden_entries where profile_id = $1 order by planted_at desc, id desc`,
-    [profileId],
+    `with ranked as (
+       select ge.id, ge.profile_id, ge.session_id, ge.energy_type, ge.reward,
+              fs.duration_minutes, fs.target_duration_minutes, fs.started_at, fs.ended_at,
+              row_number() over (partition by ge.session_id order by ge.id) as energy_number
+         from garden_entries ge
+         join focus_sessions fs on fs.id = ge.session_id and fs.profile_id = ge.profile_id
+        where ge.profile_id = $1
+          and fs.ended_at is not null
+          and fs.duration_minutes > 0
+          and fs.duration_minutes <= $2
+          and fs.duration_minutes >= fs.target_duration_minutes * $3
+     )
+     select id, profile_id, session_id, energy_type,
+            round(duration_minutes::numeric / case when duration_minutes >= 90 then 4 when duration_minutes >= 60 then 2 else 1 end, 2) as duration_minutes,
+            reward, started_at as planted_at, started_at, ended_at,
+            case when duration_minutes >= 60 then 'mature' when duration_minutes >= 30 then 'young' else 'sprout' end as growth_stage,
+            'alive' as status
+       from ranked
+      where energy_number <= case when duration_minutes >= 90 then 4 when duration_minutes >= 60 then 2 else 1 end
+      order by started_at desc, id desc`,
+    [profileId, FOCUS_DURATION_MAX_MINUTES, STREAK_COMPLETION_THRESHOLD],
   );
   return result.rows.map(mapGardenRow);
 }
@@ -238,7 +196,8 @@ export async function finalizeGardenEntries(
   const newGrowthStage = getGrowthStage(actualDurationMinutes);
   await pool.query(
     `update garden_entries
-     set status = $1, growth_stage = $2, duration_minutes = $3
+     set status = $1, growth_stage = $2,
+         duration_minutes = $3 / greatest((select count(*) from garden_entries where profile_id = $4 and session_id = $5), 1)
      where profile_id = $4 and session_id = $5 and status in ('growing', 'withered')`,
     [newStatus, newGrowthStage, actualDurationMinutes, profileId, sessionId],
   );
@@ -346,9 +305,13 @@ export async function endFocusSession(
   // otherwise claim hours of focus for a 25-minute session and farm XP/coins,
   // quest progress, streak, garden and group contributions. The cap is the
   // session's own target duration (the maximum legitimate reward).
-  const targetCap = session.rows[0].target_duration_minutes
+  const rawTarget = session.rows[0].target_duration_minutes
     ? Math.round(session.rows[0].target_duration_minutes)
     : FOCUS_DURATION_MAX_MINUTES;
+  const targetCap = Math.max(1, Math.min(rawTarget, FOCUS_DURATION_MAX_MINUTES));
+  if (focusedSeconds > FOCUS_DURATION_MAX_MINUTES * 60) {
+    console.warn(`[focus] clamped impossible reported duration for session ${sessionId} (${profileId})`, focusedSeconds);
+  }
   const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   // Coins are a pure function of focused time and are NEVER scaled by the 2x XP

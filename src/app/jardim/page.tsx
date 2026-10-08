@@ -7,7 +7,6 @@ import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer, Grid3X3, List } from "l
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { useAuthRedirect, useAuth } from "@/lib/auth-context";
-import { getGardenEntries } from "@/lib/garden-store";
 import { api } from "@/lib/api-client";
 import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage } from "@/lib/energy-assets";
 import { IsometricGarden } from "@/components/isometric-garden";
@@ -110,18 +109,46 @@ interface BarDatum {
 }
 
 function buildChartData(period: Period, entries: GardenEntry[], range: PeriodRange): BarDatum[] {
+  const distribute = (entry: GardenEntry, buckets: BarDatum[], step: "hour" | "day" | "month", bucketIndex: (date: Date) => number) => {
+    const start = new Date(entry.startedAt ?? entry.plantedAt).getTime();
+    const end = new Date(entry.endedAt ?? entry.plantedAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      const fallback = new Date(entry.plantedAt);
+      const index = bucketIndex(fallback);
+      if (index >= 0 && index < buckets.length) buckets[index].minutes += entry.durationMinutes;
+      return;
+    }
+    const elapsed = end - start;
+    let cursor = start;
+    while (cursor < end) {
+      const date = new Date(cursor);
+      const next = new Date(date);
+      if (step === "hour") next.setHours(date.getHours() + 1, 0, 0, 0);
+      else if (step === "day") next.setHours(24, 0, 0, 0);
+      else {
+        next.setMonth(date.getMonth() + 1, 1);
+        next.setHours(0, 0, 0, 0);
+      }
+      const segmentEnd = Math.min(end, next.getTime());
+      const index = bucketIndex(date);
+      if (index >= 0 && index < buckets.length) {
+        buckets[index].minutes += entry.durationMinutes * ((segmentEnd - cursor) / elapsed);
+      }
+      cursor = segmentEnd;
+    }
+  };
   if (period === "day") {
     const buckets = Array.from({ length: 24 }, (_, h) => ({
       label: String(h).padStart(2, "0"),
       fullLabel: `${String(h).padStart(2, "0")}:00`,
       minutes: 0,
     }));
-    for (const e of entries) buckets[new Date(e.plantedAt).getHours()].minutes += e.durationMinutes;
+    for (const e of entries) distribute(e, buckets, "hour", (date) => date.getHours());
     return buckets;
   }
   if (period === "week") {
     const buckets = WEEKDAY_SHORT.map((label) => ({ label, fullLabel: label, minutes: 0 }));
-    for (const e of entries) buckets[(new Date(e.plantedAt).getDay() + 6) % 7].minutes += e.durationMinutes;
+    for (const e of entries) distribute(e, buckets, "day", (date) => (date.getDay() + 6) % 7);
     return buckets;
   }
   if (period === "month") {
@@ -136,14 +163,11 @@ function buildChartData(period: Period, entries: GardenEntry[], range: PeriodRan
         minutes: 0,
       };
     });
-    for (const e of entries) {
-      const d = new Date(e.plantedAt);
-      if (d.getMonth() === start.getMonth()) buckets[d.getDate() - 1].minutes += e.durationMinutes;
-    }
+    for (const e of entries) distribute(e, buckets, "day", (date) => date.getMonth() === start.getMonth() ? date.getDate() - 1 : -1);
     return buckets;
   }
   const buckets = MONTH_SHORT.map((label) => ({ label, fullLabel: label, minutes: 0 }));
-  for (const e of entries) buckets[new Date(e.plantedAt).getMonth()].minutes += e.durationMinutes;
+  for (const e of entries) distribute(e, buckets, "month", (date) => date.getFullYear() === range.start.getFullYear() ? date.getMonth() : -1);
   return buckets;
 }
 
@@ -244,26 +268,13 @@ export default function JardimPage() {
   const [viewMode, setViewMode] = useState<"garden" | "list">("garden");
   const [selectedEntry, setSelectedEntry] = useState<GardenEntry | null>(null);
 
-  // Load garden entries from the DB (authoritative). Also migrates any legacy
-  // localStorage garden entries into the DB once (idempotent via legacy_key).
+  // Garden data is read from completed server-side focus sessions only.
   useEffect(() => {
     if (loading || !user) return;
     let cancelled = false;
 
     const load = async () => {
       try {
-        const legacy = getGardenEntries();
-        if (legacy.length > 0) {
-          await api.importGarden(
-            legacy.map((e) => ({
-              legacyKey: e.id,
-              energyType: e.energyType as string,
-              durationMinutes: e.durationMinutes,
-              reward: e.reward,
-              plantedAt: e.plantedAt,
-            })),
-          );
-        }
         const { entries: dbEntries } = await api.getGarden();
         if (!cancelled) setEntries(dbEntries);
       } catch {
@@ -404,7 +415,7 @@ export default function JardimPage() {
             </div>
             <div className="panel p-4 text-center">
               <div className="text-2xl font-mono font-bold text-[#ffb86b]">{formatMinutes(totalMinutes)}</div>
-              <div className="text-[10px] text-[var(--text-faint)] mt-0.5 uppercase tracking-wider">minutos de foco</div>
+              <div className="text-[10px] text-[var(--text-faint)] mt-0.5 uppercase tracking-wider">tempo de foco</div>
             </div>
           </div>
 

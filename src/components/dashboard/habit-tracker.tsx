@@ -142,7 +142,7 @@ export function HabitTracker() {
           </div>
           <div>
             <h2 className="font-display text-xl">{HABIT_SECTION_TITLE}</h2>
-            <p className="text-xs text-[var(--text-muted)]">Tarefas que se repetem todo dia: sequência e check-in de cada uma</p>
+            <p className="text-xs text-[var(--text-muted)]">Seus hábitos: sequência e check-in de cada um</p>
           </div>
         </div>
         <div className="flex overflow-hidden rounded-xl border border-[var(--border-subtle)]">
@@ -172,13 +172,13 @@ export function HabitTracker() {
         </div>
       ) : state.tasks.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
-          <p className="text-sm text-[var(--text-muted)]">Crie sua primeira tarefa diária</p>
+          <p className="text-sm text-[var(--text-muted)]">Crie seu primeiro hábito</p>
           <button
             type="button"
             onClick={() => setShowCreateForm(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
           >
-            <Plus size={15} /> Criar tarefa diária
+            <Plus size={15} /> Criar primeiro hábito
           </button>
         </div>
       ) : (
@@ -200,8 +200,8 @@ export function HabitTracker() {
       <Modal
         open={showCreateForm}
         onClose={() => setShowCreateForm(false)}
-        title="Nova tarefa diária"
-        description="Tarefas diárias se repetem todo dia e reiniciam a cada manhã."
+        title="Novo hábito"
+        description="Hábitos se repetem conforme a frequência escolhida e reiniciam a cada manhã."
         panelClassName="sm:max-w-md"
         footerClassName="justify-end"
         footer={
@@ -248,4 +248,4 @@ export function HabitTracker() {
   );
 }
 
-const HABIT_SECTION_TITLE = "Minhas tarefas diárias";
+const HABIT_SECTION_TITLE = "Meus hábitos";

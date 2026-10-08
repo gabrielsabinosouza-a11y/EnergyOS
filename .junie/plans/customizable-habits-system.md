@@ -46,7 +46,6 @@ Rename the dashboard section "Tarefas diárias" to "Habits" and transform it int
 - Renaming database collection names (profile_daily_tasks stays as-is)
 - Modifying the separate `habits` table (tied to goals, unrelated)
 
-
 # Technical Design
 
 ### Current Implementation
@@ -213,7 +212,6 @@ graph LR
 - **Backward compatibility**: Old habits without icon/color will show defaults. The read-time fallback ensures no broken UI.
 - **Drag-and-drop on mobile**: @dnd-kit supports touch, but need to test on small screens.
 
-
 # Testing
 
 ### Validation Approach
@@ -245,10 +243,9 @@ The project uses Node's built-in test runner with tsx (`npm test`). Tests exist 
 - `src/lib/habit-rewards.test.ts` — tests for reward idempotency, max limit enforcement
 - Run `npm run lint`, `npm run build` to verify type checking and build
 
-
 # Delivery Steps
 
-###   Step 1: Extend data model and API
+### ✓ Step 1: Extend data model and API
 Add new columns to profile_daily_tasks and daily_task_log, extend types, and update API routes to support the full habit payload.
 
 - Add columns to `profile_daily_tasks`: icon_type, icon_value, color, frequency_type, frequency_days, frequency_target, goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived (all with safe DEFAULT values)
@@ -269,7 +266,7 @@ Add new columns to profile_daily_tasks and daily_task_log, extend types, and upd
 - Create `src/lib/habit-icons.ts` with curated icon list (~30 icons, categorized)
 - Update naming in `src/lib/use-activity-history.ts` and `src/components/dashboard/heatmap.tsx`
 
-###   Step 2: Build habit create/edit modal and pickers
+### ✓ Step 2: Build habit create/edit modal and pickers
 Create the full habit creation and editing modal with icon picker, color palette, frequency selector, and goal type.
 
 - Create `src/components/dashboard/habit-modal.tsx`: Create/edit modal reusing the existing Modal component pattern (ESC, backdrop, focus trap, validation)
@@ -282,7 +279,7 @@ Create the full habit creation and editing modal with icon picker, color palette
 - Form validation: name required, max 40 chars; icon required; color required
 - Reuse the glass-card/LED visual style from EditDailyTaskModal
 
-###   Step 3: Update dashboard and Consistência UI
+### ✓ Step 3: Update dashboard and Consistência UI
 Rename all UI references, update the dashboard widget and Consistência tracker to use the new habit model, and add drag-and-drop reordering.
 
 - Rename "TAREFAS DIÁRIAS" → "HÁBITOS" in `src/components/dashboard/recurring-daily-tasks.tsx`
@@ -301,7 +298,7 @@ Rename all UI references, update the dashboard widget and Consistência tracker 
 - Add completion animation (transform/opacity only) respecting prefers-reduced-motion
 - Ensure loading and error states show toasts in Portuguese
 
-###   Step 4: Add tests, validate, and finalize
+### * Step 4: Add tests, validate, and finalize
 Add tests for frequency and reward logic, run linter and build, verify all naming is consistent.
 
 - Create `src/lib/habit-frequency.test.ts`: Test isHabitScheduledToday() for daily, weekdays, and times_per_week modes

@@ -3,7 +3,7 @@ import { NotFoundError, ConflictError, ForbiddenError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { recordMissionProgress } from "./daily-quests";
 import { todayIso } from "./dates";
-import { plantGardenEntries, getEnergyReward, endFocusSession, type GardenGrowthStage } from "./focus";
+import { endFocusSession } from "./focus";
 import { clearAllGroupRoomPresence, clearGroupRoomPresence, ensureGroupRoomPresenceSchema } from "./group-room-presence";
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES } from "../focus-duration";
 
@@ -1016,15 +1016,14 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
   const now = new Date().toISOString();
 
   // Get room info first to know the duration
-  const roomInfo = await pool.query<{ duration_minutes: number; host_profile_id: string; energy_type: string | null }>(
-    `select duration_minutes, host_profile_id, energy_type from focus_rooms where id = $1`,
+  const roomInfo = await pool.query<{ duration_minutes: number; host_profile_id: string }>(
+    `select duration_minutes, host_profile_id from focus_rooms where id = $1`,
     [roomId],
   );
   
   if (!roomInfo.rows[0]) return null;
   
   const durationMinutes = roomInfo.rows[0].duration_minutes;
-  const roomEnergyType = roomInfo.rows[0].energy_type ?? "flame";
 
   // Only an ACTIVE or PAUSED room can be completed, and side effects (mission
   // progress, garden plants) run exactly once — when the transition happens.
@@ -1068,26 +1067,7 @@ export async function completeFocusRoom(roomId: number): Promise<FocusRoom | nul
       );
       await recordMissionProgress(p.profile_id, "DISTINCT_ROOMS", { setTo: Number(cnt.rows[0]?.n || 0) });
       
-      // Finalize garden entries for participants who completed the room
-      // This ensures all room participants get their garden entries finalized
-      // even if their individual endFocus call didn't complete properly
-      if (p.session_status === "completed" && durationMinutes >= 10) {
-        const energyType = p.selected_energy_type || roomEnergyType || "flame";
-        try {
-          // Finalize any growing entries for this participant
-          // Since we don't have individual session IDs in room context,
-          // we finalize by profile_id and mark as alive
-          const growthStage: GardenGrowthStage = durationMinutes >= 60 ? "mature" : durationMinutes >= 30 ? "young" : "sprout";
-          await pool.query(
-            `update garden_entries
-             set status = 'alive', growth_stage = $1, duration_minutes = $2
-             where profile_id = $3 and status = 'growing' and session_id is null`,
-            [growthStage, durationMinutes, p.profile_id]
-          );
-        } catch {
-          // If finalization fails, it will be handled via the normal flow
-        }
-      }
+
     }
 
     // Finalize the individual open focus_sessions of every participant who just
@@ -1255,7 +1235,7 @@ async function maybeFinalizeConfirmation(client: import("pg").PoolClient, roomId
   await client.query(
     `update focus_rooms
      set status = 'active', started_at = $1, ended_at = null, elapsed_seconds = 0, last_resumed_at = $1
-     where id = $2 and status = 'confirming',
+     where id = $2 and status = 'confirming'`,
      [now, roomId],
   );
 
