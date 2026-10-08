@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, ListTodo, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, ListTodo, Minus, Plus, Trash2 } from "lucide-react";
 import { XpIcon } from "@/components/xp-icon";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
@@ -58,12 +58,12 @@ export function DailyTasksWidget() {
     }
   }
 
-  async function toggle(task: UserDailyTask) {
+  async function setProgress(task: UserDailyTask, completedCount: number) {
     if (togglingId !== null) return;
     setTogglingId(task.id);
     setError(null);
     try {
-      const result = await api.toggleDailyTask(task.id, !task.isCompleted);
+      const result = await api.setDailyTaskProgress(task.id, completedCount);
       setTasks((prev) => prev.map((t) => (t.id === task.id ? result.task : t)));
       if (result.xpAwarded > 0 || result.coinsAwarded > 0) {
         setRewardFlash({ id: task.id, xp: result.xpAwarded, coins: result.coinsAwarded });
@@ -172,13 +172,11 @@ export function DailyTasksWidget() {
               exit={{ opacity: 0, x: 16, height: 0 }}
               className="group flex items-center gap-2 py-2.5 border-b border-[var(--border-subtle)] last:border-0"
             >
-              <button
-                onClick={() => toggle(task)}
-                disabled={togglingId !== null}
-                className={`task-check shrink-0 ${task.isCompleted ? "border-[#71d4ff] bg-[#71d4ff]" : ""}`}
-              >
-                {task.isCompleted && <Check size={11} />}
-              </button>
+              <div className={`flex h-8 shrink-0 items-center overflow-hidden rounded-lg border ${task.isCompleted ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`} role="group" aria-label={`${task.title}: ${task.completedCount}/${task.dailyTarget}`}>
+                <button type="button" onClick={() => void setProgress(task, Math.max(0, task.completedCount - 1))} disabled={togglingId !== null || task.completedCount <= 0} aria-label={`Diminuir ${task.title}`} className="grid h-8 w-8 place-items-center hover:bg-white/5 disabled:opacity-30"><Minus size={13} /></button>
+                <span className="min-w-11 text-center font-mono text-[11px] font-semibold" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount}/{task.dailyTarget}{task.isCompleted && <Check size={11} className="ml-1 inline" aria-label="Concluído" />}</span>
+                <button type="button" onClick={() => void setProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={togglingId !== null || task.isCompleted} aria-label={`Aumentar ${task.title}`} className="grid h-8 w-8 place-items-center hover:bg-white/5 disabled:opacity-30"><Plus size={13} /></button>
+              </div>
               <span className={`flex-1 text-left text-sm ${task.isCompleted ? "line-through text-[var(--text-muted)]" : "text-[var(--text)]"}`}>
                 <span className="mr-1.5 font-mono text-[10px] text-[var(--text-faint)]">{index + 1}.</span>
                 {task.title}

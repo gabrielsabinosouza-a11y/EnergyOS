@@ -241,11 +241,13 @@ export const api = {
   getDailyTasks: (all?: boolean) => request<{ tasks: UserDailyTask[]; date: string }>(all ? "/api/daily-tasks?all=true" : "/api/daily-tasks"),
   getDailyTaskHistory: (from: string, to: string) =>
     request<{ logs: DailyTaskHistoryEntry[] }>(`/api/daily-tasks/history?from=${from}&to=${to}`),
-  createDailyTask: (payload: { title: string; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
+  createDailyTask: (payload: { title: string; dailyTarget?: number; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
     request<{ task: UserDailyTask; date: string }>("/api/daily-tasks", { method: "POST", body: JSON.stringify(payload) }),
   toggleDailyTask: (id: number, completed: boolean) =>
-    request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
-  updateDailyTask: (id: number, updates: { title?: string; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
+    request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; completionTriggered?: boolean; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+  setDailyTaskProgress: (id: number, completedCount: number) =>
+    request<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; completionTriggered: boolean; message?: string }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify({ completedCount }) }),
+  updateDailyTask: (id: number, updates: { title?: string; dailyTarget?: number; iconType?: string; iconValue?: string; color?: string; frequencyType?: string; frequencyDays?: number[] | null; frequencyTarget?: number | null; goalType?: string; targetValue?: number | null; unit?: string | null; description?: string | null; category?: string | null; startDate?: string | null; reminderTime?: string | null }) =>
     request<{ task: UserDailyTask }>(`/api/daily-tasks/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   deleteDailyTask: (id: number) =>
     request<{ ok: boolean }>(`/api/daily-tasks/${id}`, { method: "DELETE" }),

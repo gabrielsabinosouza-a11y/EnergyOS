@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, Loader2, Trash2, Pencil, GripVertical } from "lucide-react";
+import { Check, Plus, Minus, Loader2, Trash2, Pencil, GripVertical } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
-import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
@@ -38,12 +37,14 @@ interface RecurringDailyTasksProps {
 
 function SortableHabitRow({
   task,
-  onToggle,
+  onProgress,
+  busy,
   onDelete,
   onEdit,
 }: {
   task: UserDailyTask;
-  onToggle: (task: UserDailyTask) => void;
+  onProgress: (task: UserDailyTask, completedCount: number) => void;
+  busy: boolean;
   onDelete: (id: number) => void;
   onEdit: (task: UserDailyTask) => void;
 }) {
@@ -77,18 +78,11 @@ function SortableHabitRow({
 
       <HabitIcon habit={task} size="sm" />
 
-      <button
-        onClick={() => onToggle(task)}
-        className={`task-check shrink-0 ${task.isCompleted ? "border-[#71d4ff] bg-[#71d4ff]" : ""}`}
-        aria-label={task.isCompleted ? "Desmarcar" : "Concluir"}
-        style={
-          task.isCompleted
-            ? { backgroundColor: task.color, borderColor: task.color }
-            : { borderColor: `${task.color}60` }
-        }
-      >
-        {task.isCompleted && <Check size={11} />}
-      </button>
+      <div className={`flex h-8 shrink-0 items-center overflow-hidden rounded-lg border ${task.isCompleted ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`} role="group" aria-label={`${task.title}: ${task.completedCount}/${task.dailyTarget}`}>
+        <button type="button" onClick={() => onProgress(task, Math.max(0, task.completedCount - 1))} disabled={busy || task.completedCount <= 0} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Diminuir ${task.title}`}><Minus size={13} /></button>
+        <span className="min-w-11 text-center font-mono text-[11px] font-semibold" role="progressbar" aria-valuemin={0} aria-valuemax={task.dailyTarget} aria-valuenow={task.completedCount}>{task.completedCount}/{task.dailyTarget}{task.isCompleted && <Check size={11} className="ml-1 inline" aria-label="Concluído" />}</span>
+        <button type="button" onClick={() => onProgress(task, Math.min(task.dailyTarget, task.completedCount + 1))} disabled={busy || task.isCompleted} className="grid h-8 w-8 place-items-center transition hover:bg-white/5 disabled:opacity-30" aria-label={`Aumentar ${task.title}`}><Plus size={13} /></button>
+      </div>
 
       <span className={`flex-1 text-left text-sm ${task.isCompleted ? "text-[var(--text-muted)] line-through" : "text-[var(--text)]"}`}>
         {task.title}
@@ -121,12 +115,13 @@ function SortableHabitRow({
 }
 
 export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: RecurringDailyTasksProps) {
-  const { applyMetric, refresh: refreshQuests } = useDailyQuests();
+  const { refresh: refreshQuests } = useDailyQuests();
   const [tasks, setTasks] = useState<UserDailyTask[]>([]);
   const [habitCount, setHabitCount] = useState(0);
   const [saveNotice, setSaveNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
+  const [progressBusyId, setProgressBusyId] = useState<number | null>(null);
   const [modalState, setModalState] = useState<{ mode: "create" | "edit"; habit?: UserDailyTask } | null>(null);
 
   const sensors = useSensors(
@@ -157,15 +152,14 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     };
   }, []);
 
-  async function handleToggle(task: UserDailyTask) {
-    const completing = !task.isCompleted;
+  async function handleProgress(task: UserDailyTask, completedCount: number) {
+    if (progressBusyId !== null) return;
+    const nextCount = Math.max(0, Math.min(task.dailyTarget, completedCount));
     const prev = tasks;
-    setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, isCompleted: completing } : t)));
-    if (completing) {
-      applyMetric("TASKS_COMPLETED", { incrementBy: 1 });
-    }
+    setProgressBusyId(task.id);
+    setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, completedCount: nextCount, isCompleted: nextCount >= task.dailyTarget } : t));
     try {
-      const data = await toggleDailyTaskCompletion(task.id, completing);
+      const data = await api.setDailyTaskProgress(task.id, nextCount);
       setTasks((ts) => ts.map((t) => (t.id === task.id ? data.task : t)));
       if (data.coinsAwarded > 0) {
         const newCoins = coins + data.coinsAwarded;
@@ -177,6 +171,8 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     } catch {
       setTasks(prev);
       void refreshQuests();
+    } finally {
+      setProgressBusyId(null);
     }
   }
 
@@ -286,7 +282,8 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
               <SortableHabitRow
                 key={task.id}
                 task={task}
-                onToggle={handleToggle}
+                onProgress={handleProgress}
+                busy={progressBusyId === task.id}
                 onDelete={handleDelete}
                 onEdit={(t) => setModalState({ mode: "edit", habit: t })}
               />

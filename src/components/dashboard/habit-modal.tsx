@@ -12,6 +12,7 @@ import { HABIT_LIMIT } from "@/lib/daily-limits";
 
 export interface HabitPayload {
   title: string;
+  dailyTarget: number;
   iconType: HabitIconType;
   iconValue: string;
   color: string;
@@ -40,6 +41,7 @@ const inputClass = "auth-input min-h-10 w-full text-sm";
 export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModalProps) {
   const isEdit = Boolean(habit);
   const [title, setTitle] = useState(habit?.title ?? "");
+  const [dailyTarget, setDailyTarget] = useState(habit?.dailyTarget ?? 1);
   const [iconType, setIconType] = useState<HabitIconType>(habit?.iconType ?? "asset");
   const [iconValue, setIconValue] = useState(habit?.iconValue ?? "target");
   const [color, setColor] = useState(habit?.color ?? "#71d4ff");
@@ -60,6 +62,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
     const trimmed = title.trim();
     if (!trimmed) return setError("Digite o nome do hábito.");
     if (trimmed.length > 40) return setError("Nome muito longo (máx. 40 caracteres).");
+    if (!Number.isInteger(dailyTarget) || dailyTarget < 1) return setError("A meta diária deve ser pelo menos 1.");
     if (!isEdit && habitCount >= HABIT_LIMIT) return setError(`Limite de ${HABIT_LIMIT} hábitos ativos atingido.`);
     if (goalType === "measurable" && targetValue && (!Number.isFinite(Number(targetValue)) || Number(targetValue) <= 0)) {
       return setError("Informe um valor alvo maior que zero.");
@@ -69,6 +72,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
     try {
       await onSave({
         title: trimmed,
+        dailyTarget,
         iconType,
         iconValue,
         color,
@@ -130,6 +134,15 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
         </div>
 
         <IconPicker iconType={iconType} iconValue={iconValue} onSelect={(type, value) => { setIconType(type); setIconValue(value); }} />
+
+        <div>
+          <span className={labelClass}>Daily Target</span>
+          <div className="inline-flex min-h-10 items-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]">
+            <button type="button" aria-label="Diminuir meta diária" onClick={() => setDailyTarget((value) => Math.max(1, value - 1))} disabled={dailyTarget <= 1} className="grid h-10 w-10 place-items-center text-lg text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-active)] disabled:opacity-35">−</button>
+            <input aria-label="Daily Target" type="number" min={1} step={1} value={dailyTarget} onChange={(event) => setDailyTarget(Math.max(1, Math.floor(Number(event.target.value) || 1)))} className="h-10 w-14 border-x border-[var(--border-subtle)] bg-transparent text-center font-mono text-sm text-[var(--text)] outline-none" />
+            <button type="button" aria-label="Aumentar meta diária" onClick={() => setDailyTarget((value) => value + 1)} className="grid h-10 w-10 place-items-center text-lg text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-active)]">+</button>
+          </div>
+        </div>
 
         <div>
           <span className={labelClass}>Cor</span>

@@ -973,6 +973,11 @@ create table if not exists profile_daily_tasks (
   created_at timestamptz not null default now()
 );
 alter table profile_daily_tasks add column if not exists is_active boolean not null default true;
+alter table profile_daily_tasks add column if not exists daily_target integer not null default 1;
+do $$ begin
+  alter table profile_daily_tasks add constraint profile_daily_tasks_daily_target_check check (daily_target >= 1);
+exception when duplicate_object then null;
+end $$;
 create index if not exists profile_daily_tasks_profile_idx on profile_daily_tasks(profile_id, sort_order, id);
 
 -- Per-day completion log for recurring daily tasks.
@@ -981,8 +986,16 @@ create table if not exists daily_task_log (
   log_date date not null,
   is_completed boolean not null default false,
   completed_at timestamptz,
+  completion_count integer not null default 0,
+  rewards_claimed boolean not null default false,
   primary key (task_id, log_date)
 );
+alter table daily_task_log add column if not exists completion_count integer not null default 0;
+alter table daily_task_log add column if not exists rewards_claimed boolean not null default false;
+update daily_task_log l set completion_count = t.daily_target
+from profile_daily_tasks t
+where l.task_id = t.id and l.is_completed = true and l.completion_count = 0;
+update daily_task_log set rewards_claimed = true where is_completed = true and rewards_claimed = false;
 
 -- ── Store: Banner, Decorations, Shields ────────────────────────────────────
 alter table profiles add column if not exists has_custom_banner boolean not null default false;

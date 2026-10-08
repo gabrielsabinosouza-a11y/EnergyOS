@@ -79,16 +79,18 @@ interface HabitCardProps {
   year: number;
   tab: HabitTab;
   busyTaskId: number | null;
-  onToggle: (task: UserDailyTask, completed: boolean) => void;
+  onProgress: (task: UserDailyTask, completedCount: number) => void;
   onEdit?: (task: UserDailyTask) => void;
 }
 
 /** Card de um hábito — ícone, nome, sequência, check-in e mapa de contribuição. */
-export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, onEdit }: HabitCardProps) {
+export function HabitCard({ task, logs, today, year, tab, busyTaskId, onProgress, onEdit }: HabitCardProps) {
+  const dailyTarget = Math.max(1, task.dailyTarget ?? 1);
+  const completedCount = Math.max(0, Math.min(dailyTarget, task.completedCount ?? (task.isCompleted ? dailyTarget : 0)));
   const color = task.color || ["#71d4ff", "#b69cff", "#a3e635", "#ffb86b", "#6bffb8"][(task.id - 1) % 5];
   const streakDates = habitStreakDates(task, logs, today);
   const streak = streakDates.length;
-  const doneToday = isDayDone(logs, today);
+  const doneToday = completedCount >= dailyTarget;
   const scheduledToday = isHabitScheduledOnDate(task.frequencyType, task.frequencyDays, task.frequencyTarget, today);
   const todayBusy = busyTaskId === task.id;
   const checkIconColor = luminance(color) > 0.4 ? "#07111f" : "#ffffff";
@@ -132,30 +134,19 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
             <Pencil size={14} />
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => onToggle(task, !doneToday)}
-          disabled={todayBusy || !scheduledToday}
-          aria-label={!scheduledToday ? `${task.title} não está programado para hoje` : doneToday ? `Desmarcar ${task.title} hoje` : `Marcar ${task.title} hoje`}
-          title={doneToday ? "Desmarcar hoje" : "Marcar hoje"}
-          className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          style={
-            doneToday
-              ? { backgroundColor: color, color: checkIconColor }
-              : { border: `2px solid ${color}`, background: "transparent", color }
-          }
-        >
-          {todayBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} strokeWidth={3} />}
-        </button>
+        <div className={`flex h-9 shrink-0 items-center overflow-hidden rounded-full border ${doneToday ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-[var(--border-strong)] text-[var(--text-secondary)]"}`} aria-label={`${task.title}: ${completedCount} de ${dailyTarget}`}>
+          <button type="button" onClick={() => onProgress(task, Math.max(0, completedCount - 1))} disabled={todayBusy || !scheduledToday || completedCount === 0} aria-label={`Diminuir ${task.title}`} className="grid h-9 w-9 place-items-center transition hover:bg-white/5 disabled:opacity-35 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">−</button>
+          <span className="min-w-10 text-center font-mono text-xs font-semibold">{todayBusy ? <Loader2 size={13} className="mx-auto animate-spin" /> : `${completedCount}/${dailyTarget}`}{doneToday && <Check size={12} className="ml-1 inline" aria-label="Concluído" />}</span>
+          <button type="button" onClick={() => onProgress(task, Math.min(dailyTarget, completedCount + 1))} disabled={todayBusy || !scheduledToday || doneToday} aria-label={`Aumentar ${task.title}`} className="grid h-9 w-9 place-items-center transition hover:bg-white/5 disabled:opacity-35 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">+</button>
+        </div>
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
       {tab === "hoje" && (
         <motion.div key="hoje" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.16 }} className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2.5">
           <span className="text-xs text-[var(--text-muted)]">Hoje, {fmtDay(today)}</span>
-          <span className="text-xs font-semibold" style={{ color: doneToday ? color : "var(--text-muted)" }}>
-            {doneToday ? "Feito" : scheduledToday ? "Pendente" : "Não programado"}
-          </span>
+          <span className="text-xs font-semibold" style={{ color: doneToday ? "var(--green)" : "var(--text-muted)" }}>{doneToday ? "Meta diária concluída" : scheduledToday ? `${completedCount}/${dailyTarget} · Em andamento` : "Não programado"}</span>
+          <div className="ml-3 h-1.5 w-20 overflow-hidden rounded-full bg-[var(--bg-surface-active)]"><div className="h-full rounded-full bg-[var(--accent)] transition-[width]" style={{ width: `${Math.round(completedCount / dailyTarget * 100)}%` }} /></div>
         </motion.div>
       )}
 
@@ -179,7 +170,7 @@ export function HabitCard({ task, logs, today, year, tab, busyTaskId, onToggle, 
               <div key={label} className="flex flex-col items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => isToday && onToggle(task, !done)}
+                  onClick={() => isToday && onProgress(task, done ? 0 : dailyTarget)}
                   disabled={future || !isToday || busy}
                   aria-label={`${done ? "Desmarcar" : "Marcar"} ${fmtDay(date)}`}
                   title={future ? `${fmtDay(date)} — ainda vai acontecer` : `${fmtDay(date)} — ${done ? "feito" : "não feito"}`}

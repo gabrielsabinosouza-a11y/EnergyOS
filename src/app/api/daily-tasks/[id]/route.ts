@@ -5,6 +5,7 @@ import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { todayIso } from "@/lib/db/dates";
 import {
   toggleDailyTask,
+  setDailyTaskProgress,
   deactivateDailyTask,
   updateHabitMetadata,
   reorderHabits,
@@ -19,6 +20,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params;
     const taskId = Number(id);
     const body = assertObject(await readJsonBody(request));
+
+    if (body.completedCount !== undefined) {
+      if (typeof body.completedCount !== "number" || !Number.isInteger(body.completedCount)) {
+        throw new ValidationError("completedCount deve ser um número inteiro.");
+      }
+      const result = await setDailyTaskProgress(profileId, taskId, body.completedCount, todayIso());
+      const parts: string[] = [];
+      if (result.xpAwarded > 0) parts.push(`+${result.xpAwarded} XP`);
+      if (result.coinsAwarded > 0) parts.push(`+${result.coinsAwarded} moedas`);
+      return jsonOk({ ...result, message: parts.length > 0 ? parts.join(" · ") : undefined });
+    }
 
     // If completed is present, treat as completion toggle
     if (body.completed !== undefined) {
@@ -58,6 +70,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     };
 
     const title = requiredText("title"); if (title !== undefined) updates.title = title;
+    const dailyTarget = number("dailyTarget");
+    if (dailyTarget !== undefined) {
+      if (dailyTarget === null || !Number.isInteger(dailyTarget) || dailyTarget < 1) throw new ValidationError("A meta diária deve ser um inteiro maior que zero.");
+      updates.dailyTarget = dailyTarget;
+    }
     const iconType = body.iconType === undefined ? undefined : parseEnum<HabitIconType>(body.iconType, ["asset", "emoji", "image"], "Ícone");
     if (iconType !== undefined) updates.iconType = iconType;
     const iconValue = requiredText("iconValue"); if (iconValue !== undefined) updates.iconValue = iconValue;

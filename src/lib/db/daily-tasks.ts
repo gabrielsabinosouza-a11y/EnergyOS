@@ -5,6 +5,7 @@ import { todayIso } from "./dates";
 import { isHabitScheduledOnDate } from "../habit-schedule";
 import { getHabitAsset } from "../habit-icons";
 import { recordMissionProgress } from "./daily-quests";
+import { clampDailyProgress, normalizeDailyTarget } from "../daily-habit-progress";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
 
@@ -26,6 +27,8 @@ export interface UserDailyTask {
   taskDate: string;
   isCompleted: boolean;
   completedAt?: string;
+  dailyTarget: number;
+  completedCount: number;
   iconType: HabitIconType;
   iconValue: string;
   color: string;
@@ -62,6 +65,7 @@ const DEFAULT_HABIT_FIELDS = {
   reminderTime: null,
   archived: false,
   sortOrder: 0,
+  dailyTarget: 1,
 };
 
 export interface DailyTaskHistoryEntry {
@@ -89,6 +93,7 @@ interface TemplateRow {
   reminder_time: string | null;
   archived: boolean | null;
   sort_order: string | number | null;
+  daily_target: string | number | null;
 }
 
 interface LogRow {
@@ -96,6 +101,8 @@ interface LogRow {
   log_date: Date | string;
   is_completed: boolean;
   completed_at: Date | string | null;
+  completion_count: string | number | null;
+  rewards_claimed: boolean | null;
 }
 
 interface ListDailyRow {
@@ -117,20 +124,26 @@ interface ListDailyRow {
   "t.reminder_time": string | null;
   "t.archived": boolean;
   "t.sort_order": string | number;
+  "t.daily_target": string | number | null;
   "l.log_date": Date | string | null;
   "l.is_completed": boolean | null;
   "l.completed_at": Date | string | null;
+  "l.completion_count": string | number | null;
 }
 
 /** Check if a habit is scheduled for a given day (0=Sun, 1=Mon, ... 6=Sat). */
 /** Map a row to a UserDailyTask, applying defaults for missing fields. */
 function rowToTask(r: ListDailyRow, taskDate: string): UserDailyTask {
+  const dailyTarget = normalizeDailyTarget(Number(r["t.daily_target"] ?? 1));
+  const completedCount = clampDailyProgress(Number(r["l.completion_count"] ?? (r["l.is_completed"] ? dailyTarget : 0)), dailyTarget);
   return {
     id: Number(r["t.id"]),
     title: r["t.title"],
     taskDate,
-    isCompleted: Boolean(r["l.is_completed"]),
+    isCompleted: completedCount >= dailyTarget,
     completedAt: r["l.completed_at"] ? new Date(r["l.completed_at"] as string).toISOString() : undefined,
+    dailyTarget,
+    completedCount,
     iconType: (r["t.icon_type"] as HabitIconType) || DEFAULT_HABIT_FIELDS.iconType,
     iconValue: r["t.icon_value"] || DEFAULT_HABIT_FIELDS.iconValue,
     color: r["t.color"] || DEFAULT_HABIT_FIELDS.color,
@@ -187,6 +200,13 @@ export async function ensureDailyTasksSchema(): Promise<void> {
   await pool.query(`alter table profile_daily_tasks add column if not exists start_date date`);
   await pool.query(`alter table profile_daily_tasks add column if not exists reminder_time time`);
   await pool.query(`alter table profile_daily_tasks add column if not exists archived boolean not null default false`);
+  await pool.query(`alter table profile_daily_tasks add column if not exists daily_target integer not null default 1`);
+  await pool.query(`
+    do $$ begin
+      alter table profile_daily_tasks add constraint profile_daily_tasks_daily_target_check check (daily_target >= 1);
+    exception when duplicate_object then null;
+    end $$
+  `);
 
   // ── daily_task_log progress column ──
   await pool.query(`alter table daily_task_log add column if not exists progress_value numeric`);
@@ -197,9 +217,19 @@ export async function ensureDailyTasksSchema(): Promise<void> {
       log_date date not null,
       is_completed boolean not null default false,
       completed_at timestamptz,
+      completion_count integer not null default 0,
+      rewards_claimed boolean not null default false,
       primary key (task_id, log_date)
     )
   `);
+  await pool.query(`alter table daily_task_log add column if not exists completion_count integer not null default 0`);
+  await pool.query(`alter table daily_task_log add column if not exists rewards_claimed boolean not null default false`);
+  await pool.query(`
+    update daily_task_log l set completion_count = t.daily_target
+    from profile_daily_tasks t
+    where l.task_id = t.id and l.is_completed = true and l.completion_count = 0
+  `);
+  await pool.query(`update daily_task_log set rewards_claimed = true where is_completed = true and rewards_claimed = false`);
   await pool.query(`
     create table if not exists daily_habit_bonus_log (
       profile_id text not null references profiles(id) on delete cascade,
@@ -237,8 +267,9 @@ export async function listDailyTasks(profileId: string, taskDate: string): Promi
         t.goal_type as "t.goal_type", t.target_value as "t.target_value", t.unit as "t.unit",
         t.current_progress as "t.current_progress", t.description as "t.description", t.category as "t.category",
         t.start_date as "t.start_date", t.reminder_time as "t.reminder_time", t.archived as "t.archived",
-        t.sort_order as "t.sort_order",
-        l.log_date as "l.log_date", l.is_completed as "l.is_completed", l.completed_at as "l.completed_at"
+        t.sort_order as "t.sort_order", t.daily_target as "t.daily_target",
+        l.log_date as "l.log_date", l.is_completed as "l.is_completed", l.completed_at as "l.completed_at",
+        l.completion_count as "l.completion_count"
      from profile_daily_tasks t
      left join daily_task_log l
        on l.task_id = t.id and l.log_date = $2::date
@@ -267,8 +298,9 @@ export async function getAllHabits(profileId: string, taskDate: string): Promise
         t.goal_type as "t.goal_type", t.target_value as "t.target_value", t.unit as "t.unit",
         t.current_progress as "t.current_progress", t.description as "t.description", t.category as "t.category",
         t.start_date as "t.start_date", t.reminder_time as "t.reminder_time", t.archived as "t.archived",
-        t.sort_order as "t.sort_order",
-        l.log_date as "l.log_date", l.is_completed as "l.is_completed", l.completed_at as "l.completed_at"
+        t.sort_order as "t.sort_order", t.daily_target as "t.daily_target",
+        l.log_date as "l.log_date", l.is_completed as "l.is_completed", l.completed_at as "l.completed_at",
+        l.completion_count as "l.completion_count"
      from profile_daily_tasks t
      left join daily_task_log l
        on l.task_id = t.id and l.log_date = $2::date
@@ -314,6 +346,7 @@ export async function listDailyTaskHistory(
 
 export interface CreateHabitPayload {
   title: string;
+  dailyTarget?: number;
   iconType?: HabitIconType;
   iconValue?: string;
   color?: string;
@@ -355,6 +388,8 @@ export async function createDailyTask(
   const trimmed = p.title.trim();
   if (!trimmed) throw new ValidationError("Digite o nome do hábito.");
   if (trimmed.length > 40) throw new ValidationError("Nome muito longo (máx. 40 caracteres).");
+  const dailyTarget = p.dailyTarget ?? 1;
+  if (!Number.isInteger(dailyTarget) || dailyTarget < 1) throw new ValidationError("A meta diária deve ser um número inteiro maior que zero.");
   await ensureDailyTasksSchema();
 
   const iconType = p.iconType || "asset";
@@ -390,23 +425,24 @@ export async function createDailyTask(
       goal_type: string; target_value: string | number | null; unit: string | null;
       current_progress: string | number; description: string | null; category: string | null;
       start_date: string | null; reminder_time: string | null; archived: boolean; sort_order: string | number;
+      daily_target: string | number;
     }>(
       `insert into profile_daily_tasks (
         profile_id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order
+        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order, daily_target
       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13, $14, $15, false,
-        (select coalesce(max(sort_order), 0) + 1 from profile_daily_tasks where profile_id = $1))
+        (select coalesce(max(sort_order), 0) + 1 from profile_daily_tasks where profile_id = $1), $16)
       returning id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order`,
+        goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order, daily_target`,
       [profileId, trimmed, iconType, iconValue, color, frequencyType,
         frequencyDays ? `{${frequencyDays.join(",")}}` : null, frequencyTarget,
         goalType, targetValue, p.unit ?? null, p.description ?? null, p.category ?? null,
-        p.startDate ?? null, p.reminderTime ?? null],
+        p.startDate ?? null, p.reminderTime ?? null, dailyTarget],
     );
     await client.query("commit");
     const r = result.rows[0];
     return {
-      id: Number(r.id), title: r.title, taskDate, isCompleted: false,
+      id: Number(r.id), title: r.title, taskDate, isCompleted: false, dailyTarget: normalizeDailyTarget(Number(r.daily_target)), completedCount: 0,
       iconType: r.icon_type as HabitIconType, iconValue: r.icon_value, color: r.color,
       frequencyType: r.frequency_type as HabitFrequencyType,
       frequencyDays: r.frequency_days ? (Array.isArray(r.frequency_days) ? r.frequency_days : JSON.parse(r.frequency_days as string)) : null,
@@ -446,6 +482,7 @@ export async function updateHabitMetadata(
     category?: string | null;
     startDate?: string | null;
     reminderTime?: string | null;
+    dailyTarget?: number;
   },
 ): Promise<UserDailyTask> {
   parseProfileId(profileId);
@@ -473,6 +510,11 @@ export async function updateHabitMetadata(
     if (trimmed.length > 40) throw new ValidationError("Nome muito longo (máx. 40 caracteres).");
     sets.push(`title = $${idx++}`);
     values.push(trimmed);
+  }
+  if (updates.dailyTarget !== undefined) {
+    if (!Number.isInteger(updates.dailyTarget) || updates.dailyTarget < 1) throw new ValidationError("A meta diária deve ser um número inteiro maior que zero.");
+    sets.push(`daily_target = $${idx++}`);
+    values.push(updates.dailyTarget);
   }
   if (updates.iconType !== undefined) { sets.push(`icon_type = $${idx++}`); values.push(updates.iconType); }
   if (updates.iconValue !== undefined) { sets.push(`icon_value = $${idx++}`); values.push(updates.iconValue); }
@@ -514,11 +556,12 @@ export async function updateHabitMetadata(
     reminder_time: string | null;
     archived: boolean;
     sort_order: string | number;
+    daily_target: string | number;
   }>(
     `update profile_daily_tasks set ${sets.join(", ")}
      where id = $${whereIdx} and profile_id = $${whereIdx + 1} and is_active = true
      returning id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-       goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order`,
+       goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order, daily_target`,
     values,
   );
   if (!result.rows[0]) {
@@ -528,8 +571,8 @@ export async function updateHabitMetadata(
   const r = result.rows[0];
   // Preserve today's completion status
   const today = todayIso();
-  const logResult = await pool.query<{ is_completed: boolean; completed_at: Date | string | null }>(
-    `select is_completed, completed_at from daily_task_log where task_id = $1 and log_date = $2::date`,
+  const logResult = await pool.query<{ is_completed: boolean; completed_at: Date | string | null; completion_count: string | number | null }>(
+    `select is_completed, completed_at, completion_count from daily_task_log where task_id = $1 and log_date = $2::date`,
     [taskId, today],
   );
 
@@ -537,7 +580,9 @@ export async function updateHabitMetadata(
     id: Number(r.id),
     title: r.title,
     taskDate: today,
-    isCompleted: Boolean(logResult.rows[0]?.is_completed),
+    dailyTarget: normalizeDailyTarget(Number(r.daily_target)),
+    completedCount: clampDailyProgress(Number(logResult.rows[0]?.completion_count ?? (logResult.rows[0]?.is_completed ? r.daily_target : 0)), normalizeDailyTarget(Number(r.daily_target))),
+    isCompleted: clampDailyProgress(Number(logResult.rows[0]?.completion_count ?? (logResult.rows[0]?.is_completed ? r.daily_target : 0)), normalizeDailyTarget(Number(r.daily_target))) >= normalizeDailyTarget(Number(r.daily_target)),
     completedAt: logResult.rows[0]?.completed_at ? new Date(logResult.rows[0].completed_at as string).toISOString() : undefined,
     iconType: r.icon_type as HabitIconType,
     iconValue: r.icon_value,
@@ -575,7 +620,7 @@ export async function logHabitProgress(
   try {
     await client.query("begin");
 
-    const habit = await client.query<{
+  const habit = await client.query<{
       goal_type: string;
       target_value: string | number | null;
       current_progress: string | number;
@@ -593,10 +638,11 @@ export async function logHabitProgress(
       reminder_time: string | null;
       archived: boolean;
       sort_order: string | number;
+      daily_target: string | number;
     }>(
       `select goal_type, target_value, current_progress, title, icon_type, icon_value, color,
         frequency_type, frequency_days, frequency_target, unit, description, category,
-        start_date, reminder_time, archived, sort_order
+        start_date, reminder_time, archived, sort_order, daily_target
        from profile_daily_tasks where id = $1 and profile_id = $2 and is_active = true`,
       [taskId, profileId],
     );
@@ -654,6 +700,8 @@ export async function logHabitProgress(
       title: h.title,
       taskDate: date,
       isCompleted: Boolean(logResult.rows[0]?.is_completed),
+      dailyTarget: normalizeDailyTarget(Number(h.daily_target)),
+      completedCount: Boolean(logResult.rows[0]?.is_completed) ? normalizeDailyTarget(Number(h.daily_target)) : 0,
       completedAt: logResult.rows[0]?.completed_at ? new Date(logResult.rows[0].completed_at as string).toISOString() : undefined,
       iconType: h.icon_type as HabitIconType,
       iconValue: h.icon_value,
@@ -724,12 +772,12 @@ export async function deactivateDailyTask(profileId: string, taskId: number): Pr
  * (once) and advances the XP-EARNED and TASKS-COMPLETED missions. Completing
  * all tasks for the day grants a small bonus.
  */
-export async function toggleDailyTask(
+async function updateDailyTaskProgress(
   profileId: string,
   taskId: number,
-  completed: boolean,
+  requestedCount: number | null,
   taskDate?: string,
-): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number }> {
+): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; completionTriggered: boolean }> {
   parseProfileId(profileId);
   const date = taskDate ?? todayIso();
   await ensureDailyTasksSchema();
@@ -741,7 +789,7 @@ export async function toggleDailyTask(
 
     const t = await client.query<TemplateRow>(
       `select id, title, icon_type, icon_value, color, frequency_type, frequency_days, frequency_target,
-              goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order
+              goal_type, target_value, unit, current_progress, description, category, start_date, reminder_time, archived, sort_order, daily_target
          from profile_daily_tasks where id = $1 and profile_id = $2 for update`,
       [taskId, profileId],
     );
@@ -749,36 +797,45 @@ export async function toggleDailyTask(
     const taskDays = t.rows[0].frequency_days
       ? (Array.isArray(t.rows[0].frequency_days) ? t.rows[0].frequency_days : JSON.parse(String(t.rows[0].frequency_days))) as number[]
       : null;
-    if (completed && !isHabitScheduledOnDate(t.rows[0].frequency_type, taskDays, Number(t.rows[0].frequency_target) || null, date)) {
+    if ((requestedCount === null || requestedCount > 0) && !isHabitScheduledOnDate(t.rows[0].frequency_type, taskDays, Number(t.rows[0].frequency_target) || null, date)) {
       throw new ValidationError("Este hábito não está programado para hoje.");
     }
 
     const existing = await client.query<LogRow>(
-      `select task_id, log_date, is_completed, completed_at
+      `select task_id, log_date, is_completed, completed_at, completion_count, rewards_claimed
        from daily_task_log where task_id = $1 and log_date = $2::date for update`,
       [taskId, date],
     );
-    const alreadyDone = Boolean(existing.rows[0]?.is_completed);
+    const dailyTarget = normalizeDailyTarget(Number(t.rows[0].daily_target ?? 1));
+    const previousCount = clampDailyProgress(
+      Number(existing.rows[0]?.completion_count ?? (existing.rows[0]?.is_completed ? dailyTarget : 0)),
+      dailyTarget,
+    );
+    const completedCount = requestedCount === null ? dailyTarget : clampDailyProgress(requestedCount, dailyTarget);
+    const wasCompleted = previousCount >= dailyTarget;
+    const isCompleted = completedCount >= dailyTarget;
+    const alreadyRewarded = Boolean(existing.rows[0]?.rewards_claimed ?? existing.rows[0]?.is_completed);
+    const completionTriggered = !wasCompleted && isCompleted && !alreadyRewarded;
+    const rewardsClaimed = alreadyRewarded || completionTriggered;
 
-    if (completed && !alreadyDone) {
-      await client.query(
-        `insert into daily_task_log (task_id, log_date, is_completed, completed_at)
-         values ($1, $2::date, true, now())
-         on conflict (task_id, log_date) do update set is_completed = true, completed_at = now()`,
-        [taskId, date],
-      );
-    } else if (!completed && alreadyDone) {
-      await client.query(
-        `update daily_task_log set is_completed = false, completed_at = null
-         where task_id = $1 and log_date = $2::date`,
-        [taskId, date],
-      );
-    }
+    await client.query(
+      `insert into daily_task_log (task_id, log_date, completion_count, is_completed, completed_at, rewards_claimed)
+       values ($1, $2::date, $3, $4, case when $4 then now() else null end, $5)
+       on conflict (task_id, log_date) do update set
+         completion_count = excluded.completion_count,
+         is_completed = excluded.is_completed,
+         completed_at = case
+           when excluded.is_completed then coalesce(daily_task_log.completed_at, now())
+           else null
+         end,
+         rewards_claimed = daily_task_log.rewards_claimed or excluded.rewards_claimed`,
+      [taskId, date, completedCount, isCompleted, rewardsClaimed],
+    );
 
     let xpAwarded = 0;
     let coinsAwarded = 0;
 
-    if (completed && !alreadyDone) {
+    if (completionTriggered) {
       const rewardedToday = await client.query<{ n: string | number }>(
         `select count(*)::int as n from xp_ledger
           where profile_id = $1 and source = 'daily_task' and source_id like '%:' || $2::text`,
@@ -807,8 +864,11 @@ export async function toggleDailyTask(
         frequency_days: unknown;
         frequency_target: string | number | null;
         is_completed: boolean | null;
+        completion_count: string | number | null;
+        daily_target: string | number | null;
       }>(
-        `select t.id, t.frequency_type, t.frequency_days, t.frequency_target, l.is_completed
+        `select t.id, t.frequency_type, t.frequency_days, t.frequency_target, t.daily_target,
+                l.is_completed, l.completion_count
            from profile_daily_tasks t
            left join daily_task_log l on l.task_id = t.id and l.log_date = $2::date
           where t.profile_id = $1 and t.is_active = true and t.archived = false`,
@@ -820,7 +880,10 @@ export async function toggleDailyTask(
           : null;
         return isHabitScheduledOnDate(row.frequency_type, days, Number(row.frequency_target) || null, date);
       });
-      if (dueToday.length > 0 && dueToday.every((row) => row.is_completed)) {
+      if (dueToday.length > 0 && dueToday.every((row) => clampDailyProgress(
+        Number(row.completion_count ?? (row.is_completed ? Number(row.daily_target ?? 1) : 0)),
+        normalizeDailyTarget(Number(row.daily_target ?? 1)),
+      ) >= normalizeDailyTarget(Number(row.daily_target ?? 1)))) {
         const bonus = await client.query(
           `insert into daily_habit_bonus_log (profile_id, bonus_date, coins_awarded)
            values ($1, $2::date, $3) on conflict (profile_id, bonus_date) do nothing returning profile_id`,
@@ -840,9 +903,11 @@ export async function toggleDailyTask(
       id: taskId,
       title: t.rows[0].title,
       taskDate: date,
-      isCompleted: completed,
-      completedAt: completed
-        ? alreadyDone && existing.rows[0]?.completed_at
+      isCompleted,
+      dailyTarget,
+      completedCount,
+      completedAt: isCompleted
+        ? wasCompleted && existing.rows[0]?.completed_at
           ? new Date(existing.rows[0].completed_at).toISOString()
           : new Date().toISOString()
         : undefined,
@@ -863,13 +928,34 @@ export async function toggleDailyTask(
       archived: Boolean(t.rows[0].archived),
       sortOrder: Number(t.rows[0].sort_order ?? 0),
     };
-    return { task, xpAwarded, coinsAwarded };
+    return { task, xpAwarded, coinsAwarded, completionTriggered };
   } catch (error) {
     await client.query("rollback").catch(() => {});
     throw error;
   } finally {
     client.release();
   }
+}
+
+/** Set today's count. Values beyond the target and below zero are clamped server-side. */
+export async function setDailyTaskProgress(
+  profileId: string,
+  taskId: number,
+  completedCount: number,
+  taskDate?: string,
+): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; completionTriggered: boolean }> {
+  if (!Number.isInteger(completedCount)) throw new ValidationError("A contagem diária deve ser um número inteiro.");
+  return updateDailyTaskProgress(profileId, taskId, completedCount, taskDate);
+}
+
+/** Compatibility API for older checklist widgets. */
+export async function toggleDailyTask(
+  profileId: string,
+  taskId: number,
+  completed: boolean,
+  taskDate?: string,
+): Promise<{ task: UserDailyTask; xpAwarded: number; coinsAwarded: number; completionTriggered: boolean }> {
+  return updateDailyTaskProgress(profileId, taskId, completed ? null : 0, taskDate);
 }
 
 export { todayIso } from "./dates";

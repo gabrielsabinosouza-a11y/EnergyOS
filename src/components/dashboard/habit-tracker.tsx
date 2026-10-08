@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CalendarCheck, Loader2, Plus } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
-import { toggleDailyTaskCompletion } from "@/lib/daily-task-actions";
 import { todayIso } from "@/lib/db/dates";
 import { HabitCard, type HabitTab } from "./habit-card";
 import { HabitModal, type HabitPayload } from "./habit-modal";
@@ -98,12 +97,15 @@ export function HabitTracker({ year }: { year: number }) {
     }
   }
 
-  const toggle = useCallback(async (task: UserDailyTask, completed: boolean) => {
+  const setProgress = useCallback(async (task: UserDailyTask, completedCount: number) => {
     if (busyTaskId !== null) return;
     setBusyTaskId(task.id);
+    const dailyTarget = Math.max(1, task.dailyTarget ?? 1);
+    const nextCount = Math.max(0, Math.min(dailyTarget, completedCount));
+    const completed = nextCount >= dailyTarget;
     setState((prev) => ({
       ...prev,
-      tasks: prev.tasks.map((item) => item.id === task.id ? { ...item, isCompleted: completed } : item),
+      tasks: prev.tasks.map((item) => item.id === task.id ? { ...item, completedCount: nextCount, isCompleted: completed } : item),
       logsByTask: {
         ...prev.logsByTask,
         [task.id]: { ...(prev.logsByTask[task.id] ?? {}), [today]: completed },
@@ -111,10 +113,11 @@ export function HabitTracker({ year }: { year: number }) {
       error: "",
     }));
     try {
-      const result = await toggleDailyTaskCompletion(task.id, completed);
+      const result = await api.setDailyTaskProgress(task.id, nextCount);
       setState((prev) => ({
         ...prev,
         tasks: prev.tasks.map((item) => item.id === task.id ? result.task : item),
+        logsByTask: { ...prev.logsByTask, [task.id]: { ...(prev.logsByTask[task.id] ?? {}), [today]: result.task.isCompleted } },
       }));
     } catch (err) {
       setState((prev) => ({
@@ -190,7 +193,7 @@ export function HabitTracker({ year }: { year: number }) {
               year={year}
               tab={tab}
               busyTaskId={busyTaskId}
-              onToggle={(selected, completed) => void toggle(selected, completed)}
+              onProgress={(selected, count) => void setProgress(selected, count)}
               onEdit={(selected) => { setModalHabit(selected); setShowHabitModal(true); }}
             />
           ))}

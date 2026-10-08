@@ -729,6 +729,10 @@ export interface UserDailyTask {
   taskDate: string;
   isCompleted: boolean;
   completedAt?: string;
+  /** Number of times this habit should be completed each day. */
+  dailyTarget: number;
+  /** Count logged for the taskDate. */
+  completedCount: number;
 
   // ── Customizable habit fields ──
   iconType: HabitIconType;

@@ -11,14 +11,14 @@ export async function GET(request: NextRequest) {
     await ensureUserBootstrap(profileId);
     await ensureWeeklyPlanSeriesSchema();
     const url = new URL(request.url);
-    const weekStart = url.searchParams.get("weekStart");
-    // If weekStart is provided, return unified items (legacy + series occurrences)
+    const weekStart = url.searchParams.get("weekStart") ?? undefined;
+
     if (weekStart) {
       return jsonOk(await listWeeklyPlanOccurrences(profileId, weekStart));
     }
-    // Fallback: legacy list for backward compatibility
+
     return jsonOk(await listWeeklyPlans(profileId, weekStart));
-  });
+    });
 }
 
 export async function POST(request: NextRequest) {
