@@ -3,6 +3,7 @@ import { ENERGYOS_LAUNCH_MONTH } from "@/types";
 import type { MonthlyRecap, XpSourceBreakdown } from "@/types";
 import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
+import type { TargetAndTransition } from "framer-motion"
 import { NEW_TIER_ORDER } from "@/lib/league-new-meta";
 import { addCoins } from "./settings";
 import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
@@ -142,7 +143,7 @@ async function computeLongestStreakForMonth(
   let runCurrentStart: string | undefined;
   let run = 0;
   let runTouchesMonth = false;
-  
+
   const cursor = new Date(windowStart);
   for (
     let cursorDate = new Date(windowStart);
@@ -283,19 +284,19 @@ async function buildRecapSummary(
   const bestStreak = streakResult.best;
 
   const today = todayIso();
-  const streakIsAlive = isCurrentMonth || 
+  const streakIsAlive = isCurrentMonth ||
     (monthStart <= today && today < monthEnd && bestStreak > 0);
 
   const endTier = leagueEnd?.tier ?? undefined;
   const startTier = leagueStart?.tier ?? undefined;
-  const normalizedEndTier = endTier && NEW_TIER_ORDER.includes(endTier.toUpperCase() as typeof NEW_TIER_ORDER[number])
-    ? endTier.toUpperCase()
-    : undefined;
-  const normalizedStartTier = startTier && NEW_TIER_ORDER.includes(startTier.toUpperCase() as typeof NEW_TIER_ORDER[number])
-    ? startTier.toUpperCase()
-    : undefined;
+  const normalizedEndTier = normalizeTier(leagueEnd?.tier);
+  const normalizedStartTier = normalizeTier(leagueStart?.tier);
 
-  const promoted = normalizedStartTier && normalizedEndTier &&
+
+
+  const promoted =
+    normalizedStartTier !== undefined &&
+    normalizedEndTier !== undefined &&
     NEW_TIER_ORDER.indexOf(normalizedEndTier) > NEW_TIER_ORDER.indexOf(normalizedStartTier);
 
   return {
@@ -325,7 +326,7 @@ async function upsertRecap(
       productivity_tag, total_xp, xp_sources, generation_number
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-    ) ON CONFLICT (profile_id, recap_month) 
+    ) ON CONFLICT (profile_id, recap_month)
        DO UPDATE SET
          total_focus_minutes = excluded.total_focus_minutes,
          longest_streak = excluded.longest_streak,
@@ -364,16 +365,16 @@ async function upsertRecap(
     'SELECT generation_number FROM monthly_recap_history WHERE recap_id = $1 ORDER BY generation_number DESC LIMIT 1',
     [result.rows[0].id],
   );
-  
+
   if (prevRow.rows.length > 0) {
     // There's a previous generation - save current to history before update
     // Actually, we need to save the OLD snapshot before overwriting
     await pool.query(
-      `INSERT INTO monthly_recap_history 
+      `INSERT INTO monthly_recap_history
        (recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
         streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
         league_promoted, productivity_tag, total_xp, xp_sources, generation_number, generated_at)
-       SELECT 
+       SELECT
          $1, r.profile_id, r.recap_month, r.total_focus_minutes, r.longest_streak,
          r.streak_start_date, r.streak_end_date, r.streak_is_alive, r.league_at_start, r.league_tier,
          r.league_promoted, r.productivity_tag, r.total_xp, r.xp_sources, r.generation_number, r.generated_at
@@ -388,7 +389,7 @@ async function upsertRecap(
 
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   parseProfileId(profileId);
-  
+
   const result = await pool.query<RecapRow>(
     `SELECT r.id, r.profile_id, r.recap_month, r.total_focus_minutes, r.longest_streak,
             r.streak_start_date, r.streak_end_date, r.streak_is_alive, r.league_tier, r.league_at_start,
@@ -407,10 +408,10 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   const output: MonthlyRecap[] = [];
 
   for (const row of result.rows) {
-    const monthStart = typeof row.recap_month === "string" 
-      ? row.recap_month.slice(0, 10) 
+    const monthStart = typeof row.recap_month === "string"
+      ? row.recap_month.slice(0, 10)
       : row.recap_month.toISOString().slice(0, 10);
-    
+
     if (monthStart === currentMonth) {
       const monthEnd = getMonthEnd(monthStart);
       const summary = await buildRecapSummary(profileId, monthStart, monthEnd, true);

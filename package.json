@@ -19,7 +19,7 @@
     "db:restore-messages": "node scripts/restore-messages.mjs",
     "db:check": "node scripts/verify-schema.mjs",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/db/dates.test.ts src/lib/db/focus-rewards.test.ts src/lib/activity.test.ts src/lib/consistency-calendar.test.ts src/lib/habit-schedule.test.ts src/lib/habit-icons.test.ts src/lib/daily-habit-progress.test.ts src/lib/db/xp-ledger.test.ts src/lib/api-client.test.ts src/components/dashboard/plan-name-input.test.ts",
+    "test": "node --import tsx --test src/lib/db/dates.test.ts src/lib/db/focus-rewards.test.ts src/lib/activity.test.ts src/lib/consistency-calendar.test.ts src/lib/habit-schedule.test.ts src/lib/habit-icons.test.ts src/lib/daily-habit-progress.test.ts src/lib/db/xp-ledger.test.ts src/lib/api-client.test.ts src/components/dashboard/plan-name-input.test.ts src/lib/db/recap.test.ts",
     "test:e2e": "node --import tsx scripts/e2e-daily-tasks.mjs"
   },
   "dependencies": {

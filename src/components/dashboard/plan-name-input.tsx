@@ -70,7 +70,6 @@ export function PlanNameInput({
   const liveId = `${inputId}-live`;
 
   const [isComposing, setIsComposing] = useState(false);
-  const [showClear, setShowClear] = useState(false);
 
   // Animation pause: tab hidden
   const [tabHidden, setTabHidden] = useState(false);
@@ -84,10 +83,8 @@ export function PlanNameInput({
   const isOverLimit = counterState === "error";
   const remaining = getRemaining(value.length);
 
-  // Show the clear button when there is text and not composing
-  useEffect(() => {
-    setShowClear(value.length > 0 && !isComposing);
-  }, [value, isComposing]);
+  // Show the clear button when there is text and not composing (derived directly)
+  const showClear = value.length > 0 && !isComposing;
 
   // ── Tab visibility listener (pauses LED rotation) ─────────────────────
   useEffect(() => {
@@ -241,14 +238,16 @@ export function PlanNameInput({
 
         {/* Clear button (32×32, fades in when text exists) */}
         {reduced ? (
-          <button
-            type="button"
-            aria-label="Limpar"
-            onClick={handleClear}
-            className="plan-input-clear"
-          >
-            <X size={14} />
-          </button>
+          showClear ? (
+            <button
+              type="button"
+              aria-label="Limpar"
+              onClick={handleClear}
+              className="plan-input-clear"
+            >
+              <X size={14} />
+            </button>
+          ) : null
         ) : (
           <AnimatePresence>
             {showClear && (

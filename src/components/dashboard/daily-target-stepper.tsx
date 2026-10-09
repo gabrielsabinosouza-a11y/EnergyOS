@@ -1,7 +1,7 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition } from "framer-motion";
 import {
   useRef,
   useState,
@@ -65,10 +65,10 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
   const cardRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Latest committed value, kept fresh every render so fast 60ms repeats never
-  // read a stale closure.
+  // Latest committed value, kept fresh in an effect (never during render) so
+  // the 60ms hold-repeat ticks always read the current value.
   const valueRef = useRef(value);
-  valueRef.current = value;
+  useEffect(() => { valueRef.current = value; }, [value]);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -398,7 +398,7 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
 
 // ── Odometer / slot-machine roll ─────────────────────────────────────────────
 type RollDir = "up" | "down" | "same";
-const rollVariant = (dir: RollDir): { initial: Record<string, unknown>; animate: Record<string, unknown>; exit: Record<string, unknown> } => {
+const rollVariant = (dir: RollDir): { initial: TargetAndTransition; animate: TargetAndTransition; exit: TargetAndTransition } => {
   if (dir === "up") return { initial: { y: 20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: -20, opacity: 0 } };
   if (dir === "down") return { initial: { y: -20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: 20, opacity: 0 } };
   return { initial: { opacity: 1, y: 0 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 } };
@@ -406,16 +406,17 @@ const rollVariant = (dir: RollDir): { initial: Record<string, unknown>; animate:
 
 function OdometerNumber({ value, bumping }: { value: number; bumping: boolean }) {
   const reduced = useReducedMotion();
-  const [shown, setShown] = useState(value);
-  const [outgoing, setOutgoing] = useState<number | null>(null);
-  const [exitDir, setExitDir] = useState<RollDir>("same");
+  // `transition` holds { from, to } during a roll; both spans are driven from it
+  // (direction is derived from from/to) so no setState-in-effect is needed.
+  const [transition, setTransition] = useState<{ from: number; to: number } | null>(null);
+  const outgoing = transition ? transition.from : null;
+  const shown = transition ? transition.to : value;
 
   useEffect(() => {
     if (value === shown) return;
-    setExitDir(value > shown ? "up" : "down");
-    setOutgoing(shown);
-    setShown(value);
-    const t = setTimeout(() => setOutgoing(null), 300);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTransition({ from: shown, to: value });
+    const t = setTimeout(() => setTransition(null), 320);
     return () => clearTimeout(t);
   }, [value, shown]);
 
@@ -423,7 +424,10 @@ function OdometerNumber({ value, bumping }: { value: number; bumping: boolean })
     return <span className="habit-dt-number-text">{value}</span>;
   }
 
-  const inDir = outgoing != null ? exitDir : "same";
+  // Direction is read from the transition pair, so the outgoing span's exit
+  // variant is always correct (never stale).
+  const dir: RollDir = outgoing != null && shown > outgoing ? "up"
+    : outgoing != null && shown < outgoing ? "down" : "same";
 
   return (
     <motion.span
@@ -437,7 +441,7 @@ function OdometerNumber({ value, bumping }: { value: number; bumping: boolean })
             key={`out-${outgoing}`}
             initial={{ opacity: 1, y: 0 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={rollVariant(exitDir).exit}
+            exit={rollVariant(dir).exit}
             transition={{ duration: 0.26, ease: EASE_OUT, opacity: { duration: 0.22 } }}
           >
             {outgoing}
@@ -445,8 +449,8 @@ function OdometerNumber({ value, bumping }: { value: number; bumping: boolean })
         )}
         <motion.span
           key={`in-${shown}`}
-          initial={rollVariant(inDir).initial}
-          animate={rollVariant(inDir).animate}
+          initial={rollVariant(dir).initial}
+          animate={rollVariant(dir).animate}
           transition={{ duration: 0.26, ease: EASE_OUT, opacity: { duration: 0.22 } }}
         >
           {shown}

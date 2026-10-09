@@ -248,8 +248,7 @@ export default function PerfilPage() {
       api.getProfile().catch((e) => { console.error("[perfil] falha ao carregar perfil:", e); return null; }),
       api.getFocusData().catch((e) => { console.error("[perfil] falha ao carregar foco:", e); return null; }),
       api.getSettings().catch((e) => { console.error("[perfil] falha ao carregar configurações:", e); return null; }),
-      user.email === "pciskolargx@gmail.com" ? api.getEnvStatus().catch((e) => { console.error("[perfil] falha ao carregar env-status:", e); return null; }) : Promise.resolve(null),
-    ]).then(([dash, ach, recapResult, profileResult, focusResult, settingsResult, env]) => {
+    ]).then(([dash, ach, recapResult, profileResult, focusResult, settingsResult]) => {
       if (!active) return;
       if (dash) setDashboard(dash);
       if (ach) setAchievements(ach.achievements);
@@ -278,7 +277,17 @@ export default function PerfilPage() {
       if (profileResult?.user?.bannerImageUrl) setBannerImageUrl(profileResult.user.bannerImageUrl);
       if (profileResult?.user?.hasCustomBanner) setHasCustomBanner(profileResult.user.hasCustomBanner);
       if (settingsResult) setSettingsCoins(settingsResult.coins);
-      if (env) setEnvStatus(env);
+
+      // Fetch env-status only for admin users (role-based check, not hardcoded email)
+      const dbUser = profileResult?.user;
+      if (dbUser?.role === "admin") {
+        api
+          .getEnvStatus()
+          .then((env) => { if (active) setEnvStatus(env); })
+          .catch((e) => { console.error("[perfil] falha ao carregar env-status:", e); });
+      } else {
+        setEnvStatus(null);
+      }
     });
     return () => { active = false; };
   }, [user?.uid]);

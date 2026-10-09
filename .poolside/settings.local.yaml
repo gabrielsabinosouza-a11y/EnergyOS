@@ -30,3 +30,6 @@ tools:
             - npx tsc *
             - npx eslint *
             - rm *
+            - git status *
+            - git diff *
+            - git diff HEAD *
