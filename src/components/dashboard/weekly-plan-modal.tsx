@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, Repeat, Clock, Hash } from "lucide-react";
+import { Check, Loader2, Repeat, Hash, ChevronDown } from "lucide-react";
 import type { WeeklyPlanSeries, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { Modal } from "@/components/modal";
 import { ColorPalette, HABIT_COLORS } from "./color-palette";
-import { SMART_PLANNER_CATEGORIES, type SmartCategory } from "@/lib/categories";
-import { SmartCategoryChips } from "@/components/category-chips";
 import { todayIso } from "@/lib/db/dates";
 
 const DAY_NAMES_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -45,41 +43,10 @@ export interface CreateSeriesPayload {
 const labelClass = "mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]";
 const inputClass = "auth-input min-h-10 w-full text-sm";
 
-/** Map smart category names to DB category IDs by matching names. */
-function findCategoryIdByName(categories: Category[], smartCat: SmartCategory): number {
-  // Try exact match first, then case-insensitive
-  const lower = smartCat.name.toLowerCase();
-  const exact = categories.find((c) => c.name.toLowerCase() === lower);
-  if (exact) return exact.id;
-  // Fallback: find by partial match
-  const partial = categories.find((c) => c.name.toLowerCase().includes(lower) || lower.includes(c.name.toLowerCase()));
-  if (partial) return partial.id;
-  // Last resort: first category
-  return categories[0]?.id ?? 0;
-}
-
 export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSave }: WeeklyPlanModalProps) {
   const isEdit = Boolean(series);
 
-  // Map smart categories to DB category IDs
-  const smartCategoryMap = useMemo(() => {
-    const map = new Map<number, number>(); // smartId -> dbCategoryId
-    SMART_PLANNER_CATEGORIES.forEach((sc) => {
-      map.set(sc.id, findCategoryIdByName(categories, sc));
-    });
-    return map;
-  }, [categories]);
-
-  // Find which smart category matches the current DB category
-  const findSmartCategoryId = (dbCategoryId: number): number => {
-    const dbCat = categories.find((c) => c.id === dbCategoryId);
-    if (!dbCat) return 1;
-    const smartCat = SMART_PLANNER_CATEGORIES.find((sc) => sc.name.toLowerCase() === dbCat.name.toLowerCase());
-    return smartCat?.id ?? 9; // Default to "Outros"
-  };
-
   const [title, setTitle] = useState(series?.title ?? "");
-  const [smartCategoryId, setSmartCategoryId] = useState(series ? findSmartCategoryId(series.categoryId) : 1);
   const [color, setColor] = useState(series?.color ?? HABIT_COLORS[0]);
   const [note, setNote] = useState(series?.note ?? "");
   const [repeatType, setRepeatType] = useState<PlanRepeatType>(series?.repeatType ?? "once");
@@ -135,10 +102,9 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
 
     setSaving(true);
     try {
-      const dbCategoryId = smartCategoryMap.get(smartCategoryId) ?? categories[0]?.id ?? 0;
       await onSave({
         title: trimmed,
-        categoryId: dbCategoryId,
+        categoryId: series?.categoryId ?? categories[0]?.id ?? 0,
         iconType: null,
         iconValue: null,
         color,
@@ -180,7 +146,7 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
         </>
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-6 pb-3">
         {/* Section 1: Title */}
         <div>
           <label className={labelClass}>Nome da atividade</label>
@@ -196,14 +162,9 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
           <span className="mt-1 block text-[10px] text-[var(--text-faint)]">{title.length}/60</span>
         </div>
 
-        {/* Section 2: Smart Categories */}
         <div>
-          <span className={labelClass}>Categoria</span>
-          <SmartCategoryChips
-            categories={SMART_PLANNER_CATEGORIES}
-            selectedId={smartCategoryId}
-            onSelect={setSmartCategoryId}
-          />
+          <span className={labelClass}>Cor</span>
+          <ColorPalette selectedColor={color} onSelect={setColor} />
         </div>
 
         {/* Section 3: Planning Type */}
@@ -212,10 +173,10 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
           <div className="grid grid-cols-2 rounded-xl border border-[var(--border-subtle)] p-1">
             {(
               [
-                { value: "once" as PlanRepeatType, emoji: "⏱️", text: "Uma vez" },
-                { value: "weekly" as PlanRepeatType, emoji: "🔄", text: "Recorrente" },
+                { value: "once" as PlanRepeatType, text: "Uma vez" },
+                { value: "weekly" as PlanRepeatType, text: "Recorrente" },
               ]
-            ).map(({ value, emoji, text }) => (
+            ).map(({ value, text }) => (
               <button
                 key={value}
                 type="button"
@@ -227,7 +188,6 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
                     : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-surface-hover)]"
                 }`}
               >
-                <span>{emoji}</span>
                 {text}
               </button>
             ))}
@@ -322,7 +282,7 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
         >
           <Hash size={14} />
           {showAdvanced ? "Ocultar" : "Opções avançadas"}
-          <span className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}>▼</span>
+          <ChevronDown size={14} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
         </button>
 
         <AnimatePresence>
@@ -374,21 +334,12 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
               <div className="grid grid-cols-2 gap-3">
                 <label>
                   <span className={labelClass}>Horário</span>
-                  <div className="relative">
-                    <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
-                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`${inputClass} pl-9`} />
-                  </div>
+                  <input lang="pt-BR" type="time" step={60} value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputClass} />
                 </label>
                 <label>
                   <span className={labelClass}>Duração (min)</span>
                   <input type="number" min={1} max={480} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} className={inputClass} placeholder="25" />
                 </label>
-              </div>
-
-              {/* Color */}
-              <div>
-                <span className={labelClass}>Cor</span>
-                <ColorPalette selectedColor={color} onSelect={setColor} />
               </div>
 
               {/* Note */}

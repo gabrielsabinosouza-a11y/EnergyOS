@@ -49,6 +49,12 @@ export function getGrowthStage(durationMinutes: number): GardenGrowthStage {
   return "sprout";
 }
 
+/** Zero seconds is a give-up, not a completed one-minute focus session. */
+export function finalizedFocusMinutes(focusedSeconds: number): number {
+  if (focusedSeconds <= 0) return 0;
+  return Math.max(1, Math.round(focusedSeconds / 60));
+}
+
 export type GardenGrowthStage = "sprout" | "young" | "mature";
 export type GardenStatus = "growing" | "alive" | "withered";
 
@@ -325,7 +331,7 @@ export async function endFocusSession(
   if (focusedSeconds > FOCUS_DURATION_MAX_MINUTES * 60) {
     console.warn(`[focus] clamped impossible reported duration for session ${sessionId} (${profileId})`, focusedSeconds);
   }
-  const durationMinutes = Math.max(1, Math.min(Math.round(focusedSeconds / 60), targetCap));
+  const durationMinutes = Math.min(finalizedFocusMinutes(focusedSeconds), targetCap);
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   // Coins are a pure function of focused time and are NEVER scaled by the 2x XP
   // boost. The XP potion multiplies only XP (via creditXP → calculateXPWithBoost);
@@ -358,6 +364,21 @@ export async function endFocusSession(
       session: mapFocus(row),
       xpAwarded: Number(row.xp_earned) || 0,
       coinsAwarded: focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
+      questsUpdated: 0,
+      streak: null,
+      unlockedGroupAchievements: [],
+    };
+  }
+
+  // Record a zero-duration give-up idempotently, but do not award XP, coins,
+  // quests, streak progress, group credit, or a completed focus event.
+  if (durationMinutes === 0) {
+    await finalizeGardenEntries(profileId, sessionId, false, 0);
+    if (session.rows[0].room_id) await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
+    return {
+      session: mapFocus(updated.rows[0]),
+      xpAwarded: 0,
+      coinsAwarded: 0,
       questsUpdated: 0,
       streak: null,
       unlockedGroupAchievements: [],

@@ -2,18 +2,8 @@
 
 /** Preset colors for habit icons, checkboxes, and progress indicators. */
 export const HABIT_COLORS = [
-  "#71d4ff", // cyan (default)
-  "#b69cff", // purple
-  "#a3e635", // lime
-  "#ffb86b", // orange
-  "#6bffb8", // mint
-  "#ff6b8a", // pink
-  "#ffd166", // yellow
-  "#6bcaff", // blue
-  "#ff9e6b", // coral
-  "#9b6bff", // violet
-  "#6bffa8", // green
-  "#ff6b6b", // red
+  "#71d4ff", "#b69cff", "#a3e635", "#ffb86b",
+  "#6bffb8", "#ff6b8a", "#ffd166", "#ff6b6b",
 ];
 
 interface ColorPaletteProps {

@@ -130,10 +130,10 @@ export function Modal({
           <X size={16} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-6 [scrollbar-width:thin]">{children}</div>
       {footer !== undefined ? (
         <div
-          className={`flex shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] px-5 py-4 sm:px-6 ${footerClassName}`}
+          className={`sticky bottom-0 flex shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--bg-primary)_88%,transparent)] px-5 py-4 backdrop-blur-xl sm:px-6 ${footerClassName}`}
         >
           {footer}
         </div>

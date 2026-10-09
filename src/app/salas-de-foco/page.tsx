@@ -266,6 +266,7 @@ export default function FocusRoomsPage() {
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [roomConnectionLost, setRoomConnectionLost] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -376,6 +377,7 @@ export default function FocusRoomsPage() {
     if (!currentRoom) return;
     try {
       const data = await api.getFocusRoomById(currentRoom.id);
+      setRoomConnectionLost(false);
       const next = data.room;
       if (!next) {
         pendingDurationRef.current = null;
@@ -404,7 +406,8 @@ export default function FocusRoomsPage() {
         setSuccessMessage("Todos confirmaram — nova sessão iniciada. Bora focar!");
       }
     } catch {
-      // transient polling failure — ignore
+      // Retry on the normal polling cycle and make the interruption visible.
+      setRoomConnectionLost(true);
     }
   }, [currentRoom, fetchRooms]);
 
@@ -622,10 +625,15 @@ export default function FocusRoomsPage() {
           startCompletionTitleFlash();
         }
         // Mark room completed (idempotent — first finisher wins)
-        await api.completeFocusRoom(room.id).catch(() => {});
+        await api.completeFocusRoom(room.id).catch((err: unknown) => {
+          console.error("[salas] não foi possível sincronizar a conclusão da sala", err);
+          setRoomConnectionLost(true);
+        });
       }
-    } catch {
-      // ignore — next poll may retry. The session is only marked finalized
+    } catch (err) {
+      console.error("[salas] não foi possível finalizar a sessão", err);
+      setRoomConnectionLost(true);
+      // The session is only marked finalized
       // when endFocus itself succeeded: marking it on a transient error would
       // silently drop the streak, missions and coins for this session forever.
     } finally {
@@ -1246,7 +1254,7 @@ export default function FocusRoomsPage() {
     return (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
         {/* Header: back + room code + copy/share */}
-        <div className="flex items-center gap-2">
+        <div className="sticky top-0 z-20 -mx-2 flex items-center gap-2 bg-[var(--bg-primary)]/95 px-2 py-3 backdrop-blur-md">
           <button onClick={() => { setCurrentRoom(null); setPageState("list"); }} className="flex items-center gap-1 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors">
             <ChevronLeft size={16} /> Voltar
           </button>
@@ -1311,8 +1319,9 @@ export default function FocusRoomsPage() {
                   <div key={p.id} className="flex flex-col items-center gap-1">
                     <RoomAvatar profile={p.profile} energyType={p.selectedEnergyType} size={44} muted={p.sessionStatus === "left"} dimmed={p.sessionStatus === "left"} />
                     <span className="text-[9px] text-[var(--text-muted)] max-w-[52px] truncate">{p.profile?.displayName || "Anônimo"}</span>
-                    {(p.sessionStatus === "completed") && <span className="text-[8px] text-green-400">✓</span>}
-                    {p.sessionStatus === "left" && <span className="text-[8px] text-red-400">desistiu</span>}
+                    {(p.sessionStatus === "completed") && <span className="text-[9px] text-green-400">Concluiu</span>}
+                    {p.sessionStatus === "left" && <span className="text-[9px] text-red-400">Saiu</span>}
+                    {p.sessionStatus === "focusing" && <span className="text-[9px] text-cyan-200">{paused ? "Pausado" : "Focando"}</span>}
                   </div>
                 );
               })}
@@ -1397,8 +1406,8 @@ export default function FocusRoomsPage() {
               )}
             </div>
 
-            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-faint)]">
-              <span className="opacity-60 italic">toque no círculo para trocar sua energia</span>
+            <div className="mt-4 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <span className="italic">toque no círculo para trocar sua energia</span>
             </div>
           </div>
 
@@ -1414,7 +1423,7 @@ export default function FocusRoomsPage() {
                   const r = (size - 8) / 2;
                   const c = 2 * Math.PI * r;
                   const arc = (prog / 100) * c;
-                  const color = p.sessionStatus === "left" ? "#ff5a5a" : p.sessionStatus === "completed" ? "#4ade80" : (p.selectedEnergyType ? ENERGY_CONFIGS[p.selectedEnergyType as EnergyType].accent : "var(--accent)");
+                  const color = p.sessionStatus === "left" ? "#ff5a5a" : p.sessionStatus === "completed" ? "#4ade80" : (ENERGY_CONFIGS[p.selectedEnergyType as EnergyType]?.accent ?? "var(--accent)");
                   return (
                     <div key={p.id} className="flex items-center gap-2.5">
                       <div className="relative" style={{ width: size, height: size }}>
@@ -1727,6 +1736,12 @@ export default function FocusRoomsPage() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
             className="mt-4 rounded-lg border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
             {error}
+          </motion.div>
+        )}
+        {roomConnectionLost && pageState === "room" && (
+          <motion.div role="status" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+            A sala perdeu a conexão. Reconectando e sincronizando o estado…
           </motion.div>
         )}
         {successMessage && (
