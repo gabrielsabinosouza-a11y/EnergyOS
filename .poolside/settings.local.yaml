@@ -8,3 +8,15 @@ tools:
             - head *
             - find *
             - tail *
+            - grep *
+            - sort
+            - wc *
+            - xargs *
+            - sed *
+            - git log *
+            - timeout 120 npx tsc *
+            - npm test
+            - timeout 60 npx eslint *
+            - timeout 90 npm *
+            - node_modules/.bin/tsc *
+            - test *

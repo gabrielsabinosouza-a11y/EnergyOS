@@ -9,6 +9,7 @@ import { ColorPalette } from "./color-palette";
 import { FrequencySelector } from "./frequency-selector";
 import { HabitIcon } from "./habit-icon";
 import { HABIT_LIMIT } from "@/lib/daily-limits";
+import { DEFAULT_HABIT_ICON_ID } from "@/lib/habit-icons";
 
 export interface HabitPayload {
   title: string;
@@ -43,7 +44,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
   const [title, setTitle] = useState(habit?.title ?? "");
   const [dailyTarget, setDailyTarget] = useState(habit?.dailyTarget ?? 1);
   const [iconType, setIconType] = useState<HabitIconType>(habit?.iconType ?? "asset");
-  const [iconValue, setIconValue] = useState(habit?.iconValue ?? "target");
+  const [iconValue, setIconValue] = useState(habit?.iconValue ?? DEFAULT_HABIT_ICON_ID);
   const [color, setColor] = useState(habit?.color ?? "#71d4ff");
   const [frequencyType, setFrequencyType] = useState<HabitFrequencyType>(habit?.frequencyType ?? "daily");
   const [frequencyDays, setFrequencyDays] = useState<number[] | null>(habit?.frequencyDays ?? null);

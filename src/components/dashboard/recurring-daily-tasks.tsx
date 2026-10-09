@@ -219,14 +219,13 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
 
   const load = useCallback(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     Promise.all([api.getDailyTasks(), api.getDailyTasks(true)])
       .then(([data, all]) => {
         if (!cancelled) {
           setTasks(data.tasks);
           setHabitCount(all.tasks.length);
           setLoading(false);
+          setError(null);
         }
       })
       .catch((err) => {
@@ -243,6 +242,12 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   useEffect(() => {
     const cleanup = load();
     return () => { cleanup(); };
+  }, [load]);
+
+  const handleRetry = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    void load();
   }, [load]);
 
   async function handleProgress(task: UserDailyTask, completedCount: number) {
@@ -363,7 +368,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
           <p className="text-sm text-red-400">{error}</p>
           <button
             type="button"
-            onClick={load}
+            onClick={handleRetry}
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
           >
             <RefreshCw size={14} /> Tentar novamente

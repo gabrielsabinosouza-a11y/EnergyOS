@@ -118,12 +118,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }, routeContext(request, "/api/daily-tasks/[id]"));
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest) {
   return handleRoute(async (ctx) => {
     const { profileId } = await requireAuth(request);
     ctx.profileId = profileId;
     await ensureUserBootstrap(profileId);
-    const { id } = await params;
     const body = assertObject(await readJsonBody(request));
     const order = body.order;
     if (!Array.isArray(order)) {
@@ -131,5 +130,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     await reorderHabits(profileId, order.map((x: number) => Number(x)));
     return jsonOk({ ok: true });
-  }, routeContext(request, "/api/daily-tasks/[id]"));
+  }, routeContext(request, "/api/daily-tasks/reorder"));
 }

@@ -7,6 +7,10 @@ import {
   goalPeriodRange,
   goalPeriodKey,
   addDaysIso,
+  todayIso,
+  dayInTz,
+  APP_TIMEZONE,
+  diffDaysIso,
 } from "./dates";
 
 // Fuso do produto é America/Sao_Paulo (UTC−3 sem DST desde 2019).
@@ -52,4 +56,44 @@ test("addDaysIso atravessa meses e anos", () => {
   assert.equal(addDaysIso("2026-12-31", 1), "2027-01-01");
   assert.equal(addDaysIso("2024-02-28", 1), "2024-02-29");
   assert.equal(addDaysIso("2026-01-01", -1), "2025-12-31");
+});
+
+test("todayIso usa o fuso America/Sao_Paulo", () => {
+  assert.equal(APP_TIMEZONE, "America/Sao_Paulo");
+  // Formato YYYY-MM-DD
+  const today = todayIso();
+  assert.match(today, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("dayInTz converte instantes UTC para o dia correto em São Paulo", () => {
+  // São Paulo é UTC-3 (sem DST desde 2019). O dia muda em SP às 03:00 UTC.
+  // 23:59 UTC de 14/01 = 20:59 em SP → 14/01.
+  assert.equal(dayInTz("2026-01-14T23:59:59Z"), "2026-01-14");
+  // 00:01 UTC de 15/01 = 21:01 em SP → 14/01 (o dia ainda não mudou em SP).
+  assert.equal(dayInTz("2026-01-15T00:01:00Z"), "2026-01-14");
+  // 02:59 UTC de 15/01 = 23:59 em SP → 14/01 (último minuto do dia em SP).
+  assert.equal(dayInTz("2026-01-15T02:59:59Z"), "2026-01-14");
+  // 03:00 UTC de 15/01 = 00:00 em SP → 15/01 (meia-noite em SP).
+  assert.equal(dayInTz("2026-01-15T03:00:00Z"), "2026-01-15");
+  // 21:30 UTC de 09/10 = 18:30 em SP → 09/10.
+  assert.equal(dayInTz("2026-10-09T21:30:00Z"), "2026-10-09");
+  // 22:00 UTC de 09/10 = 19:00 em SP → 09/10.
+  assert.equal(dayInTz("2026-10-09T22:00:00Z"), "2026-10-09");
+  // 02:59 UTC de 10/10 = 23:59 em SP → 09/10 (última hora do dia em SP).
+  assert.equal(dayInTz("2026-10-10T02:59:59Z"), "2026-10-09");
+});
+
+test("diffDaysIso não depende de fuso horário — compara datas puras", () => {
+  assert.equal(diffDaysIso("2026-10-09", "2026-10-08"), 1);
+  assert.equal(diffDaysIso("2026-10-08", "2026-10-09"), -1);
+  assert.equal(diffDaysIso("2026-10-09", "2026-10-09"), 0);
+  assert.equal(diffDaysIso("2026-12-31", "2026-01-01"), 364);
+});
+
+test("dia de São Paulo não antecipa com new Date().toISOString()", () => {
+  // Regression guard: a regra do produto proíbe usar
+  // `new Date().toISOString().slice(0,10)` para "hoje" fora de SP.
+  // dayInTz deve sempre alinhar com getLocalDateKey.
+  const instant = "2026-10-09T21:30:00Z"; // 18:30 em SP → ainda 09/10
+  assert.equal(getLocalDateKey(instant), dayInTz(instant));
 });

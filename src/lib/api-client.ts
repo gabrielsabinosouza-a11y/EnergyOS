@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, Goal, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan, WeeklyPlanItem, WeeklyPlanSeries } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan, WeeklyPlanItem, WeeklyPlanSeries } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { GoalLogAction, GoalLogEntry } from "@/lib/db/goal-logs";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
@@ -40,11 +40,14 @@ export class ApiRequestError extends Error {
 const MAX_RETRIES = 2;            // total attempts = 1 + 2 = 3
 const RETRY_BASE_DELAY_MS = 200;  // exponential: 200, 400
 
-function isRetryableStatus(status: number): boolean {
-  // 4xx client errors are never retried.
-  if (status >= 400 && status < 500) return false;
-  // Retry on 408 (timeout), 429 (rate limited), and any 5xx.
-  return status === 408 || status === 429 || status >= 500;
+/** Returns true for status codes that warrant a retry (5xx, 408, 429). 4xx client errors are never retried except 408 (timeout) and 429 (rate limited). */
+export function isRetryableStatus(status: number): boolean {
+  // 4xx client errors are never retried — EXCEPT 408 (timeout) and 429.
+  if (status >= 400 && status < 500) {
+    return status === 408 || status === 429;
+  }
+  // Retry on any 5xx.
+  return status >= 500;
 }
 
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -61,7 +64,7 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     let response: Response;
     try {
       response = await fetch(input, fetchInit);
-    } catch (networkError) {
+    } catch {
       // Network failure — retry if we have attempts left.
       if (attempt >= MAX_RETRIES) throw new ApiRequestError("Falha de rede. Tente novamente.", 0);
       await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
