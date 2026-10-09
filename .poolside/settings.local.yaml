@@ -24,3 +24,6 @@ tools:
             - timeout 60 node *
             - sort *
             - bash *
+            - timeout 150 *
+            - source *
+            - node *

@@ -1,9 +1,18 @@
 "use client";
 
-/** Preset colors for habit icons, checkboxes, and progress indicators. */
+/** Preset colors for habit icons, checkboxes, and progress indicators.
+ *  8 hues chosen to be visually distinct: cyan, teal, green, yellow, orange,
+ *  red, rose and purple — replacing the previous near-duplicate greens
+ *  (#a3e635 / #6bffb8) and orange-vs-yellow (#ffb86b / #ffd166). */
 export const HABIT_COLORS = [
-  "#71d4ff", "#b69cff", "#a3e635", "#ffb86b",
-  "#6bffb8", "#ff6b8a", "#ffd166", "#ff6b6b",
+  "#71d4ff", // cyan
+  "#2dd4bf", // teal
+  "#4ade80", // green
+  "#fde047", // yellow
+  "#ff9f1a", // orange
+  "#f87171", // red
+  "#fb7185", // rose
+  "#c084fc", // violet
 ];
 
 interface ColorPaletteProps {

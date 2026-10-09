@@ -797,13 +797,26 @@ export interface MonthlyRecap {
   recapMonth: string;
   totalFocusMinutes: number;
   longestStreak: number;
-  leagueTier?: string;
+  streakStartDate?: string;  // First day of the best streak within the month
+  streakEndDate?: string;    // Last day of the best streak within the month
+  streakIsAlive: boolean;    // Is the streak currently active?
+  leagueTier?: string;       // League at the END of the month
+  leagueAtStart?: string;    // League at the START of the month (for progression)
   leaguePromoted?: boolean;
   productivityTag?: string;
   gardenCount?: number;
-  totalXp: number;
+  totalXp: number;           // XP gained IN THIS MONTH (not cumulative!)
+  xpSources?: XpSourceBreakdown;  // Breakdown by source for debugging
   hasBeenShared?: boolean;
   generatedAt: string;
+}
+
+export interface XpSourceBreakdown {
+  focus?: number;
+  dailyTask?: number;
+  checkin?: number;
+  achievement?: number;
+  [key: string]: number | undefined;
 }
 
 export interface StoreItem {

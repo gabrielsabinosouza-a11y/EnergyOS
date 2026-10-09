@@ -8,6 +8,7 @@ import { IconPicker } from "./icon-picker";
 import { ColorPalette } from "./color-palette";
 import { FrequencySelector } from "./frequency-selector";
 import { HabitIcon } from "./habit-icon";
+import { DailyTargetStepper } from "./daily-target-stepper";
 import { HABIT_LIMIT } from "@/lib/daily-limits";
 import { DEFAULT_HABIT_ICON_ID } from "@/lib/habit-icons";
 
@@ -36,7 +37,7 @@ interface HabitModalProps {
   onSave: (payload: HabitPayload) => void | Promise<void>;
 }
 
-const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]";
+const labelClass = "mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]";
 const inputClass = "auth-input min-h-10 w-full text-sm";
 
 export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModalProps) {
@@ -121,7 +122,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-6 pb-3">
         <div className="flex items-end gap-3">
           <div className="shrink-0">
             <span className={labelClass}>Ícone</span>
@@ -136,14 +137,7 @@ export function HabitModal({ habit, habitCount = 0, onClose, onSave }: HabitModa
 
         <IconPicker iconType={iconType} iconValue={iconValue} onSelect={(type, value) => { setIconType(type); setIconValue(value); }} />
 
-        <div>
-          <span className={labelClass}>Daily Target</span>
-          <div className="inline-flex min-h-10 items-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]">
-            <button type="button" aria-label="Diminuir meta diária" onClick={() => setDailyTarget((value) => Math.max(1, value - 1))} disabled={dailyTarget <= 1} className="grid h-10 w-10 place-items-center text-lg text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-active)] disabled:opacity-35">−</button>
-            <input aria-label="Daily Target" type="number" min={1} step={1} value={dailyTarget} onChange={(event) => setDailyTarget(Math.max(1, Math.floor(Number(event.target.value) || 1)))} className="h-10 w-14 border-x border-[var(--border-subtle)] bg-transparent text-center font-mono text-sm text-[var(--text)] outline-none" />
-            <button type="button" aria-label="Aumentar meta diária" onClick={() => setDailyTarget((value) => value + 1)} className="grid h-10 w-10 place-items-center text-lg text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-active)]">+</button>
-          </div>
-        </div>
+        <DailyTargetStepper value={dailyTarget} onChange={setDailyTarget} color={color} disabled={saving} />
 
         <div>
           <span className={labelClass}>Cor</span>

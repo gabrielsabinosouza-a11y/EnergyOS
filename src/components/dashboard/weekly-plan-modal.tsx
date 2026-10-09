@@ -6,6 +6,7 @@ import { Check, Loader2, Repeat, Hash, ChevronDown, Trash2 } from "lucide-react"
 import type { WeeklyPlanSeries, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { Modal } from "@/components/modal";
 import { ColorPalette, HABIT_COLORS } from "./color-palette";
+import { PlanNameInput, PLAN_NAME_MAX } from "./plan-name-input";
 import { todayIso } from "@/lib/db/dates";
 
 const DAY_NAMES_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -75,9 +76,13 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
     startDate !== series.startDate || startTime !== (series.startTime ?? "") || durationMinutes !== (series.durationMinutes?.toString() ?? "") ||
     endType !== series.endType || endDate !== (series.endDate ?? "") || endCount !== (series.endCount?.toString() ?? "")
   ));
+  // Confirm before discarding unsaved work. In create mode, any non-empty
+  // title counts as work; in edit mode we defer to the isDirty flag.
+  const shouldConfirmBeforeClose = isEdit ? isDirty : Boolean(title.trim());
+
   function closeModal() {
     if (saving) return;
-    if (isEdit && isDirty && !window.confirm("Descartar as alterações não salvas?")) return;
+    if (shouldConfirmBeforeClose && !window.confirm("Descartar as alterações não salvas?")) return;
     onClose();
   }
 
@@ -104,7 +109,7 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
     setError("");
     const trimmed = title.trim();
     if (!trimmed) return setError("Digite o nome do plano.");
-    if (trimmed.length > 60) return setError("Nome muito longo (máx. 60 caracteres).");
+    if (trimmed.length > PLAN_NAME_MAX) return setError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
     if (isRecurring && repeatDays.length === 0) return setError("Selecione pelo menos um dia da semana.");
     if (repeatType === "interval" && (repeatInterval < 2 || repeatInterval > 8)) return setError("O intervalo deve ser de 2 a 8 semanas.");
     if (endType === "date" && !endDate) return setError("Selecione uma data de término.");
@@ -159,7 +164,7 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
           <button type="button" onClick={closeModal} disabled={saving} className="min-h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50">
             Cancelar
           </button>
-          <button type="button" onClick={() => void handleSave()} disabled={!title.trim() || saving || (isEdit && !isDirty)} className="inline-flex min-h-10 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => void handleSave()} disabled={!title.trim() || saving || title.length > PLAN_NAME_MAX || (isEdit && !isDirty)} className="inline-flex min-h-10 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
             {saving ? <><Loader2 size={15} className="animate-spin" /> Salvando…</> : <><Check size={15} /> Salvar</>}
           </button>
         </>
@@ -168,17 +173,15 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
       <div className="space-y-6 pb-3">
         {/* Section 1: Title */}
         <div>
-          <label className={labelClass}>Nome da atividade</label>
-          <input
-            autoFocus
+          <PlanNameInput
+            id="plan-name-input"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), void handleSave())}
-            className={inputClass}
+            onChange={setTitle}
+            color={color}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
             placeholder="Ex.: Ir à igreja, Treino, Estudar..."
-            maxLength={60}
           />
-          <span className="mt-1 block text-[10px] text-[var(--text-faint)]">{title.length}/60</span>
         </div>
 
         <div>

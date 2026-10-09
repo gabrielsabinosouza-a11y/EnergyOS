@@ -505,7 +505,12 @@ export const api = {
   activateXpBoost: () =>
     request<{ boost: import("@/types").ActiveXPBoost; extended: boolean; quantity: number }>("/api/store/xp-boost/activate", { method: "POST" }),
   getRecaps: () => request<{ recaps: import("@/types").MonthlyRecap[] }>("/api/recap"),
-  generateRecap: (month: string) =>
-    request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month }) }),
-
+  generateRecap: (year: number, month: number) => {
+    const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
+    return request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month: monthStr }) });
+  },
+  generateRecapByMonthString: (monthStr: string) =>
+    request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month: monthStr }) }),
+  shareRecap: (recapId: number) =>
+    request<{ success: boolean; newBalance: number; wasFirstShare: boolean; coinsAwarded: number }>("/api/recap/share", { method: "POST", body: JSON.stringify({ recapId }) }),
 };

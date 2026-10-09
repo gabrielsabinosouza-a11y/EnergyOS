@@ -8,6 +8,7 @@ import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
 import { Button, IconButton } from "@/components/ui";
 import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
+import { PlanNameInput, PLAN_NAME_MAX } from "./plan-name-input";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_ITEMS_PER_CARD = 4;
@@ -310,21 +311,19 @@ export function WeeklyPlan({
               {!confirmDelete ? <button type="button" onClick={() => { setConfirmDelete(true); if (deleteTimer) clearTimeout(deleteTimer); setDeleteTimer(setTimeout(() => setConfirmDelete(false), 3000)); }} className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-red-300 hover:bg-red-400/10"><Trash2 size={15}/>Excluir</button> : <><button type="button" onClick={() => void handleDelete()} className="h-10 rounded-lg bg-red-500/20 px-3 text-sm font-semibold text-red-200">Confirmar exclusão</button><button type="button" onClick={() => { setConfirmDelete(false); if (deleteTimer) clearTimeout(deleteTimer); }} className="h-10 rounded-lg px-3 text-sm text-[var(--text-muted)]">Cancelar</button></>}
             </div>
             <button type="button" onClick={() => { if (!editIsDirty || window.confirm("Descartar as alterações não salvas?")) closeEditingPlan(); }} className="h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)]">Cancelar</button>
-            <button type="button" onClick={() => void handleSave()} disabled={savingEdit || !editTitle.trim() || editTitle.trim() === editingPlan.title} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white disabled:opacity-50">{savingEdit ? <Loader2 size={15} className="animate-spin"/> : <Check size={15}/>}Salvar</button>
+            <button type="button" onClick={() => void handleSave()} disabled={savingEdit || !editTitle.trim() || editTitle.trim() === editingPlan.title || editTitle.length > PLAN_NAME_MAX} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white disabled:opacity-50">{savingEdit ? <Loader2 size={15} className="animate-spin"/> : <Check size={15}/>}Salvar</button>
           </>}
         >
           <div className="w-full space-y-6 pb-3">
             <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Nome da atividade</label>
-                <input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  maxLength={60}
-                  className="auth-input min-h-10 w-full text-sm"
-                />
-                <span className="mt-1 block text-[10px] text-[var(--text-faint)]">{editTitle.length}/60</span>
-              </div>
+              <PlanNameInput
+                id="plan-name-edit-input"
+                value={editTitle}
+                onChange={setEditTitle}
+                color={editingPlan.color || editingPlan.category.color}
+                placeholder="Ex.: Ir à igreja, Treino, Estudar..."
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
+              />
               <div><span className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Detalhes</span><p className="text-xs text-[var(--text-muted)]">Para alterar recorrência, horário, duração, cor e nota, abra o plano pela opção de edição completa.</p></div>
             </div>
           </div>
