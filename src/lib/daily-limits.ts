@@ -6,29 +6,58 @@ export const DAILY_MISSION_LIMIT = 3;
 /** Max active habits per user. */
 export const HABIT_LIMIT = 30;
 
-/** Only the first 10 habit check-ins each day earn per-habit rewards. */
-export const HABIT_DAILY_REWARD_LIMIT = 10;
-
 /** Custom habit icons are limited to 5 MiB before client-side resizing. */
 export const HABIT_ICON_MAX_BYTES = 5 * 1024 * 1024;
 
-/** XP per completed habit. */
-export const HABIT_XP = 10;
+/**
+ * SINGLE SOURCE OF TRUTH for the habit-completion reward.
+ *
+ * Every consumer — the server grant logic (`src/lib/db/daily-tasks.ts`), the
+ * `xp_ledger` source list (`src/lib/db/xp-ledger.ts`), the helper copy in
+ * `src/lib/habit-rewards.ts`, and the helper text rendered by
+ * `recurring-daily-tasks.tsx` / `daily-tasks-widget.tsx` — reads from these
+ * three constants. Changing the per-habit coins (5 → 10) is done HERE, in one
+ * place; no UI string or server branch hardcodes a number.
+ *
+ * Rule (Visão geral → Hábitos): each habit whose daily target is reached earns
+ * HABIT_REWARD (XP + coins), for the first DAILY_REWARDED_HABITS_CAP completions
+ * of the day, plus ALL_DONE_BONUS_COINS once per day when every habit scheduled
+ * for that day is completed. Day boundaries use America/São Paulo (see
+ * `src/lib/db/dates.ts`).
+ */
+export const HABIT_REWARD = { xp: 10, coins: 10 } as const;
 
-/** Coins per completed habit. */
-export const HABIT_COINS = 5;
+/** Only the first N habit completions each day earn the per-habit reward. */
+export const DAILY_REWARDED_HABITS_CAP = 10;
 
-/** Bonus coins when all habits are completed. */
-export const HABIT_ALL_BONUS_COINS = 10;
+/** Bonus coins, granted once per day when all scheduled habits are completed. */
+export const ALL_DONE_BONUS_COINS = 10;
+
+/**
+ * `xp_ledger.source` value that tags a habit-completion reward row. The legacy
+ * value was "daily_task"; new rows use this so habit rewards are distinguishable
+ * from other daily-task economy events. Old rows are left untouched (do not
+ * rewrite past ledger rows).
+ */
+export const HABIT_COMPLETION_SOURCE = "habit_completion" as const;
+
+/** @deprecated Use HABIT_REWARD.xp. */
+export const HABIT_XP = HABIT_REWARD.xp;
+/** @deprecated Use HABIT_REWARD.coins. */
+export const HABIT_COINS = HABIT_REWARD.coins;
+/** @deprecated Use DAILY_REWARDED_HABITS_CAP. */
+export const HABIT_DAILY_REWARD_LIMIT = DAILY_REWARDED_HABITS_CAP;
+/** @deprecated Use ALL_DONE_BONUS_COINS. */
+export const HABIT_ALL_BONUS_COINS = ALL_DONE_BONUS_COINS;
 
 /** @deprecated Renamed to HABIT_LIMIT. */
 export const DAILY_TASK_LIMIT = HABIT_LIMIT;
-/** @deprecated Renamed to HABIT_XP. */
-export const DAILY_TASK_XP = HABIT_XP;
-/** @deprecated Renamed to HABIT_COINS. */
-export const DAILY_TASK_COINS = HABIT_COINS;
-/** @deprecated Renamed to HABIT_ALL_BONUS_COINS. */
-export const DAILY_TASK_ALL_BONUS_COINS = HABIT_ALL_BONUS_COINS;
+/** @deprecated Renamed to HABIT_REWARD.xp. */
+export const DAILY_TASK_XP = HABIT_REWARD.xp;
+/** @deprecated Renamed to HABIT_REWARD.coins. */
+export const DAILY_TASK_COINS = HABIT_REWARD.coins;
+/** @deprecated Renamed to ALL_DONE_BONUS_COINS. */
+export const DAILY_TASK_ALL_BONUS_COINS = ALL_DONE_BONUS_COINS;
 
 // ── Check-in ──────────────────────────────────────────────────────────────────
 export const CHECKIN_XP = 15;
@@ -43,11 +72,11 @@ export const KANBAN_DONE_XP = 25;
 export const KANBAN_DONE_COINS = 25;
 
 // ── Weekly planner ────────────────────────────────────────────────────────────
-/** Weekly planner completion economy, aligned with the daily habits reward cap. */
+/** Weekly planner completion economy, aligned with the daily habits reward (same source of truth). */
 export const WEEKLY_PLAN_COMPLETION_REWARD = {
-  xp: HABIT_XP,
-  coins: HABIT_COINS,
-  dailyLimit: HABIT_DAILY_REWARD_LIMIT,
+  xp: HABIT_REWARD.xp,
+  coins: HABIT_REWARD.coins,
+  dailyLimit: DAILY_REWARDED_HABITS_CAP,
 } as const;
 
 /** Maximum number of active recurring plan series per user. */

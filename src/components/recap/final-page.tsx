@@ -205,7 +205,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
           ctx.fillStyle = bg;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          const file = new File([canvas.toDataURL("image/png")], `recap-${monthTitle}.png`, { type: "image/png" });
+          const file = new File([blob], "recap.png", {type: "image/png"})
           resolve(file);
         });
         

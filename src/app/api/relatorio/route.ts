@@ -35,10 +35,10 @@ export async function GET(request: NextRequest) {
       averagesForRange(profileId, lastWeekStart, lastWeekEnd),
     ]);
 
-    // Calculate streak stats (mock for now, would need historical data)
+    // Calculate streak stats
     const streakInfo = {
       currentStreak: currentStreak.currentStreak,
-      bestStreak: currentStreak.currentStreak, // Would need historical tracking
+      bestStreak: currentStreak.longestStreak,
       totalDays: checkins.length,
     };
 

@@ -8,7 +8,9 @@ export interface HabitWithCompletion extends Habit {
 
 const connectionString = process.env.DATABASE_URL;
 
-console.log('[db] Database connection string configured:', connectionString ? 'Yes' : 'No');
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[db] Database connection string configured:", connectionString ? "Yes" : "No");
+  }
 
 declare global {
   var energyosPgPool: Pool | undefined;
@@ -47,7 +49,9 @@ pool.on('connect', () => {
   }
 });
 
-console.log('[db] Database pool created');
+if (process.env.NODE_ENV !== "production") {
+  console.log("[db] Database pool created");
+}
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.energyosPgPool = pool;

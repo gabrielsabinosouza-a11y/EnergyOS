@@ -1,4 +1,5 @@
 import pool from "../db";
+import type { PoolClient } from "pg";
 import type { AchievementProgress } from "@/types";
 import { parseProfileId, ValidationError } from "./validation";
 import { NotFoundError } from "../errors";
@@ -85,36 +86,48 @@ export async function awardAchievementRewards(
 ): Promise<void> {
   parseProfileId(profileId);
 
-  // Read which tiers are already claimed for this profile.
-  const claimed = await pool.query<{ achievement_id: string; tier: number }>(
-    `select achievement_id, tier from achievement_rewards where profile_id = $1`,
-    [profileId],
-  );
-  const claimedKeys = new Set(claimed.rows.map((r) => `${r.achievement_id}:${r.tier}`));
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query("begin");
 
-  for (const id of ALL_ACHIEVEMENT_IDS) {
-    const unlockedTier = tierFor(values[id] ?? 0, thresholdsFor(id));
-    for (let tier = 1; tier <= unlockedTier; tier += 1) {
-      if (claimedKeys.has(`${id}:${tier}`)) continue;
-      const { xp, coins } = rewardForTier(tier);
-      if (xp <= 0 && coins <= 0) continue;
+    // Read which tiers are already claimed for this profile.
+    const claimed = await client.query<{ achievement_id: string; tier: number }>(
+      `select achievement_id, tier from achievement_rewards where profile_id = $1`,
+      [profileId],
+    );
+    const claimedKeys = new Set(claimed.rows.map((r) => `${r.achievement_id}:${r.tier}`));
 
-      const inserted = await pool.query(
-        `insert into achievement_rewards (profile_id, achievement_id, tier, coins_awarded, xp_awarded)
-         values ($1, $2, $3, $4, $5)
-         on conflict (profile_id, achievement_id, tier) do nothing
-         returning id`,
-        [profileId, id, tier, coins, xp],
-      );
-      if (!inserted.rows[0]) continue; // claimed concurrently — skip
+    for (const id of ALL_ACHIEVEMENT_IDS) {
+      const unlockedTier = tierFor(values[id] ?? 0, thresholdsFor(id));
+      for (let tier = 1; tier <= unlockedTier; tier += 1) {
+        if (claimedKeys.has(`${id}:${tier}`)) continue;
+        const { xp, coins } = rewardForTier(tier);
+        if (xp <= 0 && coins <= 0) continue;
 
-      if (xp > 0) {
-        await creditXP(profileId, "achievement", `${id}:${tier}`, xp);
-      }
-      if (coins > 0) {
-        await addCoins(profileId, coins);
+        const inserted = await client.query(
+          `insert into achievement_rewards (profile_id, achievement_id, tier, coins_awarded, xp_awarded)
+           values ($1, $2, $3, $4, $5)
+           on conflict (profile_id, achievement_id, tier) do nothing
+           returning id`,
+          [profileId, id, tier, coins, xp],
+        );
+        if (!inserted.rows[0]) continue; // claimed concurrently — skip
+
+        if (xp > 0) {
+          await creditXP(profileId, "achievement", `${id}:${tier}`, xp, { db: client });
+        }
+        if (coins > 0) {
+          await addCoins(profileId, coins, client);
+        }
       }
     }
+
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
   }
 }
 

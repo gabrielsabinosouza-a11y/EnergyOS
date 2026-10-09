@@ -66,7 +66,7 @@ function mapContribution(row: ContributionRow): GroupFocusContribution {
  */
 export function getPeriodRange(period: Period): { start: string | null; end: string | null } {
   const today = todayIso();
-  
+
   switch (period) {
     case "WEEK":
       const weekStart = weekStartIso(today);
@@ -117,7 +117,7 @@ export async function recordGroupContribution(
   // Insert a contribution for each group
   const values: unknown[] = [];
   const placeholders: string[] = [];
-  
+
   for (const row of groups.rows) {
     placeholders.push(`($${values.length + 1}, $${values.length + 2}, $${values.length + 3}, $${values.length + 4}, $${values.length + 5})`);
     values.push(row.group_id, profileId, focusSessionId, minutes, completedAt);
@@ -140,7 +140,7 @@ export async function getGroupTotalMinutes(groupId: number, period: Period): Pro
   }
 
   const { start, end } = getPeriodRange(period);
-  
+
   let query = `select coalesce(sum(minutes), 0)::int as total from group_focus_contributions where group_id = $1`;
   const params: unknown[] = [groupId];
 
@@ -172,7 +172,7 @@ export async function getGlobalGroupLeaderboard(
   }
 
   const { start, end } = getPeriodRange(period);
-  
+
   // Get user's group IDs for highlighting
   const userGroups = await pool.query<{ group_id: string | number }>(
     `select group_id from group_members where profile_id = $1`,
@@ -255,7 +255,7 @@ export async function getGroupMemberContributions(
   }
 
   const { start, end } = getPeriodRange(period);
-  
+
   let query = `
     select p.id as profile_id, p.display_name, p.username, p.photo_url,
            coalesce(sum(gfc.minutes), 0)::int as minutes
@@ -336,9 +336,9 @@ export async function getUserGroupContributionPercentage(
   }
 
   const { start, end } = getPeriodRange(period);
-  
+
   let query = `
-    select 
+    select
       coalesce(sum(case when profile_id = $1 then minutes else 0 end), 0)::int as user_minutes,
       coalesce(sum(minutes), 0)::int as group_total
     from group_focus_contributions
@@ -371,9 +371,9 @@ export async function getGroupGlobalRank(groupId: number, period: Period): Promi
   if (!Number.isInteger(groupId) || groupId <= 0) {
     throw new ValidationError("Grupo inválido.");
   }
-  
+
   const { start, end } = getPeriodRange(period);
-  
+
   // A group's rank is always visible to its own members, so always include the
   // group being ranked even if it is private. Private groups owned by other
   // users are not part of the ranking universe.
@@ -406,7 +406,7 @@ export async function getGroupGlobalRank(groupId: number, period: Period): Promi
       group by g.id
       having coalesce(sum(gfc.minutes), 0) > 0
     )
-    select 
+    select
       (select group_rank from ranked_groups where id = $${paramIndex}) as rank,
       (select count(*) from ranked_groups) as total`,
     [...params, groupId]

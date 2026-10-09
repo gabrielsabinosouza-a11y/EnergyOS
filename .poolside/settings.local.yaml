@@ -33,3 +33,5 @@ tools:
             - git status *
             - git diff *
             - git diff HEAD *
+            - sleep 28
+            - git stash *

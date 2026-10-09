@@ -331,7 +331,8 @@ export async function computeStreak(profileId: string, today: string): Promise<S
     client.release();
   }
 
-  console.log(`[streak] ${profileId} reconcile -> current=${currentStreak}, best=${bestStreak}, +protected=${newProtectedDays.length}, lost=${lostDays.length}, shields=${shields}, status=${status}, policy=${SHIELD_POLICY.onShortage}`);
+    // Debug log removed — exposes PII (profileId, streak details).
+    // Use structured logger in production if needed.
 
   // Missão "1 dia de sequência" (idempotente: set, não incrementa).
   await recordMissionProgress(profileId, "STREAK_DAY", { setTo: todayQualified ? 1 : 0, questDate: today });
@@ -357,7 +358,7 @@ export async function computeStreak(profileId: string, today: string): Promise<S
       }
     }
   } catch (error) {
-    console.log(`[streak] Could not fetch equipped shield design for ${profileId}:`, error);
+    console.error("[streak] Failed to fetch equipped shield design:", error);
   }
 
   return {

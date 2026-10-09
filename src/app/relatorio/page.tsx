@@ -18,6 +18,8 @@ import {
 import Image from "next/image";
 import { api } from "@/lib/api-client";
 import { formatStat } from "@/lib/format";
+import type { DailyCheckin } from "@/types";
+import type { GoalWithProgress, HabitWithCompletion } from "@/lib/db";
 import {
   LineChart,
   Line,
@@ -43,6 +45,23 @@ interface ReportData {
     thisWeek: { sleep: number; study: number; tasks: number };
     lastWeek: { sleep: number; study: number; tasks: number };
   };
+}
+
+/** Response shape from GET /api/relatorio */
+interface RelatorioApiResponse {
+  checkins: DailyCheckin[];
+  completions: Array<{ date: string; due_date: string; completed: number; total: number }>;
+  streakInfo: { currentStreak: number; bestStreak: number; totalDays: number };
+  weeklyComparison: {
+    thisWeek: { sleep: number; study: number; tasks: number };
+    lastWeek: { sleep: number; study: number; tasks: number };
+  };
+}
+
+/** Response shape from GET /api/goals */
+interface GoalBundle {
+  goal: GoalWithProgress;
+  habits: HabitWithCompletion[];
 }
 
 const COLORS = ['#71d4ff', '#b69cff', '#ffb86b', '#6bffb8', '#ff9f6b'];
@@ -75,13 +94,13 @@ export default function RelatorioPage() {
         throw new Error("Não foi possível carregar o relatório.");
       }
       
-      const reportApiData = await reportRes.json();
+      const reportApiData: RelatorioApiResponse = await reportRes.json();
       
       // Fetch goals data for progress
       const goalsRes = await fetch("/api/goals", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const goalsData = await goalsRes.json();
+      const goalsData: GoalBundle[] = await goalsRes.json();
       
       // Process and transform data
       const processedData = processReportData(reportApiData, goalsData || [], days);
@@ -94,29 +113,29 @@ export default function RelatorioPage() {
     }
   }
 
-  function processReportData(apiData: any, goals: any[], days: number): ReportData {
+  function processReportData(apiData: RelatorioApiResponse, goals: GoalBundle[], days: number): ReportData {
     // Process sleep data from checkins
-    const sleepData = apiData.checkins.map((c: any) => ({
+    const sleepData = apiData.checkins.map((c: DailyCheckin) => ({
       date: formatDate(c.checkinDate),
       hours: c.sleepHours || 0
     }));
 
     // Process study data from checkins
-    const studyData = apiData.checkins.map((c: any) => ({
+    const studyData = apiData.checkins.map((c: DailyCheckin) => ({
       date: formatDate(c.checkinDate),
       minutes: c.studyMinutes || 0
     }));
 
     // Process task completion data
-    const taskCompletion = apiData.completions.map((c: any) => ({
+    const taskCompletion = apiData.completions.map((c) => ({
       date: formatDate(c.date),
       completed: c.completed,
       total: c.total
     }));
 
-    // Process goal progress
-    const goalProgress = goals.map((g: any) => ({
-      category: g.goal.category,
+    // Process goal progress (category is a Category object — use its name)
+    const goalProgress = goals.map((g: GoalBundle) => ({
+      category: g.goal.category.name,
       current: g.goal.currentValue,
       target: g.goal.targetValue,
       percentage: Math.round((g.goal.currentValue / g.goal.targetValue) * 100)

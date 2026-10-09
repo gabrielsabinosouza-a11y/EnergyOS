@@ -331,9 +331,10 @@ delete from garden_entries where energy_type in ('nature','solar');
 create table if not exists xp_ledger (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  source text not null check (source in ('task','kanban','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement')),
-  source_id bigint,
+  source text not null check (source in ('task','kanban','kanban_task','weekly_plan','weekly_plan_occurrence','focus','streak_bonus','daily_quest','habit_completion','daily_task','checkin','checkin_streak','goal','achievement')),
+  source_id text,
   xp_amount integer not null,
+  coins_amount integer not null default 0,
   created_at timestamptz not null default now()
 );
 

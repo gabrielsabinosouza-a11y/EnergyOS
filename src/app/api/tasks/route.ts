@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
     await ensureUserBootstrap(profileId);
     const body = assertObject(await readJsonBody(request));
     
-    console.log('[tasks POST] Attempting to create task for profile:', profileId);
-    console.log('[tasks POST] Request body:', body);
-    
+    // Debug logging removed — profileId and request body contain PII.
+    const body = assertObject(await readJsonBody(request));
+
     const task = await createTask(
       profileId,
       {
@@ -34,8 +34,7 @@ export async function POST(request: NextRequest) {
       },
       todayIso(),
     );
-    
-    console.log('[tasks POST] Task created successfully:', task);
+
     return jsonOk({ task }, 201);
   });
 }
