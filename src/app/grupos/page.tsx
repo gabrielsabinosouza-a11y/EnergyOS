@@ -1119,9 +1119,12 @@ function GroupDetailPanel({
   const nextTempId = useCallback(() => -(++tempIdRef.current), []);
 
   const applyServerMessages = useCallback((msgs: GroupMessage[]) => {
-    const serverIds = new Set(msgs.map((m) => m.id));
+    const uniqueServer = [...new Map(msgs.map((message) => [message.id, message])).values()];
+    const serverIds = new Set(uniqueServer.map((m) => m.id));
     const stillPending = pendingRef.current.filter((p) => !serverIds.has(p.id));
-    const merged = [...msgs, ...stillPending];
+    const merged = [...uniqueServer, ...stillPending].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id,
+    );
     setMessages(merged);
     if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
     return merged;
@@ -1130,10 +1133,10 @@ function GroupDetailPanel({
   const confirmMessage = useCallback((tempId: number, message: GroupMessage) => {
     pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
     setMessages((prev) => {
-      const hasTemp = prev.some((m) => m.id === tempId);
-      return hasTemp
-        ? prev.map((m) => (m.id === tempId ? message : m))
-        : [...prev, message];
+      const tempIndex = prev.findIndex((m) => m.id === tempId);
+      const next = prev.filter((m) => m.id !== tempId && m.id !== message.id);
+      next.splice(tempIndex < 0 ? next.length : Math.min(tempIndex, next.length), 0, message);
+      return next;
     });
   }, []);
 
@@ -1198,7 +1201,10 @@ function GroupDetailPanel({
         ]);
         applyServerMessages(msgs);
         setPinnedMessages(pins);
-      } catch { /* silent */ }
+        setMessageError("");
+      } catch {
+        setMessageError("A conexão do chat caiu. Reconectando e sincronizando mensagens…");
+      }
     }, 5000);
     return () => clearInterval(interval);
   }, [group.id, tab, applyServerMessages]);

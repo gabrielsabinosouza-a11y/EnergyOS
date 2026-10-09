@@ -11,6 +11,8 @@ import {
   Pin,
   MessageCircleReply,
   Pencil,
+  Pause,
+  Play,
   Trash2,
   X,
 } from "lucide-react";
@@ -167,6 +169,73 @@ function SenderAvatar({ name, photoUrl, senderId, level }: { name?: string; phot
   );
 }
 
+let activeAudioElement: HTMLAudioElement | null = null;
+
+function AudioMessagePlayer({ message }: { message: ChatMessage }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(message.mediaDurationSeconds ?? 0);
+  const [speed, setSpeed] = useState(1);
+  const waveform = useMemo(() => Array.from({ length: 56 }, (_, index) => {
+    let seed = index * 17 + message.id * 31;
+    for (const char of (message.mediaUrl ?? "")) seed = (seed * 33 + char.charCodeAt(0)) | 0;
+    return 5 + (Math.abs(seed) % 20);
+  }), [message.id, message.mediaUrl]);
+
+  useEffect(() => () => {
+    if (activeAudioElement === audioRef.current) activeAudioElement = null;
+    audioRef.current?.pause();
+  }, []);
+
+  const toggle = async () => {
+    const audio = audioRef.current;
+    if (!audio || failed) return;
+    if (audio.paused) {
+      activeAudioElement?.pause();
+      activeAudioElement = audio;
+      audio.playbackRate = speed;
+      try { await audio.play(); setPlaying(true); } catch { setFailed(true); }
+    } else {
+      audio.pause();
+      setPlaying(false);
+    }
+  };
+
+  const seek = (value: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    audio.currentTime = (value / 100) * audio.duration;
+    setCurrent(audio.currentTime);
+  };
+
+  return (
+    <div className="flex w-[min(18rem,70vw)] items-center gap-2 px-3 py-2">
+      <audio ref={audioRef} src={message.mediaUrl} preload="metadata" className="hidden"
+        onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || duration)}
+        onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setCurrent(0); }} onError={() => setFailed(true)} />
+      <button type="button" onClick={() => void toggle()} aria-label={`${playing ? "Pausar" : "Reproduzir"} áudio de ${message.senderName ?? "participante"}, ${fmtDuration(duration) || "0:00"}`}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+        {failed ? <span aria-hidden>!</span> : playing ? <Pause size={15} /> : <Play size={15} />}
+      </button>
+      <div className="min-w-0 flex-1">
+        {failed ? <a href={message.mediaUrl} download className="text-xs text-[var(--accent)] underline">Baixar áudio</a> : <>
+          <div className="flex h-7 items-center gap-[2px]" role="slider" aria-label="Posição do áudio" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(current)} tabIndex={0}
+            onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seek(Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100))); }}
+            onKeyDown={(event) => { if (event.key === "ArrowRight") seek(Math.min(100, duration ? ((current + 5) / duration) * 100 : 0)); if (event.key === "ArrowLeft") seek(Math.max(0, duration ? ((current - 5) / duration) * 100 : 0)); }}>
+            {waveform.map((height, index) => <span key={index} className="w-[2px] rounded-full" style={{ height, background: index / waveform.length <= (duration ? current / duration : 0) ? "var(--accent)" : "currentColor", opacity: index / waveform.length <= (duration ? current / duration : 0) ? 1 : .45 }} />)}
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]"><span>{fmtDuration(current) || "0:00"} / {fmtDuration(duration) || "0:00"}</span>
+            <button type="button" onClick={() => { const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1; setSpeed(next); if (audioRef.current) audioRef.current.playbackRate = next; }} aria-label={`Velocidade ${speed}x`} className="rounded px-1.5 py-0.5 hover:bg-white/10">{speed}x</button>
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Context menu ─────────────────────────────────────────────────── */
 
 interface ContextMenuAction {
@@ -316,9 +385,9 @@ function ReplyPreview({
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 py-3">
+    <div className="sticky top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-[var(--bg)]/80 to-transparent py-3">
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-      <span className="sticky top-0 shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-lg">
+      <span className="shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-lg">
         {label}
       </span>
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
@@ -368,6 +437,7 @@ function MessageBubble({
   onActionTrigger,
   mentionMembers,
   groupPosition,
+  animateEntrance,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -385,6 +455,7 @@ function MessageBubble({
   /** Group members for @mention rendering (DMs pass nothing → plain text). */
   mentionMembers?: MentionMember[];
   groupPosition: "single" | "first" | "middle" | "last";
+  animateEntrance: boolean;
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const reactions = msg.reactions ?? [];
@@ -410,9 +481,11 @@ function MessageBubble({
 
   return (
     <motion.div
-      initial={reduced ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
+      initial={reduced || !animateEntrance ? false : isMe
+        ? { opacity: 0, y: 12, scale: 0.6, rotateX: 10 }
+        : { opacity: 0, x: -12, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, y: 0, scale: 1, rotateX: 0 }}
+      transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
       className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
     >
       {showAvatar && !isMe && (
@@ -436,7 +509,7 @@ function MessageBubble({
         <div className="relative">
           <div
             onContextMenu={handleContextMenu}
-            className={`group relative cursor-pointer overflow-hidden transition ${
+            className={`chat-message-bubble group relative cursor-pointer overflow-hidden transition ${
               isMe
                 ? `rounded-2xl bg-[var(--accent)] ${groupPosition === "middle" ? "rounded-r-md" : groupPosition === "last" ? "rounded-tr-md" : "rounded-br-md"}`
                 : `glass-card rounded-2xl ${groupPosition === "middle" ? "rounded-l-md" : groupPosition === "last" ? "rounded-tl-md" : "rounded-bl-md"}`
@@ -493,21 +566,7 @@ function MessageBubble({
             />
           )}
           {msg.messageType === "AUDIO" && msg.mediaUrl && (
-            <div className="px-3 py-2">
-              <div className="mb-1 flex items-center gap-1" aria-hidden="true">
-                {Array.from({ length: 24 }, (_, i) => <span key={i} className="w-1 rounded-full bg-current opacity-60" style={{ height: `${8 + ((i * 13) % 18)}px` }} />)}
-              </div>
-              <audio src={msg.mediaUrl} controls className="w-64 max-w-full" />
-              {msg.mediaDurationSeconds != null && (
-                <p
-                  className={`mt-0.5 text-[9px] ${
-                    isMe ? "text-black/70" : "text-[var(--text-faint)]"
-                  }`}
-                >
-                  {fmtDuration(msg.mediaDurationSeconds)}
-                </p>
-              )}
-            </div>
+            <AudioMessagePlayer message={msg} />
           )}
           {msg.messageType === "DOCUMENT" && msg.mediaUrl && (
             <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 px-3 py-3 text-sm ${isMe ? "text-black" : "text-[var(--text)]"}`}>
@@ -1034,7 +1093,7 @@ export function ChatThread({
   const messagesWithDividers = useMemo(() => {
     const items: (
       | { type: "divider"; key: string; label: string }
-      | { type: "message"; key: string; msg: ChatMessage; prevMsg: ChatMessage | null; nextMsg: ChatMessage | null }
+      | { type: "message"; key: string; msg: ChatMessage; prevMsg: ChatMessage | null; nextMsg: ChatMessage | null; animateEntrance: boolean }
     )[] = [];
 
     for (let i = 0; i < messages.length; i++) {
@@ -1050,7 +1109,7 @@ export function ChatThread({
         });
       }
 
-      items.push({ type: "message", key: `msg-${msg.id}`, msg, prevMsg, nextMsg: messages[i + 1] ?? null });
+      items.push({ type: "message", key: `msg-${msg.id}`, msg, prevMsg, nextMsg: messages[i + 1] ?? null, animateEntrance: i >= Math.max(0, messages.length - 30) });
     }
 
     return items;
@@ -1096,7 +1155,7 @@ export function ChatThread({
             return <DateDivider key={item.key} label={item.label} />;
           }
 
-          const { msg, prevMsg } = item;
+          const { msg, prevMsg, animateEntrance } = item;
           const isMe = msg.senderId === currentUserId;
 
           // Show avatar+name for first message or after a short sequence gap.
@@ -1171,6 +1230,7 @@ export function ChatThread({
               showAvatar={showAvatar}
               showSenderName={showSenderName ? isFirstInGroup : false}
               groupPosition={groupPosition}
+              animateEntrance={animateEntrance}
               reduced={reduced}
               onContextMenu={handleContextMenu}
               read={readMessageIds?.has(msg.id)}

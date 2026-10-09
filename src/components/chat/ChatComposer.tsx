@@ -506,7 +506,7 @@ export function ChatComposer({
         </motion.div>
       )}
 
-      <div className="glass-card flex items-center gap-1.5 px-2 py-2">
+      <div className="chat-led-border glass-card flex items-center gap-1.5 px-2 py-2 transition-transform focus-within:-translate-y-px focus-within:shadow-lg">
         <input
           ref={fileRef}
           type="file"
@@ -526,9 +526,9 @@ export function ChatComposer({
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
         <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar vídeo MP4" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><Video size={15} /></button>
         {recording ? (
-          <div className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-red-400/25 bg-red-500/5 px-2 py-1.5 ${shortRecording ? "animate-[chat-shake_.22s_ease-in-out]" : ""}`}>
+          <div className={`chat-led-border flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-red-400/25 bg-red-500/5 px-2 py-1.5 ${shortRecording ? "animate-[chat-shake_.22s_ease-in-out]" : ""}`}>
             <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
-            <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--text)]">{Math.max(0, MAX_AUDIO_SECONDS - recordingSeconds) < 30 ? `-${String(Math.floor((MAX_AUDIO_SECONDS - recordingSeconds) / 60)).padStart(2, "0")}:${String((MAX_AUDIO_SECONDS - recordingSeconds) % 60).padStart(2, "0")}` : `${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}`}</span>
+            <span className={`shrink-0 font-mono text-xs tabular-nums ${MAX_AUDIO_SECONDS - recordingSeconds <= 30 ? "text-red-300" : "text-[var(--text)]"}`} aria-live="off">{MAX_AUDIO_SECONDS - recordingSeconds <= 30 ? `${Math.floor(Math.max(0, MAX_AUDIO_SECONDS - recordingSeconds) / 60)}:${String(Math.max(0, MAX_AUDIO_SECONDS - recordingSeconds) % 60).padStart(2, "0")}` : `${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}`}</span>
             <div className="flex h-7 min-w-0 flex-1 items-center justify-center gap-[2px] overflow-hidden" aria-hidden="true">
               {Array.from({ length: 28 }, (_, i) => <span key={i} className="w-[2px] rounded-full bg-cyan-300/70 animate-pulse" style={{ height: `${5 + ((i * 13 + recordingSeconds * 7) % 19)}px`, animationDelay: `${(i % 7) * 70}ms` }} />)}
             </div>

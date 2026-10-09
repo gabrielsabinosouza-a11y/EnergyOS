@@ -160,6 +160,28 @@ button { cursor: pointer; font: inherit; }
 .panel:hover,.metric-card:hover { border-color:var(--border-strong); }
 .glass-card { border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(255,255,255,.04); backdrop-filter:blur(16px); transition:border-color .2s,box-shadow .2s; }
 .glass-card:hover { border-color:rgba(255,255,255,.13); }
+
+/* Shared chat glass/LED tokens. The animated gradient is masked to the border. */
+@property --chat-led-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes chat-led-rotate { to { --chat-led-angle: 360deg; } }
+@keyframes chat-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+:root { --ease-out: cubic-bezier(.22,1,.36,1); }
+.chat-led-border { position:relative; isolation:isolate; }
+.chat-led-border::before {
+  content:""; position:absolute; z-index:0; pointer-events:none; inset:-1px; padding:1px;
+  border-radius:inherit; opacity:.48;
+  background:conic-gradient(from var(--chat-led-angle), transparent 0deg, rgba(90,207,255,.12) 75deg, rgba(90,207,255,.75) 105deg, transparent 145deg, transparent 360deg);
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude; animation:chat-led-rotate 10s linear infinite;
+}
+.chat-led-border > * { position:relative; z-index:1; }
+.chat-led-border:hover::before,.chat-led-border:focus-within::before { opacity:.9; }
+.chat-message-bubble { box-shadow:0 1px 2px rgba(0,0,0,.28),0 8px 22px rgba(0,0,0,.12),inset 0 1px rgba(255,255,255,.08); }
+.chat-message-bubble:hover { border-color:rgba(94,208,255,.3); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-led-border::before { animation:none; }
+  .chat-message-bubble { transition:none !important; }
+}
 .question-panel { background:linear-gradient(130deg, rgba(25,45,86,.92), rgba(13,27,45,.84)); border-color:rgba(113,212,255,.18); box-shadow:0 0 30px rgba(113,212,255,.04), inset 0 1px 0 rgba(113,212,255,.08); }
 .question-panel:hover { border-color:rgba(113,212,255,.28); box-shadow:0 0 40px rgba(113,212,255,.06), inset 0 1px 0 rgba(113,212,255,.1); }.insight-panel { background:linear-gradient(145deg,rgba(76,51,43,.72),rgba(28,28,46,.9)); border-color:rgba(255,184,107,.15); }
 .eyebrow { display:inline-flex; align-items:center; gap:7px; color:var(--accent); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:.16em; }.eyebrow.muted { color:var(--text-muted); }.eyebrow.orange { color:#ffb86b; }
