@@ -46,6 +46,13 @@ export interface PlanNameInputProps extends Omit<InputHTMLAttributes<HTMLInputEl
   onChange: (value: string) => void;
   /** Plan color used for the LED border (e.g. "#71d4ff"). Defaults to cyan. */
   color?: string;
+  /**
+   * Toggles the animated LED border/glow ring. When `false`, the LED effect is
+   * removed entirely and the input is rendered raw/plain (no ring, no glow,
+   * no rotation observers). Used by the weekly planner modal pop-up.
+   * Defaults to `true`.
+   */
+  led?: boolean;
   labelText?: string;
   placeholder?: string;
   autoFocus?: boolean;
@@ -55,6 +62,7 @@ export function PlanNameInput({
   value,
   onChange,
   color = "var(--accent)",
+  led = true,
   labelText = "NOME DA ATIVIDADE",
   placeholder = "Ex.: Ir à igreja, Treino, Estudar...",
   autoFocus = false,
@@ -88,7 +96,7 @@ export function PlanNameInput({
 
   // ── Tab visibility listener (pauses LED rotation) ─────────────────────
   useEffect(() => {
-    if (!("hidden" in document)) return;
+    if (!led || !("hidden" in document)) return;
     function onVisibility() {
       setTabHidden(document.hidden);
     }
@@ -99,7 +107,7 @@ export function PlanNameInput({
 
   // ── Intersection Observer (pauses LED rotation when off-screen) ────────
   useEffect(() => {
-    if (reduced) return;
+    if (reduced || !led) return;
     const el = inputRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -110,7 +118,7 @@ export function PlanNameInput({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [reduced]);
+  }, [reduced, led]);
 
   const animationPaused = !onScreen || tabHidden || reduced;
 
@@ -207,10 +215,10 @@ export function PlanNameInput({
         {labelText}
       </label>
 
-      {/* Input wrapper with LED border */}
+      {/* Input wrapper with LED border (only when led effect is enabled) */}
       <div
-        className={`plan-input-led relative flex items-center ${animationPaused ? "paused" : ""} ${isOverLimit ? "plan-input-led--error" : ""}`}
-        style={{ "--plan-color": color } as CSSProperties}
+        className={`relative flex items-center ${led ? `plan-input-led ${animationPaused ? "paused" : ""} ${isOverLimit ? "plan-input-led--error" : ""}` : ""}`}
+        style={led ? ({ "--plan-color": color } as CSSProperties) : undefined}
       >
         <input
           {...rest}

@@ -178,6 +178,7 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
             value={title}
             onChange={setTitle}
             color={color}
+            led={false}
             autoFocus
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
             placeholder="Ex.: Ir à igreja, Treino, Estudar..."

@@ -1,13 +1,31 @@
-import pool from "../db";
 import { ENERGYOS_LAUNCH_MONTH } from "@/types";
 import type { MonthlyRecap, XpSourceBreakdown } from "@/types";
 import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
-import type { TargetAndTransition } from "framer-motion"
-import { NEW_TIER_ORDER } from "@/lib/league-new-meta";
+import { NEW_TIER_ORDER, resolveNewTier } from "@/lib/league-new-meta";
 import { addCoins } from "./settings";
 import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
-import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
+import { APP_TIMEZONE, addDaysIso, dayInTz, todayIso } from "./dates";
+import { longestRunInMonth } from "@/lib/recap/streak";
+import pool from "../db";
+
+// ─── Schema & geração ────────────────────────────────────────────────────────
+
+/**
+ * Versão do algoritmo de geração. Snapshots gravados com `schema_version`
+ * menor que a atual são recalculados UMA vez no próximo `getRecaps`
+ * (caminho de upgrade que corrige os dados antigos: XP zerado e a mesma
+ * sequência duplicada entre dois meses).
+ */
+export const RECAP_SCHEMA_VERSION = 2;
+
+/** Idempotência: repetir a geração em menos de 15s devolve o snapshot atual. */
+const GENERATION_COOLDOWN_MS = 15_000;
+
+/** Meia-noite de São Paulo (UTC−3, sem DST) como instante UTC ISO. */
+function spUtcIso(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00-03:00`).toISOString();
+}
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
@@ -250,8 +268,8 @@ async function buildRecapSummary(
 
   const endTier = leagueEnd?.tier ?? undefined;
   const startTier = leagueStart?.tier ?? undefined;
-  const normalizedEndTier = normalizeTier(leagueEnd?.tier);
-  const normalizedStartTier = normalizeTier(leagueStart?.tier);
+  const normalizedEndTier = resolveNewTier(endTier);
+  const normalizedStartTier = resolveNewTier(startTier);
 
 
 
@@ -266,8 +284,8 @@ async function buildRecapSummary(
     streakStartDate: streakResult.startDate,
     streakEndDate: streakResult.endDate,
     streakIsAlive,
-    leagueTier: normalizedEndTier,
-    leagueAtStart: normalizedStartTier,
+    leagueTier: normalizedEndTier ?? undefined,
+    leagueAtStart: normalizedStartTier ?? undefined,
     promoted,
     productivityTag: resolveTag(totalMinutes),
     totalXp: xpResult.totalXp,

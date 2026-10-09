@@ -21,9 +21,6 @@ export async function POST(request: NextRequest) {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const body = assertObject(await readJsonBody(request));
-    
-    // Debug logging removed — profileId and request body contain PII.
-    const body = assertObject(await readJsonBody(request));
 
     const task = await createTask(
       profileId,

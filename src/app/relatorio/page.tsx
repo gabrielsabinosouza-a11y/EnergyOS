@@ -66,6 +66,55 @@ interface GoalBundle {
 
 const COLORS = ['#71d4ff', '#b69cff', '#ffb86b', '#6bffb8', '#ff9f6b'];
 
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+function processReportData(apiData: RelatorioApiResponse, goals: GoalBundle[]): ReportData {
+  // Process sleep data from checkins
+  const sleepData = apiData.checkins.map((c: DailyCheckin) => ({
+    date: formatDate(c.checkinDate),
+    hours: c.sleepHours || 0
+  }));
+
+  // Process study data from checkins
+  const studyData = apiData.checkins.map((c: DailyCheckin) => ({
+    date: formatDate(c.checkinDate),
+    minutes: c.studyMinutes || 0
+  }));
+
+  // Process task completion data
+  const taskCompletion = apiData.completions.map((c) => ({
+    date: formatDate(c.date),
+    completed: c.completed,
+    total: c.total
+  }));
+
+  // Process goal progress (category is a Category object — use its name)
+  const goalProgress = goals.map((g: GoalBundle) => ({
+    category: g.goal.category.name,
+    current: g.goal.currentValue,
+    target: g.goal.targetValue,
+    percentage: Math.round((g.goal.currentValue / g.goal.targetValue) * 100)
+  }));
+
+  // Use actual streak info from API
+  const streakInfo = apiData.streakInfo;
+
+  // Use actual weekly comparison from API
+  const weeklyComparison = apiData.weeklyComparison;
+
+  return {
+    sleepData,
+    studyData,
+    taskCompletion,
+    goalProgress,
+    streakInfo,
+    weeklyComparison
+  };
+}
+
 export default function RelatorioPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -73,14 +122,8 @@ export default function RelatorioPage() {
   const [error, setError] = useState("");
   const [timeRange, setTimeRange] = useState<"week" | "month">("week");
 
-  useEffect(() => {
-    if (!user || loading) return;
-    fetchReportData();
-  }, [user, loading, timeRange, fetchReportData]);
-
   const fetchReportData = useCallback(async () => {
     if (!user) return;
-    setLoadingPage(true);
     try {
       const token = await user.getIdToken();
       const days = timeRange === "week" ? 7 : 30;
@@ -103,7 +146,7 @@ export default function RelatorioPage() {
       const goalsData: GoalBundle[] = await goalsRes.json();
       
       // Process and transform data
-      const processedData = processReportData(reportApiData, goalsData || [], days);
+      const processedData = processReportData(reportApiData, goalsData || []);
       setReportData(processedData);
       setError("");
     } catch (err) {
@@ -111,66 +154,13 @@ export default function RelatorioPage() {
     } finally {
       setLoadingPage(false);
     }
-  }
+  }, [user, loading, timeRange]);
 
-  function processReportData(apiData: RelatorioApiResponse, goals: GoalBundle[], days: number): ReportData {
-    // Process sleep data from checkins
-    const sleepData = apiData.checkins.map((c: DailyCheckin) => ({
-      date: formatDate(c.checkinDate),
-      hours: c.sleepHours || 0
-    }));
-
-    // Process study data from checkins
-    const studyData = apiData.checkins.map((c: DailyCheckin) => ({
-      date: formatDate(c.checkinDate),
-      minutes: c.studyMinutes || 0
-    }));
-
-    // Process task completion data
-    const taskCompletion = apiData.completions.map((c) => ({
-      date: formatDate(c.date),
-      completed: c.completed,
-      total: c.total
-    }));
-
-    // Process goal progress (category is a Category object — use its name)
-    const goalProgress = goals.map((g: GoalBundle) => ({
-      category: g.goal.category.name,
-      current: g.goal.currentValue,
-      target: g.goal.targetValue,
-      percentage: Math.round((g.goal.currentValue / g.goal.targetValue) * 100)
-    }));
-
-    // Use actual streak info from API
-    const streakInfo = apiData.streakInfo;
-
-    // Use actual weekly comparison from API
-    const weeklyComparison = apiData.weeklyComparison;
-
-    return {
-      sleepData,
-      studyData,
-      taskCompletion,
-      goalProgress,
-      streakInfo,
-      weeklyComparison
-    };
-  }
-
-  function getToday(): string {
-    return new Date().toISOString().split('T')[0];
-  }
-
-  function getDaysAgo(days: number): string {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    return date.toISOString().split('T')[0];
-  }
-
-  function formatDate(dateStr: string): string {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  }
+  useEffect(() => {
+    if (!user || loading) return;
+    setLoadingPage(true);
+    void fetchReportData();
+  }, [user, loading, timeRange, fetchReportData]);
 
   if (loading || !user || loadingPage) {
     return (

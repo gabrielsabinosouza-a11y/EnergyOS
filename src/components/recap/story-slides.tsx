@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence, PanInfo, useReducedMotion } from "framer-motion";
-import { X, ChevronLeft, ChevronRight, Check, Award, Timer, Flame } from "lucide-react";
+import { ChevronLeft, ChevronRight, Timer, Award, Flame } from "lucide-react";
 import Image from "next/image";
-import { Modal } from "@/components/modal";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
 
@@ -21,8 +20,7 @@ interface StorySlidesProps {
 function formatMonthTitle(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   const monthName = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  // Capitalize first letter only
-  return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  return monthName;
 }
 
 // Format minutes to hours/min
@@ -43,26 +41,14 @@ function tierColor(tier: NewLeagueTier | undefined): string {
   return tier ? (NEW_TIER_META[tier]?.color ?? "#71d4ff") : "#71d4ff";
 }
 
-// Slide themes
-const THEMES = {
-  intro:   { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
-  focus:   { bg: "linear-gradient(160deg, #071828 0%, #0a2540 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.35)" },
-  streak:  { bg: "linear-gradient(160deg, #1a0e06 0%, #2d1a08 100%)",          accent: "#ffb86b", glow: "rgba(255,184,107,0.38)" },
-  garden:  { bg: "linear-gradient(160deg, #071a0e 0%, #0d2a18 100%)",          accent: "#4ade80", glow: "rgba(74,222,128,0.32)"  },
-  xp:      { bg: "linear-gradient(160deg, #12061f 0%, #26103f 100%)",          accent: "#b69cff", glow: "rgba(182,156,255,0.38)" },
-  league:  { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
-  summary: { bg: "linear-gradient(160deg, #0a0e1a 0%, #111827 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
-};
-
 export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySlidesProps) {
   const [current, setCurrent] = useState(0);
   const reduced = useReducedMotion();
-  const dragSnapToOffset = 0;
-  const dragVelocityThreshold = 300;
 
   const handleSwipe = (_: unknown, info: PanInfo) => {
     if (reduced) return;
-    const { velocity, offset } = info;
+    const { velocity } = info;
+    const dragVelocityThreshold = 300;
     const isThreshHold = Math.abs(velocity.x) > dragVelocityThreshold;
     if (isThreshHold) {
       const direction = velocity.x > 0 ? -1 : 1;
@@ -74,25 +60,145 @@ export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySli
     }
   };
 
-  const slideComponents = [
-    <IntroSlide key="intro" recap={recap} userName={userName} userPhotoUrl={userPhotoUrl} />,
-    <FocusSlide key="focus" recap={recap} />,
-    <StreakSlide key="streak" recap={recap} />,
-    <GardenSlide key="garden" recap={recap} />,
-    <XpSlide key="xp" recap={recap} />,
-    <LeagueSlide key="league" recap={recap} />,
-    <SummarySlide key="summary" recap={recap} userName={userName} userPhotoUrl={userPhotoUrl} />,
-  ];
+  const monthLabel = recap.recapMonth.slice(0, 7);
+  const date = new Date(monthLabel + "-01");
+  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  // Modal without structured children
+  if (typeof document === "undefined") return null;
 
   return (
-    <Modal onClose={onClose} title={formatMonthTitle(recap.recapMonth)} />
+    <div className="fixed inset-0 z-[999] flex items-center justify-center">
+      {/* Backdrop */}
+      <motion.div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18 }}
+      />
+
+      <motion.div
+        className="relative mx-4 w-full max-w-2xl"
+        initial={{ opacity: 0, scale: reduced ? 1 : 0.95, y: reduced ? 0 : 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 24 }}
+        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-primary)] px-5 py-4 sm:px-6">
+          <h2 className="font-display text-lg text-[var(--text)]">{monthTitle}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Slides container */}
+        <div className="relative h-[50vh] overflow-hidden">
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={current}
+              className="absolute inset-0 px-5 py-6 sm:px-6"
+              initial={{ opacity: 0, x: 320, rotateY: 15 }}
+              animate={{ opacity: 1, x: 0, rotateY: 0 }}
+              exit={{ opacity: 0, x: -320, rotateY: -15 }}
+              transition={{ duration: reduced ? 0 : 0.46, type: "spring", stiffness: 360, damping: 28 }}
+              drag={reduced ? false : "x"}
+              dragConstraints={{ left: 0, right: 0 }}
+              onDragEnd={handleSwipe}
+            >
+              {current === 0 && (
+                <IntroSlide recap={recap} userName={userName} userPhotoUrl={userPhotoUrl} />
+              )}
+              {current === 1 && (
+                <FocusSlide recap={recap} />
+              )}
+              {current === 2 && (
+                <StreakSlide recap={recap} />
+              )}
+              {current === 3 && (
+                <GardenSlide recap={recap} />
+              )}
+              {current === 4 && (
+                <XpSlide recap={recap} />
+              )}
+              {current === 5 && (
+                <LeagueSlide recap={recap} />
+              )}
+              {current === 6 && (
+                <SummarySlide 
+                  recap={recap} 
+                  userName={userName} 
+                  userPhotoUrl={userPhotoUrl}
+                  onClose={onClose}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1 bg-[var(--border-subtle)]">
+          <motion.div
+            className="h-full"
+            style={{ backgroundColor: "#71d4ff" }}
+            initial={{ width: 0 }}
+            animate={{ width: `${((current + 1) / SLIDE_COUNT) * 100}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => setCurrent(0)}
+            className="rounded-lg px-3 py-1 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            Início
+          </button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileHover={!reduced ? { scale: 1.05 } : undefined}
+              whileTap={!reduced ? { scale: 0.95 } : undefined}
+              onClick={() => current > 0 && setCurrent(c => c - 1)}
+              disabled={current === 0}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+            >
+              <ChevronLeft size={16} />
+            </motion.button>
+            <span className="text-sm text-[var(--text-muted)]">
+              {current + 1} / {SLIDE_COUNT}
+            </span>
+            <motion.button
+              whileHover={!reduced ? { scale: 1.05 } : undefined}
+              whileTap={!reduced ? { scale: 0.95 } : undefined}
+              onClick={() => current < SLIDE_COUNT - 1 && setCurrent(c => c + 1)}
+              disabled={current === SLIDE_COUNT - 1}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+            >
+              <ChevronRight size={16} />
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 
 // Individual slide components
 function IntroSlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; userName: string; userPhotoUrl?: string }) {
+  const monthLabel = recap.recapMonth.slice(0, 7);
+  const date = new Date(monthLabel + "-01");
+  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-6">
+    <div className="flex flex-col items-center justify-center gap-6">
       <div className="flex items-center gap-3">
         {userPhotoUrl ? (
           <Image 
@@ -113,7 +219,7 @@ function IntroSlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; us
         )}
         <div>
           <h2 className="font-display text-2xl font-bold text-[var(--text)]">{userName}</h2>
-          <p className="text-sm text-[var(--text-muted)]">energyOS • {formatMonthTitle(recap.recapMonth)}</p>
+          <p className="text-sm text-[var(--text-muted)]">energyOS • {monthTitle}</p>
         </div>
       </div>
       <p className="max-w-md text-center text-sm text-[var(--text-muted)]">
@@ -141,7 +247,6 @@ function FocusSlide({ recap }: { recap: MonthlyRecap }) {
 }
 
 function StreakSlide({ recap }: { recap: MonthlyRecap }) {
-  const meta = resolveNewTier(recap.leagueTier);
   const streakIcon = "/streak/streak_alive.png";
   
   return (
@@ -240,14 +345,24 @@ function LeagueSlide({ recap }: { recap: MonthlyRecap }) {
       </div>
       {recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier && (
         <p className="text-xs text-[var(--text-muted)]">
-          {formatMonthTitle(recap.recapMonth)}: {recap.leagueAtStart} → {recap.leagueTier}
+          {recap.leagueAtStart} → {recap.leagueTier}
         </p>
       )}
     </div>
   );
 }
 
-function SummarySlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; userName: string; userPhotoUrl?: string }) {
+function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: MonthlyRecap; userName: string; userPhotoUrl?: string; onClose: () => void }) {
+  const tier = recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier] : NEW_TIER_META.BRONZE;
+  const promoted = recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier;
+  const promotionText = promoted 
+    ? ` subiu de ${recap.leagueAtStart} para ${recap.leagueTier}`
+    : ` fechou em ${recap.leagueTier}`;
+  
+  const monthLabel = recap.recapMonth.slice(0, 7);
+  const date = new Date(monthLabel + "-01");
+  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
   return (
     <div className="flex flex-col items-center gap-6">
       <div className="flex items-center gap-3">
@@ -270,46 +385,69 @@ function SummarySlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; 
         )}
         <div>
           <h2 className="font-display text-xl font-bold text-[var(--text)]">{userName}</h2>
-          <p className="text-sm text-[var(--text-muted)]">{formatMonthTitle(recap.recapMonth)}</p>
+          <p className="text-sm text-[var(--text-muted)]">{monthTitle}</p>
+          <p className="text-xs text-[var(--text-muted)]">Você {promotionText}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <StatCard 
-          icon={<Timer size={20} color="#71d4ff" />} 
+          icon={<Timer size={16} color="#71d4ff" />} 
           label="Foco" 
           value={formatMinutes(recap.totalFocusMinutes)} 
           color="#71d4ff" 
         />
         <StatCard 
-          icon={<Flame size={20} color="#ffb86b" />} 
+          icon={<FlameIcon size={16} color="#ffb86b" />} 
           label="Sequência" 
           value={`${recap.longestStreak} dias`} 
           color="#ffb86b" 
         />
         <StatCard 
-          icon={<Award size={20} color={(recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier]?.color ?? "#71d4ff" : "#71d4ff")} />} 
+          icon={<Award size={16} color={tierColor(recap.leagueTier)} />} 
           label="Liga" 
           value={recap.leagueTier ?? "—"} 
-          color={recap.leagueTier ? tierColor(recap.leagueTier) : "#71d4ff"}
+          color={tierColor(recap.leagueTier)}
         />
         <StatCard 
-          icon={<Image src="/icons_8bits/brain.png" alt="Energias" width={20} height={20} unoptimized />} 
+          icon={<Image src="/icons_8bits/brain.png" alt="Energias" width={16} height={16} unoptimized />} 
           label="Energias" 
           value={formatNumber(recap.gardenCount ?? 0)} 
           color="#4ade80" 
         />
       </div>
 
-      <button
-        onClick={() => {
-          // Generate downloadable image
-        }}
-        className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-      >
-        Baixar Recap
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={() => {}}
+          className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+        >
+          Baixar
+        </button>
+        <button
+          onClick={onClose}
+          className="rounded-xl border border-[var(--accent-border)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--accent)]"
+        >
+          Compartilhar
+        </button>
+      </div>
     </div>
+  );
+}
+
+function FlameIcon({ className, color }: { className?: string; color?: string }) {
+  return (
+    <svg 
+      className={className} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke={color ?? "currentColor"}
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    >
+      <path d="M12 2v14l-4-4H4a8 8 0 0 1 16 0h-4l-4 4V2" />
+    </svg>
   );
 }
 
