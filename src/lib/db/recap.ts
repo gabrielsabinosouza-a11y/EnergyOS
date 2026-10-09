@@ -268,8 +268,8 @@ async function buildRecapSummary(
 
   const endTier = leagueEnd?.tier ?? undefined;
   const startTier = leagueStart?.tier ?? undefined;
-  const normalizedEndTier = resolveNewTier(endTier);
-  const normalizedStartTier = resolveNewTier(startTier);
+  const normalizedEndTier = endTier ? resolveNewTier(endTier) : undefined;
+  const normalizedStartTier = startTier ? resolveNewTier(startTier) : undefined;
 
 
 

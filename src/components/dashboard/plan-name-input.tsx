@@ -103,7 +103,7 @@ export function PlanNameInput({
     onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
+  }, [led]);
 
   // ── Intersection Observer (pauses LED rotation when off-screen) ────────
   useEffect(() => {

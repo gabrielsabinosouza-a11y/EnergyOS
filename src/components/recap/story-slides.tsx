@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence, PanInfo, useReducedMotion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Timer, Award, Flame } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
@@ -16,7 +16,7 @@ interface StorySlidesProps {
   onClose: () => void;
 }
 
-// Month name formatter (pt-BR, capitalized only first letter)
+// Month name formatter (pt-BR)
 function formatMonthTitle(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   const monthName = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -60,9 +60,9 @@ export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySli
     }
   };
 
-  const monthLabel = recap.recapMonth.slice(0, 7);
-  const date = new Date(monthLabel + "-01");
-  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthTitle = recap.recapMonth.slice(0, 7);
+  const date = new Date(monthTitle + "-01");
+  const monthLabel = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   // Modal without structured children
   if (typeof document === "undefined") return null;
@@ -88,7 +88,7 @@ export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySli
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-primary)] px-5 py-4 sm:px-6">
-          <h2 className="font-display text-lg text-[var(--text)]">{monthTitle}</h2>
+          <h2 className="font-display text-lg text-[var(--text)]">{monthLabel}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -193,10 +193,6 @@ export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySli
 
 // Individual slide components
 function IntroSlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; userName: string; userPhotoUrl?: string }) {
-  const monthLabel = recap.recapMonth.slice(0, 7);
-  const date = new Date(monthLabel + "-01");
-  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  
   return (
     <div className="flex flex-col items-center justify-center gap-6">
       <div className="flex items-center gap-3">
@@ -219,7 +215,7 @@ function IntroSlide({ recap, userName, userPhotoUrl }: { recap: MonthlyRecap; us
         )}
         <div>
           <h2 className="font-display text-2xl font-bold text-[var(--text)]">{userName}</h2>
-          <p className="text-sm text-[var(--text-muted)]">energyOS • {monthTitle}</p>
+          <p className="text-sm text-[var(--text-muted)]">energyOS • {formatMonthTitle(recap.recapMonth)}</p>
         </div>
       </div>
       <p className="max-w-md text-center text-sm text-[var(--text-muted)]">
@@ -233,7 +229,10 @@ function FocusSlide({ recap }: { recap: MonthlyRecap }) {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "rgba(113,212,255,0.2)" }}>
-        <Timer size={32} color="#71d4ff" />
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#71d4ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 8v4l3 3"></path>
+        </svg>
       </div>
       <div>
         <h3 className="font-display text-xl font-bold text-[var(--text)]">{formatMinutes(recap.totalFocusMinutes)}</h3>
@@ -317,7 +316,8 @@ function XpSlide({ recap }: { recap: MonthlyRecap }) {
 }
 
 function LeagueSlide({ recap }: { recap: MonthlyRecap }) {
-  const meta = NEW_TIER_META[recap.leagueTier as NewLeagueTier] ?? NEW_TIER_META.BRONZE;
+  const tier = recap.leagueTier ?? "BRONZE";
+  const meta = NEW_TIER_META[tier as NewLeagueTier] ?? NEW_TIER_META.BRONZE;
   
   return (
     <div className="flex flex-col items-center gap-4">
@@ -353,15 +353,16 @@ function LeagueSlide({ recap }: { recap: MonthlyRecap }) {
 }
 
 function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: MonthlyRecap; userName: string; userPhotoUrl?: string; onClose: () => void }) {
-  const tier = recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier] : NEW_TIER_META.BRONZE;
+  const tier = recap.leagueTier ?? "BRONZE";
+  const meta = NEW_TIER_META[tier as NewLeagueTier] ?? NEW_TIER_META.BRONZE;
   const promoted = recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier;
   const promotionText = promoted 
     ? ` subiu de ${recap.leagueAtStart} para ${recap.leagueTier}`
     : ` fechou em ${recap.leagueTier}`;
   
-  const monthLabel = recap.recapMonth.slice(0, 7);
-  const date = new Date(monthLabel + "-01");
-  const monthTitle = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthTitle = recap.recapMonth.slice(0, 7);
+  const date = new Date(monthTitle + "-01");
+  const monthLabel = date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -385,32 +386,32 @@ function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: Month
         )}
         <div>
           <h2 className="font-display text-xl font-bold text-[var(--text)]">{userName}</h2>
-          <p className="text-sm text-[var(--text-muted)]">{monthTitle}</p>
+          <p className="text-sm text-[var(--text-muted)]">{monthLabel}</p>
           <p className="text-xs text-[var(--text-muted)]">Você {promotionText}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <StatCard 
-          icon={<Timer size={16} color="#71d4ff" />} 
+          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71d4ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>}
           label="Foco" 
           value={formatMinutes(recap.totalFocusMinutes)} 
           color="#71d4ff" 
         />
         <StatCard 
-          icon={<FlameIcon size={16} color="#ffb86b" />} 
+          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb86b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v14l-4-4H4a8 8 0 0 1 16 0h-4l-4 4V2"></path></svg>} 
           label="Sequência" 
           value={`${recap.longestStreak} dias`} 
           color="#ffb86b" 
         />
         <StatCard 
-          icon={<Award size={16} color={tierColor(recap.leagueTier)} />} 
+          icon={<Image src={meta.iconPath} alt={meta.label} width={16} height={16} unoptimized />} 
           label="Liga" 
-          value={recap.leagueTier ?? "—"} 
-          color={tierColor(recap.leagueTier)}
+          value={meta.label} 
+          color={meta.color}
         />
         <StatCard 
-          icon={<Image src="/icons_8bits/brain.png" alt="Energias" width={16} height={16} unoptimized />} 
+          icon={<Image src="/icons_8bits/brain.png" alt="Energias" width="16" height="16" unoptimized />} 
           label="Energias" 
           value={formatNumber(recap.gardenCount ?? 0)} 
           color="#4ade80" 
@@ -432,22 +433,6 @@ function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: Month
         </button>
       </div>
     </div>
-  );
-}
-
-function FlameIcon({ className, color }: { className?: string; color?: string }) {
-  return (
-    <svg 
-      className={className} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke={color ?? "currentColor"}
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <path d="M12 2v14l-4-4H4a8 8 0 0 1 16 0h-4l-4 4V2" />
-    </svg>
   );
 }
 

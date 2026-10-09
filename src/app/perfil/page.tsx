@@ -458,7 +458,8 @@ export default function PerfilPage() {
     const target = prevMonth < launch
       ? new Date(now.getFullYear(), now.getMonth(), 1)
       : prevMonth;
-    const month = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-01`;
+    const year = target.getFullYear();
+    const month = target.getMonth() + 1;
     setGeneratingRecap(true);
     setRecapError("");
     try {

@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X, Download, Share2, Trophy, Flame } from "lucide-react";
+import { useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { X, Download, Share2 } from "lucide-react";
 import Image from "next/image";
-import { Modal } from "@/components/modal";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
 
@@ -32,7 +31,6 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const reduced = useReducedMotion();
-  const modalRef = useRef<HTMLDivElement>(null);
 
   const tier = recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier] : NEW_TIER_META.BRONZE;
   const tierColor = tier.color;
@@ -71,11 +69,9 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
       ctx.font = "400 28px 'Inter', -apple-system, sans-serif";
       ctx.fillText("Recap de", canvas.width / 2, 80);
 
-      ctx.fillStyle = `linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)`;
-      ctx.clip();
-      ctx.fillStyle = "transparent";
+      ctx.fillStyle = "#71d4ff";
+      ctx.font = "700 32px 'Inter', -apple-system, sans-serif";
       ctx.fillText(monthLabel, canvas.width / 2, 140);
-      ctx.clip();
 
       // User info
       ctx.textAlign = "center";
@@ -117,10 +113,6 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
         { label: "Energias", value: formatNumber(recap.gardenCount ?? 0), color: "#4ade80" },
         { label: "XP", value: formatNumber(recap.totalXp), color: "#b69cff" },
       ];
-
-      const deltaColors = {
-        focus: recap.xpSources?.focus > 3000 ? "#22c55e" : "#f59e0b",
-      };
 
       for (let i = 0; i < stats.length; i += 2) {
         const y = gridTop + (i / 2) * (cardH + 20);
@@ -174,7 +166,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
       ctx.fillText(`Gerado em ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`, canvas.width / 2, footerY + 55);
 
       // Convert to blob and download
-      canvas.toBlob(blob => {
+      canvas.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -192,31 +184,38 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
   const handleShare = async () => {
     setSharing(true);
     try {
+      // Check if Web Share API is available and can share files
       if (navigator.share && navigator.canShare) {
-        const blob = await new Promise<Blob>((resolve) => {
+        try {
+          // Create canvas for image
           const canvas = document.createElement("canvas");
           canvas.width = 1080;
           canvas.height = 1920;
           const ctx = canvas.getContext("2d")!;
           
-          const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-          bg.addColorStop(0, "#0a0e1a");
-          bg.addColorStop(1, "#111827");
-          ctx.fillStyle = bg;
+          // Very simple background just for share preview
+          ctx.fillStyle = "#0a0e1a";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          const file = new File([blob], "recap.png", {type: "image/png"})
-          resolve(file);
-        });
-        
-        await navigator.share({
-          files: [blob],
-          title: `Meu recap de ${monthLabel}`,
-          text: `Confira meu recap de ${monthLabel} no energyOS!`,
-        });
+          
+          // Convert to blob
+          const blob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((b) => resolve(b!), { type: "image/png" });
+          });
+          
+          // Try to share with file
+          const file = new File([blob], `recap-${monthTitle}.png`, { type: "image/png" });
+          
+          await navigator.share({
+            files: [file],
+            title: `Meu recap de ${monthLabel}`,
+            text: `Confira meu recap de ${monthLabel} no energyOS!`,
+          });
+        } catch (shareError) {
+          // If file sharing fails, fallback to download
+          console.log("Share failed, falling back to download:", shareError);
+        }
       }
-    } catch {
-      // Fallback to download
+      // Always try download as fallback
       await handleDownload();
     } finally {
       setSharing(false);
@@ -224,7 +223,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
   };
 
   return (
-    <div ref={modalRef} className="relative z-[1000] mx-auto max-w-4xl">
+    <div className="relative z-[1000] mx-auto max-w-4xl">
       <motion.div
         className="flex flex-col items-center gap-8 rounded-2xl bg-[var(--bg-primary)] p-6 sm:p-8 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.65)]"
         initial={{ opacity: 0, scale: 0.95 }}
@@ -284,25 +283,25 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard 
-            icon={<Timer size={18} color="#71d4ff" />} 
+            icon={<div className="flex h-5 w-5 items-center justify-center text-[#71d4ff]">⏱️</div>}
             label="Foco" 
             value={formatMinutes(recap.totalFocusMinutes)} 
             color="#71d4ff" 
           />
           <StatCard 
-            icon={<Flame size={18} color="#ffb86b" />} 
+            icon={<div className="flex h-5 w-5 items-center justify-center text-[#ffb86b]">🔥</div>}
             label="Sequência" 
             value={`${recap.longestStreak} dias`} 
             color="#ffb86b" 
           />
           <StatCard 
-            icon={<Award size={18} color={tierColor} />} 
+            icon={<div className="flex h-5 w-5 items-center justify-center" style={{ color: tierColor }}>🏆</div>}
             label="Liga" 
             value={recap.leagueTier ?? "—"} 
-            color={tierColor} 
+            color={tierColor}
           />
           <StatCard 
-            icon={<Image src="/icons_8bits/brain.png" alt="Energias" width={18} height={18} unoptimized />} 
+            icon={<div className="flex h-5 w-5 items-center justify-center text-[#4ade80]">🧠</div>}
             label="Energias" 
             value={formatNumber(recap.gardenCount ?? 0)} 
             color="#4ade80" 
@@ -313,7 +312,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
         <div className="flex gap-3">
           <button
             onClick={handleDownload}
-            disabled={downloading || sharing}
+            disabled={downloading}
             className="flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
           >
             <Download size={16} />
