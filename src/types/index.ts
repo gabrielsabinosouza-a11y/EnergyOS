@@ -197,6 +197,7 @@ export interface ChatMessage {
   senderId: string;
   senderName?: string;
   senderPhotoUrl?: string;
+  senderLevel?: number;
   senderRole?: GroupRole;
   body?: string;
   messageType?: string;
@@ -255,6 +256,7 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     senderId: gm.senderId,
     senderName: gm.senderName,
     senderPhotoUrl: gm.senderPhotoUrl,
+    senderLevel: gm.senderLevel,
     senderRole: g.senderRole,
     body: gm.body,
     messageType: gm.messageType,
@@ -370,6 +372,7 @@ export interface GroupMessage {
   senderId: string;
   senderName: string;
   senderPhotoUrl?: string;
+  senderLevel?: number;
   senderRole?: GroupRole;
   body?: string;
   messageType: GroupMessageType;

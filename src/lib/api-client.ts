@@ -215,7 +215,7 @@ export const api = {
   deleteWeeklyPlanSeries: (id: number) => request<{ ok: true }>(`/api/weekly-plans/series/${id}`, { method: "DELETE" }),
   getWeeklyPlanSeriesById: (id: number) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`),
   setPlanOccurrenceCompleted: (seriesId: number, date: string, completed: boolean) =>
-    request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    request<{ ok: true; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   skipPlanOccurrence: (seriesId: number, date: string) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/skip`, { method: "PATCH" }),
   updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null }) =>

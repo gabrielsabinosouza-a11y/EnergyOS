@@ -497,15 +497,43 @@ function DashboardContent() {
     }
   }
 
+  async function updatePlanSeries(seriesId: number, payload: {
+    title: string; categoryId: number; iconType: "asset" | "emoji" | "image" | null; iconValue: string | null;
+    color: string | null; note: string | null; repeatType: "once" | "weekly" | "interval";
+    repeatDays: number[] | null; repeatInterval: number | null; startTime: string | null;
+    durationMinutes: number | null; startDate: string; endType: "never" | "date" | "count";
+    endDate: string | null; endCount: number | null;
+  }) {
+    try {
+      await api.updateWeeklyPlanSeries(seriesId, payload);
+      const updated = await api.getWeeklyPlans(weekStartIso(todayIso()));
+      setWeeklyPlans(updated);
+      showSuccess("Plano atualizado com sucesso!");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível atualizar o plano.");
+      throw error;
+    }
+  }
+
   async function togglePlanOccurrence(seriesId: number, date: string, completed: boolean) {
     try {
-      await api.setPlanOccurrenceCompleted(seriesId, date, completed);
+      const reward = await api.setPlanOccurrenceCompleted(seriesId, date, completed);
       // Refresh the week's plans
       const ws = weekStartIso(todayIso());
       const updated = await api.getWeeklyPlans(ws);
       setWeeklyPlans(updated);
+      if (completed && reward.coinsAwarded > 0) {
+        setCoins((balance) => {
+          const next = balance + reward.coinsAwarded;
+          setRewardModal({ coins: reward.coinsAwarded, xp: reward.xpAwarded, balance: next });
+          return next;
+        });
+        showSuccess(`+${reward.xpAwarded} XP · +${reward.coinsAwarded} moedas`);
+        api.getFocusData().then((focus) => setFocusData(focus));
+      }
     } catch (error) {
       showError(error instanceof Error ? error.message : "Não foi possível atualizar o plano.");
+      throw error;
     }
   }
 
@@ -847,6 +875,7 @@ function DashboardContent() {
             onUpdate={updatePlan}
             onToggleCompleted={togglePlanCompleted}
             onCreateSeries={createPlanSeries}
+            onUpdateSeries={updatePlanSeries}
             onToggleOccurrence={togglePlanOccurrence}
             onSkipOccurrence={skipPlanOccurrence}
             onDeleteSeries={deletePlanSeries}

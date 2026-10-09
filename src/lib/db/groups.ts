@@ -502,6 +502,7 @@ export async function listGroupMessages(
     edited_at: Date | string | null;
     display_name: string;
     photo_url: string | null;
+    sender_level: number | null;
     sender_role: string | null;
     reactions: unknown;
     is_pinned: boolean | null;
@@ -514,7 +515,7 @@ export async function listGroupMessages(
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
   const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
-     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url,
+     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url, ux.level as sender_level,
      gmsender.role as sender_role,
      reactions.reactions, (pinned.message_id is not null) as is_pinned,
      pinned.created_at as pinned_at, pinned.pinned_by,
@@ -531,6 +532,7 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join user_xp ux on ux.profile_id = gm.sender_id
          left join group_members gmsender on gmsender.group_id = gm.group_id and gmsender.profile_id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
@@ -566,6 +568,7 @@ export async function listGroupMessages(
         `select ${selectColumns}
          from group_messages gm
          join profiles p on p.id = gm.sender_id
+         left join user_xp ux on ux.profile_id = gm.sender_id
          left join group_members gmsender on gmsender.group_id = gm.group_id and gmsender.profile_id = gm.sender_id
          ${hasReplyCols ? `left join group_messages rp on rp.id = gm.reply_to_id
          left join profiles rpname on rpname.id = rp.sender_id` : ""}
@@ -605,6 +608,7 @@ export async function listGroupMessages(
     senderId: row.sender_id,
     senderName: row.display_name,
     senderPhotoUrl: row.photo_url ?? undefined,
+    senderLevel: row.sender_level ?? 1,
     senderRole: row.sender_role ? (row.sender_role as GroupRole) : undefined,
     body: row.body ?? undefined,
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
@@ -759,7 +763,8 @@ export async function sendGroupMessage(
     opts?.mediaFileName?.slice(0, 255) ?? null,
     opts?.mediaMimeType?.slice(0, 120) ?? null,
     mediaSizeBytes,
-    ...(hasReplyCols ? [effectiveReplyId ?? null, "now()"] : []),
+    // A newly created message is not edited; only editGroupMessage sets this.
+    ...(hasReplyCols ? [effectiveReplyId ?? null, null] : []),
     ...(hasMentionsCol ? [mentions] : []),
   ];
   const returningCols = [
@@ -799,8 +804,8 @@ export async function sendGroupMessage(
     insertVals,
   );
   const row = inserted.rows[0];
-  const sender = await pool.query<{ display_name: string; photo_url: string | null }>(
-    `select display_name, photo_url from profiles where id = $1`,
+  const sender = await pool.query<{ display_name: string; photo_url: string | null; level: number | null }>(
+    `select p.display_name, p.photo_url, ux.level from profiles p left join user_xp ux on ux.profile_id = p.id where p.id = $1`,
     [profileId],
   );
   // Fetch reply join info
@@ -823,6 +828,7 @@ export async function sendGroupMessage(
     senderId: row.sender_id,
     senderName: sender.rows[0]?.display_name ?? "Você",
     senderPhotoUrl: sender.rows[0]?.photo_url ?? undefined,
+    senderLevel: sender.rows[0]?.level ?? 1,
     body: row.body ?? undefined,
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
     mediaUrl: row.media_url ?? undefined,

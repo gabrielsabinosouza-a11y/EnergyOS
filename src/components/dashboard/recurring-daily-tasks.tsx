@@ -8,6 +8,7 @@ import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
 import { CoinIcon } from "@/components/coin-icon";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
+import { IconButton } from "@/components/ui";
 import { HabitModal, type HabitPayload } from "./habit-modal";
 import { HabitIcon } from "./habit-icon";
 import { HABIT_DAILY_REWARD_LIMIT, HABIT_XP, HABIT_COINS, HABIT_ALL_BONUS_COINS } from "@/lib/daily-limits";
@@ -312,15 +313,18 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
     <div className="panel p-6">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
+          <Check size={18} className="text-[var(--accent)]" aria-hidden="true" />
           <span className="eyebrow muted">HÁBITOS</span>
         </div>
-        <button
+        <IconButton
           onClick={() => { setSaveNotice(""); setModalState({ mode: "create" }); }}
-          className="icon-button small"
+          size="md"
+          variant="secondary"
           aria-label="Adicionar hábito"
+          title="Adicionar hábito"
         >
           <Plus size={18} />
-        </button>
+        </IconButton>
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-[var(--text-muted)]">

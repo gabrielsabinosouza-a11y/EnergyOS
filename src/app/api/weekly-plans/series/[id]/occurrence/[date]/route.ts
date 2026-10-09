@@ -14,8 +14,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     let body: Record<string, unknown> = {};
     try { body = await request.json(); } catch { /* empty body = complete */ }
     const completed = body.completed !== false;
-    await setOccurrenceCompleted(profileId, Number(id), date, completed);
-    return jsonOk({ ok: true });
+    const reward = await setOccurrenceCompleted(profileId, Number(id), date, completed);
+    return jsonOk({ ok: true, ...reward });
   });
 }
 

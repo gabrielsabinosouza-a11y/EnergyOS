@@ -7,7 +7,7 @@ import { recordMissionProgress } from "./daily-quests";
 import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
-import { WEEKLY_PLAN_DONE_XP, WEEKLY_PLAN_DONE_COINS } from "../daily-limits";
+import { WEEKLY_PLAN_COMPLETION_REWARD } from "../daily-limits";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
@@ -177,11 +177,21 @@ export async function awardWeeklyPlanCompletion(
       return { xpAwarded: 0, coinsAwarded: 0 };
     }
 
-    const xpAwarded = await creditXP(profileId, "weekly_plan", planId, WEEKLY_PLAN_DONE_XP, { db: client });
+    await client.query(`select pg_advisory_xact_lock(hashtext($1), hashtext((now() at time zone 'America/Sao_Paulo')::date::text))`, [profileId]);
+
+    const rewardCount = await client.query<{ count: number }>(
+      `select count(*)::int as count from xp_ledger
+        where profile_id = $1 and source in ('weekly_plan', 'weekly_plan_occurrence')
+          and (created_at at time zone 'America/Sao_Paulo')::date = (now() at time zone 'America/Sao_Paulo')::date`,
+      [profileId],
+    );
+    const xpAwarded = Number(rewardCount.rows[0]?.count ?? 0) < WEEKLY_PLAN_COMPLETION_REWARD.dailyLimit
+      ? await creditXP(profileId, "weekly_plan", planId, WEEKLY_PLAN_COMPLETION_REWARD.xp, { db: client })
+      : 0;
     let coinsAwarded = 0;
     if (xpAwarded > 0) {
-      await addCoins(profileId, WEEKLY_PLAN_DONE_COINS, client);
-      coinsAwarded = WEEKLY_PLAN_DONE_COINS;
+      await addCoins(profileId, WEEKLY_PLAN_COMPLETION_REWARD.coins, client);
+      coinsAwarded = WEEKLY_PLAN_COMPLETION_REWARD.coins;
     }
     await client.query("commit");
 

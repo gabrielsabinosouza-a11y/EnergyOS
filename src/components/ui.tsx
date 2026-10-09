@@ -2,8 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useSpring, useReducedMotion } from "framer-motion";
-import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, PropsWithChildren, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, PropsWithChildren, ReactNode, Ref } from "react";
 import { btnHover, btnTap } from "@/lib/motion";
+import { LoaderCircle } from "lucide-react";
+
+type ActionButtonVariant = "primary" | "secondary" | "ghost" | "success" | "danger";
+type ActionButtonSize = "sm" | "md" | "lg";
+const ACTION_BUTTON_HEIGHT: Record<ActionButtonSize, string> = { sm: "h-8 px-3 text-xs", md: "h-10 px-4 text-sm", lg: "h-12 px-5 text-base" };
+const ACTION_BUTTON_ICON: Record<ActionButtonSize, number> = { sm: 14, md: 16, lg: 18 };
+const ACTION_BUTTON_VARIANT: Record<ActionButtonVariant, string> = {
+  primary: "border border-cyan-200/20 bg-[var(--accent)] text-slate-950 shadow-[inset_0_1px_rgba(255,255,255,.28),0_2px_0_rgba(0,0,0,.24)] hover:brightness-105",
+  secondary: "border border-white/10 bg-white/[.06] text-[var(--text)] hover:bg-white/[.1]",
+  ghost: "border border-transparent text-[var(--text-muted)] hover:bg-white/[.06] hover:text-[var(--text)]",
+  success: "border border-emerald-300/15 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/20",
+  danger: "border border-red-300/15 bg-red-500/10 text-red-200 hover:bg-red-500/15",
+};
+export function Button({ variant = "secondary", size = "md", loading = false, children, className = "", disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ActionButtonVariant; size?: ActionButtonSize; loading?: boolean }) {
+  return <button {...props} disabled={disabled || loading} aria-busy={loading || undefined} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-lg font-semibold transition-[transform,opacity,background-color] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${ACTION_BUTTON_HEIGHT[size]} ${ACTION_BUTTON_VARIANT[variant]} ${className}`}>
+    {loading && <LoaderCircle size={ACTION_BUTTON_ICON[size]} className="animate-spin" aria-hidden="true" />}{children}
+  </button>;
+}
+export function IconButton({ size = "md", variant = "ghost", loading = false, className = "", children, ref, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { size?: ActionButtonSize; variant?: ActionButtonVariant; loading?: boolean; ref?: Ref<HTMLButtonElement> }) {
+  const sizeClass: Record<ActionButtonSize, string> = { sm: "h-8 w-8", md: "h-10 w-10", lg: "h-12 w-12" };
+  return <button {...props} ref={ref} disabled={props.disabled || loading} aria-busy={loading || undefined} className={`inline-flex shrink-0 items-center justify-center rounded-lg border font-medium transition-[transform,opacity,background-color] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:translate-y-0.5 disabled:opacity-50 ${sizeClass[size]} ${ACTION_BUTTON_VARIANT[variant]} ${className}`}>
+    {loading ? <LoaderCircle size={ACTION_BUTTON_ICON[size]} className="animate-spin" aria-hidden="true" /> : children}
+  </button>;
+}
 
 // ── GlowCard ────────────────────────────────────────────────────────────────
 // A glass panel with an optional ambient colored glow behind it.

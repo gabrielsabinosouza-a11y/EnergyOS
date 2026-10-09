@@ -32,6 +32,7 @@ import {
 import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { Modal } from "@/components/modal";
+import { Button } from "@/components/ui";
 
 const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
   { status: "todo", label: "A Fazer", color: "#71d4ff" },
@@ -302,12 +303,15 @@ function Column({
             >
               <Plus size={20} className="mb-1 opacity-50" />
               <span className="text-[10px]">Nenhuma tarefa ainda</span>
-              <button
+              <Button
+                type="button"
                 onClick={() => onAddTask(status)}
-                className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] mt-1 flex items-center gap-1"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-8 text-[var(--text-muted)] hover:text-[var(--text)]"
               >
-                <Plus size={10} /> Adicionar tarefa
-              </button>
+                <Plus size={14} /> Adicionar tarefa
+              </Button>
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">

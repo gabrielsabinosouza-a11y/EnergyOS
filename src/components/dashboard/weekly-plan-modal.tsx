@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, Repeat, Hash, ChevronDown } from "lucide-react";
+import { Check, Loader2, Repeat, Hash, ChevronDown, Trash2 } from "lucide-react";
 import type { WeeklyPlanSeries, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { Modal } from "@/components/modal";
 import { ColorPalette, HABIT_COLORS } from "./color-palette";
@@ -20,6 +20,7 @@ interface WeeklyPlanModalProps {
   prefillDate?: string;
   onClose: () => void;
   onSave: (payload: CreateSeriesPayload) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
 }
 
 export interface CreateSeriesPayload {
@@ -43,7 +44,7 @@ export interface CreateSeriesPayload {
 const labelClass = "mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]";
 const inputClass = "auth-input min-h-10 w-full text-sm";
 
-export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSave }: WeeklyPlanModalProps) {
+export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSave, onDelete }: WeeklyPlanModalProps) {
   const isEdit = Boolean(series);
 
   const [title, setTitle] = useState(series?.title ?? "");
@@ -65,8 +66,20 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isRecurring = repeatType !== "once";
+  const isDirty = Boolean(series && (
+    title !== series.title || color !== (series.color ?? HABIT_COLORS[0]) || note !== (series.note ?? "") ||
+    repeatType !== series.repeatType || JSON.stringify(repeatDays.map((d) => UI_INDEX_TO_JS_DAY[d]).sort()) !== JSON.stringify([...(series.repeatDays ?? [])].sort()) ||
+    startDate !== series.startDate || startTime !== (series.startTime ?? "") || durationMinutes !== (series.durationMinutes?.toString() ?? "") ||
+    endType !== series.endType || endDate !== (series.endDate ?? "") || endCount !== (series.endCount?.toString() ?? "")
+  ));
+  function closeModal() {
+    if (saving) return;
+    if (isEdit && isDirty && !window.confirm("Descartar as alterações não salvas?")) return;
+    onClose();
+  }
 
   function toggleDay(uiIndex: number) {
     setRepeatDays((prev) =>
@@ -129,18 +142,24 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
   return (
     <Modal
       open
-      onClose={saving ? () => {} : onClose}
+      onClose={closeModal}
       title={isEdit ? "Editar plano" : "Novo plano"}
       description="Crie um plano para sua semana. Itens recorrentes aparecem automaticamente toda semana."
       panelClassName="sm:max-w-xl"
       footerClassName="justify-between"
       footer={
         <>
-          <span className="mr-auto truncate text-xs text-red-400" role="alert">{error}</span>
-          <button type="button" onClick={onClose} disabled={saving} className="min-h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50">
+          {isEdit && onDelete && (
+            confirmDelete ? <div className="flex shrink-0 items-center gap-1">
+              <button type="button" onClick={() => void onDelete()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-red-500/15 px-3 text-sm font-semibold text-red-200 hover:bg-red-500/25"><Trash2 size={14}/>Confirmar exclusão</button>
+              <button type="button" onClick={() => setConfirmDelete(false)} className="h-10 rounded-lg px-3 text-sm text-[var(--text-muted)] hover:bg-white/5">Voltar</button>
+            </div> : <button type="button" onClick={() => setConfirmDelete(true)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium text-red-300 hover:bg-red-400/10"><Trash2 size={14}/>Excluir</button>
+          )}
+          <span className="min-w-0 flex-1 truncate text-xs text-red-400" role="alert">{error}</span>
+          <button type="button" onClick={closeModal} disabled={saving} className="min-h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50">
             Cancelar
           </button>
-          <button type="button" onClick={() => void handleSave()} disabled={!title.trim() || saving} className="inline-flex min-h-10 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => void handleSave()} disabled={!title.trim() || saving || (isEdit && !isDirty)} className="inline-flex min-h-10 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
             {saving ? <><Loader2 size={15} className="animate-spin" /> Salvando…</> : <><Check size={15} /> Salvar</>}
           </button>
         </>

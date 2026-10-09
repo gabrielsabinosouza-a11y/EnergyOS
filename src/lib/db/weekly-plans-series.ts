@@ -3,7 +3,10 @@ import type { WeeklyPlanSeries, WeeklyPlanItem, PlanRepeatType, PlanEndType, Cat
 import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
-import { WEEKLY_PLAN_SERIES_LIMIT } from "../daily-limits";
+import { WEEKLY_PLAN_COMPLETION_REWARD, WEEKLY_PLAN_SERIES_LIMIT } from "../daily-limits";
+import { creditXP } from "./xp";
+import { addCoins } from "./settings";
+import { addLeagueXP } from "./league-new";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,11 @@ export async function ensureWeeklyPlanSeriesSchema() {
       unique (series_id, occurrence_date)
     )
   `);
+  const sourceConstraint = await pool.query<{ definition: string }>(`select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid = 'xp_ledger'::regclass and conname = 'xp_ledger_source_check'`);
+  if (!sourceConstraint.rows[0]?.definition.includes("weekly_plan_occurrence")) {
+    await pool.query(`alter table xp_ledger drop constraint if exists xp_ledger_source_check`);
+    await pool.query(`alter table xp_ledger add constraint xp_ledger_source_check check (source in ('task','kanban','kanban_task','weekly_plan','weekly_plan_occurrence','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'))`);
+  }
   await pool.query(`create index if not exists idx_wps_profile on weekly_plan_series(profile_id, archived)`);
   await pool.query(`create index if not exists idx_wpo_series_date on weekly_plan_occurrences(series_id, occurrence_date)`);
 }
@@ -432,24 +440,49 @@ export async function setOccurrenceCompleted(
   seriesId: number,
   occurrenceDate: string,
   completed: boolean,
-): Promise<void> {
+): Promise<{ xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
 
-  // Verify ownership first
-  const check = await pool.query(
-    `select 1 from weekly_plan_series where id = $1 and profile_id = $2 and archived = false`,
-    [seriesId, profileId],
-  );
-  if (!check.rows[0]) throw new NotFoundError("Plano não encontrado.");
-
-  await pool.query(
-    `insert into weekly_plan_occurrences (series_id, occurrence_date, completed_at)
-     values ($1, $2::date, $3)
-     on conflict (series_id, occurrence_date)
-     do update set completed_at = $3, skipped = false`,
-    [seriesId, occurrenceDate, completed ? new Date() : null],
-  );
+  const client = await pool.connect();
+  let xpAwarded = 0;
+  let coinsAwarded = 0;
+  try {
+    await client.query("begin");
+    const owner = await client.query(`select id from weekly_plan_series where id = $1 and profile_id = $2 and archived = false for update`, [seriesId, profileId]);
+    if (!owner.rows[0]) throw new NotFoundError("Plano não encontrado.");
+    await client.query(
+      `insert into weekly_plan_occurrences (series_id, occurrence_date, completed_at)
+       values ($1, $2::date, $3)
+       on conflict (series_id, occurrence_date)
+       do update set completed_at = $3, skipped = false`,
+      [seriesId, occurrenceDate, completed ? new Date() : null],
+    );
+    if (completed) {
+      await client.query(`select pg_advisory_xact_lock(hashtext($1), hashtext((now() at time zone 'America/Sao_Paulo')::date::text))`, [profileId]);
+      const rewarded = await client.query<{ count: number }>(
+        `select count(*)::int as count from xp_ledger
+          where profile_id = $1 and source in ('weekly_plan', 'weekly_plan_occurrence')
+            and (created_at at time zone 'America/Sao_Paulo')::date = (now() at time zone 'America/Sao_Paulo')::date`,
+        [profileId],
+      );
+      if (Number(rewarded.rows[0]?.count ?? 0) < WEEKLY_PLAN_COMPLETION_REWARD.dailyLimit) {
+        xpAwarded = await creditXP(profileId, "weekly_plan_occurrence", `${seriesId}:${occurrenceDate}`, WEEKLY_PLAN_COMPLETION_REWARD.xp, { db: client, questDate: occurrenceDate });
+        if (xpAwarded > 0) {
+          coinsAwarded = WEEKLY_PLAN_COMPLETION_REWARD.coins;
+          await addCoins(profileId, coinsAwarded, client);
+        }
+      }
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
+  return { xpAwarded, coinsAwarded };
 }
 
 export async function skipOccurrence(profileId: string, seriesId: number, occurrenceDate: string): Promise<void> {

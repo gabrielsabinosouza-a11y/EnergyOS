@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ChatMessage, PinDurationDays } from "@/types";
-import { AvatarWithFrame } from "@/components/avatar";
+import Link from "next/link";
 import { Modal } from "@/components/modal";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
@@ -53,6 +53,11 @@ function differentDays(a: string, b: string): boolean {
     da.getMonth() !== db.getMonth() ||
     da.getDate() !== db.getDate()
   );
+}
+
+function sameMessageSequence(a: ChatMessage | null | undefined, b: ChatMessage | null | undefined): boolean {
+  return Boolean(a && b && a.senderId === b.senderId && !differentDays(a.createdAt, b.createdAt) &&
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() <= 5 * 60_000);
 }
 
 /* ─── @mention rendering ─────────────────────────────────────────── */
@@ -136,6 +141,29 @@ function CheckMark({ read }: { read?: boolean }) {
     <CheckCheck size={13} className="text-[var(--accent)]" />
   ) : (
     <Check size={13} className="text-current opacity-50" />
+  );
+}
+
+function SenderAvatar({ name, photoUrl, senderId, level }: { name?: string; photoUrl?: string; senderId: string; level?: number }) {
+  const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const initials = (name || "?").trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < senderId.length; i++) hash = (hash * 31 + senderId.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return (
+    <span className="relative z-10">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-label={`Ver perfil de ${name ?? "participante"}`} aria-expanded={open}
+        className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 text-[10px] font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        style={{ background: `linear-gradient(145deg, hsl(${hue} 72% 60%), hsl(${(hue + 48) % 360} 70% 34%))` }}>
+        {photoUrl && !failed ? <img src={photoUrl} alt="" width={32} height={32} loading="lazy" onError={() => setFailed(true)} className="h-8 w-8 object-cover" /> : initials}
+      </button>
+      {open && <span className="absolute bottom-10 left-0 w-44 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-left shadow-xl">
+        <span className="block truncate text-xs font-semibold text-[var(--text)]">{name ?? "Participante"}</span>
+        <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">Nível {level ?? 1}</span>
+        <Link href={`/perfil/${encodeURIComponent(senderId)}`} className="mt-2 inline-block text-xs font-medium text-[var(--accent)]">Ver perfil</Link>
+      </span>}
+    </span>
   );
 }
 
@@ -290,7 +318,7 @@ function DateDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 py-3">
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-[var(--text-faint)]">
+      <span className="sticky top-0 shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-lg">
         {label}
       </span>
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
@@ -339,6 +367,7 @@ function MessageBubble({
   showActionTrigger,
   onActionTrigger,
   mentionMembers,
+  groupPosition,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -355,6 +384,7 @@ function MessageBubble({
   onActionTrigger: (e: React.MouseEvent) => void;
   /** Group members for @mention rendering (DMs pass nothing → plain text). */
   mentionMembers?: MentionMember[];
+  groupPosition: "single" | "first" | "middle" | "last";
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const reactions = msg.reactions ?? [];
@@ -386,12 +416,12 @@ function MessageBubble({
       className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
     >
       {showAvatar && !isMe && (
-        <div className="mt-0.5 shrink-0">
-          <AvatarWithFrame name={msg.senderName} photoUrl={msg.senderPhotoUrl} size={32} />
+        <div className="flex shrink-0 items-end pb-[18px]">
+          <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} />
         </div>
       )}
       <div
-        className={`max-w-[75%] ${showAvatar ? "" : isMe ? "ml-[42px]" : "mr-[42px]"} ${
+        className={`max-w-[75%] ${showAvatar && !isMe ? "" : isMe ? "ml-[42px]" : "mr-[42px]"} ${
           isMe ? "items-end" : "items-start"
         } flex flex-col`}
       >
@@ -406,8 +436,10 @@ function MessageBubble({
         <div className="relative">
           <div
             onContextMenu={handleContextMenu}
-            className={`group relative cursor-pointer overflow-hidden rounded-2xl transition ${
-              isMe ? "rounded-br-md bg-[var(--accent)]" : "glass-card rounded-bl-md"
+            className={`group relative cursor-pointer overflow-hidden transition ${
+              isMe
+                ? `rounded-2xl bg-[var(--accent)] ${groupPosition === "middle" ? "rounded-r-md" : groupPosition === "last" ? "rounded-tr-md" : "rounded-br-md"}`
+                : `glass-card rounded-2xl ${groupPosition === "middle" ? "rounded-l-md" : groupPosition === "last" ? "rounded-tl-md" : "rounded-bl-md"}`
             }`}
             onTouchStart={startLongPress}
             onTouchEnd={cancelLongPress}
@@ -554,9 +586,9 @@ function MessageBubble({
             isMe ? "flex-row-reverse" : ""
           }`}
         >
-          <p className="text-[9px] text-[var(--text-faint)]">
+          <p className={`text-xs ${isMe ? "text-black/75" : "text-[var(--text-muted)]"}`}>
             {formatClock(msg.createdAt)}
-            {msg.editedAt && " (editada)"}
+            {msg.editedAt && Math.abs(new Date(msg.editedAt).getTime() - new Date(msg.createdAt).getTime()) > 1000 && " (editada)"}
           </p>
           {msg.pending && <span className="text-[9px] italic text-[var(--text-faint)]">enviando…</span>}
           {isMe && !msg.pending && <CheckMark read={read} />}
@@ -1002,7 +1034,7 @@ export function ChatThread({
   const messagesWithDividers = useMemo(() => {
     const items: (
       | { type: "divider"; key: string; label: string }
-      | { type: "message"; key: string; msg: ChatMessage; prevMsg: ChatMessage | null }
+      | { type: "message"; key: string; msg: ChatMessage; prevMsg: ChatMessage | null; nextMsg: ChatMessage | null }
     )[] = [];
 
     for (let i = 0; i < messages.length; i++) {
@@ -1018,7 +1050,7 @@ export function ChatThread({
         });
       }
 
-      items.push({ type: "message", key: `msg-${msg.id}`, msg, prevMsg });
+      items.push({ type: "message", key: `msg-${msg.id}`, msg, prevMsg, nextMsg: messages[i + 1] ?? null });
     }
 
     return items;
@@ -1050,7 +1082,7 @@ export function ChatThread({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
+        className="h-full scroll-pt-4 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
       >
         <div ref={contentRef} className="space-y-3">
         {messages.length === 0 && (
@@ -1068,11 +1100,10 @@ export function ChatThread({
           const isMe = msg.senderId === currentUserId;
 
           // Show avatar+name for first message or after a short sequence gap.
-          const isFirstInGroup =
-            !prevMsg ||
-            prevMsg.senderId !== msg.senderId ||
-            (prevMsg && new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() > 5 * 60_000) ||
-            (prevMsg && differentDays(prevMsg.createdAt, msg.createdAt));
+          const isFirstInGroup = !sameMessageSequence(prevMsg, msg);
+          const hasPrevious = sameMessageSequence(prevMsg, msg);
+          const hasNext = sameMessageSequence(msg, item.nextMsg);
+          const groupPosition = !hasPrevious && !hasNext ? "single" : !hasPrevious ? "first" : hasNext ? "middle" : "last";
 
           // If we're editing this message inline
           if (editingId === msg.id) {
@@ -1137,8 +1168,9 @@ export function ChatThread({
             <MessageBubble
               msg={msg}
               isMe={isMe}
-              showAvatar={showAvatar ? isFirstInGroup : false}
+              showAvatar={showAvatar}
               showSenderName={showSenderName ? isFirstInGroup : false}
+              groupPosition={groupPosition}
               reduced={reduced}
               onContextMenu={handleContextMenu}
               read={readMessageIds?.has(msg.id)}

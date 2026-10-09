@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, Check, X, Loader2, Repeat, Pencil, SkipForward } from "lucide-react";
+import { Calendar, Plus, Check, X, Loader2, Repeat, Pencil, Trash2 } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
+import { Button, IconButton } from "@/components/ui";
 import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -19,6 +20,7 @@ interface WeeklyPlanProps {
   onUpdate: (id: number, title: string, categoryId: number, planDate: string) => Promise<void>;
   onToggleCompleted: (id: number, completed: boolean) => Promise<void>;
   onCreateSeries?: (payload: CreateSeriesPayload) => Promise<void>;
+  onUpdateSeries?: (seriesId: number, payload: CreateSeriesPayload) => Promise<void>;
   onToggleOccurrence?: (seriesId: number, date: string, completed: boolean) => Promise<void>;
   onSkipOccurrence?: (seriesId: number, date: string) => Promise<void>;
   onDeleteSeries?: (seriesId: number) => Promise<void>;
@@ -26,7 +28,7 @@ interface WeeklyPlanProps {
 
 export function WeeklyPlan({
   plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
-  onCreateSeries, onToggleOccurrence, onSkipOccurrence, onDeleteSeries,
+  onCreateSeries, onUpdateSeries, onToggleOccurrence, onSkipOccurrence, onDeleteSeries,
 }: WeeklyPlanProps) {
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -35,10 +37,13 @@ export function WeeklyPlan({
 
   // Edit modal state
   const [editingPlan, setEditingPlan] = useState<WeeklyPlanItem | null>(null);
+  const [editingSeries, setEditingSeries] = useState<import("@/types").WeeklyPlanSeries | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [toggling, setToggling] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [completionOverrides, setCompletionOverrides] = useState<Record<string, string | null>>({});
+  const [deleteTimer, setDeleteTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const editIsDirty = Boolean(editingPlan && editTitle.trim() !== editingPlan.title);
 
   // Day popover state
   const [popoverDay, setPopoverDay] = useState<{ date: string; items: WeeklyPlanItem[] } | null>(null);
@@ -46,9 +51,15 @@ export function WeeklyPlan({
 
   const today = todayIso();
   const weekStart = weekStartIso(today);
+  const visiblePlans = plans.map((plan) => {
+    const key = `${plan.seriesId ?? "legacy"}:${plan.id}:${plan.planDate}`;
+    return Object.prototype.hasOwnProperty.call(completionOverrides, key)
+      ? { ...plan, completedAt: completionOverrides[key] }
+      : plan;
+  });
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDaysIso(weekStart, i);
-    const dayPlans = plans.filter((p) => p.planDate === date);
+    const dayPlans = visiblePlans.filter((p) => p.planDate === date);
     return { date, dayName: DAY_NAMES[i], plans: dayPlans, isToday: date === today };
   });
 
@@ -67,48 +78,61 @@ export function WeeklyPlan({
     setShowModal(false);
   }
 
-  async function handleToggleComplete() {
-    if (!editingPlan) return;
-    const nextCompleted = !editingPlan.completedAt;
-
-    // For recurring items, use the occurrence API
-    if (editingPlan.seriesId && onToggleOccurrence) {
-      setToggling(true);
+  async function openEdit(plan: WeeklyPlanItem) {
+    setEditingPlan(plan);
+    setEditTitle(plan.title);
+    setConfirmDelete(false);
+    if (plan.seriesId) {
       try {
-        await onToggleOccurrence(editingPlan.seriesId, editingPlan.planDate, nextCompleted);
-        setEditingPlan((prev) =>
-          prev ? { ...prev, completedAt: nextCompleted ? new Date().toISOString() : null } : null
-        );
+        const { api } = await import("@/lib/api-client");
+        const result = await api.getWeeklyPlanSeriesById(plan.seriesId);
+        setEditingSeries(result.series);
       } catch {
-        // rollback handled by parent re-fetch
-      } finally {
-        setToggling(false);
+        setEditingSeries(null);
       }
-      return;
-    }
+    } else setEditingSeries(null);
+  }
 
-    // Legacy: use the old API
-    setEditingPlan((prev) =>
-      prev ? { ...prev, completedAt: nextCompleted ? new Date().toISOString() : null } : null
-    );
-    setToggling(true);
+  async function handleUpdateSeries(payload: CreateSeriesPayload) {
+    if (!editingPlan?.seriesId || !onUpdateSeries) return;
+    await onUpdateSeries(editingPlan.seriesId, payload);
+    closeEditingPlan();
+  }
+
+  async function handleDeleteSeriesFromEditor() {
+    if (!editingPlan?.seriesId || !onDeleteSeries) return;
+    await onDeleteSeries(editingPlan.seriesId);
+    closeEditingPlan();
+  }
+
+  function closeEditingPlan() {
+    if (!editingPlan) return;
+    const focusKey = `${editingPlan.seriesId ?? "legacy"}-${editingPlan.id}-${editingPlan.planDate}`;
+    setEditingPlan(null);
+    setEditingSeries(null);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-plan-key="${focusKey}"]`)?.focus());
+  }
+
+  async function handleToggleComplete(plan: WeeklyPlanItem) {
+    const key = `${plan.seriesId ?? "legacy"}:${plan.id}:${plan.planDate}`;
+    const oldValue = plan.completedAt ?? null;
+    const nextCompleted = !oldValue;
+    const newValue = nextCompleted ? new Date().toISOString() : null;
+    setCompletionOverrides((current) => ({ ...current, [key]: newValue }));
     try {
-      await onToggleCompleted(editingPlan.id, nextCompleted);
+      if (plan.seriesId && onToggleOccurrence) await onToggleOccurrence(plan.seriesId, plan.planDate, nextCompleted);
+      else await onToggleCompleted(plan.id, nextCompleted);
     } catch {
-      setEditingPlan((prev) =>
-        prev ? { ...prev, completedAt: editingPlan.completedAt } : null
-      );
-    } finally {
-      setToggling(false);
+      setCompletionOverrides((current) => ({ ...current, [key]: oldValue }));
     }
   }
 
   async function handleSave() {
-    if (!editingPlan || !editTitle.trim()) return;
+    if (!editingPlan || !editTitle.trim() || !editIsDirty) return;
     setSavingEdit(true);
     try {
       await onUpdate(editingPlan.id, editTitle.trim(), editingPlan.categoryId, editingPlan.planDate);
-      setEditingPlan(null);
+      closeEditingPlan();
     } finally {
       setSavingEdit(false);
     }
@@ -121,19 +145,9 @@ export function WeeklyPlan({
       return;
     }
 
-    // For recurring items, delete the series
-    if (editingPlan.seriesId && onDeleteSeries) {
-      await onDeleteSeries(editingPlan.seriesId);
-    } else {
-      await onDelete(editingPlan.id);
-    }
-    setEditingPlan(null);
-  }
-
-  async function handleSkip() {
-    if (!editingPlan || !editingPlan.seriesId || !onSkipOccurrence) return;
-    await onSkipOccurrence(editingPlan.seriesId, editingPlan.planDate);
-    setEditingPlan(null);
+    if (editingPlan.seriesId && onDeleteSeries) await onDeleteSeries(editingPlan.seriesId);
+    else await onDelete(editingPlan.id);
+    closeEditingPlan();
   }
 
   // Mobile: the 7-day strip becomes a horizontal snap scroller
@@ -162,20 +176,21 @@ export function WeeklyPlan({
 
   return (
     <div className="panel p-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-[var(--accent)]" />
           <span className="eyebrow muted">PLANO DA SEMANA</span>
         </div>
-        <motion.button
+        <IconButton
           ref={createTriggerRef}
           onClick={handleCreate}
-          whileTap={{ scale: 0.92 }}
-          className="icon-button small"
+          size="md"
+          variant="secondary"
           title="Novo plano"
+          aria-label="Novo plano"
         >
           <Plus size={18} />
-        </motion.button>
+        </IconButton>
       </div>
 
       {/* Week strip */}
@@ -188,7 +203,7 @@ export function WeeklyPlan({
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`group/day relative flex h-[190px] w-[156px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-2.5 transition-[transform,background,border-color] duration-200 hover:-translate-y-0.5 sm:w-auto ${
+              className={`weekly-plan-led ${day.isToday ? "weekly-plan-today" : ""} group/day relative flex h-[190px] w-[156px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-2.5 transition-[transform,background,border-color] duration-200 hover:-translate-y-0.5 sm:w-auto ${
                 day.isToday
                   ? "border-[var(--accent)] bg-[var(--accent-bg)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_30%,transparent),0_8px_22px_rgba(0,0,0,.24)]"
                   : "border-[var(--border-subtle)] bg-[linear-gradient(160deg,rgba(24,40,58,.94),rgba(13,25,39,.92))] shadow-[inset_0_1px_rgba(255,255,255,.035),0_8px_18px_rgba(0,0,0,.16)]"
@@ -209,15 +224,9 @@ export function WeeklyPlan({
                   <PlanItemRow
                     key={plan.id}
                     plan={plan}
-                    onEdit={() => {
-                      setEditingPlan(plan);
-                      setEditTitle(plan.title);
-                      setEditCategoryId(plan.categoryId);
-                      setConfirmDelete(false);
-                    }}
+                    onEdit={() => { void openEdit(plan); }}
                     onToggle={() => {
-                      setEditingPlan(plan);
-                      void handleToggleComplete();
+                      void handleToggleComplete(plan);
                     }}
                   />
                 ))}
@@ -231,9 +240,9 @@ export function WeeklyPlan({
                   </motion.button>
                 )}
               </div>
-              <button type="button" onClick={(e) => { e.stopPropagation(); setModalPrefillDate(day.date); setShowModal(true); }} className="mt-1 flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-[11px] font-medium text-[var(--text-faint)] opacity-70 transition hover:bg-white/[.04] hover:text-[var(--accent)] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
-                <Plus size={12} /> Adicionar
-              </button>
+              <Button type="button" size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setModalPrefillDate(day.date); setShowModal(true); }} className="mt-1 h-8 w-full shrink-0 font-medium text-[var(--text-faint)] hover:text-[var(--accent)]">
+                <Plus size={14} /> Adicionar
+              </Button>
             </div>
           ))}
         </div>
@@ -264,15 +273,11 @@ export function WeeklyPlan({
                   plan={plan}
                   onEdit={() => {
                     setPopoverDay(null);
-                    setEditingPlan(plan);
-                    setEditTitle(plan.title);
-                    setEditCategoryId(plan.categoryId);
-                    setConfirmDelete(false);
+                    void openEdit(plan);
                   }}
                   onToggle={() => {
                     setPopoverDay(null);
-                    setEditingPlan(plan);
-                    void handleToggleComplete();
+                    void handleToggleComplete(plan);
                   }}
                 />
               ))}
@@ -293,94 +298,34 @@ export function WeeklyPlan({
 
       {/* Edit modal (legacy style, for one-time items) */}
       {editingPlan && (
-        <Modal onClose={() => setEditingPlan(null)}>
-          <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{
-                    background: editingPlan.color || editingPlan.category.color,
-                    boxShadow: `0 0 6px ${editingPlan.color || editingPlan.category.color}40`,
-                  }}
-                />
-                <span className="text-sm font-medium text-[var(--text)]">
-                  {editingPlan.completedAt ? "Plano concluído" : "Editar plano"}
-                </span>
-                {editingPlan.completedAt && (
-                  <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">
-                    Concluído
-                  </span>
-                )}
-                {editingPlan.isRecurring && (
-                  <span className="flex items-center gap-1 rounded-full bg-[var(--accent-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
-                    <Repeat size={10} /> Recorrente
-                  </span>
-                )}
-              </div>
-              <button onClick={() => setEditingPlan(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
-                <X size={18} />
-              </button>
+        editingSeries && onUpdateSeries ? <WeeklyPlanModal series={editingSeries} categories={categories} onClose={closeEditingPlan} onSave={handleUpdateSeries} onDelete={handleDeleteSeriesFromEditor} /> :
+        <Modal
+          onClose={() => { if (editIsDirty && !window.confirm("Descartar as alterações não salvas?")) return; closeEditingPlan(); }}
+          title={<div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: editingPlan.color || editingPlan.category.color }} />Editar plano{editingPlan.completedAt && <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">Concluído</span>}</div>}
+          description={editingPlan.isRecurring ? "Plano recorrente" : undefined}
+          panelClassName="sm:max-w-xl"
+          footerClassName="flex-nowrap"
+          footer={<>
+            <div className="mr-auto flex shrink-0 items-center gap-1">
+              {!confirmDelete ? <button type="button" onClick={() => { setConfirmDelete(true); if (deleteTimer) clearTimeout(deleteTimer); setDeleteTimer(setTimeout(() => setConfirmDelete(false), 3000)); }} className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-red-300 hover:bg-red-400/10"><Trash2 size={15}/>Excluir</button> : <><button type="button" onClick={() => void handleDelete()} className="h-10 rounded-lg bg-red-500/20 px-3 text-sm font-semibold text-red-200">Confirmar exclusão</button><button type="button" onClick={() => { setConfirmDelete(false); if (deleteTimer) clearTimeout(deleteTimer); }} className="h-10 rounded-lg px-3 text-sm text-[var(--text-muted)]">Cancelar</button></>}
             </div>
-
+            <button type="button" onClick={() => { if (!editIsDirty || window.confirm("Descartar as alterações não salvas?")) closeEditingPlan(); }} className="h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)]">Cancelar</button>
+            <button type="button" onClick={() => void handleSave()} disabled={savingEdit || !editTitle.trim() || editTitle.trim() === editingPlan.title} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white disabled:opacity-50">{savingEdit ? <Loader2 size={15} className="animate-spin"/> : <Check size={15}/>}Salvar</button>
+          </>}
+        >
+          <div className="w-full space-y-6 pb-3">
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] text-[var(--text-faint)] mb-1 block">Título</label>
+                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Nome da atividade</label>
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="auth-input w-full text-sm"
+                  maxLength={60}
+                  className="auth-input min-h-10 w-full text-sm"
                 />
+                <span className="mt-1 block text-[10px] text-[var(--text-faint)]">{editTitle.length}/60</span>
               </div>
-
-            </div>
-
-            <div className="mt-6 flex gap-2 justify-end items-center flex-wrap">
-              <button
-                type="button"
-                onClick={handleToggleComplete}
-                disabled={toggling}
-                className="mr-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
-                style={{
-                  color: editingPlan.completedAt ? "#ffb86b" : "var(--green)",
-                  background: editingPlan.completedAt ? "rgba(255,184,107,.1)" : "var(--green-bg)",
-                }}
-              >
-                {toggling ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                {editingPlan.completedAt ? "Reabrir" : "Concluir"}
-              </button>
-
-              {editingPlan.isRecurring && onSkipOccurrence && (
-                <button
-                  type="button"
-                  onClick={handleSkip}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer"
-                >
-                  <SkipForward size={13} /> Pular esta vez
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleDelete}
-                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-                  confirmDelete
-                    ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                    : "text-red-400 hover:bg-red-400/10"
-                }`}
-              >
-                <X size={13} /> {confirmDelete ? "Confirmar exclusão?" : "Excluir"}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={savingEdit || !editTitle.trim()}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent)]/90 transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                Salvar
-              </button>
+              <div><span className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Detalhes</span><p className="text-xs text-[var(--text-muted)]">Para alterar recorrência, horário, duração, cor e nota, abra o plano pela opção de edição completa.</p></div>
             </div>
           </div>
         </Modal>
@@ -395,30 +340,37 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
     <motion.div
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`group relative flex min-h-9 items-center gap-2 overflow-hidden rounded-lg border border-white/[.07] bg-white/[.035] px-2 py-1.5 text-[11px] leading-tight cursor-pointer transition-[transform,background] hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-white/[.07] ${
-        plan.completedAt ? "line-through opacity-40" : ""
+      data-plan-key={`${plan.seriesId ?? "legacy"}-${plan.id}-${plan.planDate}`}
+      tabIndex={0}
+      role="button"
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(); } }}
+      className={`weekly-plan-led group relative flex min-h-11 items-center gap-2 overflow-hidden rounded-lg border border-white/[.07] bg-white/[.035] px-2 py-1.5 text-[11px] leading-tight cursor-pointer transition-[transform,background] hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-white/[.07] ${
+        plan.completedAt ? "opacity-45" : ""
       } ${plan.skipped ? "opacity-25" : ""}`}
-      style={{ borderLeft: `3px solid ${displayColor}`, boxShadow: `inset 0 0 0 1px ${displayColor}18` }}
+      style={{ borderLeft: `3px solid ${displayColor}`, boxShadow: `inset 0 0 0 1px ${displayColor}18`, "--plan-led-color": plan.completedAt ? "#6bffb8" : displayColor } as CSSProperties}
       onClick={onEdit}
       title={`${plan.title}${plan.startTime ? " · " + plan.startTime : ""}`}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="block truncate font-medium text-[var(--text)]">{plan.title}</span>
+        <span className={`line-clamp-2 font-medium text-[var(--text)] ${plan.completedAt ? "line-through" : ""}`}>{plan.title}</span>
         {plan.startTime && <span className="text-[9px] tabular-nums text-[var(--text-muted)]">{plan.startTime}</span>}
       </div>
       {plan.isRecurring && <Repeat size={12} className="shrink-0 text-[var(--text-faint)]" aria-label="Recorrente" />}
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-          plan.completedAt ? "text-[var(--green)]" : "text-[var(--text-faint)] opacity-0 group-hover:opacity-100"
-        }`}
-        title={plan.completedAt ? "Reabrir" : "Concluir"}
+        aria-pressed={Boolean(plan.completedAt)}
+        aria-label={plan.completedAt ? "Marcar como não concluída" : "Concluir tarefa"}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 ${plan.completedAt ? "text-[var(--green)] opacity-100" : "text-[var(--text-faint)]"}`}
+        title={plan.completedAt ? "Marcar como não concluída" : "Concluir tarefa"}
       >
-        <Check size={14} />
+        <Check size={15} strokeWidth={plan.completedAt ? 3 : 2} className={plan.completedAt ? "text-[var(--green)]" : ""} />
       </button>
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-faint)] opacity-0 transition hover:bg-white/[.08] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        aria-label="Editar plano"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-faint)] [@media(hover:hover)]:opacity-0 transition hover:bg-white/[.08] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
         title="Editar"
       >
         <Pencil size={12} />
