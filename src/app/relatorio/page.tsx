@@ -158,6 +158,10 @@ export default function RelatorioPage() {
 
   useEffect(() => {
     if (!user || loading) return;
+    // Loading state is set here (not in fetchReportData) to ensure it
+    // updates before the async fetch begins. The rule flags any setState in
+    // an effect, but this is the canonical React loading-state pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading gate
     setLoadingPage(true);
     void fetchReportData();
   }, [user, loading, timeRange, fetchReportData]);
