@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { handleRoute, jsonOk, readJsonBody, routeContext } from "@/lib/http";
 import { todayIso } from "@/lib/db/dates";
 import {
   toggleDailyTask,
@@ -14,8 +14,9 @@ import { assertObject, ValidationError, parseEnum } from "@/lib/db/validation";
 import type { HabitFrequencyType, HabitGoalType, HabitIconType } from "@/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return handleRoute(async () => {
+  return handleRoute(async (ctx) => {
     const { profileId } = await requireAuth(request);
+    ctx.profileId = profileId;
     await ensureUserBootstrap(profileId);
     const { id } = await params;
     const taskId = Number(id);
@@ -101,24 +102,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const task = await updateHabitMetadata(profileId, taskId, updates);
     return jsonOk({ task });
-  });
+  }, routeContext(request, "/api/daily-tasks/[id]"));
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return handleRoute(async () => {
+  return handleRoute(async (ctx) => {
     const { profileId } = await requireAuth(request);
+    ctx.profileId = profileId;
     await ensureUserBootstrap(profileId);
     const { id } = await params;
     // Soft-archive: keeps the task row and its completion history, hides it
     // from the daily checklist from now on.
     await deactivateDailyTask(profileId, Number(id));
     return jsonOk({ ok: true });
-  });
+  }, routeContext(request, "/api/daily-tasks/[id]"));
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return handleRoute(async () => {
+  return handleRoute(async (ctx) => {
     const { profileId } = await requireAuth(request);
+    ctx.profileId = profileId;
     await ensureUserBootstrap(profileId);
     const { id } = await params;
     const body = assertObject(await readJsonBody(request));
@@ -128,5 +131,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     await reorderHabits(profileId, order.map((x: number) => Number(x)));
     return jsonOk({ ok: true });
-  });
+  }, routeContext(request, "/api/daily-tasks/[id]"));
 }

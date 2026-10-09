@@ -8,6 +8,7 @@ import { recordMissionProgress } from "./daily-quests";
 import { clampDailyProgress, normalizeDailyTarget } from "../daily-habit-progress";
 import { addCoins } from "./settings";
 import { creditXP } from "./xp";
+import { ensureXpLedgerSourceCheck } from "./xp-ledger";
 
 import {
   HABIT_LIMIT,
@@ -238,17 +239,14 @@ export async function ensureDailyTasksSchema(): Promise<void> {
       primary key (profile_id, bonus_date)
     )
   `);
-  await pool.query(`
-    do $$ begin
-      alter table xp_ledger drop constraint if exists xp_ledger_source_check;
-    exception when undefined_object then null;
-    end $$`);
-  await pool.query(`
-    do $$ begin
-      alter table xp_ledger add constraint xp_ledger_source_check
-        check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
-    exception when duplicate_object then null;
-    end $$`);
+  // Ensure the xp_ledger source CHECK constraint exists with the COMPLETE list
+  // of valid sources.  Previously this function dropped and re-created the
+  // constraint with an incomplete list (omitting 'weekly_plan' and
+  // 'weekly_plan_occurrence'), which crashed with check_violation (23514) the
+  // moment a weekly-plan occurrence wrote to xp_ledger — taking down every
+  // habit endpoint with a 500.  The constraint management is now centralised
+  // in ensureXpLedgerSourceCheck() to prevent the two callers from drifting.
+  await ensureXpLedgerSourceCheck();
 }
 
 /**

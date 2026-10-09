@@ -343,15 +343,12 @@ create index if not exists xp_ledger_profile_idx on xp_ledger(profile_id, create
 -- source_id stores heterogeneous identifiers (task ids, kanban ids, dates, etc.)
 -- so it must be text; bigint crashed on string ids such as "checkin_streak" dates.
 alter table xp_ledger alter column source_id type text using source_id::text;
--- 'kanban_task' is written by awardKanbanXP; keep legacy 'kanban' allowed too.
+-- 'weekly_plan' and 'weekly_plan_occurrence' are written by the weekly planner
+-- (awardWeeklyPlanCompletion / series occurrence completion). Both must be in
+-- the check so adding the constraint never crashes on existing rows.
 alter table xp_ledger drop constraint if exists xp_ledger_source_check;
 alter table xp_ledger add constraint xp_ledger_source_check
-  check (source in ('task','kanban','kanban_task','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
--- 'weekly_plan' is written by awardWeeklyPlanCompletion (planner completion
--- rewards). Without it the planner's XP credit violates the check at runtime.
-alter table xp_ledger drop constraint if exists xp_ledger_source_check;
-alter table xp_ledger add constraint xp_ledger_source_check
-  check (source in ('task','kanban','kanban_task','weekly_plan','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'));
+  check (source in ('task','kanban','kanban_task','weekly_plan','weekly_plan_occurrence','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement')) not valid;
 -- Idempotency backstop: one ledger row per (profile, source, source_id).
 -- Reconcile legacy duplicate awards before enforcing the invariant.
 delete from xp_ledger older

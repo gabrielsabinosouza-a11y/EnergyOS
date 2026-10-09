@@ -7,6 +7,7 @@ import { WEEKLY_PLAN_COMPLETION_REWARD, WEEKLY_PLAN_SERIES_LIMIT } from "../dail
 import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
+import { ensureXpLedgerSourceCheck } from "./xp-ledger";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
@@ -47,11 +48,9 @@ export async function ensureWeeklyPlanSeriesSchema() {
       unique (series_id, occurrence_date)
     )
   `);
-  const sourceConstraint = await pool.query<{ definition: string }>(`select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid = 'xp_ledger'::regclass and conname = 'xp_ledger_source_check'`);
-  if (!sourceConstraint.rows[0]?.definition.includes("weekly_plan_occurrence")) {
-    await pool.query(`alter table xp_ledger drop constraint if exists xp_ledger_source_check`);
-    await pool.query(`alter table xp_ledger add constraint xp_ledger_source_check check (source in ('task','kanban','kanban_task','weekly_plan','weekly_plan_occurrence','focus','streak_bonus','daily_quest','daily_task','checkin','checkin_streak','goal','achievement'))`);
-  }
+  // Ensure the xp_ledger source CHECK constraint exists with the complete
+  // list of valid sources (centralised — see ensureXpLedgerSourceCheck).
+  await ensureXpLedgerSourceCheck();
   await pool.query(`create index if not exists idx_wps_profile on weekly_plan_series(profile_id, archived)`);
   await pool.query(`create index if not exists idx_wpo_series_date on weekly_plan_occurrences(series_id, occurrence_date)`);
 }
