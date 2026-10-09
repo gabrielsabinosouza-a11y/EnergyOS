@@ -60,7 +60,7 @@ export function StorySlides({ recap, userName, userPhotoUrl, onClose }: StorySli
   const dragSnapToOffset = 0;
   const dragVelocityThreshold = 300;
 
-  const handleSwipe = (_, info: PanInfo) => {
+  const handleSwipe = (_: unknown, info: PanInfo) => {
     if (reduced) return;
     const { velocity, offset } = info;
     const isThreshHold = Math.abs(velocity.x) > dragVelocityThreshold;

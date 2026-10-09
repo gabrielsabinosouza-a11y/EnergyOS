@@ -50,6 +50,7 @@ interface RecapRow {
   total_xp: number;
   xp_sources: Record<string, unknown> | null;
   generation_number: number;
+  schema_version: number | null;
   has_been_shared: boolean | null;
   generated_at: Date | string;
 }
@@ -104,83 +105,43 @@ function resolveTag(totalMinutes: number): string {
 
 // ─── Longest streak for a month ──────────────────────────────────────────────
 
+/**
+ * Melhor sequência DENTRO do mês (recortada na fronteira — nunca reaproveita
+ * o mesmo run para dois meses consecutivos). Dias vivos = sessão de foco que
+ * atingiu a duração-alvo OU dia protegido por escudo, sempre em America/Sao_Paulo.
+ */
 async function computeLongestStreakForMonth(
   profileId: string,
   monthStart: string,
   monthEnd: string,
-): Promise<{ best: number; startDate?: string; endDate?: string }> {
+): Promise<{ best: number; startDate?: string; endDate?: string; isAliveAtEnd: boolean }> {
   const today = todayIso();
-  const windowStart = addDaysIso(monthStart, -400);
-  const windowEnd = addDaysIso(monthEnd, 400);
 
-  // Days with qualifying focus sessions
+  // Dias com sessão de foco qualificada dentro do mês (fuso do produto).
   const focus = await pool.query<{ day: string }>(
     `select distinct to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day
        from focus_sessions
       where profile_id = $2
         and ended_at is not null
         and duration_minutes * 1.0 >= target_duration_minutes * $3
-        and (ended_at at time zone $1)::date >= $4::date
-        and (ended_at at time zone $1)::date < $5::date`,
-    [APP_TIMEZONE, profileId, STREAK_COMPLETION_THRESHOLD, windowStart, windowEnd],
+        and ended_at >= $4::timestamptz
+        and ended_at < $5::timestamptz`,
+    [APP_TIMEZONE, profileId, STREAK_COMPLETION_THRESHOLD, spUtcIso(monthStart), spUtcIso(monthEnd)],
   );
   const alive = new Set<string>(focus.rows.map((r) => r.day));
 
-  // Protected days by shield
+  // Dias protegidos por escudo também mantêm o streak vivo.
   const protectedDays = await pool.query<{ day: string }>(
     `select distinct to_char(used_on_date, 'YYYY-MM-DD') as day
        from streak_shield_usage
       where profile_id = $1
         and used_on_date >= $2::date
         and used_on_date < $3::date`,
-    [profileId, windowStart, windowEnd],
+    [profileId, monthStart, monthEnd],
   );
   for (const row of protectedDays.rows) alive.add(row.day);
 
-  // Find longest run
-  let best = 0;
-  let runStart: string | undefined;
-  let runCurrentStart: string | undefined;
-  let run = 0;
-  let runTouchesMonth = false;
-
-  const cursor = new Date(windowStart);
-  for (
-    let cursorDate = new Date(windowStart);
-    cursorDate.toISOString().slice(0, 10) < windowEnd;
-    cursorDate.setDate(cursorDate.getDate() + 1)
-  ) {
-    const cursorStr = cursorDate.toISOString().slice(0, 10);
-    const inMonth = cursorStr >= monthStart && cursorStr < monthEnd;
-    if (inMonth && !runTouchesMonth) {
-      runTouchesMonth = true;
-      runCurrentStart = cursorStr;
-    }
-
-    const isAlive = alive.has(cursorStr);
-    const isOpenToday = cursorStr === today && !isAlive;
-
-    if (isAlive) {
-      if (run === 0) runStart = cursorStr;
-      run += 1;
-    } else if (isOpenToday) {
-      if (run > best && runTouchesMonth) {
-        best = run;
-      }
-    } else {
-      if (run > best && runTouchesMonth) {
-        best = run;
-      }
-      run = 0;
-      runTouchesMonth = false;
-      runStart = undefined;
-    }
-  }
-  if (run > best && runTouchesMonth) {
-    best = run;
-  }
-
-  return { best, startDate: runStart, endDate: runStart };
+  return longestRunInMonth(alive, monthStart, monthEnd, today);
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────────

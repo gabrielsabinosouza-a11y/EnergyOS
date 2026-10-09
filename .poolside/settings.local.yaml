@@ -35,3 +35,4 @@ tools:
             - git diff HEAD *
             - sleep 28
             - git stash *
+            - git show *

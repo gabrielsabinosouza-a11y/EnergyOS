@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
@@ -76,9 +76,9 @@ export default function RelatorioPage() {
   useEffect(() => {
     if (!user || loading) return;
     fetchReportData();
-  }, [user, loading, timeRange]);
+  }, [user, loading, timeRange, fetchReportData]);
 
-  async function fetchReportData() {
+  const fetchReportData = useCallback(async () => {
     if (!user) return;
     setLoadingPage(true);
     try {
