@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, Minus, Loader2, Trash2, Pencil, GripVertical, Sparkles } from "lucide-react";
+import { Check, Plus, Minus, Loader2, Trash2, Pencil, GripVertical, Sparkles, AlertCircle, RefreshCw } from "lucide-react";
 import type { UserDailyTask } from "@/types";
 import { api } from "@/lib/api-client";
 import { useDailyQuests } from "@/lib/quest-store";
@@ -202,6 +202,7 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const [habitCount, setHabitCount] = useState(0);
   const [saveNotice, setSaveNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; balance: number } | null>(null);
   const [progressBusyId, setProgressBusyId] = useState<number | null>(null);
   const [modalState, setModalState] = useState<{ mode: "create" | "edit"; habit?: UserDailyTask } | null>(null);
@@ -216,8 +217,10 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
   const allDone = total > 0 && completed === total;
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     Promise.all([api.getDailyTasks(), api.getDailyTasks(true)])
       .then(([data, all]) => {
         if (!cancelled) {
@@ -226,13 +229,21 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
           setLoading(false);
         }
       })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Não foi possível carregar os hábitos.");
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const cleanup = load();
+    return () => { cleanup(); };
+  }, [load]);
 
   async function handleProgress(task: UserDailyTask, completedCount: number) {
     if (progressBusyId !== null) return;
@@ -345,8 +356,23 @@ export function RecurringDailyTasks({ coins, onCoinsChange, onXpGain }: Recurrin
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && tasks.length === 0 && (
+      {/* Error state */}
+      {error && !loading && (
+        <div className="error-state flex flex-col items-center gap-3 py-10 text-center">
+          <AlertCircle size={32} className="text-red-400/70" />
+          <p className="text-sm text-red-400">{error}</p>
+          <button
+            type="button"
+            onClick={load}
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
+          >
+            <RefreshCw size={14} /> Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {/* Empty state — only when no error */}
+      {!error && !loading && tasks.length === 0 && (
         <div className="empty-state py-8">
           <strong>Nenhum hábito ainda</strong>
           <span>Clique + para criar seu primeiro hábito</span>

@@ -1,0 +1,10 @@
+tools:
+    shell:
+        allow:
+            - cd *
+            - ls *
+            - echo *
+            - cat *
+            - head *
+            - find *
+            - tail *

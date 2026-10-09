@@ -171,6 +171,18 @@ export function HabitTracker({ year }: { year: number }) {
         <div className="flex justify-center py-8">
           <Loader2 size={22} className="animate-spin text-[#71d4ff]" />
         </div>
+      ) : state.error && state.tasks.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <AlertCircle size={28} className="text-red-400/70" />
+          <p className="text-sm text-red-400">{state.error}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#07111f] transition hover:opacity-90"
+          >
+            Tentar novamente
+          </button>
+        </div>
       ) : state.tasks.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <p className="text-sm text-[var(--text-muted)]">Crie seu primeiro hábito</p>

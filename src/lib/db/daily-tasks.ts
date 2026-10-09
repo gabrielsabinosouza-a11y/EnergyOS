@@ -72,7 +72,7 @@ const DEFAULT_HABIT_FIELDS = {
 export interface DailyTaskHistoryEntry {
   taskId: number;
   date: string;
-  completedAt: string;
+  completedAt?: string;
 }
 
 interface TemplateRow {
@@ -319,12 +319,16 @@ export async function listDailyTaskHistory(
   const fromDate = parseDate(from, "Data inicial");
   const toDate = parseDate(to, "Data final");
   if (fromDate > toDate) throw new ValidationError("Intervalo de datas inválido.");
+  // Cap the range to avoid pathological queries amplified by retry storms.
+  const spanDays =
+    (new Date(`${toDate}T12:00:00Z`).getTime() - new Date(`${fromDate}T12:00:00Z`).getTime()) / 86_400_000;
+  if (spanDays > 366) throw new ValidationError("O intervalo deve ter no máximo 366 dias.");
   await ensureDailyTasksSchema();
 
   const result = await pool.query<{
     task_id: string | number;
     date: string;
-    completed_at: Date | string;
+    completed_at: Date | string | null;
   }>(
     `select l.task_id, l.log_date::text as date, l.completed_at
      from daily_task_log l
@@ -338,7 +342,7 @@ export async function listDailyTaskHistory(
   return result.rows.map((row) => ({
     taskId: Number(row.task_id),
     date: row.date,
-    completedAt: new Date(row.completed_at).toISOString(),
+    completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : undefined,
   }));
 }
 

@@ -37,22 +37,57 @@ export class ApiRequestError extends Error {
   }
 }
 
+const MAX_RETRIES = 2;            // total attempts = 1 + 2 = 3
+const RETRY_BASE_DELAY_MS = 200;  // exponential: 200, 400
+
+function isRetryableStatus(status: number): boolean {
+  // 4xx client errors are never retried.
+  if (status >= 400 && status < 500) return false;
+  // Retry on 408 (timeout), 429 (rate limited), and any 5xx.
+  return status === 408 || status === 429 || status >= 500;
+}
+
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const token = await authToken();
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as ApiError;
-    const message = body.error || `Não foi possível concluir a solicitação. (status ${response.status})`;
-    throw new ApiRequestError(message, response.status);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  const fetchInit: RequestInit = { ...init, headers };
+
+  let lastStatus = 0;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(input, fetchInit);
+    } catch (networkError) {
+      // Network failure — retry if we have attempts left.
+      if (attempt >= MAX_RETRIES) throw new ApiRequestError("Falha de rede. Tente novamente.", 0);
+      await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
+      continue;
+    }
+
+    if (response.ok) {
+      return response.json() as Promise<T>;
+    }
+
+    lastStatus = response.status;
+    if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
+      const body = (await response.json().catch(() => ({}))) as ApiError;
+      const message = body.error || `Não foi possível concluir a solicitação. (status ${response.status})`;
+      throw new ApiRequestError(message, response.status);
+    }
+    // Retryable 5xx / 408 / 429 — back off and retry.
+    await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
   }
-  return response.json() as Promise<T>;
+
+  // Should be unreachable, but keeps the type checker happy.
+  throw new ApiRequestError("Não foi possível concluir a solicitação.", lastStatus);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface TaskBundle {
@@ -78,7 +113,7 @@ export interface HabitCompletionResult {
 export interface DailyTaskHistoryEntry {
   taskId: number;
   date: string;
-  completedAt: string;
+  completedAt?: string;
 }
 
 export const api = {
