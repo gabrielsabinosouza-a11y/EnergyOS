@@ -27,3 +27,6 @@ tools:
             - timeout 150 *
             - source *
             - node *
+            - npx tsc *
+            - npx eslint *
+            - rm *

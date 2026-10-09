@@ -4,15 +4,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import type { CSSProperties, InputHTMLAttributes } from "react";
+import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 
-/**
- * Maximum length for a plan/activity name.
- *
- * This is the SINGLE config constant for the soft limit.
- * The server-side validator in `src/lib/db/weekly-plans-series.ts`
- * references the same value (kept in sync manually — see comment there).
- */
-export const PLAN_NAME_MAX = 120;
+/** Re-export so client components can import from the component file. */
+export { PLAN_NAME_MAX };
 
 // ── Pure helpers (exported for unit testing) ──────────────────────────────
 

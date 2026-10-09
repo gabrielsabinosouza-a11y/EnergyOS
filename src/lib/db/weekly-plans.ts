@@ -7,7 +7,7 @@ import { recordMissionProgress } from "./daily-quests";
 import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
-import { WEEKLY_PLAN_COMPLETION_REWARD } from "../daily-limits";
+import { WEEKLY_PLAN_COMPLETION_REWARD, PLAN_NAME_MAX } from "../daily-limits";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
@@ -100,6 +100,13 @@ export interface CreateWeeklyPlanInput {
 export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPlanInput): Promise<WeeklyPlan> {
   parseProfileId(profileId);
   const title = parseTitle(input.title);
+
+  // Plan names have a tighter soft limit than parseTitle's generic 200-char
+  // maximum. Reject at PLAN_NAME_MAX (120) for consistency with the frontend.
+  if (title.length > PLAN_NAME_MAX) {
+    throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
+  }
+
   const planDate = parseDate(input.planDate, "Data do plano");
   const allDay = input.allDay ?? true;
   const categoryId = input.categoryId !== undefined
@@ -219,6 +226,11 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   parseProfileId(profileId);
   if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
   const title = input.title !== undefined ? parseTitle(input.title) : undefined;
+  // Plan names have a tighter soft limit than parseTitle's generic 200-char
+  // maximum. Reject at PLAN_NAME_MAX (120) for consistency with the frontend.
+  if (title !== undefined && title.length > PLAN_NAME_MAX) {
+    throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
+  }
   const planDate = input.planDate !== undefined ? parseDate(input.planDate, "Data do plano") : undefined;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)

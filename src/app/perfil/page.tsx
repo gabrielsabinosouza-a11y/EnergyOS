@@ -301,7 +301,7 @@ export default function PerfilPage() {
     ? new Date(createdRaw).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "—";
   const username = dbUser?.username ?? (user as { username?: string }).username;
-  const email = dbUser?.email ?? user.email; 
+  const email = dbUser?.email ?? user.email;
   const coinBalance = settingsCoins ?? dashboard?.user?.coinBalance;
 
   const streak = profileStreak?.current
@@ -453,7 +453,7 @@ export default function PerfilPage() {
     setGeneratingRecap(true);
     setRecapError("");
     try {
-      const result = await api.generateRecap(month);
+      const result = await api.generateRecap(year, month);
       if (result?.recap) {
         setRecaps((prev) => {
           const exists = prev.some((r) => r.recapMonth === result.recap.recapMonth);

@@ -53,6 +53,13 @@ export const WEEKLY_PLAN_COMPLETION_REWARD = {
 /** Maximum number of active recurring plan series per user. */
 export const WEEKLY_PLAN_SERIES_LIMIT = 200;
 
+/**
+ * Soft character limit for plan/activity names ("Nome da atividade").
+ * Single source of truth — the DB column is `text` (unlimited), so no
+ * migration is needed. The frontend PlanNameInput re-exports this constant.
+ */
+export const PLAN_NAME_MAX = 120;
+
 // ── Goals ─────────────────────────────────────────────────────────────────────
 export const GOAL_CREATION_XP = 5;
 

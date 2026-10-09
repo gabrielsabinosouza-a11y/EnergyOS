@@ -3,7 +3,7 @@ import type { WeeklyPlanSeries, WeeklyPlanItem, PlanRepeatType, PlanEndType, Cat
 import { NotFoundError } from "../errors";
 import { ValidationError, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
-import { WEEKLY_PLAN_COMPLETION_REWARD, WEEKLY_PLAN_SERIES_LIMIT } from "../daily-limits";
+import { WEEKLY_PLAN_COMPLETION_REWARD, WEEKLY_PLAN_SERIES_LIMIT, PLAN_NAME_MAX } from "../daily-limits";
 import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
@@ -175,6 +175,13 @@ export async function createWeeklyPlanSeries(
   parseProfileId(profileId);
   const title = parseTitle(input.title);
 
+  // Plan names have a tighter soft limit than parseTitle's generic 200-char
+  // maximum. Reject at PLAN_NAME_MAX (120) so the server is consistent with
+  // the frontend PlanNameInput component.
+  if (title.length > PLAN_NAME_MAX) {
+    throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
+  }
+
   // Check limit
   const countResult = await pool.query<{ count: number }>(
     `select count(*)::int from weekly_plan_series where profile_id = $1 and archived = false`,
@@ -246,6 +253,13 @@ export async function updateWeeklyPlanSeries(
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
 
   const title = input.title !== undefined ? parseTitle(input.title) : undefined;
+
+  // Plan names have a tighter soft limit than parseTitle's generic 200-char
+  // maximum. Reject at PLAN_NAME_MAX (120) for consistency with the frontend.
+  if (title !== undefined && title.length > PLAN_NAME_MAX) {
+    throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
+  }
+
   const categoryId = input.categoryId !== undefined ? await assertCategoryForProfile(profileId, input.categoryId) : undefined;
 
   const sets: string[] = [];

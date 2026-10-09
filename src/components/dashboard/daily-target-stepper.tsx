@@ -3,7 +3,6 @@
 import { Minus, Plus } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  useLayoutEffect,
   useRef,
   useState,
   useEffect,
@@ -112,7 +111,6 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rafRef = useRef<number | null>(null);
-  const activeDirRef = useRef<1 | -1>(1);
 
   const clearTimers = useCallback(() => {
     if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
@@ -128,12 +126,11 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
       if (disabled) return;
       clearTimers();
       heldRef.current = false;
-      activeDirRef.current = dir;
       pressTimerRef.current = setTimeout(() => {
         heldRef.current = true;
         fn();
         let idx = 0;
-        const delays = [120, 60]; // first repeat 400ms (above), then 120, then 60
+        const delays = [120, 60]; // first repeat at 400ms (above), then 120, then 60
         const tick = () => {
           if (heldRef.current !== true) return;
           const v = valueRef.current;
@@ -151,18 +148,25 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
     [disabled, clearTimers],
   );
 
-  // Called on pointerup; gates the single click so a completed hold does not
-  // also fire an extra step through `onClick`.
-  const endPress = useCallback(
+  // Cancels a pending hold without stepping (pointerup): stops the 400ms timer
+  // so a short click doesn't accidentally start a hold. Does NOT reset heldRef,
+  // so the following `click` knows whether a hold had already fired.
+  const cancelHold = useCallback(() => {
+    clearTimers();
+  }, [clearTimers]);
+
+  // Click handler: single step only when no hold fired (gated by heldRef).
+  const fireClick = useCallback(
     (fn: () => void) => {
       const wasHeld = heldRef.current;
       clearTimers();
-      if (!wasHeld && !disabled) fn();
       heldRef.current = false;
+      if (!wasHeld && !disabled) fn();
     },
     [disabled, clearTimers],
   );
 
+  // Pointer left the button — abort cleanly; no click will fire, so reset held.
   const abortHold = useCallback(() => {
     clearTimers();
     heldRef.current = false;
@@ -356,9 +360,9 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
                 icon={<Minus size={20} aria-hidden="true" />}
                 disabled={disabled || clamped <= DAILY_TARGET_MIN}
                 onPressStart={() => startHold(-1, stepDown)}
-                onPressEnd={() => endPress(stepDown)}
+                onPressEnd={cancelHold}
                 onPressLeave={abortHold}
-                onActivate={() => endPress(stepDown)}
+                onActivate={() => fireClick(stepDown)}
               />
               <RoundButton
                 aria-label="Aumentar meta diária"
@@ -366,9 +370,9 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
                 icon={<Plus size={20} aria-hidden="true" />}
                 disabled={disabled || clamped >= DAILY_TARGET_MAX}
                 onPressStart={() => startHold(1, stepUp)}
-                onPressEnd={() => endPress(stepUp)}
+                onPressEnd={cancelHold}
                 onPressLeave={abortHold}
-                onActivate={() => endPress(stepUp)}
+                onActivate={() => fireClick(stepUp)}
               />
             </div>
           </div>
@@ -377,7 +381,7 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
           {limitHint && <span className="habit-dt-hint-tooltip" role="tooltip">{limitHint}</span>}
 
           {/* Presets */}
-          <PresetBar active={activePreset} value={clamped} onSelect={selectPreset} disabled={disabled} />
+          <PresetBar active={activePreset} onSelect={selectPreset} disabled={disabled} />
 
           {/* Pips (visual target preview) */}
           <Pips value={clamped} color={color} />
@@ -393,22 +397,33 @@ export function DailyTargetStepper({ value, onChange, color = "#71d4ff", disable
 }
 
 // ── Odometer / slot-machine roll ─────────────────────────────────────────────
+type RollDir = "up" | "down" | "same";
+const rollVariant = (dir: RollDir): { initial: Record<string, unknown>; animate: Record<string, unknown>; exit: Record<string, unknown> } => {
+  if (dir === "up") return { initial: { y: 20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: -20, opacity: 0 } };
+  if (dir === "down") return { initial: { y: -20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: 20, opacity: 0 } };
+  return { initial: { opacity: 1, y: 0 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 } };
+};
+
 function OdometerNumber({ value, bumping }: { value: number; bumping: boolean }) {
   const reduced = useReducedMotion();
-  const [prev, setPrev] = useState(value);
-  const dir = value > prev ? "up" : value < prev ? "down" : "same";
-  useLayoutEffect(() => { setPrev(value); }, [value]);
+  const [shown, setShown] = useState(value);
+  const [outgoing, setOutgoing] = useState<number | null>(null);
+  const [exitDir, setExitDir] = useState<RollDir>("same");
 
-  const variants = {
-    up: { initial: { y: 20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: -20, opacity: 0 } },
-    down: { initial: { y: -20, opacity: 0 }, animate: { y: 0, opacity: 1 }, exit: { y: 20, opacity: 0 } },
-    same: { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } },
-  };
-  const v = variants[dir];
+  useEffect(() => {
+    if (value === shown) return;
+    setExitDir(value > shown ? "up" : "down");
+    setOutgoing(shown);
+    setShown(value);
+    const t = setTimeout(() => setOutgoing(null), 300);
+    return () => clearTimeout(t);
+  }, [value, shown]);
 
   if (reduced) {
     return <span className="habit-dt-number-text">{value}</span>;
   }
+
+  const inDir = outgoing != null ? exitDir : "same";
 
   return (
     <motion.span
@@ -416,16 +431,25 @@ function OdometerNumber({ value, bumping }: { value: number; bumping: boolean })
       animate={bumping ? { scale: [1, 0.92, 1] } : { scale: 1 }}
       transition={bumping ? SPRING_BUMPY : { duration: 0.26, ease: EASE_OUT }}
     >
-      <AnimatePresence initial={false} mode="wait">
+      <AnimatePresence initial={false}>
+        {outgoing != null && (
+          <motion.span
+            key={`out-${outgoing}`}
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={rollVariant(exitDir).exit}
+            transition={{ duration: 0.26, ease: EASE_OUT, opacity: { duration: 0.22 } }}
+          >
+            {outgoing}
+          </motion.span>
+        )}
         <motion.span
-          key={value}
-          variants={v}
-          initial="initial"
-          animate="animate"
-          exit="exit"
+          key={`in-${shown}`}
+          initial={rollVariant(inDir).initial}
+          animate={rollVariant(inDir).animate}
           transition={{ duration: 0.26, ease: EASE_OUT, opacity: { duration: 0.22 } }}
         >
-          {value}
+          {shown}
         </motion.span>
       </AnimatePresence>
     </motion.span>
@@ -506,12 +530,10 @@ function RoundButton({
 // ── Preset pills with a shared sliding indicator ─────────────────────────────
 function PresetBar({
   active,
-  value,
   onSelect,
   disabled,
 }: {
   active: number | null;
-  value: number;
   onSelect: (preset: number) => void;
   disabled?: boolean;
 }) {
@@ -546,11 +568,6 @@ function PresetBar({
           );
         })}
       </motion.div>
-      {value > PIP_SEGMENTS && (
-        <span className="habit-dt-pip-count" aria-label={`${value - PIP_SEGMENTS} a mais por dia`}>
-          +{value - PIP_SEGMENTS}
-        </span>
-      )}
     </div>
   );
 }
