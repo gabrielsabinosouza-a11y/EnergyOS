@@ -3,7 +3,7 @@
  *  chat surfaces stay in sync without server round-trips for the file blob. */
 
 export const MAX_VIDEO_SECONDS = 30;
-export const MAX_AUDIO_SECONDS = 120;
+export const MAX_AUDIO_SECONDS = 300;
 export const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 

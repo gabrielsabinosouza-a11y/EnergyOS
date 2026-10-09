@@ -515,7 +515,8 @@ export async function listGroupMessages(
   const hasReplyCols = await hasColumn("group_messages", "reply_to_id");
   const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
-     gm.media_url, gm.media_duration_seconds, gm.created_at, p.display_name, p.photo_url, ux.level as sender_level,
+     gm.media_url, gm.media_duration_seconds, gm.media_file_name, gm.media_mime_type, gm.media_size_bytes,
+     gm.created_at, p.display_name, p.photo_url, ux.level as sender_level,
      gmsender.role as sender_role,
      reactions.reactions, (pinned.message_id is not null) as is_pinned,
      pinned.created_at as pinned_at, pinned.pinned_by,
@@ -614,6 +615,9 @@ export async function listGroupMessages(
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",
     mediaUrl: row.media_url ?? undefined,
     mediaDurationSeconds: row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
+    mediaFileName: row.media_file_name ?? undefined,
+    mediaMimeType: row.media_mime_type ?? undefined,
+    mediaSizeBytes: row.media_size_bytes != null ? Number(row.media_size_bytes) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
     replyToId: row.reply_to_id != null ? Number(row.reply_to_id) : undefined,
     replyToBody: row.reply_to_body ?? undefined,
@@ -714,11 +718,16 @@ export async function sendGroupMessage(
   if (messageType === "VIDEO" && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
     throw new ValidationError("Vídeos devem ter no máximo 30 segundos.");
   }
-  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 120) {
-    throw new ValidationError("Áudios devem ter no máximo 2 minutos.");
+  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 300) {
+    throw new ValidationError("Áudios devem ter no máximo 5 minutos.");
   }
   const mediaSizeBytes = opts?.mediaSizeBytes != null ? Number(opts.mediaSizeBytes) : null;
-  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > 20 * 1024 * 1024)) throw new ValidationError("Arquivo de mídia inválido.");
+  const maxMediaSize = messageType === "AUDIO" ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
+  if (messageType === "AUDIO" && mediaSizeBytes == null) throw new ValidationError("Tamanho do áudio inválido.");
+  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > maxMediaSize)) throw new ValidationError("Arquivo de mídia inválido.");
+  if (messageType === "AUDIO" && (!opts?.mediaMimeType || !["audio/webm", "audio/mp4", "audio/m4a"].includes(opts.mediaMimeType.split(";")[0].toLowerCase()))) {
+    throw new ValidationError("Formato de áudio não suportado.");
+  }
 
   if (messageType === "STICKER" && !text) {
     text = opts?.mediaUrl?.trim() || null;

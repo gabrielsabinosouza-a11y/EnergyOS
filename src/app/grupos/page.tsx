@@ -1287,6 +1287,9 @@ function GroupDetailPanel({
         messageType: opts.messageType,
         mediaUrl: opts.mediaUrl,
         mediaDurationSeconds: opts.mediaDurationSeconds,
+        mediaFileName: opts.mediaFileName,
+        mediaMimeType: opts.mediaMimeType,
+        mediaSizeBytes: opts.mediaSizeBytes,
       });
       confirmMessage(temp.id, message);
     } catch (err) {
