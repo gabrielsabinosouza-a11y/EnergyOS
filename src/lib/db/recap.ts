@@ -1,5 +1,5 @@
 import { ENERGYOS_LAUNCH_MONTH } from "@/types";
-import type { MonthlyRecap, XpSourceBreakdown } from "@/types";
+import type { MonthlyRecap, XpSourceBreakdown, NewLeagueTier } from "@/types";
 import { BadRequestError } from "../errors";
 import { parseProfileId } from "./validation";
 import { NEW_TIER_ORDER, resolveNewTier } from "@/lib/league-new-meta";
@@ -276,7 +276,7 @@ async function buildRecapSummary(
   const promoted =
     normalizedStartTier !== undefined &&
     normalizedEndTier !== undefined &&
-    NEW_TIER_ORDER.indexOf(normalizedEndTier) > NEW_TIER_ORDER.indexOf(normalizedStartTier);
+    NEW_TIER_ORDER.indexOf(normalizedEndTier as NewLeagueTier) > NEW_TIER_ORDER.indexOf(normalizedStartTier as NewLeagueTier);
 
   return {
     totalFocusMinutes: totalMinutes,

@@ -8,7 +8,8 @@ import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
 import { Button, IconButton } from "@/components/ui";
 import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
-import { PlanNameInput, PLAN_NAME_MAX } from "./plan-name-input";
+import { WeeklyPlanInputCard } from "./weekly-plan-input-card";
+import { PLAN_NAME_MAX } from "./plan-name-input";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_ITEMS_PER_CARD = 4;
@@ -316,13 +317,15 @@ export function WeeklyPlan({
         >
           <div className="w-full space-y-6 pb-3">
             <div className="space-y-4">
-              <PlanNameInput
+              <WeeklyPlanInputCard
                 id="plan-name-edit-input"
                 value={editTitle}
                 onChange={setEditTitle}
                 color={editingPlan.color || editingPlan.category.color}
-                placeholder="Ex.: Ir à igreja, Treino, Estudar..."
+                placeholder="Ex.: Ir à igreja, #trabalho, Treino..."
+                autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
+                aria-label="Nome ou tag do plano"
               />
               <div><span className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Detalhes</span><p className="text-xs text-[var(--text-muted)]">Para alterar recorrência, horário, duração, cor e nota, abra o plano pela opção de edição completa.</p></div>
             </div>

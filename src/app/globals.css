@@ -655,6 +655,17 @@ body { overflow-wrap: break-word; }
   opacity: 1; /* Firefox */
 }
 
+/* Soft edge-fade when a single-line plan name overflows the input's visible width
+   (native horizontal scroll still applies). The mask is applied to a narrow band
+   at each edge so short values are never faded; the right edge sits inside the
+   reserved clear-button padding so it never covers the text. */
+.plan-name-input--overflow {
+  mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+}
+
 .plan-name-input:focus {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
@@ -715,12 +726,245 @@ body { overflow-wrap: break-word; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   WeeklyPlanInputCard — glass-morphism input card for the weekly planner
+   pop-up menu. Replaces the bare `led={false}` PlanNameInput so the
+   name/tag field is always clearly tappable and visually distinct.
+   ── Tokens consumed: --bg-primary, --bg-tertiary, --border, --border-subtle,
+      --border-strong, --text, --text-muted, --text-faint, --accent,
+      --accent-bg, --accent-glow, --orange, --red, --ease-out.
+      The active accent is exposed as --wp-accent (set inline from the color prop).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.weekly-plan-input-card-root {
+  width: 100%;
+}
+
+/* Glass card container: translucent fill + backdrop blur + layered shadow */
+.weekly-plan-input-card {
+  position: relative;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 12px 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* Inner highlight that simulates the light glint on the glass surface.
+   z-index is set above the LED ring (::after) so the glint is never hidden
+   by the rotating accent arc. */
+.weekly-plan-input-card::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.08) 50%, transparent);
+  border-radius: 14px 14px 0 0;
+  pointer-events: none;
+}
+
+/* Focus: accent border + glow, subtle 3D lift */
+.weekly-plan-input-card:focus-within {
+  border-color: rgba(113, 212, 255, 0.35);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.16),
+    0 0 0 2px color-mix(in srgb, var(--wp-accent) 25%, transparent),
+    0 8px 28px color-mix(in srgb, var(--wp-accent) 35%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.weekly-plan-input-card:hover {
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+/* Error state (past the 120-char soft limit): red border + red glow + subtle shake.
+   The red is conveyed by border colour AND a luminance change (brighten) so it
+   does not rely on colour alone, and the shake gives a motion cue. */
+.weekly-plan-input-card--error {
+  border-color: var(--red);
+}
+.weekly-plan-input-card--error:focus-within {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.16),
+    0 0 0 2px color-mix(in srgb, var(--red) 25%, transparent),
+    0 8px 28px color-mix(in srgb, var(--red) 35%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.weekly-plan-input-card--error .weekly-plan-input-card-input {
+  animation: plan-input-shake 0.24s var(--ease-out);
+}
+
+/* ── LED border ring (STEP 3) ───────────────────────────────────────────────
+   A 1.5px conic-gradient ring that lives ONLY on the card's border — never on
+   the fill or the text — via a content-box/border-box mask (the centre is
+   fully transparent, so it never obscures the input text or caret). The plan's
+   selected colour is read from --wp-accent (set inline on the wrapper). At
+   rest it is dim and rotates very slowly (12s); it brightens on hover and
+   rotates faster + glows on focus. Paused when the tab is hidden, the field is
+   off-screen, or the user prefers reduced motion. */
+.weekly-plan-input-card::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px; /* ring thickness */
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--plan-input-led-angle),
+    transparent 0deg 250deg,
+    var(--wp-accent) 306deg 332deg,
+    transparent 360deg
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; /* Safari */
+  opacity: 0.15;
+  animation: plan-input-led-rotate 12s linear infinite;
+}
+
+/* Hover: brighter ring */
+.weekly-plan-input-card:hover::after {
+  opacity: 0.28;
+}
+
+/* Focus: brighter + faster ring (the outer glow is the existing focus box-shadow) */
+.weekly-plan-input-card:focus-within::after {
+  opacity: 0.45;
+  animation-duration: 8s; /* faster on focus */
+}
+
+/* Error (over 120 chars): red ring + red glow */
+.weekly-plan-input-card--error::after {
+  background: conic-gradient(
+    from var(--plan-input-led-angle),
+    transparent 0deg 250deg,
+    var(--red) 306deg 332deg,
+    transparent 360deg
+  );
+  opacity: 0.5;
+  animation-duration: 4s;
+}
+
+/* Paused (tab hidden, off-screen, or reduced motion): freeze the ring */
+.weekly-plan-input-card.paused::after {
+  animation-play-state: paused;
+}
+
+/* The actual input element — transparent so the glass card shows through */
+.weekly-plan-input-card-input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px; /* prevents iOS zoom */
+  font-family: inherit;
+  outline: none;
+  caret-color: var(--accent);
+}
+
+.weekly-plan-input-card-input::placeholder {
+  color: var(--text-muted);
+  opacity: 1; /* Firefox */
+}
+
+.weekly-plan-input-card-input:focus + .weekly-plan-input-card-clear,
+.weekly-plan-input-card-clear {
+  /* base styles below */
+}
+
+/* Clear button — glass-styled, overlaps input on the right */
+.weekly-plan-input-card-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: color-mix(in srgb, var(--bg-primary) 75%, transparent);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: opacity 0.16s var(--ease-out), background 0.16s, color 0.16s, transform 0.16s;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.weekly-plan-input-card-clear:hover {
+  color: var(--text);
+  background: var(--bg-surface-hover);
+}
+
+/* Light-theme overrides for the card */
+[data-theme="light"] .weekly-plan-input-card {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="light"] .weekly-plan-input-card::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25) 50%, transparent);
+}
+
+[data-theme="light"] .weekly-plan-input-card:focus-within {
+  border-color: rgba(2, 132, 199, 0.3);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    0 0 0 2px color-mix(in srgb, var(--wp-accent) 25%, transparent),
+    0 8px 28px color-mix(in srgb, var(--wp-accent) 25%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="light"] .weekly-plan-input-card-clear {
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  color: var(--text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weekly-plan-input-card {
+    transition: none !important;
+  }
+  .weekly-plan-input-card:focus-within {
+    transform: none !important;
+  }
+  .weekly-plan-input-card--error .weekly-plan-input-card-input {
+    animation: none !important;
+  }
+  .weekly-plan-input-card::after {
+    animation: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    DailyTargetStepper — "Meta diária" glass card.
-   Reuses the app's dark-navy glass, cyan accent tokens and the LED-border
-   masking pattern already used by `.chat-led-border` / `.weekly-plan-led`.
-   ── Tokens consumed: --bg-surface, --bg-tertiary, --bg-primary, --border,
-      --border-subtle, --border-strong, --text, --text-muted, --text-faint,
-      --accent-bg, --ease-out. The active choice is exposed as --habit-color
       (set inline by the picker) so the LED border / tint update live.
    ═══════════════════════════════════════════════════════════════════════════ */
 @property --habit-led-angle {

@@ -184,8 +184,9 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
   const handleShare = async () => {
     setSharing(true);
     try {
-      // Check if Web Share API is available and can share files
-      if (navigator.share && navigator.canShare) {
+      // Check if Web Share File System API is available
+      const sha = navigator as typeof navigator & { sha?: { canShare: (files: File[]) => boolean } };
+      if (navigator.share && typeof sha.sha?.canShare === "function") {
         try {
           // Create canvas for image
           const canvas = document.createElement("canvas");
@@ -197,9 +198,9 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
           ctx.fillStyle = "#0a0e1a";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           
-          // Convert to blob
+          // Convert to blob then to file
           const blob = await new Promise<Blob>((resolve) => {
-            canvas.toBlob((b) => resolve(b!), { type: "image/png" });
+            canvas.toBlob((b) => resolve(b!), "image/png");
           });
           
           // Try to share with file

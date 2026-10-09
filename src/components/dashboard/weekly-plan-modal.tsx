@@ -6,7 +6,8 @@ import { Check, Loader2, Repeat, Hash, ChevronDown, Trash2 } from "lucide-react"
 import type { WeeklyPlanSeries, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { Modal } from "@/components/modal";
 import { ColorPalette, HABIT_COLORS } from "./color-palette";
-import { PlanNameInput, PLAN_NAME_MAX } from "./plan-name-input";
+import { PLAN_NAME_MAX } from "./plan-name-input";
+import { WeeklyPlanInputCard } from "./weekly-plan-input-card";
 import { todayIso } from "@/lib/db/dates";
 
 const DAY_NAMES_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -171,17 +172,17 @@ export function WeeklyPlanModal({ series, categories, prefillDate, onClose, onSa
       }
     >
       <div className="space-y-6 pb-3">
-        {/* Section 1: Title */}
+        {/* Section 1: Title / Tag */}
         <div>
-          <PlanNameInput
+          <WeeklyPlanInputCard
             id="plan-name-input"
             value={title}
             onChange={setTitle}
             color={color}
-            led={false}
             autoFocus
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
-            placeholder="Ex.: Ir à igreja, Treino, Estudar..."
+            placeholder="Ex.: Ir à igreja, #trabalho, Treino..."
+            aria-label="Nome ou tag do plano"
           />
         </div>
 
