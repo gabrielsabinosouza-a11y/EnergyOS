@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, type CSSProperties } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
@@ -27,8 +26,6 @@ interface WeeklyPlanProps {
   onDeleteSeries?: (seriesId: number) => Promise<void>;
 }
 
-
-
 export function WeeklyPlan({
   plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
   onCreateSeries, onUpdateSeries, onUpdateOccurrenceOverride, onToggleOccurrence, onDeleteSeries,
@@ -52,6 +49,9 @@ export function WeeklyPlan({
   const [popoverDay, setPopoverDay] = useState<{ date: string; items: WeeklyPlanItem[] } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  // Today cell ref for mobile scroll
+  const todayCellRef = useRef<HTMLDivElement>(null);
+
   const today = todayIso();
   const weekStart = weekStartIso(today);
   const visiblePlans = plans.map((plan) => {
@@ -60,10 +60,18 @@ export function WeeklyPlan({
       ? { ...plan, completedAt: completionOverrides[key] }
       : plan;
   });
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDaysIso(weekStart, i);
     const dayPlans = visiblePlans.filter((p) => p.planDate === date);
-    return { date, dayName: DAY_NAMES[i], plans: dayPlans, isToday: date === today };
+    // Sort by start time: items with time first, then without time
+    const sortedPlans = [...dayPlans].sort((a, b) => {
+      if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
+      if (a.startTime) return -1;
+      if (b.startTime) return 1;
+      return 0;
+    });
+    return { date, dayName: DAY_NAMES[i], plans: sortedPlans, isToday: date === today };
   });
 
   async function handleCreate() {
@@ -75,7 +83,6 @@ export function WeeklyPlan({
     if (onCreateSeries) {
       await onCreateSeries(payload);
     } else {
-      // Fallback: create a one-time legacy plan
       await onCreate(payload.startDate, payload.title, payload.categoryId);
     }
     setShowModal(false);
@@ -153,9 +160,8 @@ export function WeeklyPlan({
     closeEditingPlan();
   }
 
-  // Mobile: the 7-day strip becomes a horizontal snap scroller
+  // Mobile scroll to today on mount
   const weekScrollerRef = useRef<HTMLDivElement>(null);
-  const todayCellRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scroller = weekScrollerRef.current;
     const cell = todayCellRef.current;
@@ -201,15 +207,15 @@ export function WeeklyPlan({
         ref={weekScrollerRef}
         className="-mx-5 overflow-x-auto px-5 pb-1 pt-1 scrollbar-hide sm:mx-0 sm:overflow-visible sm:px-0 sm:pt-0"
       >
-        <div className="flex w-max gap-3 perspective-[1000px] sm:grid sm:w-auto sm:grid-cols-7">
+        <div className="flex w-max gap-3 sm:grid sm:w-auto sm:grid-cols-7">
           {days.map((day) => (
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`weekly-plan-led ${day.isToday ? "weekly-plan-today" : ""} group/day relative flex h-[190px] w-[156px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-2.5 transition-[transform,background,border-color] duration-200 hover:-translate-y-0.5 sm:w-auto ${
+              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-3 transition-all duration-200 ${
                 day.isToday
-                  ? "border-[var(--accent)] bg-[var(--accent-bg)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_30%,transparent),0_8px_22px_rgba(0,0,0,.24)]"
-                  : "border-[var(--border-subtle)] bg-[linear-gradient(160deg,rgba(24,40,58,.94),rgba(13,25,39,.92))] shadow-[inset_0_1px_rgba(255,255,255,.035),0_8px_18px_rgba(0,0,0,.16)]"
+                  ? "border-[var(--accent)] bg-[var(--accent-bg)]"
+                  : "border-[var(--border-subtle)] bg-[var(--bg-surface)]"
               }`}
               onClick={() => {
                 if (day.plans.length === 0) {
@@ -218,76 +224,91 @@ export function WeeklyPlan({
                 }
               }}
             >
-              <div className={`mb-2 flex items-end justify-between px-1 ${day.isToday ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}`}>
-                <span className="text-[10px] font-semibold uppercase tracking-[.14em]">{day.dayName}</span>
-                <span className="font-mono text-lg leading-none tabular-nums">{day.date.slice(8, 10)}</span>
+              {/* Header */}
+              <div className={`mb-2 flex items-center justify-between px-1 ${
+                day.isToday ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+              }`}>
+                <span className="text-[12px] font-semibold uppercase tracking-[.14em] opacity-80">{day.dayName}</span>
+                <span className="font-mono text-[16px] leading-none tabular-nums">{day.date.slice(8, 10)}</span>
               </div>
-              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5 [scrollbar-width:thin]">
+
+              {/* Body */}
+              <div className="flex-1 space-y-1.5 overflow-y-auto pr-0.5 [scrollbar-width:thin] min-w-0">
+                {day.plans.length === 0 && (
+                  <div className="flex h-full items-center justify-center text-center text-[12px] text-[var(--text-muted)] opacity-60">
+                    Sem planos
+                  </div>
+                )}
                 {day.plans.slice(0, MAX_ITEMS_PER_CARD).map((plan) => (
                   <PlanItemRow
                     key={plan.id}
                     plan={plan}
                     onEdit={() => { void openEdit(plan); }}
-                    onToggle={() => {
-                      void handleToggleComplete(plan);
-                    }}
+                    onToggle={() => { void handleToggleComplete(plan); }}
                   />
                 ))}
                 {day.plans.length > MAX_ITEMS_PER_CARD && (
-                  <motion.button
-                    onClick={(e) => { e.stopPropagation(); setPopoverDay({ date: day.date, items: day.plans }); }}
-                    whileTap={{ scale: 0.95 }}
-                    className="block w-full text-center text-[10px] font-medium rounded-md px-1.5 py-1 text-[var(--accent)] hover:bg-[var(--accent-bg)] transition-colors"
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPopoverDay({ date: day.date, items: day.plans });
+                    }}
+                    className="block w-full text-center text-[13px] font-medium rounded-md px-1.5 py-1 text-[var(--accent)] hover:bg-[var(--accent-bg)] transition-colors"
                   >
                     +{day.plans.length - MAX_ITEMS_PER_CARD} mais
-                  </motion.button>
+                  </button>
                 )}
               </div>
-              <Button type="button" size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setModalPrefillDate(day.date); setShowModal(true); }} className="mt-1 h-8 w-full shrink-0 font-medium text-[var(--text-faint)] hover:text-[var(--accent)]">
-                <Plus size={14} /> Adicionar
-              </Button>
+
+              {/* Footer - compact add button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModalPrefillDate(day.date);
+                  setShowModal(true);
+                }}
+                className="mt-1 w-full text-[13px] font-medium text-[var(--accent)] hover:text-[var(--accent)]/80"
+              >
+                + Adicionar
+              </button>
             </div>
           ))}
         </div>
       </div>
 
       {/* Day popover */}
-      <AnimatePresence>
-        {popoverDay && (
-          <motion.div
-            ref={popoverRef}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-2xl"
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-semibold text-[var(--text)]">
-                {popoverDay.date.slice(8)}/{popoverDay.date.slice(5, 7)} — {popoverDay.items.length} itens
-              </span>
-              <button onClick={() => setPopoverDay(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {popoverDay.items.map((plan) => (
-                <PlanItemRow
-                  key={plan.id}
-                  plan={plan}
-                  onEdit={() => {
-                    setPopoverDay(null);
-                    void openEdit(plan);
-                  }}
-                  onToggle={() => {
-                    setPopoverDay(null);
-                    void handleToggleComplete(plan);
-                  }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {popoverDay && (
+        <div
+          ref={popoverRef}
+          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-xl"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-[var(--text)]">
+              {popoverDay.date.slice(8)}/{popoverDay.date.slice(5, 7)} — {popoverDay.items.length} itens
+            </span>
+            <button onClick={() => setPopoverDay(null)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {popoverDay.items.map((plan) => (
+              <PlanItemRow
+                key={plan.id}
+                plan={plan}
+                onEdit={() => {
+                  setPopoverDay(null);
+                  void openEdit(plan);
+                }}
+                onToggle={() => {
+                  setPopoverDay(null);
+                  void handleToggleComplete(plan);
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Create/Edit modal */}
       {showModal && (
@@ -301,61 +322,81 @@ export function WeeklyPlan({
 
       {/* Edit modal (legacy style, for one-time items) */}
       {editingPlan && (
-        editingSeries && onUpdateSeries ? <PlanModal series={editingSeries} occurrence={editingPlan ?? undefined} categories={categories} defaultScope="occurrence" onClose={closeEditingPlan} onSaveSeries={handleUpdateSeries} onSaveOccurrence={async ({ title, startTime }) => {
-          if (!editingPlan?.seriesId) return;
-          await onUpdateOccurrenceOverride?.(editingPlan.seriesId, editingPlan.planDate, title, startTime);
-          closeEditingPlan();
-        }} onDelete={handleDeleteSeriesFromEditor} /> :
-        <Modal
-          key={`edit-${editingPlan.id}`} // Stable key prevents re-creation on re-render
-          onClose={() => { if (editIsDirty && !window.confirm("Descartar as alterações não salvas?")) return; closeEditingPlan(); }}
-          title={<div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: editingPlan.color || editingPlan.category.color }} />Editar plano{editingPlan.completedAt && <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">Concluído</span>}</div>}
-          description={editingPlan.isRecurring ? "Plano recorrente" : undefined}
-          panelClassName="sm:max-w-xl"
-          footerClassName="flex-nowrap"
-          footer={<EditModalFooter
-            confirmDelete={confirmDelete}
-            setConfirmDelete={setConfirmDelete}
-            deleteTimer={deleteTimer}
-            setDeleteTimer={setDeleteTimer}
-            handleDelete={handleDelete}
-            editIsDirty={editIsDirty}
-            closeEditingPlan={closeEditingPlan}
-            savingEdit={savingEdit}
-            handleSave={handleSave}
-            editTitle={editTitle}
-            editingPlan={editingPlan}
-          />}
-        >
-          <div className="w-full space-y-6 pb-3">
-            <div className="space-y-4">
-              {/* FOCUS BUG FIX: The input value is kept in local editTitle state within the parent component.
-                  Previously, the footer JSX was defined inline, causing the entire Modal subtree to be
-                  recreated on every keystroke (new object reference). This made the input lose focus.
-                  Fix: (1) Extracted footer to a stable component (EditModalFooter), (2) Added stable key to Modal,
-                  (3) WeeklyPlanInputCard now uses forwardRef to support parent ref forwarding. */}
-              <WeeklyPlanInputCard
-                id="plan-name-edit-input"
-                value={editTitle}
-                onChange={setEditTitle}
-                color={editingPlan.color || editingPlan.category.color}
-                placeholder="Ex.: Ir à igreja, #trabalho, Treino..."
-                autoFocus
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
-                aria-label="Nome ou tag do plano"
-              />
-              <div><span className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">Detalhes</span><p className="text-xs text-[var(--text-muted)]">Para alterar recorrência, horário, duração, cor e nota, abra o plano pela opção de edição completa.</p></div>
-            </div>
-          </div>
-        </Modal>
+        editingSeries && onUpdateSeries
+          ? <PlanModal
+              series={editingSeries}
+              occurrence={editingPlan ?? undefined}
+              categories={categories}
+              defaultScope="occurrence"
+              onClose={closeEditingPlan}
+              onSaveSeries={handleUpdateSeries}
+              onSaveOccurrence={async ({ title, startTime }) => {
+                if (!editingPlan?.seriesId) return;
+                await onUpdateOccurrenceOverride?.(editingPlan.seriesId, editingPlan.planDate, title, startTime);
+                closeEditingPlan();
+              }}
+              onDelete={handleDeleteSeriesFromEditor}
+            />
+          : <Modal
+              key={`edit-${editingPlan.id}`}
+              onClose={() => { if (editIsDirty && !window.confirm("Descartar as alterações não salvas?")) return; closeEditingPlan(); }}
+              title={
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: editingPlan.color || editingPlan.category.color }} />
+                  Editar plano
+                  {editingPlan.completedAt && (
+                    <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">Concluído</span>
+                  )}
+                </div>
+              }
+              description={editingPlan.isRecurring ? "Plano recorrente" : undefined}
+              panelClassName="sm:max-w-xl"
+              footerClassName="flex-nowrap"
+              footer={
+                <EditModalFooter
+                  confirmDelete={confirmDelete}
+                  setConfirmDelete={setConfirmDelete}
+                  deleteTimer={deleteTimer}
+                  setDeleteTimer={setDeleteTimer}
+                  handleDelete={handleDelete}
+                  editIsDirty={editIsDirty}
+                  closeEditingPlan={closeEditingPlan}
+                  savingEdit={savingEdit}
+                  handleSave={handleSave}
+                  editTitle={editTitle}
+                  editingPlan={editingPlan}
+                />
+              }
+            >
+              <div className="w-full space-y-6 pb-3">
+                <div className="space-y-4">
+                  <WeeklyPlanInputCard
+                    id="plan-name-edit-input"
+                    value={editTitle}
+                    onChange={setEditTitle}
+                    color={editingPlan.color || editingPlan.category.color}
+                    placeholder="Ex.: Ir à igreja, #trabalho, Treino..."
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
+                    aria-label="Nome ou tag do plano"
+                  />
+                  <div>
+                    <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--text-muted)]">
+                      Detalhes
+                    </span>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Para alterar recorrência, horário, duração, cor e nota, abra o plano pela opção de edição completa.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Modal>
       )}
     </div>
   );
 }
 
 // ── Helper component for the legacy edit modal footer ─────────────────────
-// This is extracted to prevent the footer JSX object from being recreated on every render,
-// which was causing the modal to remount and lose input focus when typing.
 function EditModalFooter({
   confirmDelete,
   setConfirmDelete,
@@ -444,48 +485,88 @@ function EditModalFooter({
 function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit: () => void; onToggle: () => void }) {
   const displayColor = plan.color || plan.category.color;
   const skipped = plan.skipped;
+  const isCompleted = Boolean(plan.completedAt);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
+    <div
       data-plan-key={`${plan.seriesId ?? "legacy"}-${plan.id}-${plan.planDate}`}
       tabIndex={0}
       role="button"
+      aria-label={isCompleted ? "Plano concluído" : "Plano pendente"}
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(); } }}
-      className={`weekly-plan-led group relative flex min-h-11 items-start gap-2 overflow-hidden rounded-lg border border-white/[.07] bg-white/[.035] px-2 py-1.5 pr-20 text-[11px] leading-tight cursor-pointer transition-[transform,background] hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-white/[.07] ${
-        plan.completedAt ? "opacity-45" : ""
-      } ${skipped ? "opacity-30 grayscale" : ""}`}
-      style={{ borderLeft: `3px solid ${displayColor}`, boxShadow: `inset 0 0 0 1px ${displayColor}18`, "--plan-led-color": plan.completedAt ? "#6bffb8" : displayColor } as CSSProperties}
+      className="weekly-plan-item group relative flex min-h-[40px] w-full items-center justify-between gap-3 overflow-hidden rounded-lg border px-3 py-2 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] cursor-pointer"
+      style={
+        {
+          backgroundColor: isCompleted ? "rgba(154, 255, 184, 0.15)" : "rgba(255, 255, 255, 0.05)",
+          borderLeft: `3px solid ${displayColor}`,
+        } as CSSProperties
+      }
       onClick={onEdit}
       title={`${plan.title}${plan.startTime ? " - " + plan.startTime : ""}`}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={`line-clamp-2 font-medium text-[var(--text)] ${plan.completedAt ? "line-through" : ""} ${skipped ? "italic" : ""}`}>
-          {plan.title || "(sem titulo)"}
-        </span>
-        {plan.startTime && <span className="text-[9px] tabular-nums text-[var(--text-muted)]">{plan.startTime}</span>}
+      {/* Color bar is handled by border-left style */}
+      <div className="flex min-w-0 flex-1">
+        <div className="flex flex-col gap-0.5">
+          <span
+            className={`font-medium text-sm text-[var(--text)] line-clamp-2 ${
+              isCompleted ? "line-through" : ""
+            } ${skipped ? "italic opacity-60" : ""}`}
+            style={{ opacity: skipped ? 0.6 : 1 } as CSSProperties}
+          >
+            {plan.title || "(sem titulo)"}
+          </span>
+          <div className="flex items-center gap-2">
+            {plan.startTime && (
+              <span className="text-xs text-[var(--text-muted)] tabular-nums">
+                {plan.startTime}
+              </span>
+            )}
+            {plan.isRecurring && (
+              <Repeat size={14} className="text-[var(--text-muted)] opacity-60" />
+            )}
+            {skipped && (
+              <span className="text-xs rounded-full bg-[var(--text-muted)]/20 px-1.5 py-0.5 text-[var(--text-muted)]">
+                Pulsado
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
+      {/* Check button - always visible, 24px circle with padding for 32px touch target */}
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        aria-pressed={Boolean(plan.completedAt)}
-        aria-label={plan.completedAt ? "Marcar como nao concluida" : "Concluir tarefa"}
-        className={`absolute right-9 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${plan.completedAt ? "text-[var(--green)]" : "text-[var(--text-faint)]"}`}
-        title={plan.completedAt ? "Marcar como nao concluida" : "Concluir tarefa"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        aria-pressed={isCompleted}
+        aria-label={isCompleted ? "Desmarcar plano" : "Concluir plano"}
+        className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150 ${
+          isCompleted
+            ? "bg-[var(--accent)] text-white"
+            : "border-2 border-[var(--text-muted)]/50 text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+        }`}
       >
-        <Check size={15} strokeWidth={plan.completedAt ? 3 : 2} className={plan.completedAt ? "text-[var(--green)]" : ""} />
+        {isCompleted ? (
+          <Check size={16} strokeWidth={3} />
+        ) : (
+          <Check size={16} />
+        )}
       </button>
 
+      {/* Edit button - visible on focus/hover for desktop */}
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
         aria-label="Editar plano"
-        className="absolute right-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
-        title="Editar"
+        className="absolute right-2 top-1/2 -translate-y-1/2 hidden h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition-all duration-150 hover:bg-white/[.08] focus-visible:outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)] group-hover:flex"
       >
-        <Pencil size={12} />
+        <Pencil size={14} />
       </button>
-    </motion.div>
+    </div>
   );
 }

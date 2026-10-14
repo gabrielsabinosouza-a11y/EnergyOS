@@ -40,11 +40,14 @@ const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}>
-      <head>
-        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
+    <html
+      lang="pt-BR"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}
+    >
       <body className={inter.className} suppressHydrationWarning>
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
