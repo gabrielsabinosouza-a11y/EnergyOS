@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, forwardRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, Tag as TagIcon } from "lucide-react";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -74,7 +74,7 @@ export interface WeeklyPlanInputCardProps
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
-export function WeeklyPlanInputCard({
+export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputCardProps>(function WeeklyPlanInputCard({
   value,
   onChange,
   color = "var(--accent)",
@@ -84,13 +84,22 @@ export function WeeklyPlanInputCard({
   onKeyDown,
   id,
   ...rest
-}: WeeklyPlanInputCardProps) {
+}, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
   const generatedId = useId();
   const inputId = id ?? `wp-input-${generatedId}`;
   const counterId = `${inputId}-counter`;
   const helperId = `${inputId}-helper`;
   const liveId = `${inputId}-live`;
+
+  // Expose ref to parent
+  useEffect(() => {
+    if (typeof ref === "function") {
+      ref(inputRef.current);
+    } else if (ref) {
+      ref.current = inputRef.current;
+    }
+  }, [ref]);
 
   const [isComposing, setIsComposing] = useState(false);
   const reduced = useReducedMotion();
@@ -305,4 +314,6 @@ export function WeeklyPlanInputCard({
       </div>
     </div>
   );
-}
+});
+
+WeeklyPlanInputCard.displayName = "WeeklyPlanInputCard";

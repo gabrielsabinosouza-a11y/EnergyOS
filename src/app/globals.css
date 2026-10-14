@@ -51,6 +51,14 @@
   --glow-orange: 0 0 40px -8px rgba(255,184,107,.3);
   --glow-purple: 0 0 40px -8px rgba(182,156,255,.3);
   --glow-green:  0 0 40px -8px rgba(74,222,128,.3);
+
+  /* Glass/3D modal styles */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-bg-hover: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-highlight: rgba(255, 255, 255, 0.15);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --glass-glow: 0 0 60px -12px rgba(113, 212, 255, 0.15);
 }
 
 [data-theme="light"] {
@@ -81,6 +89,14 @@
   --red-bg: rgba(220,38,38,.08);
   --purple: #7c3aed;
   --purple-bg: rgba(124,58,237,.08);
+
+  /* Glass/3D modal styles (light theme) */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg-hover: rgba(255, 255, 255, 0.95);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --glass-border-highlight: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --glass-glow: 0 0 60px -12px rgba(2, 132, 199, 0.15);
 }
 
 [data-theme="light"] .panel,

@@ -7,9 +7,8 @@ import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
 import { Button, IconButton } from "@/components/ui";
-import { WeeklyPlanModal, type CreateSeriesPayload } from "./weekly-plan-modal";
-import { WeeklyPlanInputCard } from "./weekly-plan-input-card";
-import { PLAN_NAME_MAX } from "./plan-name-input";
+import { PlanModal, type CreateSeriesPayload } from "../weekly-plan/PlanModal";
+import { WeeklyPlanInputCard, PLAN_NAME_MAX } from "./weekly-plan-input-card";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_ITEMS_PER_CARD = 4;
@@ -27,6 +26,11 @@ interface WeeklyPlanProps {
   onSkipOccurrence?: (seriesId: number, date: string) => Promise<void>;
   onDeleteSeries?: (seriesId: number) => Promise<void>;
 }
+
+export function WeeklyPlan({
+  plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
+  onCreateSeries, onUpdateSeries, onToggleOccurrence, onDeleteSeries,
+}: WeeklyPlanProps) {
 
 export function WeeklyPlan({
   plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
@@ -290,7 +294,7 @@ export function WeeklyPlan({
 
       {/* Create/Edit modal */}
       {showModal && (
-        <WeeklyPlanModal
+        <PlanModal
           categories={categories}
           prefillDate={modalPrefillDate}
           onClose={() => { setShowModal(false); requestAnimationFrame(() => createTriggerRef.current?.focus()); }}
@@ -300,23 +304,35 @@ export function WeeklyPlan({
 
       {/* Edit modal (legacy style, for one-time items) */}
       {editingPlan && (
-        editingSeries && onUpdateSeries ? <WeeklyPlanModal series={editingSeries} categories={categories} onClose={closeEditingPlan} onSave={handleUpdateSeries} onDelete={handleDeleteSeriesFromEditor} /> :
+        editingSeries && onUpdateSeries ? <PlanModal series={editingSeries} categories={categories} onClose={closeEditingPlan} onSave={handleUpdateSeries} onDelete={handleDeleteSeriesFromEditor} /> :
         <Modal
+          key={`edit-${editingPlan.id}`} // Stable key prevents re-creation on re-render
           onClose={() => { if (editIsDirty && !window.confirm("Descartar as alterações não salvas?")) return; closeEditingPlan(); }}
           title={<div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ background: editingPlan.color || editingPlan.category.color }} />Editar plano{editingPlan.completedAt && <span className="rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">Concluído</span>}</div>}
           description={editingPlan.isRecurring ? "Plano recorrente" : undefined}
           panelClassName="sm:max-w-xl"
           footerClassName="flex-nowrap"
-          footer={<>
-            <div className="mr-auto flex shrink-0 items-center gap-1">
-              {!confirmDelete ? <button type="button" onClick={() => { setConfirmDelete(true); if (deleteTimer) clearTimeout(deleteTimer); setDeleteTimer(setTimeout(() => setConfirmDelete(false), 3000)); }} className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-red-300 hover:bg-red-400/10"><Trash2 size={15}/>Excluir</button> : <><button type="button" onClick={() => void handleDelete()} className="h-10 rounded-lg bg-red-500/20 px-3 text-sm font-semibold text-red-200">Confirmar exclusão</button><button type="button" onClick={() => { setConfirmDelete(false); if (deleteTimer) clearTimeout(deleteTimer); }} className="h-10 rounded-lg px-3 text-sm text-[var(--text-muted)]">Cancelar</button></>}
-            </div>
-            <button type="button" onClick={() => { if (!editIsDirty || window.confirm("Descartar as alterações não salvas?")) closeEditingPlan(); }} className="h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)]">Cancelar</button>
-            <button type="button" onClick={() => void handleSave()} disabled={savingEdit || !editTitle.trim() || editTitle.trim() === editingPlan.title || editTitle.length > PLAN_NAME_MAX} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white disabled:opacity-50">{savingEdit ? <Loader2 size={15} className="animate-spin"/> : <Check size={15}/>}Salvar</button>
-          </>}
+          footer={<EditModalFooter
+            confirmDelete={confirmDelete}
+            setConfirmDelete={setConfirmDelete}
+            deleteTimer={deleteTimer}
+            setDeleteTimer={setDeleteTimer}
+            handleDelete={handleDelete}
+            editIsDirty={editIsDirty}
+            closeEditingPlan={closeEditingPlan}
+            savingEdit={savingEdit}
+            handleSave={handleSave}
+            editTitle={editTitle}
+            editingPlan={editingPlan}
+          />}
         >
           <div className="w-full space-y-6 pb-3">
             <div className="space-y-4">
+              {/* FOCUS BUG FIX: The input value is kept in local editTitle state within the parent component.
+                  Previously, the footer JSX was defined inline, causing the entire Modal subtree to be
+                  recreated on every keystroke (new object reference). This made the input lose focus.
+                  Fix: (1) Extracted footer to a stable component (EditModalFooter), (2) Added stable key to Modal,
+                  (3) WeeklyPlanInputCard now uses forwardRef to support parent ref forwarding. */}
               <WeeklyPlanInputCard
                 id="plan-name-edit-input"
                 value={editTitle}
@@ -333,6 +349,94 @@ export function WeeklyPlan({
         </Modal>
       )}
     </div>
+  );
+}
+
+// ── Helper component for the legacy edit modal footer ─────────────────────
+// This is extracted to prevent the footer JSX object from being recreated on every render,
+// which was causing the modal to remount and lose input focus when typing.
+function EditModalFooter({
+  confirmDelete,
+  setConfirmDelete,
+  deleteTimer,
+  setDeleteTimer,
+  handleDelete,
+  editIsDirty,
+  closeEditingPlan,
+  savingEdit,
+  handleSave,
+  editTitle,
+  editingPlan,
+}: {
+  confirmDelete: boolean;
+  setConfirmDelete: (v: boolean) => void;
+  deleteTimer: ReturnType<typeof setTimeout> | null;
+  setDeleteTimer: (t: ReturnType<typeof setTimeout> | null) => void;
+  handleDelete: () => void;
+  editIsDirty: boolean;
+  closeEditingPlan: () => void;
+  savingEdit: boolean;
+  handleSave: () => void;
+  editTitle: string;
+  editingPlan: WeeklyPlanItem;
+}) {
+  return (
+    <>
+      <div className="mr-auto flex shrink-0 items-center gap-1">
+        {!confirmDelete ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmDelete(true);
+              if (deleteTimer) clearTimeout(deleteTimer);
+              setDeleteTimer(setTimeout(() => setConfirmDelete(false), 3000));
+            }}
+            className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-red-300 hover:bg-red-400/10"
+          >
+            <Trash2 size={15} />
+            Excluir
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              className="h-10 rounded-lg bg-red-500/20 px-3 text-sm font-semibold text-red-200"
+            >
+              Confirmar exclusão
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmDelete(false);
+                if (deleteTimer) clearTimeout(deleteTimer);
+              }}
+              className="h-10 rounded-lg px-3 text-sm text-[var(--text-muted)]"
+            >
+              Cancelar
+            </button>
+          </>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!editIsDirty || window.confirm("Descartar as alterações não salvas?")) closeEditingPlan();
+        }}
+        className="h-10 rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-muted)]"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        onClick={() => void handleSave()}
+        disabled={savingEdit || !editTitle.trim() || editTitle.trim() === editingPlan.title || editTitle.length > PLAN_NAME_MAX}
+        className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {savingEdit ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+        Salvar
+      </button>
+    </>
   );
 }
 
