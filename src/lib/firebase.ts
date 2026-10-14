@@ -11,6 +11,18 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+const missingVars: string[] = [];
+if (!firebaseConfig.apiKey) missingVars.push("NEXT_PUBLIC_FIREBASE_API_KEY");
+if (!firebaseConfig.projectId) missingVars.push("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+
+if (missingVars.length > 0 && process.env.NODE_ENV === "development") {
+  console.error(
+    "\x1b[31m%s\x1b[0m",
+    `[Firebase Config Error] Missing environment variables: ${missingVars.join(", ")}. ` +
+    "Authentication will not work. Please check .env.local. See .env.example for required variables."
+  );
+}
+
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 export const auth = isFirebaseConfigured ? getAuth(app) : null;

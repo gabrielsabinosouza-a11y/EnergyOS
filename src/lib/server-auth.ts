@@ -3,6 +3,23 @@ import { UnauthorizedError } from "./errors";
 import { parseProfileId } from "./db/validation";
 import { touchLastActive, getUserRole } from "./db/profiles";
 
+/**
+ * Validates that required environment variables are set.
+ * Call this at the start of any API route that uses authentication.
+ */
+export function validateAuthEnv(): void {
+  const missing: string[] = [];
+  if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) missing.push("NEXT_PUBLIC_FIREBASE_API_KEY");
+  if (!process.env.DATABASE_URL) missing.push("DATABASE_URL");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `[Server Auth Error] Missing required environment variables: ${missing.join(", ")}. ` +
+      "Server-side authentication will not work. Please check your environment variables. See .env.example for required variables."
+    );
+  }
+}
+
 interface VerifiedIdentity {
   uid: string;
   email: string | null;
@@ -32,7 +49,12 @@ function extractToken(request: NextRequest): string | null {
  */
 async function verifyWithGoogle(token: string): Promise<VerifiedIdentity> {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  if (!apiKey) throw new UnauthorizedError("Autenticação não configurada no servidor.");
+  if (!apiKey) {
+    throw new UnauthorizedError(
+      "Autenticação não configurada no servidor: NEXT_PUBLIC_FIREBASE_API_KEY is missing. " +
+      "Please check your environment variables. See .env.example for required variables."
+    );
+  }
 
   const cached = identityCache.get(token);
   if (cached && cached.expiresAt > Date.now()) return cached.identity;
@@ -103,6 +125,8 @@ export interface AuthenticatedRequest {
 
 /** Garante isolamento por usuário: todo endpoint resolve o perfil pelo token, nunca por parâmetro do cliente. */
 export async function requireAuth(request: NextRequest): Promise<AuthenticatedRequest> {
+  validateAuthEnv();
+
   const devProfileId = devBypassProfileId(request);
   if (devProfileId) {
     touchLastActive(devProfileId);
@@ -125,6 +149,8 @@ export async function requireAuth(request: NextRequest): Promise<AuthenticatedRe
 
 /** Verifica se o usuário autenticado tem permissão de admin */
 export async function requireAdmin(request: NextRequest): Promise<AuthenticatedRequest> {
+  validateAuthEnv();
+
   const auth = await requireAuth(request);
   if (auth.role !== 'admin') {
     throw new UnauthorizedError("Permissão de administrador necessária.");

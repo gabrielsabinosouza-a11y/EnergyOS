@@ -22,10 +22,12 @@ export interface ApiError {
   details?: Record<string, string>;
 }
 
-async function authToken(): Promise<string | null> {
+async function authToken(): Promise<string | null>{
   if (typeof window === "undefined") return null;
-  const { auth } = await import("@/lib/firebase");
-  return auth?.currentUser?.getIdToken() ?? null;
+  const {auth} = await import("@/lib/firebase")
+  if (!auth) return null;
+  await auth.authStateReady();
+  return auth.currentUser ? auth.currentUser.getIdToken() : null;
 }
 
 export class ApiRequestError extends Error {
@@ -514,3 +516,12 @@ export const api = {
   shareRecap: (recapId: number) =>
     request<{ success: boolean; newBalance: number; wasFirstShare: boolean; coinsAwarded: number }>("/api/recap/share", { method: "POST", body: JSON.stringify({ recapId }) }),
 };
+
+function waitForAuth(auth: import("firebase/auth").Auth): Promise<void> {
+  return new Promise((resolve) => {
+    const unsub = auth.onAuthStateChanged(() => {
+      unsub();
+      resolve();
+    });
+  });
+}
