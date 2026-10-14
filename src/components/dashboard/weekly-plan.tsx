@@ -5,7 +5,7 @@ import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2, Repeat } from "lucid
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
-import { Button, IconButton } from "@/components/ui";
+import { IconButton } from "@/components/ui";
 import { PlanModal, type CreateSeriesPayload } from "../weekly-plan/PlanModal";
 import { WeeklyPlanInputCard, PLAN_NAME_MAX } from "./weekly-plan-input-card";
 
@@ -48,9 +48,6 @@ export function WeeklyPlan({
   // Day popover state
   const [popoverDay, setPopoverDay] = useState<{ date: string; items: WeeklyPlanItem[] } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-
-  // Today cell ref for mobile scroll
-  const todayCellRef = useRef<HTMLDivElement>(null);
 
   const today = todayIso();
   const weekStart = weekStartIso(today);
@@ -160,8 +157,9 @@ export function WeeklyPlan({
     closeEditingPlan();
   }
 
-  // Mobile scroll to today on mount
+  // Mobile: the 7-day strip becomes a horizontal snap scroller
   const weekScrollerRef = useRef<HTMLDivElement>(null);
+  const todayCellRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scroller = weekScrollerRef.current;
     const cell = todayCellRef.current;
@@ -212,10 +210,10 @@ export function WeeklyPlan({
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-3 transition-all duration-200 ${
+              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start rounded-[12px] border p-3 transition-all duration-200 ${
                 day.isToday
                   ? "border-[var(--accent)] bg-[var(--accent-bg)]"
-                  : "border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+                  : "border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
               }`}
               onClick={() => {
                 if (day.plans.length === 0) {
@@ -268,9 +266,9 @@ export function WeeklyPlan({
                   setModalPrefillDate(day.date);
                   setShowModal(true);
                 }}
-                className="mt-1 w-full text-[13px] font-medium text-[var(--accent)] hover:text-[var(--accent)]/80"
+                className="mt-1 flex items-center justify-start w-full text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] rounded-md px-2 py-1 transition-colors"
               >
-                + Adicionar
+                <Plus size={14} className="mr-1" /> Adicionar
               </button>
             </div>
           ))}
@@ -497,7 +495,10 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
       className="weekly-plan-item group relative flex min-h-[40px] w-full items-center justify-between gap-3 overflow-hidden rounded-lg border px-3 py-2 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] cursor-pointer"
       style={
         {
-          backgroundColor: isCompleted ? "rgba(154, 255, 184, 0.15)" : "rgba(255, 255, 255, 0.05)",
+          "--item-bg": isCompleted ? "rgba(154, 255, 184, 0.15)" : "rgba(255, 255, 255, 0.05)",
+          "--item-border": isCompleted ? "rgba(154, 255, 184, 0.4)" : "rgba(255, 255, 255, 0.2)",
+          "--text-opacity": isCompleted ? "0.55" : "1",
+          backgroundColor: `var(--item-bg)`,
           borderLeft: `3px solid ${displayColor}`,
         } as CSSProperties
       }
@@ -511,9 +512,9 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
             className={`font-medium text-sm text-[var(--text)] line-clamp-2 ${
               isCompleted ? "line-through" : ""
             } ${skipped ? "italic opacity-60" : ""}`}
-            style={{ opacity: skipped ? 0.6 : 1 } as CSSProperties}
+            style={{ opacity: skipped ? "0.6" : "var(--text-opacity)" } as CSSProperties}
           >
-            {plan.title || "(sem titulo)"}
+            {plan.title || "(sem título)"}
           </span>
           <div className="flex items-center gap-2">
             {plan.startTime && (
@@ -525,15 +526,15 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
               <Repeat size={14} className="text-[var(--text-muted)] opacity-60" />
             )}
             {skipped && (
-              <span className="text-xs rounded-full bg-[var(--text-muted)]/20 px-1.5 py-0.5 text-[var(--text-muted)]">
-                Pulsado
+              <span className="text-xs rounded-full bg-[var(--text-muted)]/20 px-1.5 py-0.5 text-[var(--text-muted)]" aria-label="Pulado">
+                Pulado
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Check button - always visible, 24px circle with padding for 32px touch target */}
+      {/* Check button - always visible, 24px circle with 32px touch target */}
       <button
         type="button"
         onClick={(e) => {
@@ -541,12 +542,15 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
           onToggle();
         }}
         aria-pressed={isCompleted}
-        aria-label={isCompleted ? "Desmarcar plano" : "Concluir plano"}
-        className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150 ${
-          isCompleted
-            ? "bg-[var(--accent)] text-white"
-            : "border-2 border-[var(--text-muted)]/50 text-[var(--text-muted)] hover:border-[var(--text-muted)]"
-        }`}
+        aria-label={isCompleted ? `Desmarcar plano "${plan.title}"` : `Concluir plano "${plan.title}"`}
+        className="flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150"
+        style={
+          {
+            backgroundColor: isCompleted ? displayColor : "rgba(255, 255, 255, 0.05)",
+            border: `2px solid ${isCompleted ? displayColor : "var(--text-muted)"}`,
+            color: isCompleted ? "white" : "var(--text-muted)",
+          } as CSSProperties
+        }
       >
         {isCompleted ? (
           <Check size={16} strokeWidth={3} />
@@ -555,7 +559,7 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
         )}
       </button>
 
-      {/* Edit button - visible on focus/hover for desktop */}
+      {/* Edit button - visible on focus/hover for desktop, always accessible on mobile */}
       <button
         type="button"
         onClick={(e) => {
@@ -564,6 +568,7 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
         }}
         aria-label="Editar plano"
         className="absolute right-2 top-1/2 -translate-y-1/2 hidden h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition-all duration-150 hover:bg-white/[.08] focus-visible:outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)] group-hover:flex"
+        title="Editar"
       >
         <Pencil size={14} />
       </button>
