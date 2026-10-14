@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, type CSSProperties } from "react";
-import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2, Repeat } from "lucide-react";
+import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2, Repeat, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
@@ -184,24 +184,36 @@ export function WeeklyPlan({
 
   return (
     <div className="panel weekly-plan-ambient relative overflow-visible p-6">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <Calendar size={18} className="text-[var(--accent)]" />
-          <span className="eyebrow muted">PLANO DA SEMANA</span>
-          <span className="text-sm text-[var(--text-muted)]">
-            {weekStart.slice(8,10)}/{weekStart.slice(5,7)} – {addDaysIso(weekStart, 6).slice(8,10)}/{addDaysIso(weekStart, 6).slice(5,7)}
-          </span>
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--accent)]/20 bg-[var(--accent-bg)] text-[var(--accent)] shadow-[var(--glow-cyan)]">
+            <CalendarDays size={20} />
+          </div>
+          <div className="min-w-0">
+            <p className="eyebrow muted mb-0.5">PLANO DA SEMANA</p>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="font-display text-xl font-semibold tracking-[-0.03em] text-[var(--text)]">
+                {weekStart.slice(8,10)}/{weekStart.slice(5,7)} – {addDaysIso(weekStart, 6).slice(8,10)}/{addDaysIso(weekStart, 6).slice(5,7)}
+              </h2>
+              <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)]">
+                {plans.length} {plans.length === 1 ? "atividade" : "atividades"}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setWeekOffset((v) => v - 1)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Semana anterior">
-            ←
-          </button>
-          <button type="button" onClick={() => setWeekOffset(0)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Semana atual">
-            Hoje
-          </button>
-          <button type="button" onClick={() => setWeekOffset((v) => v + 1)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Próxima semana">
-            →
-          </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">
+            <button type="button" onClick={() => setWeekOffset((v) => v - 1)} className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" aria-label="Semana anterior">
+              <ChevronLeft size={16} />
+            </button>
+            <button type="button" onClick={() => setWeekOffset(0)} className="rounded-md px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] transition-colors hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" aria-label="Semana atual">
+              Hoje
+            </button>
+            <button type="button" onClick={() => setWeekOffset((v) => v + 1)} className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" aria-label="Próxima semana">
+              <ChevronRight size={16} />
+            </button>
+          </div>
           <IconButton
             ref={createTriggerRef}
             onClick={handleCreate}
