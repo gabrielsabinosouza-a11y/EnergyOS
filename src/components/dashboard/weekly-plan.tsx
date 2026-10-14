@@ -217,7 +217,7 @@ export function WeeklyPlan({
 
       {/* Week strip */}
       <div className="overflow-visible pb-1 pt-1">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7">
           {days.map((day) => (
             <div
               key={day.date}
@@ -241,10 +241,10 @@ export function WeeklyPlan({
               </div>
 
               {/* Body */}
-              <div className="flex-1 space-y-1.5 overflow-y-auto pr-0.5 [scrollbar-width:thin] min-w-0">
+              <div className="flex-1 space-y-1.5 overflow-y-auto pr-0.5 [scrollbar-width:thin] min-w-0 max-h-32">
                 {day.plans.length === 0 && (
-                  <div className="flex h-full items-center justify-center text-center text-[12px] text-[var(--text-muted)] opacity-60">
-                    Sem planos
+                  <div className="flex h-full min-h-[44px] items-center justify-center text-center text-[12px] text-[var(--text-muted)] opacity-70">
+                    Livre
                   </div>
                 )}
                 {day.plans.slice(0, MAX_ITEMS_PER_CARD).map((plan) => (

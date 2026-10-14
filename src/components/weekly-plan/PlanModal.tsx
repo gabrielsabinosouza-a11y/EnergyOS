@@ -120,7 +120,8 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, []); // Empty deps - closeModal is stable within the component
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function closeModal() {
     if (saving) return;
@@ -194,9 +195,6 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
 
   // Dynamic shadow glow based on selected color
   const glowColor = color || "var(--accent)";
-  const modalShadow = reduced
-    ? "var(--glass-shadow)"
-    : `0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 60px -12px ${glowColor}40`;
 
   const modalContent = (
     <motion.div
