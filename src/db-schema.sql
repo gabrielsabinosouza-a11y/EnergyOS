@@ -190,6 +190,17 @@ do $$ begin
   alter table focus_rooms add column if not exists last_resumed_at timestamptz;
 exception when duplicate_column then null; end $$;
 
+-- Absolute deadline + pause bookkeeping for the shared focus-room timer
+do $$ begin
+  alter table focus_rooms add column if not exists ends_at timestamptz;
+exception when duplicate_column then null; end $$;
+do $$ begin
+  alter table focus_rooms add column if not exists paused_at timestamptz;
+exception when duplicate_column then null; end $$;
+do $$ begin
+  alter table focus_rooms add column if not exists remaining_seconds integer not null default 0;
+exception when duplicate_column then null; end $$;
+
 create index if not exists focus_rooms_code_idx on focus_rooms(code);
 create index if not exists focus_rooms_host_idx on focus_rooms(host_profile_id);
 create index if not exists focus_rooms_status_idx on focus_rooms(status);

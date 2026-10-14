@@ -29,6 +29,6 @@ export async function POST(
     }
 
     const pausedRoom = await pauseFocusRoom(Number(roomId), profileId);
-    return jsonOk({ room: pausedRoom, message: "Room paused successfully" });
+    return jsonOk({ room: pausedRoom, message: "Sala pausada com sucesso.", serverTime: new Date().toISOString() });
   });
 }

@@ -27,10 +27,7 @@ interface WeeklyPlanProps {
   onDeleteSeries?: (seriesId: number) => Promise<void>;
 }
 
-export function WeeklyPlan({
-  plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
-  onCreateSeries, onUpdateSeries, onToggleOccurrence, onDeleteSeries,
-}: WeeklyPlanProps) {
+
 
 export function WeeklyPlan({
   plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,

@@ -33,7 +33,7 @@ export async function GET(
       : await getFocusRoomByCode(profileId, roomId);
 
     if (!room) return notFound("Room not found");
-    return jsonOk({ room });
+    return jsonOk({ room, serverTime: new Date().toISOString() });
   });
 }
 
@@ -58,9 +58,9 @@ export async function POST(
     const energyType = body.energyType as string | undefined;
     if (room.participants.some((participant) => participant.profileId === profileId)) {
       await addParticipantToRoom(room.id, profileId, energyType);
-      return jsonOk({ room: await getFocusRoomById(profileId, room.id), message: "Joined successfully" });
+      return jsonOk({ room: await getFocusRoomById(profileId, room.id), message: "Entrada realizada com sucesso.", serverTime: new Date().toISOString() });
     }
-    return jsonOk({ request: await createJoinRequest(room.id, profileId, energyType), message: "Solicitação enviada ao anfitrião." });
+    return jsonOk({ request: await createJoinRequest(room.id, profileId, energyType), message: "Solicitação enviada ao anfitrião.", serverTime: new Date().toISOString() });
   });
 }
 
@@ -78,7 +78,7 @@ export async function PATCH(
     if (room.hostProfileId !== profileId) throw new ForbiddenError("Only the host can end the room");
 
     const ended = await endFocusRoom(Number(roomId));
-    return jsonOk({ room: ended, message: "Room ended successfully" });
+    return jsonOk({ room: ended, message: "Sala encerrada.", serverTime: new Date().toISOString() });
   });
 }
 

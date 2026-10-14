@@ -22,6 +22,9 @@ export interface FocusRoomRow {
   created_at: Date | string;
   started_at: Date | string | null;
   ended_at: Date | string | null;
+  ends_at: Date | string | null;
+  paused_at: Date | string | null;
+  remaining_seconds: number;
   elapsed_seconds: number;
   last_resumed_at: Date | string | null;
 }
@@ -49,6 +52,9 @@ export interface FocusRoom {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
+  endsAt?: string;
+  pausedAt?: string;
+  remainingSeconds?: number;
   elapsedSeconds: number;
   lastResumedAt?: string;
   participants: RoomParticipant[];
@@ -94,6 +100,9 @@ function mapFocusRoom(row: FocusRoomRow, participants: RoomParticipant[] = []): 
     createdAt: typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString(),
     startedAt: row.started_at ? (typeof row.started_at === "string" ? row.started_at : row.started_at.toISOString()) : undefined,
     endedAt: row.ended_at ? (typeof row.ended_at === "string" ? row.ended_at : row.ended_at.toISOString()) : undefined,
+    endsAt: row.ends_at ? (typeof row.ends_at === "string" ? row.ends_at : row.ends_at.toISOString()) : undefined,
+    pausedAt: row.paused_at ? (typeof row.paused_at === "string" ? row.paused_at : row.paused_at.toISOString()) : undefined,
+    remainingSeconds: row.remaining_seconds,
     elapsedSeconds: row.elapsed_seconds,
     lastResumedAt: row.last_resumed_at ? (typeof row.last_resumed_at === "string" ? row.last_resumed_at : row.last_resumed_at.toISOString()) : undefined,
     participants,
@@ -165,7 +174,7 @@ export async function createFocusRoom(
     const result = await client.query<FocusRoomRow>(
       `insert into focus_rooms (code, host_profile_id, status, duration_minutes, energy_type)
        values ($1, $2, $3, $4, $5)
-       returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at`,
+       returning id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, ends_at, paused_at, remaining_seconds, elapsed_seconds, last_resumed_at`,
       [code, hostProfileId, "waiting", durationMinutes, energyType ?? null]
     );
 
@@ -194,7 +203,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
   const parsedProfileId = parseProfileId(profileId);
   
   const result = await pool.query<FocusRoomRow>(
-    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
+    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, ends_at, paused_at, remaining_seconds, elapsed_seconds, last_resumed_at
      from focus_rooms where id = $1`,
     [roomId]
   );
@@ -368,7 +377,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
 // rejected for not yet being participants.
 export async function findFocusRoomByCode(code: string): Promise<FocusRoom | null> {
   const result = await pool.query<FocusRoomRow>(
-    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, elapsed_seconds, last_resumed_at
+    `select id, code, host_profile_id, status, duration_minutes, energy_type, created_at, started_at, ended_at, ends_at, paused_at, remaining_seconds, elapsed_seconds, last_resumed_at
      from focus_rooms where code = $1`,
     [code]
   );
@@ -581,6 +590,26 @@ export async function addParticipantToRoom(roomId: number, profileId: string, se
 // Remove a participant from a room
 export async function removeParticipantFromRoom(roomId: number, profileId: string): Promise<void> {
   parseProfileId(profileId);
+
+  const room = await pool.query<{ host_profile_id: string }>(
+    `select host_profile_id from focus_rooms where id = $1`,
+    [roomId],
+  );
+  if (room.rows[0]?.host_profile_id === profileId) {
+    const next = await pool.query<{ profile_id: string }>(
+      `select profile_id from room_participants
+       where room_id = $1 and profile_id <> $2 and session_status <> 'left'
+       order by joined_at asc limit 1`,
+      [roomId, profileId],
+    );
+    if (next.rows[0]) {
+      await pool.query(
+        `update focus_rooms set host_profile_id = $2 where id = $1`,
+        [roomId, next.rows[0].profile_id],
+      );
+    }
+  }
+
   await clearGroupRoomPresence(roomId, profileId);
   await pool.query(
     `delete from room_participants where room_id = $1 and profile_id = $2`,
@@ -591,78 +620,90 @@ export async function removeParticipantFromRoom(roomId: number, profileId: strin
 // Start a focus room (host only) - enters confirming state for group sessions
 export async function startFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  
+
   const client = await pool.connect();
   try {
     await client.query("begin");
-    
-    // Verify host and room state
-    const room = await client.query<{ host_profile_id: string; status: RoomStatus }>(
-      `select host_profile_id, status from focus_rooms where id = $1 for update`,
-      [roomId]
+
+    const room = await client.query<{ host_profile_id: string; status: RoomStatus; duration_minutes: number }>(
+      `select host_profile_id, status, duration_minutes from focus_rooms where id = $1 for update`,
+      [roomId],
     );
 
     if (!room.rows[0]) {
       await client.query("rollback");
-      throw new NotFoundError("Room not found");
+      throw new NotFoundError("Sala não encontrada.");
     }
 
     if (room.rows[0].host_profile_id !== hostProfileId) {
       await client.query("rollback");
-      throw new ForbiddenError("Only the host can start the room");
+      throw new ForbiddenError("Apenas o anfitrião pode iniciar a sala.");
+    }
+
+    // Idempotent handling of already-started rooms: returning success (not
+    // a conflict) keeps double-clicks and concurrent requests safe.
+    if (room.rows[0].status === "active" || room.rows[0].status === "paused" ||
+        room.rows[0].status === "confirming" || room.rows[0].status === "restarting") {
+      await client.query("commit");
+      const existing = await getFocusRoomById(hostProfileId, roomId);
+      return existing!;
+    }
+
+    if (room.rows[0].status === "completed" || room.rows[0].status === "expired") {
+      await client.query("rollback");
+      throw new ConflictError("A sala já foi concluída.");
     }
 
     if (room.rows[0].status !== "waiting") {
       await client.query("rollback");
-      throw new ConflictError("Room is not in waiting state");
+      throw new ConflictError("A sala não está aguardando início.");
     }
 
-    // Check if there are other participants (group session)
-    const participants = await client.query<{ count: string }>(
-      `select count(*)::int as count from room_participants where room_id = $1 and profile_id != $2`,
-      [roomId, hostProfileId]
+    const participantCount = await client.query<{ count: string }>(
+      `select count(*)::int as count from room_participants where room_id = $1`,
+      [roomId],
     );
-    const hasOtherParticipants = Number(participants.rows[0]?.count ?? 0) > 0;
-
-    if (hasOtherParticipants) {
-      // Group session: enter confirming state
-      const now = new Date().toISOString();
-      await client.query(
-        `update focus_rooms set status = 'confirming' where id = $1`,
-        [roomId]
-      );
-      
-      // Reset all participant confirmation choices
-      await client.query(
-        `update room_participants set restart_choice = 'pending' where room_id = $1 and session_status <> 'left'`,
-        [roomId]
-      );
-      
-      // Host is auto-confirmed
-      await client.query(
-        `update room_participants set restart_choice = 'confirmed' where room_id = $1 and profile_id = $2`,
-        [roomId, hostProfileId]
-      );
-      
-      await client.query("commit");
-    } else {
-      // Solo session: start immediately
-      const now = new Date().toISOString();
-      await client.query(
-        `update focus_rooms set status = 'active', started_at = $1, elapsed_seconds = 0, last_resumed_at = $1 where id = $2`,
-        [now, roomId]
-      );
-
-      // Update all participants to focusing status
-      await client.query(
-        `update room_participants set session_status = 'focusing' where room_id = $1`,
-        [roomId]
-      );
-
-      await client.query("commit");
+    if (Number(participantCount.rows[0]?.count ?? 0) < 1) {
+      await client.query("rollback");
+      throw new ConflictError("A sala precisa de pelo menos um participante para iniciar.");
     }
 
-    // Fetch updated room
+    const durationMinutes = room.rows[0].duration_minutes;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const endsAt = new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString();
+
+    const updated = await client.query(
+      `update focus_rooms
+          set status = 'active',
+              started_at = $1,
+              ends_at = $2,
+              paused_at = null,
+              remaining_seconds = $3,
+              elapsed_seconds = 0,
+              last_resumed_at = $1
+        where id = $4 and status = 'waiting'`,
+      [nowIso, endsAt, durationMinutes * 60, roomId],
+    );
+
+    if ((updated.rowCount ?? 0) === 0) {
+      // Lost the race to another start request — accept the already-started state.
+      await client.query("commit");
+      const raced = await getFocusRoomById(hostProfileId, roomId);
+      if (raced && (raced.status === "active" || raced.status === "paused" ||
+                    raced.status === "confirming" || raced.status === "restarting")) {
+        return raced;
+      }
+      throw new ConflictError("A sala não está aguardando início.");
+    }
+
+    await client.query(
+      `update room_participants set session_status = 'focusing' where room_id = $1`,
+      [roomId],
+    );
+
+    await client.query("commit");
+
     const startedRoom = await getFocusRoomById(hostProfileId, roomId);
     return startedRoom!;
   } catch (error) {
@@ -683,8 +724,8 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const room = await client.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null }>(
-      `select host_profile_id, status, last_resumed_at from focus_rooms where id = $1 for update`,
+    const room = await client.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null; ends_at: Date | string | null; duration_minutes: number; elapsed_seconds: number }>(
+      `select host_profile_id, status, last_resumed_at, ends_at, duration_minutes, elapsed_seconds from focus_rooms where id = $1 for update`,
       [roomId]
     );
 
@@ -713,14 +754,19 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
       : now;
 
     const currentSegment = Math.max(0, Math.round((now - lastResumed) / 1000));
+    const endsAt = room.rows[0].ends_at ? new Date(typeof room.rows[0].ends_at === "string" ? room.rows[0].ends_at : room.rows[0].ends_at.toISOString()).getTime() : now + room.rows[0].duration_minutes * 60 * 1000;
+    const remainingSeconds = Math.max(0, Math.round((endsAt - now) / 1000));
 
     await client.query(
       `update focus_rooms
          set status = 'paused',
              elapsed_seconds = elapsed_seconds + $1,
+             remaining_seconds = $2,
+             paused_at = $3,
+             ends_at = null,
              last_resumed_at = null
-       where id = $2`,
-      [currentSegment, roomId]
+       where id = $4`,
+      [currentSegment, remainingSeconds, new Date(now).toISOString(), roomId]
     );
 
     await client.query("commit");
@@ -744,8 +790,8 @@ export async function resumeFocusRoom(roomId: number, hostProfileId: string): Pr
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const room = await client.query<{ host_profile_id: string; status: string }>(
-      `select host_profile_id, status from focus_rooms where id = $1 for update`,
+    const room = await client.query<{ host_profile_id: string; status: string; remaining_seconds: number; duration_minutes: number }>(
+      `select host_profile_id, status, remaining_seconds, duration_minutes from focus_rooms where id = $1 for update`,
       [roomId]
     );
 
@@ -764,11 +810,20 @@ export async function resumeFocusRoom(roomId: number, hostProfileId: string): Pr
       throw new ConflictError("Room is not paused");
     }
 
-    const now = new Date().toISOString();
+    const remainingSeconds = Math.max(1, Number(room.rows[0].remaining_seconds || room.rows[0].duration_minutes * 60));
+    const now = new Date();
+    const endsAt = new Date(now.getTime() + remainingSeconds * 1000).toISOString();
 
     await client.query(
-      `update focus_rooms set status = 'active', last_resumed_at = $1 where id = $2`,
-      [now, roomId]
+      `update focus_rooms
+          set status = 'active',
+              ends_at = $1,
+              paused_at = null,
+              remaining_seconds = $2,
+              last_resumed_at = $3,
+              elapsed_seconds = duration_minutes * 60 - $2
+        where id = $4`,
+      [endsAt, remainingSeconds, now.toISOString(), roomId]
     );
 
     await client.query("commit");
@@ -824,11 +879,26 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
 // complete the full duration and collect the reward.
 export async function stopFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-  
+
   const now = new Date().toISOString();
 
+  // Transfer host control if any other participant is still focusing.
+  const next = await pool.query<{ profile_id: string }>(
+    `select profile_id from room_participants
+     where room_id = $1 and profile_id <> $2 and session_status <> 'left'
+     order by joined_at asc limit 1`,
+    [roomId, hostProfileId],
+  );
+  if (next.rows[0]) {
+    await pool.query(
+      `update focus_rooms set host_profile_id = $2 where id = $1 and host_profile_id = $3`,
+      [roomId, next.rows[0].profile_id, hostProfileId],
+    );
+  }
+
   // Only the host's own session ends. The room status is left untouched so the
-  // shared countdown keeps running for everyone else who is still focusing.
+  // shared countdown keeps running for every other participant, who can therefore still
+  // complete the full duration and collect the reward.
   await pool.query(
     `update room_participants
      set session_status = 'left', gave_up_at = coalesce(gave_up_at, $1)
@@ -847,11 +917,31 @@ export async function stopFocusRoom(roomId: number, hostProfileId: string): Prom
   return updatedRoom!;
 }
 
+
 // Mark a participant as having given up
 export async function participantGaveUp(roomId: number, profileId: string): Promise<void> {
   parseProfileId(profileId);
 
   const now = new Date().toISOString();
+
+  const room = await pool.query<{ host_profile_id: string }>(
+    `select host_profile_id from focus_rooms where id = $1`,
+    [roomId],
+  );
+  if (room.rows[0]?.host_profile_id === profileId) {
+    const next = await pool.query<{ profile_id: string }>(
+      `select profile_id from room_participants
+       where room_id = $1 and profile_id <> $2 and session_status <> 'left'
+       order by joined_at asc limit 1`,
+      [roomId, profileId],
+    );
+    if (next.rows[0]) {
+      await pool.query(
+        `update focus_rooms set host_profile_id = $2 where id = $1`,
+        [roomId, next.rows[0].profile_id],
+      );
+    }
+  }
 
   await pool.query(
     `update room_participants
@@ -864,6 +954,7 @@ export async function participantGaveUp(roomId: number, profileId: string): Prom
   // Note: Garden withering for focus rooms is handled separately
   // via the individual session completion flow
 }
+
 
 // Mark a participant as having completed their session
 export async function participantCompleted(roomId: number, profileId: string): Promise<void> {

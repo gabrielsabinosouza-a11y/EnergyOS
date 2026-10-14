@@ -104,41 +104,6 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
   const [isComposing, setIsComposing] = useState(false);
   const reduced = useReducedMotion();
 
-  // Pause the LED ring animation when the tab is hidden (saves CPU/battery).
-  const [tabHidden, setTabHidden] = useState(false);
-
-  // Pause the LED ring animation when the input scrolls off-screen.
-  const [onScreen, setOnScreen] = useState(true);
-
-  useEffect(() => {
-    if (!("hidden" in document)) return;
-    function onVisibility() {
-      setTabHidden(document.hidden);
-    }
-    onVisibility();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
-
-  useEffect(() => {
-    if (reduced) return;
-    const el = inputRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        setOnScreen(entries[0]?.isIntersecting ?? false);
-      },
-      { threshold: 0 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [reduced]);
-
-  // The ring rotates and glows while the input is visible, focused or hovered;
-  // it is frozen (paused) when the tab is hidden, the field is off-screen, or
-  // the user prefers reduced motion.
-  const animationPaused = !onScreen || tabHidden || reduced;
-
   const counterState = getCounterState(value.length);
   const isOverLimit = counterState === "error";
   const remaining = getRemaining(value.length);
@@ -225,7 +190,7 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
 
       {/* Glass card wrapper — red border + shake when over the limit, LED ring pauses when off-screen/hidden */}
       <motion.div
-        className={`weekly-plan-input-card ${isOverLimit ? "weekly-plan-input-card--error" : ""} ${animationPaused ? "paused" : ""}`}
+        className={`weekly-plan-input-card ${isOverLimit ? "weekly-plan-input-card--error" : ""}`}
         style={{ "--wp-accent": color } as CSSProperties}
       >
         {/* Tag icon prefix — accent when the value starts with `#` */}

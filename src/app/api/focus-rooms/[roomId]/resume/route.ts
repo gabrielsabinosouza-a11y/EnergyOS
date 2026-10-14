@@ -29,6 +29,6 @@ export async function POST(
     }
 
     const resumedRoom = await resumeFocusRoom(Number(roomId), profileId);
-    return jsonOk({ room: resumedRoom, message: "Room resumed successfully" });
+    return jsonOk({ room: resumedRoom, message: "Sala retomada com sucesso.", serverTime: new Date().toISOString() });
   });
 }

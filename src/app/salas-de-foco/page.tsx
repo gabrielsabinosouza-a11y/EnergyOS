@@ -56,7 +56,7 @@ type PageState = "list" | "create" | "join" | "room";
 const DEFAULT_DURATION = FOCUS_DURATION_DEFAULT_MINUTES;
 const CREATE_RING_SIZE = 210;
 const JOIN_RING_SIZE = 120;
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 2000;
 const ROOM_SESSION_KEY = (roomId: number) => `energyos_room_session_${roomId}`;
 
 interface PersistedRoomSession {
@@ -279,6 +279,7 @@ export default function FocusRoomsPage() {
 
   // Countdown clock
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [showCompletion, setShowCompletion] = useState(false);
   const [lastCoins, setLastCoins] = useState(0);
   const [showEnergyPicker, setShowEnergyPicker] = useState(false);
@@ -386,6 +387,10 @@ export default function FocusRoomsPage() {
         fetchRooms();
         return;
       }
+      if (data.serverTime) {
+        setServerOffsetMs(new Date(data.serverTime).getTime() - Date.now());
+      }
+
       setCurrentRoom(() => {
         const pendingDuration = pendingDurationRef.current;
         if (pendingDuration !== null && next.durationMinutes !== pendingDuration) {
@@ -419,7 +424,10 @@ export default function FocusRoomsPage() {
   useEffect(() => {
     if (pageState !== "room" || !currentRoom) return;
     if (currentRoom.status !== "waiting" && currentRoom.status !== "active" && currentRoom.status !== "paused" && currentRoom.status !== "completed" && currentRoom.status !== "confirming" && currentRoom.status !== "restarting") return;
-    const id = setInterval(() => { pollRoom(); }, POLL_INTERVAL_MS);
+    const id = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      pollRoom();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [pageState, currentRoom?.id, currentRoom?.status, pollRoom]);
 
@@ -572,6 +580,18 @@ export default function FocusRoomsPage() {
   // current active segment began). While paused, only `elapsedSeconds` counts.
   const sharedRemainingMs = useMemo(() => {
     if (!currentRoom || !isRunningRoom) return null;
+    const serverNowMs = nowMs + serverOffsetMs;
+
+    // Prefer the absolute server-side endsAt whenever present: this is the
+    // single source of truth and survives refreshes/clock skew.
+    if (currentRoom.status === "active" && currentRoom.endsAt) {
+      return Math.max(0, new Date(currentRoom.endsAt).getTime() - serverNowMs);
+    }
+    if (currentRoom.status === "paused" && typeof currentRoom.remainingSeconds === "number") {
+      return Math.max(0, currentRoom.remainingSeconds * 1000);
+    }
+
+    // Legacy fallback for rooms created before endsAt was stored.
     const totalSec = currentRoom.durationMinutes * 60;
     let elapsed = currentRoom.elapsedSeconds ?? 0;
     if (currentRoom.status === "active") {
@@ -582,7 +602,7 @@ export default function FocusRoomsPage() {
       elapsed += Math.floor((nowMs - resumeAt) / 1000);
     }
     return Math.max(0, (totalSec - elapsed) * 1000);
-  }, [currentRoom, isRunningRoom, startedAtMs, nowMs]);
+  }, [currentRoom, isRunningRoom, startedAtMs, nowMs, serverOffsetMs]);
 
   // ── Finalize my session on completion ───────────────────────────────────────
   const finalizingRef = useRef(false);
@@ -732,6 +752,7 @@ export default function FocusRoomsPage() {
     try {
       const result = await api.startFocusRoom(currentRoom.id);
       setCurrentRoom(result.room);
+      if (result.serverTime) setServerOffsetMs(new Date(result.serverTime).getTime() - Date.now());
       setNowMs(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao iniciar sala");
@@ -750,6 +771,7 @@ export default function FocusRoomsPage() {
           ? await api.pauseFocusRoom(currentRoom.id)
           : await api.resumeFocusRoom(currentRoom.id);
       setCurrentRoom(result.room);
+      if (result.serverTime) setServerOffsetMs(new Date(result.serverTime).getTime() - Date.now());
       setNowMs(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao pausar/retomar sala");

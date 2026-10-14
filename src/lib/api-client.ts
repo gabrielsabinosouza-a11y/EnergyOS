@@ -348,10 +348,10 @@ export const api = {
 
   // Focus Rooms
   createFocusRoom: (durationMinutes: number, energyType?: string) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>("/api/focus-rooms", { method: "POST", body: JSON.stringify({ durationMinutes, energyType }) }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; serverTime?: string }>("/api/focus-rooms", { method: "POST", body: JSON.stringify({ durationMinutes, energyType }) }),
   getFocusRooms: () => request<{ rooms: import("@/lib/db/focus-rooms").FocusRoom[] }>("/api/focus-rooms"),
-  getFocusRoomById: (id: number) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${id}`),
-  getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom }>(`/api/focus-rooms/${code}`),
+  getFocusRoomById: (id: number) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom; serverTime?: string }>(`/api/focus-rooms/${id}`),
+  getFocusRoomByCode: (code: string) => request<{ room: import("@/lib/db/focus-rooms").FocusRoom; serverTime?: string }>(`/api/focus-rooms/${code}`),
   heartbeatFocusRoomPresence: (roomId: number) =>
     request<{ unlockedGroupAchievements: GroupAchievementUnlock[] }>(`/api/focus-rooms/${roomId}/presence`, { method: "POST" }),
   joinFocusRoom: (code: string, energyType?: string) =>
@@ -367,37 +367,37 @@ export const api = {
   respondToFocusRoomRequest: (roomId: number, requestId: number, action: "accept" | "reject") =>
     request<{ request: import("@/lib/db/focus-rooms").RoomJoinRequest }>(`/api/focus-rooms/${roomId}/requests/${requestId}`, { method: "PATCH", body: JSON.stringify({ action }) }),
   startFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/start`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/start`, { method: "POST" }),
   pauseFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/pause`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/pause`, { method: "POST" }),
   resumeFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/resume`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/resume`, { method: "POST" }),
   stopFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/stop`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/stop`, { method: "POST" }),
   endFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}`, { method: "PATCH" }),
   leaveFocusRoom: (roomId: number) =>
     request<{ message: string }>(`/api/focus-rooms/${roomId}/leave`, { method: "DELETE" }),
   selectEnergy: (roomId: number, energyType: string) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/select-energy`, { method: "POST", body: JSON.stringify({ energyType }) }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/select-energy`, { method: "POST", body: JSON.stringify({ energyType }) }),
   updateRoomDuration: (roomId: number, durationMinutes: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/update-duration`, { method: "POST", body: JSON.stringify({ durationMinutes }) }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/update-duration`, { method: "POST", body: JSON.stringify({ durationMinutes }) }),
   deleteFocusRoom: (roomId: number) =>
     request<{ ok: true; message: string }>(`/api/focus-rooms/${roomId}`, { method: "DELETE" }),
   giveUpFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/give-up`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/give-up`, { method: "POST" }),
   completeFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom | null; message: string }>(`/api/focus-rooms/${roomId}/complete`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom | null; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/complete`, { method: "POST" }),
   restartFocusRoom: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/restart`, { method: "POST" }),
   respondToRestart: (roomId: number, accepted: boolean) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart/respond`, { method: "POST", body: JSON.stringify({ accepted }) }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/restart/respond`, { method: "POST", body: JSON.stringify({ accepted }) }),
   cancelRestart: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/restart/cancel`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/restart/cancel`, { method: "POST" }),
   respondToConfirmation: (roomId: number, accepted: boolean) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/respond-confirmation`, { method: "POST", body: JSON.stringify({ accepted }) }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/respond-confirmation`, { method: "POST", body: JSON.stringify({ accepted }) }),
   cancelConfirmation: (roomId: number) =>
-    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/cancel-confirmation`, { method: "POST" }),
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/cancel-confirmation`, { method: "POST" }),
   removeParticipantFromRoom: (roomId: number, participantProfileId: string) =>
     request<{ message: string }>(`/api/focus-rooms/${roomId}/remove-participant`, { method: "POST", body: JSON.stringify({ participantProfileId }) }),
   cleanupFocusRooms: () =>
