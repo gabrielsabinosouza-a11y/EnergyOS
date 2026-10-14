@@ -545,6 +545,7 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
         </div>
       </div>
 
+      <div className="flex shrink-0 items-center gap-1">
       {/* Check button - always visible, 24px circle with 32px touch target */}
       <button
         type="button"
@@ -578,11 +579,12 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
           onEdit();
         }}
         aria-label="Editar plano"
-        className="absolute right-2 top-1/2 -translate-y-1/2 hidden h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition-all duration-150 hover:bg-white/[.08] focus-visible:outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)] group-hover:flex"
+        className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition-all duration-150 hover:bg-white/[.08] hover:text-[var(--text)] focus-visible:outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
         title="Editar"
       >
-        <Pencil size={14} />
+        <Pencil size={13} />
       </button>
+      </div>
     </div>
   );
 }
