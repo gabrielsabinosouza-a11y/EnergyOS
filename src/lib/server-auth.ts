@@ -104,6 +104,26 @@ async function verifyWithGoogle(token: string): Promise<VerifiedIdentity> {
 }
 
 function devBypassProfileId(request: NextRequest): string | null {
+  // SECURITY: This bypass can ONLY work when ALL of these are true:
+  // 1. NODE_ENV is "development" (not "production")
+  // 2. DEV_AUTH_BYPASS is explicitly "true"
+  // 3. DEV_PROFILE_ID is set to a valid profile ID format
+  // This ensures the bypass is IMPOSSIBLE in production, regardless of other flags.
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.DEV_AUTH_BYPASS === "true" &&
+    process.env.DEV_PROFILE_ID
+  ) {
+    const bypassProfileId = process.env.DEV_PROFILE_ID;
+    try {
+      return parseProfileId(bypassProfileId);
+    } catch {
+      console.error("[Dev Bypass] Invalid DEV_PROFILE_ID format:", bypassProfileId);
+      return null;
+    }
+  }
+
+  // Fall back to the existing AUTH_ALLOW_UNVERIFIED mechanism for backward compatibility
   if (process.env.AUTH_ALLOW_UNVERIFIED !== "true") return null;
   if (process.env.NODE_ENV === "production") return null;
   const header = request.headers.get("x-dev-profile-id");

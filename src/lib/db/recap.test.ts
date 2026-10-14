@@ -154,8 +154,6 @@ describe("Recap Metrics Computation", () => {
 });
 
 // Test double-click safety for recap generation
-import pool from "../db";
-
 describe("Recap Generation Idempotency", () => {
   const PROFILE_ID = "0e719da0-f486-469c-b27f-9b3b5612fb50";
   

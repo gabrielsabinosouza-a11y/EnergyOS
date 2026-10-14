@@ -75,8 +75,11 @@ export function DailyQuestsProvider({
           setResetAt(data.resetAt);
         }
       })
-      .catch(() => {
-        // A later retry below reconciles transient auth/network failures.
+      .catch((err) => {
+        // Log auth errors but don't spam console - a later retry below reconciles transient auth/network failures.
+        if (err instanceof Error && err.message.includes("Autenticação necessária")) {
+          console.log("[Quest Store] User not authenticated, skipping quest fetch");
+        }
       });
     return () => {
       cancelled = true;
@@ -95,7 +98,12 @@ export function DailyQuestsProvider({
           replaceQuests(data.quests);
           setResetAt(data.resetAt);
         }
-      } catch {
+      } catch (err) {
+        // Don't retry on auth errors - the user needs to log in
+        if (err instanceof Error && err.message.includes("Autenticação necessária")) {
+          console.log("[Quest Store] User not authenticated, skipping retry");
+          return;
+        }
         if (!cancelled && attempts < 3) setTimeout(retry, attempts * 2000);
       }
     };

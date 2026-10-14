@@ -11,18 +11,26 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+// Check which required variables are missing
 const missingVars: string[] = [];
-if (!firebaseConfig.apiKey) missingVars.push("NEXT_PUBLIC_FIREBASE_API_KEY");
-if (!firebaseConfig.projectId) missingVars.push("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
+if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) missingVars.push("NEXT_PUBLIC_FIREBASE_API_KEY");
+if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingVars.push("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
 
-if (missingVars.length > 0 && process.env.NODE_ENV === "development") {
+const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+// Log clear error in development when Firebase is not configured
+if (!isFirebaseConfigured && process.env.NODE_ENV === "development") {
   console.error(
-    "\x1b[31m%s\x1b[0m",
-    `[Firebase Config Error] Missing environment variables: ${missingVars.join(", ")}. ` +
-    "Authentication will not work. Please check .env.local. See .env.example for required variables."
+    "[firebase] ⚠️ Firebase not configured! Missing environment variables:",
+    missingVars.join(", "),
+    "\n[firebase] To fix: copy .env.example to .env.local and fill in your Firebase credentials."
+  );
+  console.error(
+    "[firebase] Get your credentials from: https://console.firebase.google.com/project/_/settings/general"
   );
 }
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+// Export auth only if fully configured; null otherwise
 export const auth = isFirebaseConfigured ? getAuth(app) : null;

@@ -16,8 +16,13 @@ import {
  *   that used to happen after a logout when the cookie had not yet cleared).
  *   The root-page redirect runs before rendering, so the public landing page
  *   does not flash for visitors with a session cookie.
+ *
+ * Note: This uses a session cookie (energyos_session) for lightweight route protection.
+ * API routes use Bearer token authentication via requireAuth() in server-auth.ts.
+ * These are complementary: the cookie prevents access to protected pages, while
+ * the Bearer token provides actual user identity and authorization in API calls.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = request.cookies.get(getAuthCookieName())?.value;
 

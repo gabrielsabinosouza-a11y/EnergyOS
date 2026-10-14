@@ -39,7 +39,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!auth) {
-      // Schedules the state update outside the synchronous effect body
+      // Firebase auth is not configured - log an error and set loading to false
+      console.error(
+        "[Auth Error] Firebase auth is not configured. Please check NEXT_PUBLIC_FIREBASE_* environment variables. See .env.example for required variables."
+      );
       const t = setTimeout(() => setLoading(false), 0);
       return () => clearTimeout(t);
     }

@@ -22,12 +22,47 @@ export interface ApiError {
   details?: Record<string, string>;
 }
 
+/**
+ * Checks if Firebase auth is properly configured (client-side).
+ * Returns false if NEXT_PUBLIC_FIREBASE_API_KEY or NEXT_PUBLIC_FIREBASE_PROJECT_ID are missing.
+ */
+export async function isAuthConfigured(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const { auth } = await import("@/lib/firebase");
+  return auth !== null;
+}
+
 async function authToken(): Promise<string | null>{
   if (typeof window === "undefined") return null;
   const {auth} = await import("@/lib/firebase")
-  if (!auth) return null;
-  await auth.authStateReady();
-  return auth.currentUser ? auth.currentUser.getIdToken() : null;
+  if (!auth) {
+    // Firebase not configured - log once per session
+    if (!(window as unknown as { __firebaseConfigErrorLogged?: boolean }).__firebaseConfigErrorLogged) {
+      console.error("[Auth Error] Firebase auth is not configured. Please check NEXT_PUBLIC_FIREBASE_* environment variables.");
+      (window as unknown as { __firebaseConfigErrorLogged?: boolean }).__firebaseConfigErrorLogged = true;
+    }
+    return null;
+  }
+
+  // Wait for auth to be ready. Try authStateReady first (available in newer Firebase SDK),
+  // fall back to onAuthStateChanged if not available.
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  } else {
+    await new Promise<void>((resolve) => {
+      const unsub = auth.onAuthStateChanged(() => {
+        unsub();
+        resolve();
+      });
+    });
+  }
+
+  if (!auth.currentUser) {
+    // No signed-in user - the caller should handle this by redirecting to login
+    return null;
+  }
+
+  return auth.currentUser.getIdToken();
 }
 
 export class ApiRequestError extends Error {
@@ -52,6 +87,10 @@ export function isRetryableStatus(status: number): boolean {
   return status >= 500;
 }
 
+/**
+ * Auth-aware request wrapper. Throws a specific error when auth fails (401)
+ * that UI layers can catch to redirect to login.
+ */
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const token = await authToken();
   const headers: Record<string, string> = {
@@ -78,6 +117,16 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     }
 
     lastStatus = response.status;
+
+    // 401 Unauthorized - auth failed or not configured. Don't retry.
+    if (lastStatus === 401) {
+      const body = (await response.json().catch(() => ({}))) as ApiError;
+      const message = body.error || "Autenticação necessária";
+      const error = new ApiRequestError(message, 401);
+      (error as ApiRequestError & { authError?: boolean }).authError = true; // Flag for UI handling
+      throw error;
+    }
+
     if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
       const body = (await response.json().catch(() => ({}))) as ApiError;
       const message = body.error || `Não foi possível concluir a solicitação. (status ${response.status})`;
@@ -516,12 +565,3 @@ export const api = {
   shareRecap: (recapId: number) =>
     request<{ success: boolean; newBalance: number; wasFirstShare: boolean; coinsAwarded: number }>("/api/recap/share", { method: "POST", body: JSON.stringify({ recapId }) }),
 };
-
-function waitForAuth(auth: import("firebase/auth").Auth): Promise<void> {
-  return new Promise((resolve) => {
-    const unsub = auth.onAuthStateChanged(() => {
-      unsub();
-      resolve();
-    });
-  });
-}
