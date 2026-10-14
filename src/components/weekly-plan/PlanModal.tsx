@@ -297,6 +297,7 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
               <span className={labelClass}>Nome</span>
               <WeeklyPlanInputCard
                 id="plan-name-input"
+                labelText=""
                 value={title}
                 onChange={setTitle}
                 color={color}

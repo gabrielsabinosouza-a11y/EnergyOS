@@ -211,6 +211,7 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
           spellCheck
           enterKeyHint="done"
           autoFocus={autoFocus}
+          maxLength={PLAN_NAME_MAX}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
