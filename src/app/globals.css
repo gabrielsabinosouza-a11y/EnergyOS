@@ -1298,14 +1298,67 @@ body { overflow-wrap: break-word; }
   outline-offset: 0;
 }
 
+
+
 .weekly-plan-modal-overlay {
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(2, 8, 22, 0.72);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
 }
 
 .weekly-plan-modal-panel {
-  background: var(--bg-primary);
+  background:
+    radial-gradient(
+      ellipse at 0% 0%,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 48%
+    ),
+    color-mix(in srgb, var(--bg-primary) 92%, #07182e);
+
+  border-color: color-mix(
+    in srgb,
+    var(--accent) 25%,
+    var(--glass-border)
+  );
+
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 35px color-mix(in srgb, var(--accent) 7%, transparent),
+    inset 0 1px 0 var(--glass-highlight);
+}
+
+/* Inputs: smooth glass surface */
+.weekly-plan-modal-panel .auth-input {
   border-color: var(--glass-border);
+  border-radius: 12px;
+
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.weekly-plan-modal-panel .auth-input:focus {
+  border-color: var(--accent);
+
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent) 8%, transparent);
+
+  outline: none;
+}
+
+/* Modal heading */
+.weekly-plan-modal-panel #modal-title {
+  letter-spacing: -0.035em;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .weekly-plan-modal-panel .auth-input {
+    transition: none;
+  }
 }
 
 /* Fallbacks */

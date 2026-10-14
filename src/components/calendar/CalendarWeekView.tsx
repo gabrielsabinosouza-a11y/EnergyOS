@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import type { WeeklyPlanItem, Category } from "@/types";
-import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
+import { addDaysIso, todayIso } from "@/lib/db/dates";
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_ITEMS_PER_CARD = 4;
@@ -18,6 +18,7 @@ interface CalendarWeekViewProps {
   onDelete: (id: number) => void;
   onToggleOccurrence: (seriesId: number, date: string, completed: boolean) => void;
   onUpdateOccurrenceOverride: (seriesId: number, date: string, title: string, startTime: string | null) => void;
+  createPlanSeries?: (payload: { startDate: string; title: string; categoryId: number; color: string; startTime?: string | null; repeatType: string; repeatDays?: string | null }) => Promise<void>;
   categories: Category[];
 }
 

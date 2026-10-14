@@ -223,11 +223,9 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
         tabIndex={-1}
         className="relative w-full max-w-[520px] max-h-[90dvh] overflow-hidden rounded-2xl border weekly-plan-modal-panel"
         style={{
-          backgroundColor: "var(--bg-primary)",
-          borderColor: "var(--glass-border)",
-          boxShadow: `0 8px 24px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4), 0 0 60px -16px ${glowColor}40`,
+          boxShadow: `0 24px 80px rgba(0,0,0,.42), 0 0 60px -16px ${glowColor}40`,
         }}
-        initial={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.97 }}
+       initial={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.97 }}
         transition={{ duration: reduced ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
