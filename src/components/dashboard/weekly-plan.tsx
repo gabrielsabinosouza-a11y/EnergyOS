@@ -50,7 +50,8 @@ export function WeeklyPlan({
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const today = todayIso();
-  const weekStart = weekStartIso(today);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekStart = addDaysIso(weekStartIso(today), weekOffset * 7);
   const visiblePlans = plans.map((plan) => {
     const key = `${plan.seriesId ?? "legacy"}:${plan.id}:${plan.planDate}`;
     return Object.prototype.hasOwnProperty.call(completionOverrides, key)
@@ -183,34 +184,45 @@ export function WeeklyPlan({
 
   return (
     <div className="panel weekly-plan-ambient relative overflow-hidden p-6">
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-[var(--accent)]" />
           <span className="eyebrow muted">PLANO DA SEMANA</span>
+          <span className="text-sm text-[var(--text-muted)]">
+            {weekStart.slice(8,10)}/{weekStart.slice(5,7)} – {addDaysIso(weekStart, 6).slice(8,10)}/{addDaysIso(weekStart, 6).slice(5,7)}
+          </span>
         </div>
-        <IconButton
-          ref={createTriggerRef}
-          onClick={handleCreate}
-          size="md"
-          variant="secondary"
-          title="Novo plano"
-          aria-label="Novo plano"
-        >
-          <Plus size={18} />
-        </IconButton>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setWeekOffset((v) => v - 1)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Semana anterior">
+            ←
+          </button>
+          <button type="button" onClick={() => setWeekOffset(0)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Semana atual">
+            Hoje
+          </button>
+          <button type="button" onClick={() => setWeekOffset((v) => v + 1)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Próxima semana">
+            →
+          </button>
+          <IconButton
+            ref={createTriggerRef}
+            onClick={handleCreate}
+            size="md"
+            variant="secondary"
+            title="Novo plano"
+            aria-label="Novo plano"
+          >
+            <Plus size={18} />
+          </IconButton>
+        </div>
       </div>
 
       {/* Week strip */}
-      <div
-        ref={weekScrollerRef}
-        className="-mx-5 overflow-x-auto px-5 pb-1 pt-1 scrollbar-hide sm:mx-0 sm:overflow-visible sm:px-0 sm:pt-0"
-      >
-        <div className="flex w-max gap-3 sm:grid sm:w-auto sm:grid-cols-7">
+      <div className="overflow-visible pb-1 pt-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
           {days.map((day) => (
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start rounded-[12px] p-3 transition-colors duration-150 ${
+              className={`weekly-plan-day relative flex min-h-[150px] min-w-0 rounded-[12px] p-3 transition-colors duration-150 ${
                 day.isToday ? "weekly-plan-day--today" : ""
               }`}
               onClick={() => {
@@ -264,9 +276,10 @@ export function WeeklyPlan({
                   setModalPrefillDate(day.date);
                   setShowModal(true);
                 }}
-                className="mt-1 flex items-center justify-start w-full text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] rounded-md px-2 py-1 transition-colors"
+                className="mt-1 flex items-center justify-center gap-1 w-full text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] rounded-md px-2 py-1 transition-colors"
+                aria-label="Adicionar plano"
               >
-                <Plus size={14} className="mr-1" /> Adicionar
+                <Plus size={14} /> <span className="hidden sm:inline">Adicionar</span>
               </button>
             </div>
           ))}
