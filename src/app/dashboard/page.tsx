@@ -515,6 +515,19 @@ function DashboardContent() {
     }
   }
 
+  async function updatePlanOccurrence(seriesId: number, date: string, title: string, startTime: string | null) {
+    try {
+      await api.updatePlanOccurrenceOverride(seriesId, date, { title, startTime });
+      const ws = weekStartIso(todayIso());
+      const updated = await api.getWeeklyPlans(ws);
+      setWeeklyPlans(updated);
+      showSuccess("Plano atualizado!");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Não foi possível atualizar o plano.");
+      throw error;
+    }
+  }
+
   async function togglePlanOccurrence(seriesId: number, date: string, completed: boolean) {
     try {
       const reward = await api.setPlanOccurrenceCompleted(seriesId, date, completed);
@@ -876,8 +889,8 @@ function DashboardContent() {
             onToggleCompleted={togglePlanCompleted}
             onCreateSeries={createPlanSeries}
             onUpdateSeries={updatePlanSeries}
+            onUpdateOccurrenceOverride={updatePlanOccurrence}
             onToggleOccurrence={togglePlanOccurrence}
-            onSkipOccurrence={skipPlanOccurrence}
             onDeleteSeries={deletePlanSeries}
           />
         </section>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, Check, Loader2, Repeat, Hash, ChevronDown, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { WeeklyPlanSeries, Category, PlanRepeatType, PlanEndType } from "@/types";
+import type { WeeklyPlanSeries, WeeklyPlanItem, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { ColorPalette, HABIT_COLORS } from "../dashboard/color-palette";
 import { PLAN_NAME_MAX } from "../dashboard/plan-name-input";
 import { WeeklyPlanInputCard } from "../dashboard/weekly-plan-input-card";
@@ -18,10 +18,13 @@ const UI_INDEX_TO_JS_DAY: number[] = [1, 2, 3, 4, 5, 6, 0]; // UI index → JS d
 
 interface PlanModalProps {
   series?: WeeklyPlanSeries | null;
+  occurrence?: WeeklyPlanItem | null;
   categories: Category[];
   prefillDate?: string;
+  defaultScope?: "occurrence" | "series";
   onClose: () => void;
-  onSave: (payload: CreateSeriesPayload) => void | Promise<void>;
+  onSaveSeries: (payload: CreateSeriesPayload) => void | Promise<void>;
+  onSaveOccurrence?: (input: { title: string; startTime: string | null }) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
 }
 
@@ -46,13 +49,16 @@ export interface CreateSeriesPayload {
 const labelClass = "mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]";
 const inputClass = "auth-input min-h-10 w-full text-sm";
 
-export function PlanModal({ series, categories, prefillDate, onClose, onSave, onDelete }: PlanModalProps) {
+export function PlanModal({ series, occurrence, categories, prefillDate, defaultScope, onClose, onSaveSeries, onSaveOccurrence, onDelete }: PlanModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const isEdit = Boolean(series);
 
   // All state is local to this modal to prevent parent re-renders from losing focus
-  const [title, setTitle] = useState(series?.title ?? "");
+  const scopeInit = defaultScope ?? (occurrence && series?.repeatType !== "once" ? "occurrence" : "series");
+  const [scope, setScope] = useState<"occurrence" | "series">(scopeInit);
+  const useOccurrenceDefaults = scopeInit === "occurrence" && Boolean(occurrence);
+  const [title, setTitle] = useState((useOccurrenceDefaults ? occurrence?.title : series?.title) ?? series?.title ?? "");
   const [color, setColor] = useState(series?.color ?? HABIT_COLORS[0]);
   const [note, setNote] = useState(series?.note ?? "");
   const [repeatType, setRepeatType] = useState<PlanRepeatType>(series?.repeatType ?? "once");
@@ -61,7 +67,7 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
     : repeatType === "once" ? [] : [JS_DAY_TO_UI_INDEX[new Date().getDay()]];
   const [repeatDays, setRepeatDays] = useState<number[]>(initRepeatDays);
   const [repeatInterval, setRepeatInterval] = useState(series?.repeatInterval ?? 2);
-  const [startTime, setStartTime] = useState(series?.startTime ?? "");
+  const [startTime, setStartTime] = useState((useOccurrenceDefaults ? occurrence?.startTime : series?.startTime) ?? series?.startTime ?? "");
   const [durationMinutes, setDurationMinutes] = useState(series?.durationMinutes?.toString() ?? "");
   const [startDate, setStartDate] = useState(series?.startDate ?? prefillDate ?? todayIso());
   const [endType, setEndType] = useState<PlanEndType>(series?.endType ?? "never");
@@ -73,6 +79,8 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isRecurring = repeatType !== "once";
+  const isRecurringSeries = Boolean(series && series.repeatType !== "once");
+  const showScope = Boolean(isRecurringSeries && occurrence);
   const isDirty = Boolean(series && (
     title !== series.title || color !== (series.color ?? HABIT_COLORS[0]) || note !== (series.note ?? "") ||
     repeatType !== series.repeatType || JSON.stringify(repeatDays.map((d) => UI_INDEX_TO_JS_DAY[d]).sort()) !== JSON.stringify([...(series.repeatDays ?? [])].sort()) ||
@@ -153,23 +161,30 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
 
     setSaving(true);
     try {
-      await onSave({
-        title: trimmed,
-        categoryId: series?.categoryId ?? categories[0]?.id ?? 0,
-        iconType: null,
-        iconValue: null,
-        color,
-        note: note.trim() || null,
-        repeatType,
-        repeatDays: isRecurring ? jsRepeatDays : null,
-        repeatInterval: repeatType === "interval" ? repeatInterval : null,
-        startTime: startTime || null,
-        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
-        startDate,
-        endType,
-        endDate: endType === "date" ? endDate : null,
-        endCount: endType === "count" ? Number(endCount) : null,
-      });
+      if (scope === "occurrence" && occurrence && onSaveOccurrence) {
+        await onSaveOccurrence({
+          title: trimmed,
+          startTime: startTime || null,
+        });
+      } else {
+        await onSaveSeries({
+          title: trimmed,
+          categoryId: series?.categoryId ?? categories[0]?.id ?? 0,
+          iconType: null,
+          iconValue: null,
+          color,
+          note: note.trim() || null,
+          repeatType,
+          repeatDays: isRecurring ? jsRepeatDays : null,
+          repeatInterval: repeatType === "interval" ? repeatInterval : null,
+          startTime: startTime || null,
+          durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+          startDate,
+          endType,
+          endDate: endType === "date" ? endDate : null,
+          endCount: endType === "count" ? Number(endCount) : null,
+        });
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o plano.");
     } finally {
@@ -193,7 +208,7 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
     >
       {/* Backdrop with blur */}
       <motion.div
-        className="absolute inset-0 bg-black/50 backdrop-blur-md"
+        className="absolute inset-0 bg-black/60 backdrop-blur-md"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -210,7 +225,7 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
         tabIndex={-1}
         className="relative w-full max-w-[520px] max-h-[90dvh] overflow-hidden rounded-2xl border"
         style={{
-          backgroundColor: "var(--glass-bg)",
+          backgroundColor: "color-mix(in srgb, var(--bg-primary) 90%, transparent)",
           borderColor: "var(--glass-border)",
           boxShadow: modalShadow,
           backdropFilter: "blur(20px) saturate(140%)",
@@ -252,8 +267,36 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
         {/* Scrollable content */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-6 [scrollbar-width:thin]">
           <div className="space-y-6 pb-3">
-            {/* Section 1: Title / Tag */}
+            {/* Scope selector — recurring plans only, when opened from a day card */}
+            {showScope && (
+              <div>
+                <span className={labelClass}>Escopo</span>
+                <div className="grid grid-cols-2 rounded-xl border border-[var(--glass-border)] p-1" style={{ backgroundColor: "var(--glass-bg-hover)" }}>
+                  {[
+                    { value: "occurrence" as const, text: "Só este dia" },
+                    { value: "series" as const, text: "Toda a série" },
+                  ].map(({ value, text }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={scope === value}
+                      onClick={() => setScope(value)}
+                      className={`flex items-center justify-center gap-2 min-h-11 rounded-lg text-sm font-medium transition-all ${
+                        scope === value
+                          ? "bg-[var(--accent)] text-white shadow-lg"
+                          : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--glass-bg)]"
+                      }`}
+                    >
+                      {text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Section 1: Nome */}
             <div>
+              <span className={labelClass}>Nome</span>
               <WeeklyPlanInputCard
                 id="plan-name-input"
                 value={title}
@@ -266,14 +309,9 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
               />
             </div>
 
-            <div>
-              <span className={labelClass}>Cor</span>
-              <ColorPalette selectedColor={color} onSelect={setColor} />
-            </div>
-
             {/* Section 3: Planning Type */}
             <div>
-              <span className={labelClass}>Tipo de planejamento</span>
+              <span className={labelClass}>Quando</span>
               <div className="grid grid-cols-2 rounded-xl border border-[var(--glass-border)] p-1" style={{ backgroundColor: "var(--glass-bg-hover)" }}>
                 {(
                   [
@@ -371,6 +409,20 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
               )}
             </AnimatePresence>
 
+            {/* Date for one-time plans */}
+            {!isRecurring && (
+              <label>
+                <span className={labelClass}>Data</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={inputClass}
+                  style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
+                />
+              </label>
+            )}
+
             {/* Repeat summary */}
             {getRepeatSummary() && (
               <div className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] px-4 py-3" style={{ backgroundColor: "var(--glass-bg-hover)" }}>
@@ -378,6 +430,11 @@ export function PlanModal({ series, categories, prefillDate, onClose, onSave, on
                 <span className="text-sm text-[var(--text-secondary)]">{getRepeatSummary()}</span>
               </div>
             )}
+
+            <div>
+              <span className={labelClass}>Cor</span>
+              <ColorPalette selectedColor={color} onSelect={setColor} />
+            </div>
 
             {/* Advanced options toggle */}
             <button

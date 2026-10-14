@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, Check, X, Loader2, Repeat, Pencil, Trash2 } from "lucide-react";
+import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2 } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
@@ -22,8 +22,8 @@ interface WeeklyPlanProps {
   onToggleCompleted: (id: number, completed: boolean) => Promise<void>;
   onCreateSeries?: (payload: CreateSeriesPayload) => Promise<void>;
   onUpdateSeries?: (seriesId: number, payload: CreateSeriesPayload) => Promise<void>;
+  onUpdateOccurrenceOverride?: (seriesId: number, date: string, title: string, startTime: string | null) => Promise<void>;
   onToggleOccurrence?: (seriesId: number, date: string, completed: boolean) => Promise<void>;
-  onSkipOccurrence?: (seriesId: number, date: string) => Promise<void>;
   onDeleteSeries?: (seriesId: number) => Promise<void>;
 }
 
@@ -31,7 +31,7 @@ interface WeeklyPlanProps {
 
 export function WeeklyPlan({
   plans, categories, onDelete, onCreate, onUpdate, onToggleCompleted,
-  onCreateSeries, onUpdateSeries, onToggleOccurrence, onSkipOccurrence, onDeleteSeries,
+  onCreateSeries, onUpdateSeries, onUpdateOccurrenceOverride, onToggleOccurrence, onDeleteSeries,
 }: WeeklyPlanProps) {
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -295,13 +295,17 @@ export function WeeklyPlan({
           categories={categories}
           prefillDate={modalPrefillDate}
           onClose={() => { setShowModal(false); requestAnimationFrame(() => createTriggerRef.current?.focus()); }}
-          onSave={handleCreateSeries}
+          onSaveSeries={handleCreateSeries}
         />
       )}
 
       {/* Edit modal (legacy style, for one-time items) */}
       {editingPlan && (
-        editingSeries && onUpdateSeries ? <PlanModal series={editingSeries} categories={categories} onClose={closeEditingPlan} onSave={handleUpdateSeries} onDelete={handleDeleteSeriesFromEditor} /> :
+        editingSeries && onUpdateSeries ? <PlanModal series={editingSeries} occurrence={editingPlan ?? undefined} categories={categories} defaultScope="occurrence" onClose={closeEditingPlan} onSaveSeries={handleUpdateSeries} onSaveOccurrence={async ({ title, startTime }) => {
+          if (!editingPlan?.seriesId) return;
+          await onUpdateOccurrenceOverride?.(editingPlan.seriesId, editingPlan.planDate, title, startTime);
+          closeEditingPlan();
+        }} onDelete={handleDeleteSeriesFromEditor} /> :
         <Modal
           key={`edit-${editingPlan.id}`} // Stable key prevents re-creation on re-render
           onClose={() => { if (editIsDirty && !window.confirm("Descartar as alterações não salvas?")) return; closeEditingPlan(); }}
@@ -439,6 +443,7 @@ function EditModalFooter({
 
 function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit: () => void; onToggle: () => void }) {
   const displayColor = plan.color || plan.category.color;
+  const skipped = plan.skipped;
   return (
     <motion.div
       initial={{ opacity: 0, y: -4 }}
@@ -447,33 +452,36 @@ function PlanItemRow({ plan, onEdit, onToggle }: { plan: WeeklyPlanItem; onEdit:
       tabIndex={0}
       role="button"
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(); } }}
-      className={`weekly-plan-led group relative flex min-h-11 items-center gap-2 overflow-hidden rounded-lg border border-white/[.07] bg-white/[.035] px-2 py-1.5 text-[11px] leading-tight cursor-pointer transition-[transform,background] hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-white/[.07] ${
+      className={`weekly-plan-led group relative flex min-h-11 items-start gap-2 overflow-hidden rounded-lg border border-white/[.07] bg-white/[.035] px-2 py-1.5 pr-20 text-[11px] leading-tight cursor-pointer transition-[transform,background] hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-white/[.07] ${
         plan.completedAt ? "opacity-45" : ""
-      } ${plan.skipped ? "opacity-25" : ""}`}
+      } ${skipped ? "opacity-30 grayscale" : ""}`}
       style={{ borderLeft: `3px solid ${displayColor}`, boxShadow: `inset 0 0 0 1px ${displayColor}18`, "--plan-led-color": plan.completedAt ? "#6bffb8" : displayColor } as CSSProperties}
       onClick={onEdit}
-      title={`${plan.title}${plan.startTime ? " · " + plan.startTime : ""}`}
+      title={`${plan.title}${plan.startTime ? " - " + plan.startTime : ""}`}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={`line-clamp-2 font-medium text-[var(--text)] ${plan.completedAt ? "line-through" : ""}`}>{plan.title}</span>
+        <span className={`line-clamp-2 font-medium text-[var(--text)] ${plan.completedAt ? "line-through" : ""} ${skipped ? "italic" : ""}`}>
+          {plan.title || "(sem titulo)"}
+        </span>
         {plan.startTime && <span className="text-[9px] tabular-nums text-[var(--text-muted)]">{plan.startTime}</span>}
       </div>
-      {plan.isRecurring && <Repeat size={12} className="shrink-0 text-[var(--text-faint)]" aria-label="Recorrente" />}
+
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
         aria-pressed={Boolean(plan.completedAt)}
-        aria-label={plan.completedAt ? "Marcar como não concluída" : "Concluir tarefa"}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 ${plan.completedAt ? "text-[var(--green)] opacity-100" : "text-[var(--text-faint)]"}`}
-        title={plan.completedAt ? "Marcar como não concluída" : "Concluir tarefa"}
+        aria-label={plan.completedAt ? "Marcar como nao concluida" : "Concluir tarefa"}
+        className={`absolute right-9 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${plan.completedAt ? "text-[var(--green)]" : "text-[var(--text-faint)]"}`}
+        title={plan.completedAt ? "Marcar como nao concluida" : "Concluir tarefa"}
       >
         <Check size={15} strokeWidth={plan.completedAt ? 3 : 2} className={plan.completedAt ? "text-[var(--green)]" : ""} />
       </button>
+
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
         aria-label="Editar plano"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-faint)] [@media(hover:hover)]:opacity-0 transition hover:bg-white/[.08] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        className="absolute right-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-faint)] transition hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
         title="Editar"
       >
         <Pencil size={12} />
