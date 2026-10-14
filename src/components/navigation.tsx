@@ -6,7 +6,7 @@ import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
-  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library, CalendarCheck,
+  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library, CalendarCheck, CalendarDays,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Modal } from "./modal";
@@ -21,6 +21,7 @@ type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
+  { href: "/planner", label: "Planejamento",       icon: CalendarDays },
   { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },

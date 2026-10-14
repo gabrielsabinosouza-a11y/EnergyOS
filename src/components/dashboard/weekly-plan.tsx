@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, type CSSProperties } from "react";
-import { Calendar, Plus, Check, X, Loader2, Pencil, Trash2, Repeat, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { Plus, Check, X, Loader2, Pencil, Trash2, Repeat, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { weekStartIso, addDaysIso, todayIso } from "@/lib/db/dates";
 import { Modal } from "@/components/modal";
