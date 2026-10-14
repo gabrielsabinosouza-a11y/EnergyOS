@@ -15,7 +15,6 @@ import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { DailyQuestsProvider, useDailyQuests } from "@/lib/quest-store";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import type { GoalDraft } from "@/components/dashboard/goals-modals";
-import { WeeklyPlan } from "@/components/dashboard/weekly-plan";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
 import { XPBadge } from "@/components/dashboard/xp-badge";
@@ -875,23 +874,6 @@ function DashboardContent() {
             coins={coins}
             onCoinsChange={setCoins}
             onXpGain={refreshXpForDailyTask}
-          />
-        </section>
-
-        {/* Weekly Plan */}
-        <section className="mb-8">
-          <WeeklyPlan
-            plans={weeklyPlans}
-            categories={categories}
-            onDelete={deletePlan}
-            onCreate={createPlan}
-            onUpdate={updatePlan}
-            onToggleCompleted={togglePlanCompleted}
-            onCreateSeries={createPlanSeries}
-            onUpdateSeries={updatePlanSeries}
-            onUpdateOccurrenceOverride={updatePlanOccurrence}
-            onToggleOccurrence={togglePlanOccurrence}
-            onDeleteSeries={deletePlanSeries}
           />
         </section>
 
