@@ -182,7 +182,7 @@ export function WeeklyPlan({
   }, [popoverDay]);
 
   return (
-    <div className="panel p-6">
+    <div className="panel weekly-plan-ambient relative overflow-hidden p-6">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-[var(--accent)]" />
@@ -210,10 +210,8 @@ export function WeeklyPlan({
             <div
               key={day.date}
               ref={day.isToday ? todayCellRef : undefined}
-              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start rounded-[12px] border p-3 transition-all duration-200 ${
-                day.isToday
-                  ? "border-[var(--accent)] bg-[var(--accent-bg)]"
-                  : "border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
+              className={`weekly-plan-day relative flex min-h-[140px] w-[156px] shrink-0 snap-start rounded-[12px] p-3 transition-colors duration-150 ${
+                day.isToday ? "weekly-plan-day--today" : ""
               }`}
               onClick={() => {
                 if (day.plans.length === 0) {

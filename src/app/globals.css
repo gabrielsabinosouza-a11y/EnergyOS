@@ -9,7 +9,7 @@
   --font-telemetry: var(--font-landing-mono);
 }
 
-:root { 
+:root {
   --landing-bg: #03070f;
   --landing-bg-raised: #050d1a;
   --landing-cyan: #6dd3ff;
@@ -18,7 +18,7 @@
   --landing-glass-border: rgba(255,255,255,.08);
   --landing-text: #f3f7fb;
   --landing-muted: #a9b6c5;
-  --ink: #07111f; 
+  --ink: #07111f;
   --line: rgba(255,255,255,.09);
   --text: #e7f4ff;
   --text-muted: rgba(231,244,255,.42);
@@ -122,7 +122,7 @@
 }
 
 [data-theme="dark"] {
-  --ink: #07111f; 
+  --ink: #07111f;
   --line: rgba(255,255,255,.09);
   --text: #e7f4ff;
   --text-muted: rgba(231,244,255,.42);
@@ -1215,4 +1215,136 @@ body { overflow-wrap: break-word; }
 @media (pointer: coarse) {
   .habit-dt-step { width: 44px; height: 44px; }
   .habit-dt-pill { padding: 8px 14px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Weekly planner premium glass (ambient, day cards, plan items, modal overlay)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --glass-blur: 10px;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] {
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.weekly-plan-ambient {
+  position: relative;
+}
+
+.weekly-plan-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(600px circle at 12% 18%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%),
+    radial-gradient(700px circle at 88% 78%, color-mix(in srgb, var(--purple, #b69cff) 10%, transparent), transparent 64%),
+    radial-gradient(500px circle at 50% 48%, color-mix(in srgb, var(--green, #4ade80) 8%, transparent), transparent 60%);
+}
+
+.weekly-plan-day {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(130%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(130%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.weekly-plan-day::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, var(--glass-highlight), transparent 55%);
+}
+
+.weekly-plan-day--today {
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow), 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.weekly-plan-day--today .font-mono {
+  color: var(--accent);
+}
+
+.weekly-plan-item {
+  background: color-mix(in srgb, var(--glass-bg) 120%, var(--bg-primary));
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.weekly-plan-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.weekly-plan-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.weekly-plan-modal-overlay {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.weekly-plan-modal-panel {
+  background: var(--bg-primary);
+  border-color: var(--glass-border);
+}
+
+/* Fallbacks */
+/* Fallbacks */
+@supports not (backdrop-filter: blur(1px)) {
+  .weekly-plan-day {
+    background: color-mix(in srgb, var(--bg-secondary) 92%, var(--bg-primary));
+  }
+
+  .weekly-plan-modal-overlay {
+    background: rgba(0, 0, 0, 0.75);
+  }
+}
+
+@supports not (-webkit-backdrop-filter: blur(1px)) {
+  .weekly-plan-day {
+    background: color-mix(in srgb, var(--bg-secondary) 92%, var(--bg-primary));
+  }
+
+  .weekly-plan-modal-overlay {
+    background: rgba(0, 0, 0, 0.75);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .weekly-plan-day {
+    background: var(--bg-secondary);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weekly-plan-day,
+  .weekly-plan-item {
+    transition: none;
+  }
+
+  .weekly-plan-item:hover {
+    transform: none;
+  }
 }

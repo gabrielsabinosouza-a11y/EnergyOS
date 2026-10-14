@@ -208,7 +208,7 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
     >
       {/* Backdrop with blur */}
       <motion.div
-        className="absolute inset-0 bg-black/60 backdrop-blur-md"
+        className="absolute inset-0 bg-black/60 backdrop-blur-md weekly-plan-modal-overlay"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -223,18 +223,16 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
         aria-modal="true"
         aria-labelledby="modal-title"
         tabIndex={-1}
-        className="relative w-full max-w-[520px] max-h-[90dvh] overflow-hidden rounded-2xl border"
+        className="relative w-full max-w-[520px] max-h-[90dvh] overflow-hidden rounded-2xl border weekly-plan-modal-panel"
         style={{
-          backgroundColor: "color-mix(in srgb, var(--bg-primary) 90%, transparent)",
+          backgroundColor: "var(--bg-primary)",
           borderColor: "var(--glass-border)",
-          boxShadow: modalShadow,
-          backdropFilter: "blur(20px) saturate(140%)",
-          WebkitBackdropFilter: "blur(20px) saturate(140%)",
+          boxShadow: `0 8px 24px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4), 0 0 60px -16px ${glowColor}40`,
         }}
-        initial={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.96, rotateX: 6 }}
-        animate={{ opacity: 1, scale: 1, rotateX: 0 }}
-        exit={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.96, rotateX: 6 }}
-        transition={{ duration: reduced ? 0.2 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+        initial={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={reduced ? { opacity: 0, scale: 1 } : { opacity: 0, scale: 0.97 }}
+        transition={{ duration: reduced ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
       >
         {/* Top highlight border */}
         <div
@@ -569,7 +567,7 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 flex shrink-0 items-center gap-2 border-t border-[var(--glass-border)] px-5 py-4 backdrop-blur-xl sm:px-6" style={{ backgroundColor: "var(--glass-bg)" }}>
+        <div className="sticky bottom-0 flex shrink-0 items-center gap-2 border-t border-[var(--glass-border)] px-5 py-4 sm:px-6" style={{ backgroundColor: "var(--bg-primary)" }}>
           {isEdit && onDelete && (
             confirmDelete ? (
               <div className="flex shrink-0 items-center gap-1">
