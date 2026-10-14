@@ -183,7 +183,7 @@ export function WeeklyPlan({
   }, [popoverDay]);
 
   return (
-    <div className="panel weekly-plan-ambient relative overflow-hidden p-6">
+    <div className="panel weekly-plan-ambient relative overflow-visible p-6">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-[var(--accent)]" />
