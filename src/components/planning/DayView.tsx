@@ -1,7 +1,7 @@
 "use client";
 
 import type { WeeklyPlanItem } from "@/types";
-import { todayIso } from "@/lib/planning/dates";
+import { todayIso, formatLocalDate } from "@/lib/planning/dates";
 import { TaskCard } from "@/components/planning/TaskCard";
 import { Pencil } from "lucide-react";
 
@@ -16,7 +16,8 @@ interface DayViewProps {
 export function DayView({ date, plans, onToggleCompleted, onDelete, onPlanCreate }: DayViewProps) {
   const today = todayIso();
   const isToday = date === today;
-  const dateObj = new Date(date);
+  const weekday = formatLocalDate(date, { weekday: "long" }); // "quinta-feira"
+  const dateLabel = formatLocalDate(date, { day: "numeric", month: "short", year: "numeric" }); // "15 de out. de 2026"
   const sorted = [...plans].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
 
   return (
@@ -24,23 +25,21 @@ export function DayView({ date, plans, onToggleCompleted, onDelete, onPlanCreate
       <div className="flex items-center justify-between">
         <div>
           <h2 className={`text-xl font-semibold ${isToday ? "text-[var(--accent)]" : ""}`}>
-            {dateObj.toLocaleDateString("pt-BR", { weekday: "long" })}
+            {weekday}
           </h2>
           <p className={`text-[var(--text-faint)] text-sm ${isToday ? "font-medium" : ""}`}>
-            {dateObj.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}
+            {dateLabel}
             {isToday ? " · hoje" : ""}
           </p>
         </div>
-        {isToday && (
-          <button
-            type="button"
-            onClick={() => onPlanCreate(date)}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label="Adicionar plano"
-          >
-            <Pencil size={16} /> Adicionar plano
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => onPlanCreate(date)}
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+          aria-label="Adicionar plano"
+        >
+          <Pencil size={16} /> Adicionar plano
+        </button>
       </div>
 
       {sorted.length === 0 ? (

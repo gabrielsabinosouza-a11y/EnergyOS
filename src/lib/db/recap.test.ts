@@ -347,3 +347,28 @@ describe("Recap generation idempotency", () => {
     assert.equal(Number(count.rows[0].c), 1, "não deve duplicar o recap");
   });
 });
+
+// ── Limites de mês em America/Sao_Paulo (sem banco) ─────────────────────────
+describe("Recap month window (America/Sao_Paulo, pure)", () => {
+  it("23:30 SP de 30/09 está dentro da janela de setembro [início, fim)", () => {
+    const sepStart = spMonthStartIso("2026-09-01");
+    const sepEnd = spMonthEndIso("2026-09-01");
+    // 30/09 23:30 SP = 01/10 02:30 UTC
+    const instant = new Date("2026-10-01T02:30:00Z").toISOString();
+    assert.ok(instant >= sepStart && instant < sepEnd, "23:30 SP 30/09 pertence a setembro");
+  });
+
+  it("00:10 SP de 01/10 está dentro da janela de outubro e fora de setembro", () => {
+    const sepEnd = spMonthEndIso("2026-09-01");
+    const octStart = spMonthStartIso("2026-10-01");
+    // 01/10 00:10 SP = 01/10 03:10 UTC
+    const instant = new Date("2026-10-01T03:10:00Z").toISOString();
+    assert.ok(instant >= octStart, "00:10 SP 01/10 pertence a outubro");
+    assert.ok(instant >= sepEnd, "00:10 SP 01/10 está fora de setembro");
+  });
+
+  it("dezembro rola para janeiro mantendo o fuso SP", () => {
+    assert.equal(spMonthStartIso("2026-12-01"), "2026-12-01T03:00:00.000Z");
+    assert.equal(spMonthEndIso("2026-12-01"), "2027-01-01T03:00:00.000Z");
+  });
+});

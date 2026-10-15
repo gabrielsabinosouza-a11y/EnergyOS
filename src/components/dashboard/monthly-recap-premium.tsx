@@ -864,8 +864,6 @@ export function MonthlyRecapPremium({
     return () => window.removeEventListener("keydown", handler);
   }, [open, goPrev, goNext]);
 
-  useEffect(() => { if (open) setCurrentSlide(0); }, [open]);
-
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
     try {
@@ -996,7 +994,7 @@ export function MonthlyRecapPremium({
       <motion.button
         whileHover={reduced ? undefined : { scale: 1.01 }}
         whileTap={reduced ? undefined : { scale: 0.98 }}
-        onClick={() => setOpen(true)}
+        onClick={() => { setCurrentSlide(0); setOpen(true); }}
         className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3.5 text-left transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--bg-surface-hover)]"
       >
         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(255,255,255,.05)" }}>

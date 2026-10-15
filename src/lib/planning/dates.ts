@@ -78,6 +78,13 @@ export function addMonths(iso: string, n: number): string {
 /** Nome curto do dia da semana em pt-BR (segunda = índice 0). */
 export const SHORT_WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
+/** Formata uma data local (YYYY-MM-DD) em pt-BR sem risco de deslocamento UTC.
+ *  Usa meio-dia local para nunca cruzar o limite do dia em fusos negativo. */
+export function formatLocalDate(iso: string, options: Intl.DateTimeFormatOptions = {}): string {
+  const { year, month, day } = parseIsoKey(iso);
+  return new Date(year, month - 1, day, 12).toLocaleDateString("pt-BR", { timeZone: APP_TIMEZONE, ...options });
+}
+
 /** Formata um rótulo de cabeçalho pt-BR de acordo com a vista. */
 export function viewLabel(iso: string, view: "month" | "week" | "day"): string {
   const { year, month, day } = parseIsoKey(iso);

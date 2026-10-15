@@ -1,13 +1,12 @@
 "use client";
 
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { viewLabel } from "@/lib/planning/dates";
 
 type PlanningView = "month" | "week" | "day";
 
 interface PlanningToolbarProps {
-  selectedDate: string;
   view: PlanningView;
+  label: string;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -20,9 +19,7 @@ const VIEWS: { id: PlanningView; label: string }[] = [
   { id: "day", label: "Dia" },
 ];
 
-export function PlanningToolbar({ selectedDate, view, onPrev, onNext, onToday, onViewChange }: PlanningToolbarProps) {
-  const label = viewLabel(selectedDate, view);
-
+export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewChange }: PlanningToolbarProps) {
   return (
     <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div className="flex items-center gap-2">

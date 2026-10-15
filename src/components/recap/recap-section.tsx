@@ -3,12 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Trophy, Calendar } from "lucide-react";
-import Image from "next/image";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
-import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
-import { Modal } from "@/components/modal";
+import { NEW_TIER_META } from "@/lib/league-new-meta";
 import { StorySlides } from "./story-slides";
 import { FinalPage } from "./final-page";
 
@@ -115,46 +113,29 @@ export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
   // Build month cards for the grid
   const monthCards = useMemo((): MonthCard[] => {
     const cards: MonthCard[] = [];
-    
-    for (let i = 0; i < 12; i++) {
-      const month = (i + 11) % 12; // Start from current month going back
-      let year = selectedYear;
-      
-      // Calculate year for each card
-      if (i >= 12 - (new Date().getMonth() + 1)) {
-        year = selectedYear - 1;
-      } else {
-        year = selectedYear;
-      }
-      
-      // Actually, let's build it correctly - 12 cards from selected year
-      // Month order: selectedYear-11, selectedYear-10, ..., selectedYear-6, selectedYear-5 (current)
-      // Wait, let's do 12 months in the selected year, starting from January
-    }
-    
-    // Let me redo this - 12 months in the selected year
+    const today = new Date();
+
     for (let i = 0; i < 12; i++) {
       const month = i; // 0 = January, 11 = December
-      let year = selectedYear;
-      
+      const year = selectedYear;
+
       const recap = getRecapForMonth(year, month);
       const date = new Date(year, month, 1);
-      const today = new Date();
       const isPast = date < new Date(today.getFullYear(), today.getMonth(), 1);
       const isFuture = date > new Date(today.getFullYear(), today.getMonth(), 1);
-      
+
       let state: MonthCard["state"] = "available";
       if (isPast && recap) state = "generated";
       else if (isPast && !recap) state = "available"; // Can generate past months
       else if (isFuture) state = "locked";
-      
+
       // Current month (in progress)
       if (!isPast && !isFuture && !recap) state = "in-progress";
       if (!isPast && !isFuture && recap) state = "generated";
-      
+
       cards.push({ month, year, recap, state });
     }
-    
+
     return cards.reverse(); // January first
   }, [selectedYear, getRecapForMonth]);
 
@@ -242,8 +223,6 @@ export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
       {/* 12-Month Grid */}
       <div className="grid grid-cols-12 gap-2">
         {monthCards.map((card) => {
-          const isCurrentMonth = card.month === new Date().getMonth() && card.year === selectedYear;
-          
           return (
             <motion.div
               key={`${card.year}-${card.month}`}

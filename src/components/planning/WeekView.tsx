@@ -82,12 +82,15 @@ function DayColumn({
   onToggleCompleted,
   onDelete,
 }: DayColumnProps) {
-
   return (
     <div
-      className={`flex flex-col min-h-[420px] w-full rounded-xl border rounded-xl ${
-        day.isSelected ? "ring-2 ring-[var(--accent)] ring-offset-1" : "border-[var(--border-subtle)]"
-      } bg-[var(--bg-surface)] overflow-hidden`}
+      className={`flex flex-col min-w-[140px] rounded-xl border bg-[var(--bg-surface)] overflow-hidden transition-colors ${
+        day.isSelected
+          ? "ring-2 ring-[var(--accent)] ring-offset-1 border-[var(--border-subtle)]"
+          : day.isToday
+            ? "border-[var(--accent)]/50"
+            : "border-[var(--border-subtle)]"
+      }`}
       style={{ borderColor: "var(--border-subtle)" }}
     >
       {/* Header: clickable day -> Dia view */}
@@ -95,46 +98,45 @@ function DayColumn({
         type="button"
         onClick={() => onDateSelect(day.date)}
         aria-label={`Selecionar ${day.dayName}, ${day.dayNumber}`}
-        className="flex flex-col items-center gap-1 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-primary)]/20 text-left hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] rounded-t-lg transition-colors"
+        className={`flex flex-col items-center gap-1 p-2 border-b border-[var(--border-subtle)] text-left transition-colors ${
+          day.isSelected
+            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
+            : day.isToday
+              ? "bg-[var(--accent-bg)]/50 text-[var(--accent)]"
+              : "bg-[var(--bg-surface-hover)]/30 text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+        }}`}
       >
-        <span className={`text-[11px] font-semibold uppercase tracking-wider ${
-          day.isToday ? "text-[var(--accent)] font-bold" : "text-[var(--text-faint)]"
-        }`}>{day.dayName}</span>
-        <span className={`text-[20px] font-mono tabular-nums font-bold ${
-          day.isToday ? "text-[var(--accent)]" : "text-[var(--text)]"
-        }`}>{day.dayNumber}</span>
-        {day.isToday && (
-          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[var(--accent)]" aria-hidden="true" />
-        )}
+        <span className={`text-[11px] font-semibold uppercase tracking-wider ${day.isToday ? "font-bold" : ""}`}>
+          {day.dayName}
+        </span>
+        <span className={`text-[20px] font-mono tabular-nums font-bold ${day.isToday || day.isSelected ? "text-[var(--accent)]" : "text-[var(--text)]"}`}>
+          {day.dayNumber}
+        </span>
       </button>
 
-      <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
+      <div className="flex-1 p-2 space-y-1.5 overflow-y-auto min-h-0">
         {day.plans.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center text-center py-4 text-[12px] text-[var(--text-faint)]">
+          <div className="flex h-full flex-col items-center justify-center text-center py-6 text-[12px] text-[var(--text-faint)]">
             Sem planos
           </div>
         )}
 
-        {day.plans.map((plan) => {
-          return (
-            <div key={plan.id} className="group relative">
-              <TaskCard
-                plan={plan}
-                onToggle={(completed) => onToggleCompleted(plan.id, completed)}
-                onDelete={() => onDelete(plan.id)}
-                alwaysShowActions
-                compact
-              />
-            </div>
-          );
-        })}
+        {day.plans.map((plan) => (
+          <div key={plan.id} className="group relative">
+            <TaskCard
+              plan={plan}
+              onToggle={(completed) => onToggleCompleted(plan.id, completed)}
+              onDelete={() => onDelete(plan.id)}
+            />
+          </div>
+        ))}
       </div>
 
       <button
         type="button"
         onClick={() => onPlanCreate(day.date)}
         aria-label="Adicionar plano"
-        className="mt-auto w-full border-t border-[var(--border-subtle)] px-2 py-2.5 text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] flex items-center justify-center gap-1 transition-colors"
+        className="mt-2 w-full border-t border-[var(--border-subtle)] pt-2 px-2 py-2.5 text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] flex items-center justify-center gap-1 transition-colors"
       >
         + Adicionar
       </button>

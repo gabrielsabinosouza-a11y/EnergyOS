@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { WeeklyPlan, WeeklyPlanItem, Category } from "@/types";
+import type { WeeklyPlanItem, Category, WeeklyPlan } from "@/types";
 import { api } from "@/lib/api-client";
-import { addDays, monthRange, todayIso, weekRange } from "@/lib/planning/dates";
+import {
+  addDays,
+  addMonths,
+  monthRange,
+  todayIso,
+  viewLabel,
+  weekRange,
+} from "@/lib/planning/dates";
 import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { PlanningToolbar } from "@/components/planning/PlanningToolbar";
@@ -23,9 +30,8 @@ export default function PlanningPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<string | null>(null);
 
-  // Load plans for the selected date's window. We fetch all plans (no weekStart
-  // filter → latest 50) and filter client-side per view, so month/week/day always
-  // agree on the same source of truth.
+  // Load all plans once (no weekStart filter → latest 50) and filter per view
+  // client-side, so month/week/day always agree on the same source of truth.
   useEffect(() => {
     if (!user) return;
     api.getWeeklyPlans()
@@ -50,16 +56,26 @@ export default function PlanningPage() {
   const dayTasks = tasks.filter((p) => p.planDate === selectedDate);
 
   const handlePrev = () => {
-    if (view === "month") setSelectedDate(addMonthsWrap(selectedDate, -1));
+    if (view === "month") setSelectedDate(addMonths(selectedDate, -1));
     else if (view === "week") setSelectedDate(addDays(selectedDate, -7));
     else setSelectedDate(addDays(selectedDate, -1));
   };
   const handleNext = () => {
-    if (view === "month") setSelectedDate(addMonthsWrap(selectedDate, 1));
+    if (view === "month") setSelectedDate(addMonths(selectedDate, 1));
     else if (view === "week") setSelectedDate(addDays(selectedDate, 7));
     else setSelectedDate(addDays(selectedDate, 1));
   };
   const handleToday = () => setSelectedDate(todayIso());
+
+  /** Cria um plano e o insere imediatamente na lista local (sem refresh). */
+  const createTask = useCallback(
+    async (planDate: string, title: string, categoryId: number | undefined): Promise<void> => {
+      const res = await api.createWeeklyPlan({ planDate, title, categoryId });
+      const cat = (categories.find((c) => c.id === res.plan.categoryId) || categories[0]) ?? null;
+      setTasks((prev) => [...prev, toItem(res.plan, cat)]);
+    },
+    [categories],
+  );
 
   const togglePlan = useCallback(async (id: number, completed: boolean): Promise<void> => {
     const plan = tasks.find((p) => p.id === id);
@@ -90,12 +106,14 @@ export default function PlanningPage() {
     setAddOpen(true);
   };
 
+  const headerLabel = viewLabel(selectedDate, view);
+
   return (
     <AppShell>
       <div className="panel p-4 sm:p-6">
         <PlanningToolbar
-          selectedDate={selectedDate}
           view={view}
+          label={headerLabel}
           onPrev={handlePrev}
           onNext={handleNext}
           onToday={handleToday}
@@ -145,20 +163,11 @@ export default function PlanningPage() {
           open={addOpen}
           onClose={() => setAddOpen(false)}
           planDate={addDate ?? undefined}
-          onCreate={(plan) => {
-            setTasks((prev) => [...prev, plan]);
-            setAddOpen(false);
-          }}
+          onCreate={(planDate, title, categoryId) => createTask(planDate, title, categoryId)}
         />
       </div>
     </AppShell>
   );
-}
-
-function addMonthsWrap(iso: string, n: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const date = new Date(y!, m! - 1 + n, d!);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function toItem(plan: WeeklyPlan, cat: Category | undefined): WeeklyPlanItem {

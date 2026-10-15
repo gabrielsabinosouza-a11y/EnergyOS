@@ -44,6 +44,13 @@ export function spMonthEndIso(monthStart: string): string {
   return spUtcIso(next.toISOString().slice(0, 10));
 }
 
+/** Primeiro dia do mês seguinte (YYYY-MM-DD) — usado para iterar dias do mês. */
+function monthEndDate(monthStart: string): string {
+  const d = new Date(`${monthStart}T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // ─── Row mapping ─────────────────────────────────────────────────────────────
 
 interface RecapRow {
@@ -112,13 +119,6 @@ function resolveTag(totalMinutes: number): string {
   if (totalMinutes > 500) return "Guerreiro da Energia";
   if (totalMinutes > 200) return "Aprendiz Dedicada";
   return "Explorador";
-}
-
-/** Primeiro dia do mês seguinte (YYYY-MM-DD) — usado para iterar dias do mês. */
-function monthEndDate(monthStart: string): string {
-  const d = new Date(`${monthStart}T12:00:00Z`);
-  d.setUTCMonth(d.getUTCMonth() + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 // ─── Longest streak for a month ──────────────────────────────────────────────

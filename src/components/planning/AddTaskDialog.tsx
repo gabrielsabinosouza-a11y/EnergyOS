@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Category, WeeklyPlanItem } from "@/types";
+import type { Category } from "@/types";
 import { api } from "@/lib/api-client";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 import { todayIso } from "@/lib/planning/dates";
@@ -14,7 +14,8 @@ interface AddTaskDialogProps {
   onClose: () => void;
   /** Data pré-selecionada para o novo plano (YYYY-MM-DD). Padrão: hoje. */
   planDate?: string;
-  onCreate: (plan: WeeklyPlanItem) => void;
+  /** Recebe (planDate, title, categoryId) e deve persistir o plano. */
+  onCreate: (planDate: string, title: string, categoryId: number | undefined) => Promise<void>;
 }
 
 export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDialogProps) {
@@ -57,27 +58,8 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
     try {
       const effectiveDate = planDate ?? todayIso();
       const catId = categoryId ?? defaultCategory?.id;
-      const res = await api.createWeeklyPlan({ planDate: effectiveDate, title: title.trim(), categoryId: catId ?? undefined });
-      const cat = categories.find((c) => c.id === res.plan.categoryId) || defaultCategory;
-      onCreate({
-        id: res.plan.id,
-        seriesId: null,
-        planDate: res.plan.planDate,
-        title: res.plan.title,
-        categoryId: res.plan.categoryId,
-        category: cat ?? ({ id: 0, userId: null, name: "", color: "#94a3b8", icon: null, isCustom: false, createdAt: "" } as Category),
-        iconType: null,
-        iconValue: null,
-        color: cat?.color ?? null,
-        note: null,
-        completedAt: res.plan.completedAt ?? null,
-        skipped: false,
-        startTime: res.plan.startTime ?? null,
-        durationMinutes: null,
-        repeatType: null,
-        repeatDays: null,
-        isRecurring: false,
-      });
+      // A página é dona da chamada à API e da atualização da lista local.
+      await onCreate(effectiveDate, title.trim(), catId ?? undefined);
       setTitle("");
       setCategoryId(null);
       onClose();

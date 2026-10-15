@@ -1117,13 +1117,21 @@ create table if not exists monthly_recaps (
   recap_month date not null,
   total_focus_minutes integer not null default 0,
   longest_streak integer not null default 0,
+  streak_start_date date,
+  streak_end_date date,
+  streak_is_alive boolean not null default false,
   league_tier text,
+  league_at_start text,
   league_promoted boolean default false,
   productivity_tag text,
   total_xp integer not null default 0,
+  xp_sources jsonb,
+  generation_number integer not null default 1,
+  status text not null default 'parcial',
   has_been_shared boolean default false,
   generated_at timestamptz not null default now(),
-  unique (profile_id, recap_month)
+  unique (profile_id, recap_month),
+  constraint monthly_recaps_status_check check (status = any (array['parcial'::text, 'final'::text]))
 );
 
 -- Purge recaps from months before the platform existed
@@ -1131,6 +1139,33 @@ delete from monthly_recaps where recap_month < '2026-08-01';
 
 -- Capture o XP total do usuário (acumulado) no momento em que o recap é gerado.
 alter table monthly_recaps add column if not exists total_xp integer not null default 0;
+
+-- ── Monthly Recap History ───────────────────────────────────────────────────
+-- Snapshot da geração anterior antes de cada upsert, para histórico.
+create table if not exists monthly_recap_history (
+  id integer primary key generated always as identity,
+  recap_id bigint not null references monthly_recaps(id) on delete cascade,
+  profile_id text not null,
+  recap_month date not null,
+  total_focus_minutes integer not null default 0,
+  longest_streak integer not null default 0,
+  streak_start_date date,
+  streak_end_date date,
+  streak_is_alive boolean not null default false,
+  league_at_start text,
+  league_at_end text,
+  league_promoted boolean default false,
+  productivity_tag text,
+  garden_count integer not null default 0,
+  total_xp integer not null default 0,
+  xp_sources jsonb,
+  generation_number integer not null,
+  generation_count integer not null,
+  generated_at timestamptz not null default now()
+);
+
+create index if not exists monthly_recap_history_recap_id_idx
+  on monthly_recap_history(recap_id);
 
 -- ── Seed streak shield designs ──────────────────────────────────────────
 insert into streak_shield_designs (id, name, description, image_url, icon_url, price, rarity, sort_order) values
