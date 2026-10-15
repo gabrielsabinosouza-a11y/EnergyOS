@@ -137,7 +137,6 @@ export default function PlanningPage() {
               onPlanCreate={openAdd}
               onToggleCompleted={togglePlan}
               onDelete={deletePlan}
-              categories={categories}
             />
           )}
 

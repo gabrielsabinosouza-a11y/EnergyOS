@@ -218,14 +218,12 @@ describe("Recap activity window in America/Sao_Paulo", () => {
   let insertedXpIds: number[] = [];
 
   beforeEach(async () => {
+    // Dois rows: 30/09 23:30 SP (UTC 02:30 de 01/10) e 01/10 00:10 SP (UTC 03:10 de 01/10).
     const focus = await pool.query(
       `INSERT INTO focus_sessions (profile_id, started_at, ended_at, duration_minutes, target_duration_minutes)
        VALUES ($1,$2,$3,30,25),($1,$4,$5,30,25)
        RETURNING id`,
-      [
-        PROFILE_ID, SEP_LAST_SESSION_UTC, SEP_LAST_SESSION_UTC,
-        PROFILE_ID, OCT_FIRST_SESSION_UTC, OCT_FIRST_SESSION_UTC,
-      ]
+      [PROFILE_ID, SEP_LAST_SESSION_UTC, SEP_LAST_SESSION_UTC, OCT_FIRST_SESSION_UTC, OCT_FIRST_SESSION_UTC]
     );
     insertedFocusIds = focus.rows.map((r) => Number(r.id));
 

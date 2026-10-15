@@ -114,6 +114,13 @@ function resolveTag(totalMinutes: number): string {
   return "Explorador";
 }
 
+/** Primeiro dia do mês seguinte (YYYY-MM-DD) — usado para iterar dias do mês. */
+function monthEndDate(monthStart: string): string {
+  const d = new Date(`${monthStart}T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // ─── Longest streak for a month ──────────────────────────────────────────────
 
 /**
@@ -152,7 +159,8 @@ async function computeLongestStreakForMonth(
   );
   for (const row of protectedDays.rows) alive.add(row.day);
 
-  return longestRunInMonth(alive, monthStart, monthEnd, today);
+  // longestRunInMonth itera por dias (YYYY-MM-DD), então passa o limite como data.
+  return longestRunInMonth(alive, monthStart, monthEndDate(monthStart), today);
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────────

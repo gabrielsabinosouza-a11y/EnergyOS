@@ -24,6 +24,7 @@ export function WeekView({
   onToggleCompleted,
   onDelete,
 }: WeekViewProps) {
+  const today = todayIso();
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(range.start, i);
@@ -68,7 +69,6 @@ interface DayColumnProps {
     isToday: boolean;
     isSelected: boolean;
   };
-  categories: Category[];
   onDateSelect: (date: string) => void;
   onPlanCreate: (date: string) => void;
   onToggleCompleted: (id: number, completed: boolean) => void;

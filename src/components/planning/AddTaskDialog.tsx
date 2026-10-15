@@ -50,9 +50,9 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
     }
     setLoading(true);
     try {
-      const planDate = (planDate ?? todayIso());
+      const effectiveDate = planDate ?? todayIso();
       const catId = categoryId ?? defaultCategory?.id;
-      const res = await api.createWeeklyPlan({ planDate, title: title.trim(), categoryId: catId ?? undefined });
+      const res = await api.createWeeklyPlan({ planDate: effectiveDate, title: title.trim(), categoryId: catId ?? undefined });
       const cat = categories.find((c) => c.id === res.plan.categoryId) || defaultCategory;
       onCreate({
         id: res.plan.id,
@@ -63,7 +63,7 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
         category: cat ?? ({ id: 0, userId: null, name: "", color: "#94a3b8", icon: null, isCustom: false, createdAt: "" } as Category),
         iconType: null,
         iconValue: null,
-        color: res.plan.color ?? cat?.color ?? null,
+        color: cat?.color ?? null,
         note: null,
         completedAt: res.plan.completedAt ?? null,
         skipped: false,
