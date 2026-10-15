@@ -21,7 +21,7 @@ type NavItem = {
 
 export const navigationItems: NavItem[] = [
   { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
-  { href: "/planner", label: "Planejamento",       icon: CalendarDays },
+  { href: "/planner", label: "Planejamento",       icon: CalendarDays, img: "/sidebar_menu/planner.png" },
   { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
   { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
   { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },

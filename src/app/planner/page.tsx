@@ -85,6 +85,55 @@ export default function CalendarPage() {
     setPlans((prev) => prev.map((p) => (p.id === id ? { ...p, completedAt: res.plan.completedAt ?? null } : p)));
   }, []);
 
+
+  const toggleOccurrenceCompleted = useCallback(
+    async (seriesId: number, date: string, completed: boolean): Promise<void> => {
+      await api.setPlanOccurrenceCompleted(seriesId, date, completed);
+
+      setPlans((prev) =>
+        prev.map((plan) =>
+          plan.seriesId === seriesId && plan.planDate === date
+            ? {
+                ...plan,
+                completedAt: completed ? new Date().toISOString() : null,
+                skipped: false,
+              }
+            : plan,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateOccurrenceOverride = useCallback(
+    async (
+      seriesId: number,
+      date: string,
+      title: string,
+      startTime: string | null,
+    ): Promise<void> => {
+      await api.updatePlanOccurrenceOverride(seriesId, date, {
+        title: title.trim(),
+        startTime,
+      });
+
+      setPlans((prev) =>
+        prev.map((plan) =>
+          plan.seriesId === seriesId && plan.planDate === date
+            ? {
+                ...plan,
+                title: title.trim(),
+                startTime,
+              }
+            : plan,
+        ),
+      );
+    },
+    [],
+  );
+
+
+
   const deletePlan = useCallback(async (id: number): Promise<void> => {
     await api.deleteWeeklyPlan(id);
     setPlans((prev) => prev.filter((p) => p.id !== id));
@@ -121,7 +170,7 @@ export default function CalendarPage() {
           onNext={handleNext}
           onToday={handleToday}
         />
-        
+
         <ViewSwitcher view={view} onChange={setView} />
 
         <AnimatePresence initial={false} mode="popLayout">
@@ -142,7 +191,7 @@ export default function CalendarPage() {
               />
             </motion.div>
           )}
-          
+
           {view === "week" && (
             <motion.div
               key="week"
@@ -160,13 +209,13 @@ export default function CalendarPage() {
                 onUpdate={dayUpdatePlan}
                 onToggleCompleted={togglePlanCompleted}
                 onDelete={deletePlan}
-                onToggleOccurrence={() => {}}
-                onUpdateOccurrenceOverride={() => {}}
+                onToggleOccurrence={toggleOccurrenceCompleted}
+                onUpdateOccurrenceOverride={updateOccurrenceOverride}
                 categories={categories}
               />
             </motion.div>
           )}
-          
+
           {view === "day" && (
             <motion.div
               key="day"
@@ -200,7 +249,7 @@ export default function CalendarPage() {
                   {dayPlans.map((plan) => {
                     const isCompleted = Boolean(plan.completedAt);
                     const displayColor = plan.color || plan.category.color;
-                    
+
                     return (
                       <div
                         key={plan.id}
@@ -218,7 +267,7 @@ export default function CalendarPage() {
                             <p className="text-[13px] text-[var(--text-faint)]">{plan.startTime}</p>
                           )}
                         </div>
-                        
+
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -228,7 +277,7 @@ export default function CalendarPage() {
                           >
                             <Pencil size={16} />
                           </button>
-                          
+
                           <button
                             type="button"
                             onClick={(e) => {
@@ -240,7 +289,7 @@ export default function CalendarPage() {
                           >
                             <X size={16} />
                           </button>
-                          
+
                           <button
                             type="button"
                             onClick={() => togglePlanCompleted(plan.id, !isCompleted)}

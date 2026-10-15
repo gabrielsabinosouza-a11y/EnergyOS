@@ -22,12 +22,12 @@ interface CalendarWeekViewProps {
   categories: Category[];
 }
 
-export function CalendarWeekView({ 
-  weekRange, plans, selectedDate, onDateSelect, onPlanCreate, onUpdate, 
-  onToggleCompleted, onDelete, onToggleOccurrence, onUpdateOccurrenceOverride, categories 
+export function CalendarWeekView({
+  weekRange, plans, selectedDate, onDateSelect, onPlanCreate, onUpdate,
+  onToggleCompleted, onDelete, onToggleOccurrence, onUpdateOccurrenceOverride, categories
 }: CalendarWeekViewProps) {
   const today = todayIso();
-  
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDaysIso(weekRange.start, i);
     const dayPlans = plans.filter((p) => p.planDate === date);
@@ -37,10 +37,10 @@ export function CalendarWeekView({
       if (b.startTime) return 1;
       return 0;
     });
-    return { 
-      date, 
-      dayName: DAY_NAMES[i], 
-      plans: sortedPlans, 
+    return {
+      date,
+      dayName: DAY_NAMES[i],
+      plans: sortedPlans,
       isToday: date === today,
       isSelected: date === selectedDate
     };
@@ -80,9 +80,9 @@ interface DayColumnProps {
   onUpdateOccurrenceOverride: (seriesId: number, date: string, title: string, startTime: string | null) => void;
 }
 
-function DayColumn({ 
-  day, categories, onDateSelect, onPlanCreate, onUpdate, onToggleCompleted, onDelete, 
-  onToggleOccurrence, onUpdateOccurrenceOverride 
+function DayColumn({
+  day, categories, onDateSelect, onPlanCreate, onUpdate, onToggleCompleted, onDelete,
+  onToggleOccurrence, onUpdateOccurrenceOverride
 }: DayColumnProps) {
   const displayColor = (plan: WeeklyPlanItem) => plan.color || plan.category.color;
 
@@ -94,26 +94,40 @@ function DayColumn({
           <span className="text-[16px] font-mono tabular-nums text-[var(--text)]">{day.date.slice(8, 10)}</span>
         </div>
       </div>
-      
+
       <div className="flex-1 p-2.5 space-y-1.5 overflow-y-auto">
         {day.plans.length === 0 && (
           <div className="flex h-full items-center justify-center text-center py-4">
             <span className="text-[12px] text-[var(--text-faint)]">Sem planos</span>
           </div>
         )}
-        
+
         {day.plans.slice(0, MAX_ITEMS_PER_CARD).map((plan) => (
           <PlanChip
             key={plan.id}
             plan={plan}
             displayColor={displayColor(plan)}
-            onToggle={() => onToggleCompleted(plan.id, !plan.completedAt)}
-            onDelete={() => onDelete(plan.id)}
+            onToggle={() => {
+              const completed = !plan.completedAt;
+
+              if (plan.seriesId !== null) {
+                onToggleOccurrence(plan.seriesId, plan.planDate, completed);
+              } else {
+                onToggleCompleted(plan.id, completed);
+              }
+            }}
+
+
+            onDelete={() => {
+              if (plan.seriesId === null) {
+                onDelete(plan.id);
+              }
+            }}
           />
         ))}
-        
+
         {day.plans.length > MAX_ITEMS_PER_CARD && (
-          <button 
+          <button
             type="button"
             className="text-[13px] text-center font-medium text-[var(--accent)] hover:underline pt-1"
             aria-label={`Ver mais ${day.plans.length - MAX_ITEMS_PER_CARD} planos`}
@@ -122,7 +136,7 @@ function DayColumn({
           </button>
         )}
       </div>
-      
+
       <button
         type="button"
         onClick={() => onPlanCreate(day.date, "", 0)}
@@ -147,7 +161,7 @@ function PlanChip({ plan, displayColor, onToggle, onDelete }: PlanChipProps) {
   const skipped = Boolean(plan.skipped);
   const containerOpacity = skipped ? 0.6 : isCompleted ? 0.55 : 1;
   const textOpacity = skipped ? 0.6 : isCompleted ? 0.55 : 1;
-  
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDelete();
@@ -167,7 +181,7 @@ function PlanChip({ plan, displayColor, onToggle, onDelete }: PlanChipProps) {
           {plan.title || "(sem título)"}
         </span>
       </div>
-      
+
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -182,7 +196,7 @@ function PlanChip({ plan, displayColor, onToggle, onDelete }: PlanChipProps) {
         >
           <Check size={16} strokeWidth={isCompleted ? 3 : 2} />
         </button>
-        
+
         <button
           type="button"
           onClick={handleDelete}
