@@ -27,13 +27,13 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
         <h1 className="text-xl font-semibold">Planejamento</h1>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">
+      <div className="flex w-full flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
           <button
             type="button"
             onClick={onPrev}
             className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label="Anterior"
+            aria-label="Mês anterior"
           >
             <ChevronLeft size={18} />
           </button>
@@ -49,14 +49,16 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
             type="button"
             onClick={onNext}
             className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label="Próximo"
+            aria-label="Mês seguinte"
           >
             <ChevronRight size={18} />
           </button>
         </div>
-        <div className="text-sm font-medium text-[var(--text-secondary)]">{label}</div>
+        <div className="min-w-0 flex-1 text-sm font-medium text-[var(--text-secondary)] text-center sm:text-left leading-tight">
+          {label}
+        </div>
 
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
           {VIEWS.map(({ id, label: labelName }) => (
             <button
               key={id}
