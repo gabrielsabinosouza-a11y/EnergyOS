@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { WeeklyPlanItem, Category, WeeklyPlan } from "@/types";
 import { api } from "@/lib/api-client";
 import {
@@ -22,6 +22,7 @@ import { DayView } from "@/components/planning/DayView";
 import { AddTaskDialog } from "@/components/planning/AddTaskDialog";
 import { Button } from "@/components/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Plus } from "lucide-react";
 
 type View = "month" | "week" | "day";
 
@@ -61,6 +62,7 @@ function MobileDayAgenda({
   const weekday = formatLocalDate(date, { weekday: "long" });
   const dateLabel = formatLocalDate(date, { day: "numeric", month: "long" });
   const sorted = [...plans].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+  const isEmpty = sorted.length === 0;
 
   return (
     <div className="flex flex-col gap-2">
@@ -72,8 +74,22 @@ function MobileDayAgenda({
           + Adicionar plano
         </Button>
       </div>
-      {sorted.length === 0 ? (
-        <p className="text-[11px] text-[var(--text-faint)]">Sem planos para este dia</p>
+      {isEmpty ? (
+        <button
+          type="button"
+          onClick={() => onPlanCreate(date)}
+          className="day-empty-state-mobile group relative flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30 hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2 transition-all duration-200"
+          aria-label={`Adicionar plano para ${weekday}, ${dateLabel.toLowerCase()}`}
+        >
+          <span className="absolute top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
+            <Plus size={16} className="text-[var(--accent)]" aria-hidden="true" />
+          </span>
+          <p className="text-[var(--text)] font-semibold mb-1 relative z-10">Nenhum plano para este dia</p>
+          <p className="text-[var(--text-secondary)] text-xs mb-3 relative z-10">Clique para criar seu primeiro plano</p>
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-bold text-[var(--bg-primary)] shadow-[0_0_8px_var(--accent-glow)] relative z-10">
+            Adicionar plano
+          </span>
+        </button>
       ) : (
         <div className="flex flex-col gap-1">
           {sorted.map((plan) => (
@@ -100,8 +116,6 @@ export default function PlanningPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<string | null>(null);
-  const [headerHeight, setHeaderHeight] = useState<number | null>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
   const [navDirection, setNavDirection] = useState<"next" | "prev" | "zoom" | null>(null);
   const reduced = useReducedMotion();
 
@@ -124,24 +138,31 @@ export default function PlanningPage() {
       .catch(console.error);
   }, [user]);
 
-  // Mede a altura da toolbar para o grade do mês ocupar o restante da viewport.
-  useEffect(() => {
-    const el = toolbarRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const box = entry.borderBoxSize?.[0];
-        setHeaderHeight(box ? box.blockSize : entry.contentRect.height);
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   // Marca que o mês já foi montado uma vez (apenas leitura de variável de módulo durante o render).
   useEffect(() => {
     if (view === "month") monthFirstRender = false;
   }, [view]);
+
+  // Keyboard shortcut: "N" opens add dialog in day view (ignore when in inputs/textareas/dialog)
+  useEffect(() => {
+    if (view !== "day") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if focus is in an input, textarea, or dialog
+      const active = document.activeElement;
+      if (!active) return;
+      const tagName = active.tagName.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || active.getAttribute("role") === "dialog") return;
+
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        openAdd(selectedDate);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, selectedDate]);
 
   const week = weekRange(selectedDate);
   const month = monthRange(selectedDate);
@@ -220,16 +241,14 @@ export default function PlanningPage() {
   return (
     <AppShell>
       <div className="panel p-4 sm:p-6">
-        <div ref={toolbarRef}>
-          <PlanningToolbar
-            view={view}
-            label={headerLabel}
-            onPrev={handlePrev}
-            onNext={handleNext}
-            onToday={handleToday}
-            onViewChange={setView}
-          />
-        </div>
+        <PlanningToolbar
+          view={view}
+          label={headerLabel}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          onToday={handleToday}
+          onViewChange={setView}
+        />
 
         <div className="flex flex-col gap-4">
           <AnimatePresence mode="popLayout">
@@ -253,8 +272,6 @@ export default function PlanningPage() {
                   onPlanCreate={openAdd}
                   onToggleCompleted={togglePlan}
                   onDelete={deletePlan}
-                  headerHeight={headerHeight ?? undefined}
-                  firstMount={view === "month" && monthFirstRender}
                   navDirection={navDirection}
                 />
                 {isMobile && (
@@ -304,6 +321,7 @@ export default function PlanningPage() {
                   onToggleCompleted={togglePlan}
                   onDelete={deletePlan}
                   onPlanCreate={openAdd}
+                  shortcutHint="N"
                 />
               </motion.div>
             )}

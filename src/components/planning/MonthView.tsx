@@ -29,20 +29,17 @@ interface MonthViewProps {
   onPlanCreate?: (date: string) => void;
   onToggleCompleted?: (id: number, completed: boolean) => void;
   onDelete?: (id: number) => void;
+  /** Direção da transição de página para este montamento ("next" | "prev" | "zoom"). */
+  navDirection?: "next" | "prev" | "zoom" | null;
   /** Altura da barra de ferramentas do cabeçalho (px), medida pela página. */
   headerHeight?: number;
   /** Entrada com stagger só na primeira vez que o mês é montado. */
   firstMount?: boolean;
-  /** Direção da transição de página para este montamento ("next" | "prev" | "zoom"). */
-  navDirection?: "next" | "prev" | "zoom" | null;
 }
 
 const MIN_ROW_HEIGHT = { desktop: 96, tablet: 70, mobile: 52 };
 const CHIP_PITCH = 18;
-const CELL_OVERHEAD = 44; // número + padding + gaps + barra de carga
-const ROW_GAP = 8; // space-y-1 entre semanas
-const HEADER_OVERHEAD = 82; // painel + toolbar + rótulos de dias da semana
-const DEFAULT_HEADER_HEIGHT = 64; // estimativa até a toolbar ser medida
+const CELL_OVERHEAD = 36; // day number + padding + gaps
 const POPOVER_WIDTH = 270;
 const POPBOTTOM_PAD = 320;
 
@@ -59,8 +56,6 @@ export function MonthView({
   onPlanCreate,
   onToggleCompleted,
   onDelete,
-  headerHeight,
-  firstMount = false,
   navDirection = null,
 }: MonthViewProps) {
   const reduced = useReducedMotion();
@@ -71,13 +66,15 @@ export function MonthView({
 
   const total = daysInMonth(monthRange.start);
   const firstOfMonth = new Date(year, month - 1, 1);
-  const lead = (firstOfMonth.getDay() + 6) % 7; // segunda=0 … domingo=6
+  const lead = (firstOfMonth.getDay() + 6) % 7; // Monday=0 … Sunday=6
 
   const days = useMemo(() => {
     const out: string[] = [];
+    // Previous month days
     for (let i = 0; i < lead; i++) out.push(addDays(isoKey(year, month, 1), i - lead));
+    // Current month days
     for (let i = 1; i <= total; i++) out.push(isoKey(year, month, i));
-    // Completa apenas a última semana (4, 5 ou 6 linhas no total).
+    // Next month days (fill to complete grid)
     const tail = (-out.length) % 7;
     for (let i = 1; i <= tail; i++) out.push(addDays(monthRange.end, i));
     return out;
@@ -109,12 +106,9 @@ export function MonthView({
 
   const isMobile = sizeMode === "mobile";
   const isTablet = sizeMode === "tablet";
-  const minRow = isMobile ? MIN_ROW_HEIGHT.mobile : isTablet ? MIN_ROW_HEIGHT.tablet : MIN_ROW_HEIGHT.desktop;
   const chipCap = isMobile ? 0 : isTablet ? 2 : 3;
-  const effectiveHeaderHeight = headerHeight ?? DEFAULT_HEADER_HEIGHT;
-  const containerHeight = `calc(100dvh - ${effectiveHeaderHeight}px - ${HEADER_OVERHEAD}px)`;
 
-  // Media queries para ajustar densidade da grade.
+  // Media queries for responsive density
   useEffect(() => {
     const mqlDesktop = window.matchMedia("(min-width: 1024px)");
     const mqlTablet = window.matchMedia("(min-width: 640px) and (max-width: 1023px)");
@@ -130,8 +124,7 @@ export function MonthView({
     };
   }, []);
 
-  // Mede a altura da grade para decidir quantos chips cabem em cada célula
-  // (sem hardcode; todas as células de uma linha têm a mesma altura).
+  // Measure grid height to determine chip capacity
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
@@ -139,8 +132,8 @@ export function MonthView({
       const entry = entries[0];
       const box = entry.borderBoxSize?.[0];
       const h = box ? box.blockSize : entry.contentRect.height;
-      // Todas as semanas têm a mesma altura (flex-1); desconta as gutters entre linhas.
-      const cellH = Math.max(1, (h - ROW_GAP * Math.max(0, rowCount - 1)) / rowCount);
+      const rowGap = 8;
+      const cellH = Math.max(1, (h - rowGap * Math.max(0, rowCount - 1)) / rowCount);
       const avail = cellH - CELL_OVERHEAD;
       let n = Math.floor(avail / CHIP_PITCH);
       if (chipCap === 0) n = 0;
@@ -151,7 +144,8 @@ export function MonthView({
     return () => ro.disconnect();
   }, [rowCount, chipCap, isMobile]);
 
-  // Fecha o popover ao mudar de mês (derivado durante o render, sem effect).
+  // Close popover on month change
+  const closePopover = useCallback(() => setPopover(null), []);
 
   const handleGridKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -234,8 +228,6 @@ export function MonthView({
     [],
   );
 
-  const closePopover = useCallback(() => setPopover(null), []);
-
   useEffect(() => {
     if (!popover) return;
     const onKey = (e: KeyboardEvent) => {
@@ -255,34 +247,31 @@ export function MonthView({
     };
   }, [popover, closePopover]);
 
-  // ── Variantes de movimento (apenas transform/opacity) ──────────────────
+  // ── Motion Variants ─────────────────
 
-  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" }); // "outubro de 2026"
+  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" });
 
-  // Duração/estágio só na entrada (primeiro montamento ou troca de mês).
-  // Total do cascade: (linhas-1)·stagger + (colunas-1)·stagger + duração < 500 ms.
   const cellDuration = reduced ? 0 : 0.28;
-  const cellStagger = firstMount && !reduced ? 0.012 : 0;
+  const cellStagger = false; // Disable stagger for simpler animations
 
   const navVariantsMemo: Variants = useMemo(
     () => {
       const baseTransition: { duration: number; ease?: readonly [number, number, number, number] } = reduced
         ? { duration: 0 }
-        : { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const };
+        : { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const };
       return {
         next: {
-          hidden: { rotateY: -14, translateX: -24, opacity: 0, transition: baseTransition },
-          visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
+          hidden: { opacity: 0, x: -24, transition: baseTransition },
+          visible: { opacity: 1, x: 0, transition: baseTransition },
         },
         prev: {
-          hidden: { rotateY: 14, translateX: 24, opacity: 0, transition: baseTransition },
-          visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
+          hidden: { opacity: 0, x: 24, transition: baseTransition },
+          visible: { opacity: 1, x: 0, transition: baseTransition },
         },
         zoom: {
-          hidden: { scale: 0.93, opacity: 0, transition: baseTransition },
-          visible: { scale: 1, opacity: 1, transition: baseTransition },
+          hidden: { opacity: 0, scale: 0.93, transition: baseTransition },
+          visible: { opacity: 1, scale: 1, transition: baseTransition },
         },
-        // Entrada suave apenas no primeiro montamento do mês.
         fade: {
           hidden: { opacity: 0, y: 6, transition: baseTransition },
           visible: { opacity: 1, y: 0, transition: baseTransition },
@@ -292,17 +281,15 @@ export function MonthView({
     [reduced],
   );
 
-  // Variante por semana: cada linha entra com um pequeno delay, criando o cascade
-  // linha → coluna dentro da grade (sem animar layout, apenas transform/opacity).
   const rowVariants: Variants = useMemo(
     () => ({
       hidden: { opacity: 0 },
       visible: {
         opacity: 1,
-        transition: { staggerChildren: cellStagger, duration: cellDuration, ease: cellEase },
+        transition: { staggerChildren: 0.012, duration: cellDuration, ease: cellEase },
       },
     }),
-    [cellStagger, cellDuration],
+    [cellDuration],
   );
 
   const cellVariants: Variants = useMemo(
@@ -317,7 +304,7 @@ export function MonthView({
     [cellDuration],
   );
 
-  // ── Célula do dia ──────────────────────────────────────────────────────
+  // ── Day Cell Component ─────────────────
 
   function MonthCell({
     date,
@@ -342,7 +329,7 @@ export function MonthView({
     const done = dayPlans.filter((p) => Boolean(p.completedAt)).length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const chipZ = hov ? 14 : 0;
-    const tiltZ = hov ? 18 : 0;
+    const tiltZ = hov && !isMobile ? 18 : 0;
 
     const pointerRaf = useRef(0);
 
@@ -354,7 +341,7 @@ export function MonthView({
 
     const cellPointerMove = useCallback(
       (e: React.PointerEvent<HTMLButtonElement>) => {
-        if (reduced || e.pointerType !== "mouse") return;
+        if (reduced || e.pointerType !== "mouse" || isMobile) return;
         cancelAnimationFrame(pointerRaf.current);
         pointerRaf.current = requestAnimationFrame(() => {
           const rect = cellEl.current!.getBoundingClientRect();
@@ -362,16 +349,16 @@ export function MonthView({
           const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
           setMx(x);
           setMy(y);
-          setTiltX((y - 0.5) * 8);
-          setTiltY((x - 0.5) * 8);
+          setTiltX((y - 0.5) * 6);
+          setTiltY((x - 0.5) * 6);
         });
       },
-      [],
+      [reduced, isMobile],
     );
 
     const handlePointerEnter = useCallback(() => {
-      if (!reduced) setHoverDate(date);
-    }, [date]);
+      if (!reduced && !isMobile) setHoverDate(date);
+    }, [date, reduced, isMobile]);
     const handlePointerLeave = useCallback(() => {
       setHoverDate(null);
       setTiltX(0);
@@ -387,12 +374,19 @@ export function MonthView({
     const numColor = sel
       ? "text-[var(--accent)]"
       : td
-        ? "text-[var(--text)]"
+        ? "text-[var(--accent)]"
         : !cur
           ? "text-[var(--text-faint)]"
           : "text-[var(--text)]";
-    const baseClasses = `mv-cell relative flex flex-col items-start gap-1.5 p-1.5 min-w-0 overflow-hidden border border-transparent rounded-[8px] text-left cursor-pointer transition-[background_color,border_color,box-shadow] duration-150 ease-out hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2 focus-visible:shadow-[0_0_0_4px_rgba(113,212,255,.20)]`;
-    const modClasses = [hov ? "mv-cell--hover" : "", td ? "mv-cell--today" : "", sel ? "mv-cell--selected" : "", !cur ? "opacity-50" : ""]
+
+    const baseClasses = `mv-cell relative flex flex-col items-start gap-1.5 p-2 min-w-0 overflow-hidden rounded-xl transition-[background_color,border_color,box_shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2`;
+
+    const modClasses = [
+      hov ? "mv-cell--hover" : "",
+      td && sel ? "mv-cell--today-selected" : td ? "mv-cell--today" : "",
+      sel && !td ? "mv-cell--selected" : "",
+      !cur ? "mv-cell--adjacent" : "",
+    ]
       .filter(Boolean)
       .join(" ");
 
@@ -413,16 +407,12 @@ export function MonthView({
               onDateSelect(date);
             }}
             aria-label={completed ? `Concluído: ${title}` : title}
-            className={`inline-flex items-center gap-1.5 min-w-[1px] truncate rounded-md border px-2 py-1 text-[10px] font-medium leading-none hover:bg-white/[0.06] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-1 ${
-              completed
-                ? "border-[var(--text-muted)]/40 bg-white/[0.02] line-through opacity-60"
-                : "border-transparent"
-            }`}
-            style={{ borderLeft: `3px solid ${color}`, color: completed ? "var(--text-muted)" : "var(--text)" }}
+            className={`mv-chip ${completed ? "mv-chip--completed" : ""} transition-colors`}
             title={title}
+            style={{ borderLeft: `3px solid ${color}` }}
           >
-            <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
-            <span className="min-w-0 truncate">{title}</span>
+            <span className="mv-chip-dot" aria-hidden="true" />
+            <span className="mv-chip-title">{title}</span>
           </button>
         );
       });
@@ -433,11 +423,8 @@ export function MonthView({
       return (
         <span
           key={p.id}
-          className="mv-dot rounded-full"
-          style={{
-            backgroundColor: completed ? "var(--text-muted)" : color,
-            opacity: completed ? 0.45 : 1,
-          }}
+          className="mv-dot"
+          style={{ backgroundColor: completed ? "var(--text-muted)" : color, opacity: completed ? 0.45 : 1 }}
           aria-hidden="true"
         />
       );
@@ -460,22 +447,20 @@ export function MonthView({
         animate="visible"
         className={`${baseClasses} ${modClasses} mv-preserve-3d`}
         onClick={(e) => handleCellClick(e, date, cur)}
+        style={
+          {
+            "--mv-mx": mx,
+            "--mv-my": my,
+            "--mv-tilt-x": `${tiltX}deg`,
+            "--mv-tilt-y": `${tiltY}deg`,
+            "--mv-tilt-z": `${tiltZ}px`,
+            "--mv-chip-z": `${chipZ}px`,
+            transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(${tiltZ}px)`,
+          } as React.CSSProperties
+        }
       >
-        <div
-          className="mv-cell-inner flex flex-col items-start gap-1.5 w-full"
-          style={
-            {
-              "--mv-mx": mx,
-              "--mv-my": my,
-              "--mv-tilt-x": `${tiltX}deg`,
-              "--mv-tilt-y": `${tiltY}deg`,
-              "--mv-tilt-z": `${tiltZ}px`,
-              "--mv-chip-z": `${chipZ}px`,
-              transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(${tiltZ}px)`,
-            } as unknown as React.CSSProperties
-          }
-        >
-          <div className="w-full flex items-start justify-between gap-1 pt-0.5">
+        <div className="mv-cell-inner flex flex-col items-start gap-1.5 w-full">
+          <div className="w-full flex items-start justify-between gap-1">
             <span className={`mv-number font-mono tabular-nums font-bold text-[11px] leading-none ${numColor}`}>
               {dayNumber}
             </span>
@@ -487,62 +472,58 @@ export function MonthView({
                   e.stopPropagation();
                   onPlanCreate(date);
                 }}
-                className={`mv-quick-add ${isMobile ? "mv-quick-add--always" : ""}`}
+                className="mv-quick-add"
               >
                 <Plus size={10} aria-hidden="true" />
               </button>
             )}
           </div>
           {hov && <div className="mv-pointer-light" aria-hidden="true" />}
-          {td && (
-            <>
-              <div className="mv-today-bar" aria-hidden="true" />
-              <span className="mv-today-dot" aria-hidden="true" />
-            </>
-          )}
-          {!isMobile ? (
+          {!isMobile && (
             <div className="mv-chips flex flex-row gap-1" style={{ transform: `translateZ(${chipZ}px)` }}>
-            {chips}
-            {total > (chipLimit > 0 ? chipLimit : 0) && (
-              <span
-                ref={pillRef}
-                role="button"
-                tabIndex={0}
-                aria-label={`+${total - chipLimit} mais planos em ${dayNumber} de ${monthName}`}
-                onClick={(e) => openPopover(e, date)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openPopover(e, date);
-                  }
-                }}
-                className="mv-pill"
-              >
-                +{total - chipLimit} mais
-              </span>
-            )}
-          </div>
-        ) : (
-          <div className="mv-dots flex flex-row gap-1">
-            {dots}
-            {total > 3 && <span className="mv-dot-more text-[10px] font-bold text-[var(--text-faint)]">+{total - 3}</span>}
-          </div>
-        )}
-        {!isMobile && total > 0 && (
-          <div className="mv-workload" title={`${done} de ${total} concluídos`} aria-hidden="true">
-            <motion.div
-              className="mv-workload-fill"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: pct / 100 }}
-              transition={{ duration: reduced ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-        )}
+              {chips}
+              {total > (chipLimit > 0 ? chipLimit : 0) && (
+                <span
+                  ref={pillRef}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`+${total - chipLimit} mais planos em ${dayNumber} de ${monthName}`}
+                  onClick={(e) => openPopover(e, date)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openPopover(e, date);
+                    }
+                  }}
+                  className="mv-pill"
+                >
+                  +{total - chipLimit} mais
+                </span>
+              )}
+            </div>
+          )}
+          {isMobile && (
+            <div className="mv-dots flex flex-row gap-1">
+              {dots}
+              {total > 3 && <span className="mv-dot-more text-[10px] font-bold text-[var(--text-faint)]">+{total - 3}</span>}
+            </div>
+          )}
+          {!isMobile && total > 0 && (
+            <div className="mv-workload" title={`${done} de ${total} concluídos`} aria-hidden="true">
+              <motion.div
+                className="mv-workload-fill"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: pct / 100 }}
+                transition={{ duration: reduced ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
+              />
+            </div>
+          )}
         </div>
       </motion.button>
     );
   }
 
+  // ── Rows and Grid ─────────────────
 
   const rows: string[][] = [];
   for (let r = 0; r < rowCount; r++) rows.push(days.slice(r * 7, (r + 1) * 7));
@@ -555,42 +536,49 @@ export function MonthView({
       className="space-y-1"
       onKeyDown={handleGridKeyDown}
     >
+      {/* Weekday header row - aligned with day number alignment */}
+      <div className="grid grid-cols-7 gap-px bg-[var(--border-subtle)] rounded-xl overflow-hidden">
+        {SHORT_WEEKDAYS.map((name) => (
+          <div key={name} className="mv-weekday px-3 py-2 text-center">
+            {name}
+          </div>
+        ))}
+      </div>
+
       <AnimatePresence mode="popLayout">
         <motion.div
           key={monthKey}
           ref={gridRef}
-          className="mv-panel mv-rows-wrap mv-perspective rounded-xl"
-          style={{ height: containerHeight }}
+          className="mv-panel mv-rows-wrap mv-perspective rounded-xl overflow-hidden"
           variants={navVariantsMemo}
-          initial={firstMount ? "fade" : (navDirection ?? undefined)}
-          animate={firstMount ? "fade" : (navDirection ?? undefined)}
+          initial={false} // Skip initial animation for page transitions
+          animate={navDirection ? navDirection : "fade"}
           exit={navDirection ?? undefined}
-          transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] as const }}
+          transition={{ duration: reduced ? 0 : 0.35, ease: [0.16, 1, 0.3, 1] as const }}
         >
-          {/* Rótulos dos dias da semana (alinhados com os números, à esquerda). */}
-          <div className="grid grid-cols-7 gap-[1px]">
-            {SHORT_WEEKDAYS.map((name) => (
-              <div key={name} className="mv-weekday px-1.5 py-1.5" aria-hidden="true">
-                {name}
-              </div>
-            ))}
-          </div>
           {rows.map((week, r) => (
             <motion.div
               key={r}
               role="row"
               aria-label={`Semana ${r + 1} de ${rowCount}`}
-              className="grid grid-cols-7 gap-[1px] mv-preserve-3d"
+              className="grid grid-cols-7 gap-px"
               variants={rowVariants as unknown as Variants}
               initial="hidden"
               animate="visible"
-              style={{ minHeight: `${minRow}px` }}
+              style={{ minHeight: `${MIN_ROW_HEIGHT.desktop}px` }}
             >
               {week.map((date, c) => {
                 const dayPlans = (plansByDate.get(date) ?? []).slice().sort(
                   (a, b) => (a.title || "").localeCompare(b.title || ""),
                 );
-                return <MonthCell key={date} date={date} dayPlans={dayPlans} cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx} />;
+                return (
+                  <MonthCell
+                    key={date}
+                    date={date}
+                    dayPlans={dayPlans}
+                    cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx}
+                  />
+                );
               })}
             </motion.div>
           ))}
@@ -617,8 +605,8 @@ export function MonthView({
   );
 }
 
-// ── Popover de vidro com todos os planos do dia ("+N mais") ────────────
-// Componente de nível elevado para não ser recriado a cada render da grade.
+// ── Day Popover (glass style) ─────────────────
+
 function DayPopover({
   date,
   plans,
@@ -644,7 +632,7 @@ function DayPopover({
 }) {
   const total = plans.length;
   const done = plans.filter((p) => Boolean(p.completedAt)).length;
-  const label = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" }); // "quinta-feira, 15 de outubro"
+  const label = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" });
   const isTodayPop = date === today;
 
   return createPortal(
@@ -658,7 +646,7 @@ function DayPopover({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 10 }}
       transition={{ duration: reduced ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-      className="mv-popover fixed z-50 w-[270px] max-w-[90vw] rounded-xl border border-[var(--glass-border)] bg-white/[0.06] backdrop-blur-[20px] backdrop-saturate-[140%] shadow-[var(--glass-shadow)] text-left overflow-hidden"
+      className="mv-popover fixed z-50 w-[270px] max-w-[90vw] rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[20px] backdrop-saturate-[140%] shadow-[var(--glass-shadow)] text-left overflow-hidden"
     >
       <div className="flex flex-col gap-2 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -698,7 +686,7 @@ function DayPopover({
                   alwaysVisible
                 />
               </div>
-              ))
+            ))
           )}
         </div>
         <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
@@ -714,7 +702,7 @@ function DayPopover({
           </button>
         </div>
       </div>
-      </motion.div>,
-      document.body,
-    );
-  }
+    </motion.div>,
+    document.body,
+  );
+}

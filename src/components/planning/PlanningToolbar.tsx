@@ -27,7 +27,9 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
         <h1 className="text-xl font-semibold">Planejamento</h1>
       </div>
 
-      <div className="flex w-full flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+      {/* Header row: nav controls left, label center, view switcher right */}
+      <div className="flex w-full items-center justify-between gap-2">
+        {/* Left side: navigation controls */}
         <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
           <button
             type="button"
@@ -54,12 +56,15 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
             <ChevronRight size={18} />
           </button>
         </div>
-        <div className="min-w-0 flex-1 text-sm font-medium text-[var(--text-secondary)] text-center sm:text-left leading-tight">
+
+        {/* Center: month label - doesn't shrink, stays visible */}
+        <div className="text-sm font-medium text-[var(--text-secondary)] text-center sm:text-left leading-tight min-w-0 flex-1">
           {label}
         </div>
 
+        {/* Right side: view switcher */}
         <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
-          {VIEWS.map(({ id, label: labelName }) => (
+          {VIEWS.map(({ id, label: viewLabel }) => (
             <button
               key={id}
               type="button"
@@ -71,7 +76,7 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
               }`}
               aria-pressed={view === id}
             >
-              {labelName}
+              {viewLabel}
             </button>
           ))}
         </div>
