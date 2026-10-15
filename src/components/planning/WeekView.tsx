@@ -43,7 +43,7 @@ export function WeekView({
 
   return (
     <div
-      className="w-full grid grid-cols-1 sm:grid-cols-7 gap-3 sm:gap-4"
+      className="w-full grid grid-cols-1 lg:grid-cols-7 gap-3 lg:gap-4"
       style={{ minWidth: 0 }}
     >
       {days.map((day) => (
