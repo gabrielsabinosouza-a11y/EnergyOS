@@ -49,7 +49,11 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/Consistency_King/consistency_king1.png",
     "/achievements/Consistency_King/consistency_king2.png",
   ],
-  xp_olympian: ["/achievements/XP_Olympian/xp_olympian1.png"],
+  xp_olympian: [
+    "/achievements/XP_Olympian/xp_olympian1.png",
+    "/achievements/XP_Olympian/xp_olympian2.png",
+    "/achievements/XP_Olympian/xp_olympian3.png",
+  ],
   social_spark: [
     "/achievements/social_spark/social_spark1.png",
     "/achievements/social_spark/social_spark2.png",
