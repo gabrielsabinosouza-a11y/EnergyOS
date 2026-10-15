@@ -116,7 +116,6 @@ function DayColumn({
         )}
 
         {day.plans.map((plan) => {
-          const isCompleted = Boolean(plan.completedAt);
           return (
             <div key={plan.id} className="group relative">
               <TaskCard

@@ -228,8 +228,8 @@ describe("Recap activity window in America/Sao_Paulo", () => {
     insertedFocusIds = focus.rows.map((r) => Number(r.id));
 
     const xp = await pool.query(
-      `INSERT INTO xp_ledger (profile_id, source, xp_amount, created_at)
-       VALUES ($1,'focus_boundary',10,$2),($1,'focus_boundary',10,$3)
+      `INSERT INTO xp_ledger (profile_id, source, source_id, xp_amount, created_at)
+       VALUES ($1,'focus','boundary_sep',10,$2),($1,'focus','boundary_oct',10,$3)
        RETURNING id`,
       [PROFILE_ID, SEP_LAST_SESSION_UTC, OCT_FIRST_SESSION_UTC]
     );
@@ -302,10 +302,11 @@ describe("Recap activity window in America/Sao_Paulo", () => {
     const wrong = await pool.query<{ minutes: string }>(
       `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
        where profile_id=$1 and ended_at is not null
-         and started_at >= '2026-09-01'::timestamp and started_at < '2026-10-01'::timestamp`,
-      [PROFILE_ID]
+         and started_at >= '2026-09-01T00:00:00Z'::timestamptz and started_at < '2026-10-01T00:00:00Z'::timestamptz
+         and started_at = $2::timestamptz`,
+      [PROFILE_ID, SEP_LAST_SESSION_UTC]
     );
-    // 02:30 UTC de 01/10 fica de fora da janela UTC de setembro.
+    // 02:30 UTC de 01/10 (23:30 SP de 30/09) fica de fora da janela UTC de setembro.
     assert.equal(Number(wrong.rows[0].minutes), 0, "janela UTC-meia-noite perde o evento de 23:30 SP de 30/09");
   });
 });

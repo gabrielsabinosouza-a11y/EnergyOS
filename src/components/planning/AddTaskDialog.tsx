@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { api } from "@/lib/api-client";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -25,17 +25,22 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const loadCategories = useCallback(async () => {
-    try {
-      const res = await api.getCategories();
-      setCategories(res.categories || []);
-      if (categories.length === 0 && res.categories?.[0]) setCategoryId(res.categories[0].id);
-    } catch {
-      // sem categorias: o usuário ainda poderá enviar e a categoria padrão será resolvida no servidor
-    }
-  }, [categories.length]);
-
   const defaultCategory = categories[0] ?? null;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await api.getCategories();
+        if (!mounted) return;
+        setCategories(res.categories || []);
+        if (res.categories?.[0]) setCategoryId(res.categories[0].id);
+      } catch {
+        // sem categorias: o usuário ainda poderá enviar e a categoria padrão será resolvida no servidor
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

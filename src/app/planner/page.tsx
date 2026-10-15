@@ -171,7 +171,7 @@ function toItem(plan: WeeklyPlan, cat: Category | undefined): WeeklyPlanItem {
     category: cat ?? ({ id: 0, userId: null, name: "", color: "#94a3b8", icon: null, isCustom: false, createdAt: "" } as Category),
     iconType: null,
     iconValue: null,
-    color: plan.color ?? cat?.color ?? null,
+    color: cat?.color ?? null,
     note: null,
     completedAt: plan.completedAt ?? null,
     skipped: false,
