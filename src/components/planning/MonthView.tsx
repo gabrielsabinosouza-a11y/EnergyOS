@@ -39,10 +39,14 @@ interface MonthViewProps {
 
 const MIN_ROW_HEIGHT = { desktop: 96, tablet: 70, mobile: 52 };
 const CHIP_PITCH = 18;
-const CELL_OVERHEAD = 32; // padding + número + barra de carga
+const CELL_OVERHEAD = 44; // número + padding + gaps + barra de carga
+const ROW_GAP = 8; // space-y-1 entre semanas
 const HEADER_OVERHEAD = 82; // painel + toolbar + rótulos de dias da semana
+const DEFAULT_HEADER_HEIGHT = 64; // estimativa até a toolbar ser medida
 const POPOVER_WIDTH = 270;
 const POPBOTTOM_PAD = 320;
+
+const cellEase = [0.16, 1, 0.3, 1] as const;
 
 export function MonthView({
   monthRange,
@@ -77,7 +81,7 @@ export function MonthView({
     const tail = (-out.length) % 7;
     for (let i = 1; i <= tail; i++) out.push(addDays(monthRange.end, i));
     return out;
-  }, [year, month, total, monthRange.end]);
+  }, [year, month, total, monthRange.end, lead]);
   const rowCount = days.length / 7;
 
   const plansByDate = new Map<string, WeeklyPlanItem[]>();
@@ -99,7 +103,6 @@ export function MonthView({
   const [popover, setPopover] = useState<{ date: string; left: number; top: number } | null>(null);
   const popoverEl = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
-  const [adjacentDir, setAdjacentDir] = useState<"next" | "prev">("next");
 
   const selectedIdx = days.indexOf(selectedDate);
   const visiblePopover = popover && isCurrentMonth(popover.date) ? popover : null;
@@ -108,7 +111,8 @@ export function MonthView({
   const isTablet = sizeMode === "tablet";
   const minRow = isMobile ? MIN_ROW_HEIGHT.mobile : isTablet ? MIN_ROW_HEIGHT.tablet : MIN_ROW_HEIGHT.desktop;
   const chipCap = isMobile ? 0 : isTablet ? 2 : 3;
-  const containerHeight = headerHeight ? `calc(100dvh - ${headerHeight}px - ${HEADER_OVERHEAD}px)` : "100vh";
+  const effectiveHeaderHeight = headerHeight ?? DEFAULT_HEADER_HEIGHT;
+  const containerHeight = `calc(100dvh - ${effectiveHeaderHeight}px - ${HEADER_OVERHEAD}px)`;
 
   // Media queries para ajustar densidade da grade.
   useEffect(() => {
@@ -135,7 +139,8 @@ export function MonthView({
       const entry = entries[0];
       const box = entry.borderBoxSize?.[0];
       const h = box ? box.blockSize : entry.contentRect.height;
-      const cellH = Math.max(1, h / rowCount);
+      // Todas as semanas têm a mesma altura (flex-1); desconta as gutters entre linhas.
+      const cellH = Math.max(1, (h - ROW_GAP * Math.max(0, rowCount - 1)) / rowCount);
       const avail = cellH - CELL_OVERHEAD;
       let n = Math.floor(avail / CHIP_PITCH);
       if (chipCap === 0) n = 0;
@@ -206,13 +211,12 @@ export function MonthView({
     (e: React.MouseEvent, date: string, cur: boolean) => {
       e.stopPropagation();
       if (!cur) {
-        setAdjacentDir(date < monthRange.start ? "prev" : "next");
         onMonthNavigate?.(date);
         return;
       }
       onDateSelect(date);
     },
-    [days, onDateSelect, onMonthNavigate, monthRange.start],
+    [onDateSelect, onMonthNavigate],
   );
 
   const openPopover = useCallback(
@@ -255,45 +259,42 @@ export function MonthView({
 
   const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" }); // "outubro de 2026"
 
-  const baseTransition: { duration: number; ease?: readonly [number, number, number, number] } = reduced
-    ? { duration: 0 }
-    : { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const };
-  const cellEase = [0.16, 1, 0.3, 1] as const;
-
-  const navVariantsMemo: Variants = useMemo(
-    () => ({
-      next: {
-        hidden: { rotateY: -14, translateX: -24, opacity: 0, transition: baseTransition },
-        visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
-      },
-      prev: {
-        hidden: { rotateY: 14, translateX: 24, opacity: 0, transition: baseTransition },
-        visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
-      },
-      zoom: {
-        hidden: { scale: 0.93, opacity: 0, transition: baseTransition },
-        visible: { scale: 1, opacity: 1, transition: baseTransition },
-      },
-    }),
-    [baseTransition],
-  );
-
+  // Duração/estágio só na entrada (primeiro montamento ou troca de mês).
+  // Total do cascade: (linhas-1)·stagger + (colunas-1)·stagger + duração < 500 ms.
   const cellDuration = reduced ? 0 : 0.28;
-  const rowStagger = firstMount && !reduced ? 0.025 : 0;
   const cellStagger = firstMount && !reduced ? 0.012 : 0;
 
-  const rowVariants: Variants = useMemo(
-    () => ({
-      hidden: { opacity: 0 },
-      visible: {
-        opacity: 1,
-        transition: { staggerChildren: rowStagger, duration: cellDuration, ease: cellEase },
-      },
-    }),
-    [rowStagger, cellDuration],
+  const navVariantsMemo: Variants = useMemo(
+    () => {
+      const baseTransition: { duration: number; ease?: readonly [number, number, number, number] } = reduced
+        ? { duration: 0 }
+        : { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const };
+      return {
+        next: {
+          hidden: { rotateY: -14, translateX: -24, opacity: 0, transition: baseTransition },
+          visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
+        },
+        prev: {
+          hidden: { rotateY: 14, translateX: 24, opacity: 0, transition: baseTransition },
+          visible: { rotateY: 0, translateX: 0, opacity: 1, transition: baseTransition },
+        },
+        zoom: {
+          hidden: { scale: 0.93, opacity: 0, transition: baseTransition },
+          visible: { scale: 1, opacity: 1, transition: baseTransition },
+        },
+        // Entrada suave apenas no primeiro montamento do mês.
+        fade: {
+          hidden: { opacity: 0, y: 6, transition: baseTransition },
+          visible: { opacity: 1, y: 0, transition: baseTransition },
+        },
+      };
+    },
+    [reduced],
   );
 
-  const cellVariants: Variants = useMemo(
+  // Variante por semana: cada linha entra com um pequeno delay, criando o cascade
+  // linha → coluna dentro da grade (sem animar layout, apenas transform/opacity).
+  const rowVariants: Variants = useMemo(
     () => ({
       hidden: { opacity: 0 },
       visible: {
@@ -304,16 +305,26 @@ export function MonthView({
     [cellStagger, cellDuration],
   );
 
+  const cellVariants: Variants = useMemo(
+    () => ({
+      hidden: { opacity: 0, y: 4 },
+      visible: {
+        opacity: 1,
+        y: 0,
+        transition: { duration: cellDuration, ease: cellEase },
+      },
+    }),
+    [cellDuration],
+  );
+
   // ── Célula do dia ──────────────────────────────────────────────────────
 
   function MonthCell({
     date,
-    index,
     dayPlans,
     cellFocused,
   }: {
     date: string;
-    index: number;
     dayPlans: WeeklyPlanItem[];
     cellFocused: boolean;
   }) {
@@ -355,17 +366,17 @@ export function MonthView({
           setTiltY((x - 0.5) * 8);
         });
       },
-      [reduced],
+      [],
     );
 
     const handlePointerEnter = useCallback(() => {
       if (!reduced) setHoverDate(date);
-    }, [reduced, date]);
+    }, [date]);
     const handlePointerLeave = useCallback(() => {
       setHoverDate(null);
       setTiltX(0);
       setTiltY(0);
-    }, [date]);
+    }, []);
 
     const monthName = formatLocalDate(date, { month: "long" });
     const ariaDone =
@@ -445,9 +456,9 @@ export function MonthView({
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
         variants={cellVariants}
-        initial={false}
+        initial="hidden"
         animate="visible"
-        className={`${baseClasses} ${modClasses}`}
+        className={`${baseClasses} ${modClasses} mv-preserve-3d`}
         onClick={(e) => handleCellClick(e, date, cur)}
       >
         <div
@@ -476,7 +487,7 @@ export function MonthView({
                   e.stopPropagation();
                   onPlanCreate(date);
                 }}
-                className="mv-quick-add"
+                className={`mv-quick-add ${isMobile ? "mv-quick-add--always" : ""}`}
               >
                 <Plus size={10} aria-hidden="true" />
               </button>
@@ -532,96 +543,6 @@ export function MonthView({
     );
   }
 
-  // ── Popover de vidro com todos os planos do dia ("+N mais") ────────────
-
-  function DayPopover({
-    date,
-    plans,
-    onClose,
-    onDaySelect,
-  }: {
-    date: string;
-    plans: WeeklyPlanItem[];
-    onClose: () => void;
-    onDaySelect: (date: string) => void;
-  }) {
-    const total = plans.length;
-    const done = plans.filter((p) => Boolean(p.completedAt)).length;
-    const dayNumber = parseInt(date.slice(8, 10), 10);
-    const label = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" }); // "quinta-feira, 15 de outubro"
-    const isTodayPop = date === today;
-
-    return createPortal(
-      <motion.div
-        ref={popoverEl}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Planos de ${label}`}
-        style={{ left: popover?.left, top: popover?.top }}
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ duration: reduced ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-        className="mv-popover fixed z-50 w-[270px] max-w-[90vw] rounded-xl border border-[var(--glass-border)] bg-white/[0.06] backdrop-blur-[20px] backdrop-saturate-[140%] shadow-[var(--glass-shadow)] text-left overflow-hidden"
-      >
-        <div className="flex flex-col gap-2 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-[var(--text)] leading-none">
-                {label}{isTodayPop ? " · hoje" : ""}
-              </p>
-              <p className="text-[10px] text-[var(--text-faint)] leading-none">
-                {total} plano{total !== 1 ? "s" : ""} · {done} concluído{done !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Fechar"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-white/[0.10] hover:text-[var(--text)] transition-colors"
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          </div>
-          <div className="max-h-[52vh] overflow-y-auto pr-1 space-y-1">
-            {plans.length === 0 ? (
-              <p className="text-[11px] text-[var(--text-faint)] px-2">Sem planos neste dia</p>
-            ) : (
-              plans.map((p) => (
-                <div key={p.id} className="group relative">
-                  <TaskCard
-                    plan={p}
-                    onToggle={(completed) => {
-                      onToggleCompleted?.(p.id, completed);
-                      closePopover();
-                    }}
-                    onDelete={() => {
-                      onDelete?.(p.id);
-                      closePopover();
-                    }}
-                    alwaysVisible
-                  />
-                </div>
-              ))
-            )}
-          </div>
-          <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onDaySelect(date);
-              }}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[var(--accent-bg)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] shadow-[0_0_16px_rgba(113,212,255,.25)] hover:bg-[var(--accent-bg)] hover:shadow-[0_0_24px_rgba(113,212,255,.35)] transition-[background_color,box-shadow] duration-150"
-            >
-              Abrir dia <ArrowRight size={14} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        </motion.div>,
-        document.body,
-      );
-  }
 
   const rows: string[][] = [];
   for (let r = 0; r < rowCount; r++) rows.push(days.slice(r * 7, (r + 1) * 7));
@@ -639,15 +560,11 @@ export function MonthView({
           key={monthKey}
           ref={gridRef}
           className="mv-panel mv-rows-wrap mv-perspective rounded-xl"
-          style={{ height: containerHeight, minHeight: `${Math.max(1, minRow * rowCount + 32)}px` }}
+          style={{ height: containerHeight }}
           variants={navVariantsMemo}
-          initial={firstMount ? false : "hidden"}
-          animate={
-            firstMount
-              ? { opacity: 1, transition: { duration: reduced ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] as const } }
-              : (navDirection ?? adjacentDir)
-          }
-          exit={navDirection ?? adjacentDir}
+          initial={firstMount ? "fade" : (navDirection ?? undefined)}
+          animate={firstMount ? "fade" : (navDirection ?? undefined)}
+          exit={navDirection ?? undefined}
           transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] as const }}
         >
           {/* Rótulos dos dias da semana (alinhados com os números, à esquerda). */}
@@ -661,39 +578,143 @@ export function MonthView({
           {rows.map((week, r) => (
             <motion.div
               key={r}
+              role="row"
+              aria-label={`Semana ${r + 1} de ${rowCount}`}
               className="grid grid-cols-7 gap-[1px] mv-preserve-3d"
-              variants={rowVariants}
-              initial={false}
+              variants={rowVariants as unknown as Variants}
+              initial="hidden"
               animate="visible"
+              style={{ minHeight: `${minRow}px` }}
             >
               {week.map((date, c) => {
                 const dayPlans = (plansByDate.get(date) ?? []).slice().sort(
                   (a, b) => (a.title || "").localeCompare(b.title || ""),
                 );
-                return (
-                  <MonthCell
-                    date={date}
-                    index={r * 7 + c}
-                    dayPlans={dayPlans}
-                    cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx}
-                  />
-                );
+                return <MonthCell key={date} date={date} dayPlans={dayPlans} cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx} />;
               })}
             </motion.div>
           ))}
         </motion.div>
       </AnimatePresence>
 
-      {popover && (
+      {visiblePopover && (
         <DayPopover
-          date={popover.date}
-          plans={(plansByDate.get(popover.date) ?? []).slice().sort(
+          date={visiblePopover.date}
+          plans={(plansByDate.get(visiblePopover.date) ?? []).slice().sort(
             (a, b) => (a.title || "").localeCompare(b.title || ""),
           )}
+          position={{ left: visiblePopover.left, top: visiblePopover.top }}
           onClose={closePopover}
           onDaySelect={onDateSelect}
+          onToggleCompleted={onToggleCompleted}
+          onDelete={onDelete}
+          today={today}
+          reduced={Boolean(reduced)}
+          containerRef={popoverEl}
         />
       )}
     </div>
   );
 }
+
+// ── Popover de vidro com todos os planos do dia ("+N mais") ────────────
+// Componente de nível elevado para não ser recriado a cada render da grade.
+function DayPopover({
+  date,
+  plans,
+  position,
+  onClose,
+  onDaySelect,
+  onToggleCompleted,
+  onDelete,
+  today,
+  reduced,
+  containerRef,
+}: {
+  date: string;
+  plans: WeeklyPlanItem[];
+  position: { left: number; top: number };
+  onClose: () => void;
+  onDaySelect: (date: string) => void;
+  onToggleCompleted?: (id: number, completed: boolean) => void;
+  onDelete?: (id: number) => void;
+  today: string;
+  reduced: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const total = plans.length;
+  const done = plans.filter((p) => Boolean(p.completedAt)).length;
+  const label = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" }); // "quinta-feira, 15 de outubro"
+  const isTodayPop = date === today;
+
+  return createPortal(
+    <motion.div
+      ref={containerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Planos de ${label}`}
+      style={{ left: position.left, top: position.top }}
+      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+      transition={{ duration: reduced ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
+      className="mv-popover fixed z-50 w-[270px] max-w-[90vw] rounded-xl border border-[var(--glass-border)] bg-white/[0.06] backdrop-blur-[20px] backdrop-saturate-[140%] shadow-[var(--glass-shadow)] text-left overflow-hidden"
+    >
+      <div className="flex flex-col gap-2 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-[var(--text)] leading-none">
+              {label}{isTodayPop ? " · hoje" : ""}
+            </p>
+            <p className="text-[10px] text-[var(--text-faint)] leading-none">
+              {total} plano{total !== 1 ? "s" : ""} · {done} concluído{done !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-white/[0.10] hover:text-[var(--text)] transition-colors"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="max-h-[52vh] overflow-y-auto pr-1 space-y-1">
+          {plans.length === 0 ? (
+            <p className="text-[11px] text-[var(--text-faint)] px-2">Sem planos neste dia</p>
+          ) : (
+            plans.map((p) => (
+              <div key={p.id} className="group relative">
+                <TaskCard
+                  plan={p}
+                  onToggle={(completed) => {
+                    onToggleCompleted?.(p.id, completed);
+                    onClose();
+                  }}
+                  onDelete={() => {
+                    onDelete?.(p.id);
+                    onClose();
+                  }}
+                  alwaysVisible
+                />
+              </div>
+              ))
+          )}
+        </div>
+        <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onDaySelect(date);
+            }}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[var(--accent-bg)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] shadow-[0_0_16px_rgba(113,212,255,.25)] hover:bg-[var(--accent-bg)] hover:shadow-[0_0_24px_rgba(113,212,255,.35)] transition-[background_color,box-shadow] duration-150"
+          >
+            Abrir dia <ArrowRight size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      </motion.div>,
+      document.body,
+    );
+  }
