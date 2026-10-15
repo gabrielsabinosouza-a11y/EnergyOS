@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { WeeklyPlanItem, Category } from "@/types";
+import type { WeeklyPlan, WeeklyPlanItem, Category } from "@/types";
 import { api } from "@/lib/api-client";
 import { addDays, monthRange, todayIso, weekRange } from "@/lib/planning/dates";
 import { AppShell } from "@/components/app-shell";
@@ -61,15 +61,6 @@ export default function PlanningPage() {
   };
   const handleToday = () => setSelectedDate(todayIso());
 
-  const createTask = useCallback(
-    async (planDate: string, title: string, categoryId: number): Promise<void> => {
-      const res = await api.createWeeklyPlan({ planDate, title, categoryId });
-      const cat = categories.find((c) => c.id === categoryId) || categories[0];
-      setTasks((prev) => [...prev, toItem(res.plan, cat)]);
-    },
-    [categories],
-  );
-
   const togglePlan = useCallback(async (id: number, completed: boolean): Promise<void> => {
     const plan = tasks.find((p) => p.id === id);
     if (plan && plan.seriesId !== null) {
@@ -121,7 +112,6 @@ export default function PlanningPage() {
                 setSelectedDate(date);
                 setView("day");
               }}
-              onPlanCreate={openAdd}
             />
           )}
 
@@ -171,7 +161,7 @@ function addMonthsWrap(iso: string, n: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function toItem(plan: any, cat: Category | undefined): WeeklyPlanItem {
+function toItem(plan: WeeklyPlan, cat: Category | undefined): WeeklyPlanItem {
   return {
     id: plan.id,
     seriesId: null,

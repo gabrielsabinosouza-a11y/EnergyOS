@@ -1,22 +1,19 @@
 "use client";
 
-import type { WeeklyPlanItem, Category } from "@/types";
-import { addDays, daysInMonth, isoKey, parseIsoKey, todayIso, weekStart } from "@/lib/planning/dates";
+import type { WeeklyPlanItem } from "@/types";
+import { addDays, daysInMonth, isoKey, todayIso } from "@/lib/planning/dates";
 import { SHORT_WEEKDAYS } from "@/lib/planning/dates";
-import { TaskCard } from "@/components/planning/TaskCard";
 
 interface MonthViewProps {
   monthRange: { start: string; end: string };
   plans: WeeklyPlanItem[];
   selectedDate: string;
   onDateSelect: (date: string) => void;
-  onPlanCreate: (date: string) => void;
 }
 
 const ROWS = 6;
-const CELL_ROW = `minmax(clamp(88px, 13vh, 110px), auto)`;
 
-export function MonthView({ monthRange, plans, selectedDate, onDateSelect, onPlanCreate }: MonthViewProps) {
+export function MonthView({ monthRange, plans, selectedDate, onDateSelect }: MonthViewProps) {
   const today = todayIso();
   const year = parseInt(monthRange.start.slice(0, 4), 10);
   const month = parseInt(monthRange.start.slice(5, 7), 10);

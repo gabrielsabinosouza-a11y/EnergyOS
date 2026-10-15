@@ -54,7 +54,6 @@ export function DayView({ date, plans, onToggleCompleted, onDelete, onPlanCreate
       ) : (
         <div className="flex flex-col gap-2">
           {sorted.map((plan) => {
-            const isCompleted = Boolean(plan.completedAt);
             return (
               <div key={plan.id} className="group relative">
                 <TaskCard

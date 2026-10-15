@@ -16,7 +16,6 @@ interface TaskCardProps {
 export function TaskCard({ plan, onToggle, onDelete, alwaysShowActions = false, compact = false }: TaskCardProps) {
   const isCompleted = Boolean(plan.completedAt);
   const color = plan.color || plan.category.color;
-  const height = compact ? "h-7" : "h-9";
   const size = compact ? 14 : 16;
 
   return (

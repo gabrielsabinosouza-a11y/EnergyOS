@@ -251,13 +251,15 @@ describe("Recap activity window in America/Sao_Paulo", () => {
     const sep = await pool.query<{ minutes: string }>(
       `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
        where profile_id=$1 and ended_at is not null
-         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
-      [PROFILE_ID, sepStart, sepEnd]
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz
+         and started_at = $4::timestamptz`,
+      [PROFILE_ID, sepStart, sepEnd, SEP_LAST_SESSION_UTC]
     );
     const sepXp = await pool.query<{ xp: string }>(
       `select coalesce(sum(xp_amount),0) as xp from xp_ledger
-       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz`,
-      [PROFILE_ID, sepStart, sepEnd]
+       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz
+         and created_at = $4::timestamptz`,
+      [PROFILE_ID, sepStart, sepEnd, SEP_LAST_SESSION_UTC]
     );
     // A sessão de 30/09 23:30 SP (UTC 02:30 de 01/10) está dentro da janela SP de setembro.
     assert.equal(Number(sep.rows[0].minutes), 30, "30 min de 30/09 devem contar em setembro");
@@ -267,8 +269,9 @@ describe("Recap activity window in America/Sao_Paulo", () => {
     const oct = await pool.query<{ minutes: string }>(
       `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
        where profile_id=$1 and ended_at is not null
-         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
-      [PROFILE_ID, octStart, spMonthEndIso("2026-10-01")]
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz
+         and started_at = $4::timestamptz`,
+      [PROFILE_ID, octStart, spMonthEndIso("2026-10-01"), SEP_LAST_SESSION_UTC]
     );
     assert.equal(Number(oct.rows[0].minutes), 0, "02:30 UTC de 01/10 não pertence à janela SP de outubro");
   });
@@ -280,13 +283,15 @@ describe("Recap activity window in America/Sao_Paulo", () => {
     const oct = await pool.query<{ minutes: string }>(
       `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
        where profile_id=$1 and ended_at is not null
-         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
-      [PROFILE_ID, octStart, octEnd]
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz
+         and started_at = $4::timestamptz`,
+      [PROFILE_ID, octStart, octEnd, OCT_FIRST_SESSION_UTC]
     );
     const octXp = await pool.query<{ xp: string }>(
       `select coalesce(sum(xp_amount),0) as xp from xp_ledger
-       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz`,
-      [PROFILE_ID, octStart, octEnd]
+       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz
+         and created_at = $4::timestamptz`,
+      [PROFILE_ID, octStart, octEnd, OCT_FIRST_SESSION_UTC]
     );
     assert.equal(Number(oct.rows[0].minutes), 30, "30 min de 01/10 00:10 SP devem contar em outubro");
     assert.equal(Number(octXp.rows[0].xp), 10, "10 xp de 01/10 00:10 SP devem contar em outubro");
@@ -311,6 +316,18 @@ describe("Recap generation idempotency", () => {
 
   it("gerar o mesmo mês duas vezes produz um único registro com totais idênticos", async () => {
     const month = "2026-09-01";
+
+    // Parte de um estado limpo para o mês de teste (evita conflitos no histórico
+    // de gerações anteriores desse mesmo perfil/mês).
+    await pool.query(
+      "DELETE FROM monthly_recap_history WHERE profile_id = $1 AND recap_month = $2::date",
+      [PROFILE_ID, month]
+    );
+    await pool.query(
+      "UPDATE monthly_recaps SET generation_number = 1 WHERE profile_id = $1 AND recap_month = $2::date",
+      [PROFILE_ID, month]
+    );
+
     const first = await generateRecap(PROFILE_ID, month);
     const second = await generateRecap(PROFILE_ID, month);
 
@@ -320,5 +337,12 @@ describe("Recap generation idempotency", () => {
     assert.equal(second.totalFocusMinutes, first.totalFocusMinutes, "totais de foco idênticos");
     assert.equal(second.longestStreak, first.longestStreak, "streak idêntico");
     assert.equal(second.status, "final", "setembro encerrado deve ficar 'final'");
+
+    // Exatamente uma linha para esse perfil/mês.
+    const count = await pool.query<{ c: string }>(
+      "SELECT count(*)::text as c FROM monthly_recaps WHERE profile_id = $1 AND recap_month = $2::date",
+      [PROFILE_ID, month]
+    );
+    assert.equal(Number(count.rows[0].c), 1, "não deve duplicar o recap");
   });
 });
