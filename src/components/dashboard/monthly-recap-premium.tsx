@@ -24,6 +24,7 @@ export interface RecapData {
   gardenCount?: number;
   totalXp: number;
   hasBeenShared?: boolean;
+  status?: "parcial" | "final";
 }
 
 interface MonthlyRecapPremiumProps {
@@ -34,6 +35,8 @@ interface MonthlyRecapPremiumProps {
   onCoinsAwarded?: (amount: number, newBalance: number) => void;
   /** Recap do mês corrente (ainda em andamento) — dados atualizados ao vivo. */
   isLive?: boolean;
+  /** 'parcial' enquanto o mês está em andamento, 'final' após o fechamento. */
+  status?: "parcial" | "final";
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1014,9 +1017,13 @@ export function MonthlyRecapPremium({
           <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
             Ao vivo
           </span>
+        ) : recap.status === "final" ? (
+          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[#4ade80]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">
+            Final
+          </span>
         ) : (
-          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
-            Recap
+          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[#fbbf24]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#fbbf24]">
+            Parcial
           </span>
         )}
       </motion.button>

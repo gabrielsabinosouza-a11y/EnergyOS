@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import pool from "../db";
+import { generateRecap, spMonthStartIso, spMonthEndIso } from "./recap";
 
 // Helper to format month start
 function getMonthStart(year: number, month: number): string {
@@ -183,5 +184,143 @@ describe("Recap Generation Idempotency", () => {
       
       console.log(`History entries: ${history.rows.length}`);
     }
+  });
+});
+
+// ── Fuso America/Sao_Paulo: limites de mês ─────────────────────────────────
+describe("Recap month boundaries (America/Sao_Paulo)", () => {
+  it("meia-noite SP do primeiro dia do mês é 03:00 UTC", () => {
+    assert.equal(spMonthStartIso("2026-09-01"), "2026-09-01T03:00:00.000Z");
+    assert.equal(spMonthStartIso("2026-10-01"), "2026-10-01T03:00:00.000Z");
+  });
+
+  it("fim exclusivo do mês é meia-noite SP do primeiro dia do mês seguinte", () => {
+    assert.equal(spMonthEndIso("2026-09-01"), "2026-10-01T03:00:00.000Z");
+    assert.equal(spMonthEndIso("2026-10-01"), "2026-11-01T03:00:00.000Z");
+  });
+
+  it("dezembro rola para janeiro (fuso mantido)", () => {
+    assert.equal(spMonthStartIso("2026-12-01"), "2026-12-01T03:00:00.000Z");
+    assert.equal(spMonthEndIso("2026-12-01"), "2027-01-01T03:00:00.000Z");
+  });
+});
+
+// ── Filtro de atividade por janela SP: último dia do mês e primeiro do próximo ───
+describe("Recap activity window in America/Sao_Paulo", () => {
+  const PROFILE_ID = "0e719da0-f486-469c-b27f-9b3b5612fb50";
+
+  // SP Sep 30 23:30 = UTC Oct 1 02:30  (dentro de setembro SP, FORA de setembro UTC-meia-noite)
+  const SEP_LAST_SESSION_UTC = "2026-10-01T02:30:00.000Z";
+  // SP Oct 1 00:10  = UTC Oct 1 03:10  (dentro de outubro SP)
+  const OCT_FIRST_SESSION_UTC = "2026-10-01T03:10:00.000Z";
+
+  let insertedFocusIds: number[] = [];
+  let insertedXpIds: number[] = [];
+
+  beforeEach(async () => {
+    const focus = await pool.query(
+      `INSERT INTO focus_sessions (profile_id, started_at, ended_at, duration_minutes, target_duration_minutes)
+       VALUES ($1,$2,$3,30,25),($1,$4,$5,30,25)
+       RETURNING id`,
+      [
+        PROFILE_ID, SEP_LAST_SESSION_UTC, SEP_LAST_SESSION_UTC,
+        PROFILE_ID, OCT_FIRST_SESSION_UTC, OCT_FIRST_SESSION_UTC,
+      ]
+    );
+    insertedFocusIds = focus.rows.map((r) => Number(r.id));
+
+    const xp = await pool.query(
+      `INSERT INTO xp_ledger (profile_id, source, xp_amount, created_at)
+       VALUES ($1,'focus_boundary',10,$2),($1,'focus_boundary',10,$3)
+       RETURNING id`,
+      [PROFILE_ID, SEP_LAST_SESSION_UTC, OCT_FIRST_SESSION_UTC]
+    );
+    insertedXpIds = xp.rows.map((r) => Number(r.id));
+  });
+
+  afterEach(async () => {
+    for (const id of insertedFocusIds) await pool.query("DELETE FROM focus_sessions WHERE id = $1", [id]);
+    for (const id of insertedXpIds) await pool.query("DELETE FROM xp_ledger WHERE id = $1", [id]);
+    insertedFocusIds = [];
+    insertedXpIds = [];
+  });
+
+  it("evento às 23:30 SP de 30/09 conta para setembro (janela SP)", async () => {
+    const sepStart = spMonthStartIso("2026-09-01");
+    const sepEnd = spMonthEndIso("2026-09-01");
+    const octStart = spMonthStartIso("2026-10-01");
+
+    const sep = await pool.query<{ minutes: string }>(
+      `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
+       where profile_id=$1 and ended_at is not null
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
+      [PROFILE_ID, sepStart, sepEnd]
+    );
+    const sepXp = await pool.query<{ xp: string }>(
+      `select coalesce(sum(xp_amount),0) as xp from xp_ledger
+       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz`,
+      [PROFILE_ID, sepStart, sepEnd]
+    );
+    // A sessão de 30/09 23:30 SP (UTC 02:30 de 01/10) está dentro da janela SP de setembro.
+    assert.equal(Number(sep.rows[0].minutes), 30, "30 min de 30/09 devem contar em setembro");
+    assert.equal(Number(sepXp.rows[0].xp), 10, "10 xp de 30/09 devem contar em setembro");
+
+    // A janela de outubro começa em 01/10 03:00 UTC, então o evento de 02:30 UTC NÃO é outubro.
+    const oct = await pool.query<{ minutes: string }>(
+      `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
+       where profile_id=$1 and ended_at is not null
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
+      [PROFILE_ID, octStart, spMonthEndIso("2026-10-01")]
+    );
+    assert.equal(Number(oct.rows[0].minutes), 0, "02:30 UTC de 01/10 não pertence à janela SP de outubro");
+  });
+
+  it("evento às 00:10 SP de 01/10 conta para outubro (janela SP)", async () => {
+    const octStart = spMonthStartIso("2026-10-01");
+    const octEnd = spMonthEndIso("2026-10-01");
+
+    const oct = await pool.query<{ minutes: string }>(
+      `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
+       where profile_id=$1 and ended_at is not null
+         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
+      [PROFILE_ID, octStart, octEnd]
+    );
+    const octXp = await pool.query<{ xp: string }>(
+      `select coalesce(sum(xp_amount),0) as xp from xp_ledger
+       where profile_id=$1 and created_at >= $2::timestamptz and created_at < $3::timestamptz`,
+      [PROFILE_ID, octStart, octEnd]
+    );
+    assert.equal(Number(oct.rows[0].minutes), 30, "30 min de 01/10 00:10 SP devem contar em outubro");
+    assert.equal(Number(octXp.rows[0].xp), 10, "10 xp de 01/10 00:10 SP devem contar em outubro");
+  });
+
+  it("janela UTC-meia-noite perde o evento de 23:30 SP de 30/09 (o bug do fuso)", async () => {
+    // Janela "errada" usando meia-noite UTC: [01/09 00:00 UTC, 01/10 00:00 UTC)
+    const wrong = await pool.query<{ minutes: string }>(
+      `select coalesce(sum(duration_minutes),0) as minutes from focus_sessions
+       where profile_id=$1 and ended_at is not null
+         and started_at >= '2026-09-01'::timestamp and started_at < '2026-10-01'::timestamp`,
+      [PROFILE_ID]
+    );
+    // 02:30 UTC de 01/10 fica de fora da janela UTC de setembro.
+    assert.equal(Number(wrong.rows[0].minutes), 0, "janela UTC-meia-noite perde o evento de 23:30 SP de 30/09");
+  });
+});
+
+// ── Geração idempotente: mesma linha, totais idênticos ───────────────────────
+describe("Recap generation idempotency", () => {
+  const PROFILE_ID = "0e719da0-f486-469c-b27f-9b3b5612fb50";
+
+  it("gerar o mesmo mês duas vezes produz um único registro com totais idênticos", async () => {
+    const month = "2026-09-01";
+    const first = await generateRecap(PROFILE_ID, month);
+    const second = await generateRecap(PROFILE_ID, month);
+
+    // Mesmo registro (upsert), não duplicou.
+    assert.equal(second.id, first.id, "deve atualizar o mesmo registro, não criar outro");
+    assert.equal(second.totalXp, first.totalXp, "totais de XP idênticos (idempotente)");
+    assert.equal(second.totalFocusMinutes, first.totalFocusMinutes, "totais de foco idênticos");
+    assert.equal(second.longestStreak, first.longestStreak, "streak idêntico");
+    assert.equal(second.status, "final", "setembro encerrado deve ficar 'final'");
   });
 });

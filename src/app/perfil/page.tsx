@@ -42,7 +42,6 @@ import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premiu
 // Keep the old import for fallback if needed
 import { MonthlyRecap } from "@/components/dashboard/monthly-recap";
 import type { MonthlyRecap as MonthlyRecapType } from "@/types";
-import { ENERGYOS_LAUNCH_MONTH } from "@/types";
 import { formatStat } from "@/lib/format";
 import { todayIso } from "@/lib/db/dates";
 
@@ -203,6 +202,17 @@ function AchievementModal({
 /*  Page                                                              */
 /* ------------------------------------------------------------------ */
 
+// Nomes dos meses em pt-BR (reutiliza a mesma convenção do restante do app).
+const MONTH_NAMES_PT = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+];
+
+function labelMes(anoMes: string): string {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  return `${MONTH_NAMES_PT[mes - 1]} de ${ano}`;
+}
+
 export default function PerfilPage() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [editingName, setEditingName] = useState(false);
@@ -232,6 +242,7 @@ export default function PerfilPage() {
   const [recaps, setRecaps] = useState<MonthlyRecapType[]>([]);
   const [generatingRecap, setGeneratingRecap] = useState(false);
   const [recapError, setRecapError] = useState("");
+  const [recapSuccess, setRecapSuccess] = useState("");
   const [envStatus, setEnvStatus] = useState<{ groups: { label: string; vars: { key: string; set: boolean; value: string | null }[] }[]; allSet: boolean } | null>(null);
   const [showEnv, setShowEnv] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -452,16 +463,14 @@ export default function PerfilPage() {
   }
 
   async function handleGenerateRecap() {
-    const now = new Date();
-    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const launch = new Date(`${ENERGYOS_LAUNCH_MONTH}T00:00:00`);
-    const target = prevMonth < launch
-      ? new Date(now.getFullYear(), now.getMonth(), 1)
-      : prevMonth;
-    const year = target.getFullYear();
-    const month = target.getMonth() + 1;
+    // Mês CORRENTE em America/Sao_Paulo (nunca o mês anterior, nunca UTC).
+    const hoje = todayIso();
+    const year = Number(hoje.slice(0, 4));
+    const month = Number(hoje.slice(5, 7)) - 1; // API espera mês 0-11
+
     setGeneratingRecap(true);
     setRecapError("");
+    setRecapSuccess("");
     try {
       const result = await api.generateRecap(year, month);
       if (result?.recap) {
@@ -470,9 +479,12 @@ export default function PerfilPage() {
           if (exists) return prev.map((r) => r.recapMonth === result.recap.recapMonth ? result.recap : r);
           return [result.recap, ...prev];
         });
+        setRecapSuccess(`Recap de ${labelMes(result.recap.recapMonth)} gerado com sucesso.`);
+        setTimeout(() => setRecapSuccess(""), 4000);
       }
-    } catch {
-      setRecapError("Não foi possível gerar o recap.");
+    } catch (e) {
+      // Repassa o motivo real do servidor (ex.: mês futuro, conta muito nova, erro do banco).
+      setRecapError(e instanceof Error ? e.message : "Erro ao gerar recap.");
     } finally {
       setGeneratingRecap(false);
     }
@@ -838,15 +850,18 @@ export default function PerfilPage() {
                 className="primary-button !text-xs !py-1.5 !px-3"
               >
                 {generatingRecap ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                {generatingRecap ? "Gerando..." : "Gerar recap"}
+                {generatingRecap ? "Gerando…" : "Gerar recap"}
               </button>
             </div>
             {recapError && (
-              <p className="relative mb-4 text-xs text-[var(--red)]">{recapError}</p>
+              <p className="relative mb-3 text-xs text-[var(--red)]">{recapError}</p>
+            )}
+            {recapSuccess && (
+              <p className="relative mb-3 text-xs text-[var(--green)]">{recapSuccess}</p>
             )}
             {recaps.length === 0 ? (
               <p className="relative py-6 text-center text-sm text-[var(--text-muted)]">
-                Nenhum recap disponível. Gere o recap do mês anterior!
+                Nenhum recap disponível. Gere o recap do mês atual!
               </p>
             ) : (
               <div className="relative space-y-3">
@@ -865,6 +880,7 @@ export default function PerfilPage() {
                       totalXp: recap.totalXp,
                       hasBeenShared: recap.hasBeenShared,
                     }}
+                    status={recap.status}
                     isLive={recap.recapMonth === currentRecapMonth}
                     userName={displayName}
                     userPhotoUrl={user.photoURL ?? undefined}

@@ -809,6 +809,7 @@ export interface MonthlyRecap {
   xpSources?: XpSourceBreakdown;  // Breakdown by source for debugging
   hasBeenShared?: boolean;
   generatedAt: string;
+  status: "parcial" | "final";  // 'parcial' enquanto o mês está em andamento, 'final' após o fechamento
 }
 
 export interface XpSourceBreakdown {
