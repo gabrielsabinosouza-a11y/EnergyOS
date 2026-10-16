@@ -29,21 +29,20 @@ interface MonthViewProps {
   onPlanCreate?: (date: string) => void;
   onToggleCompleted?: (id: number, completed: boolean) => void;
   onDelete?: (id: number) => void;
-  /** Direção da transição de página para este montamento ("next" | "prev" | "zoom"). */
-  navDirection?: "next" | "prev" | "zoom" | null;
   /** Altura da barra de ferramentas do cabeçalho (px), medida pela página. */
   headerHeight?: number;
   /** Entrada com stagger só na primeira vez que o mês é montado. */
   firstMount?: boolean;
+  /** Direção da transição de página para este montamento ("next" | "prev" | "zoom"). */
+  navDirection?: "next" | "prev" | "zoom" | null;
 }
 
 const MIN_ROW_HEIGHT = { desktop: 96, tablet: 70, mobile: 52 };
 const CHIP_PITCH = 18;
-const CELL_OVERHEAD = 36; // day number + padding + gaps
+const CELL_OVERHEAD = 32; // padding + número + barra de carga
+const HEADER_OVERHEAD = 82; // painel + toolbar + rótulos de dias da semana
 const POPOVER_WIDTH = 270;
 const POPBOTTOM_PAD = 320;
-
-const cellEase = [0.16, 1, 0.3, 1] as const;
 
 export function MonthView({
   monthRange,
@@ -56,6 +55,8 @@ export function MonthView({
   onPlanCreate,
   onToggleCompleted,
   onDelete,
+  headerHeight,
+  firstMount = false,
   navDirection = null,
 }: MonthViewProps) {
   const reduced = useReducedMotion();
@@ -66,15 +67,13 @@ export function MonthView({
 
   const total = daysInMonth(monthRange.start);
   const firstOfMonth = new Date(year, month - 1, 1);
-  const lead = (firstOfMonth.getDay() + 6) % 7; // Monday=0 … Sunday=6
+  const lead = (firstOfMonth.getDay() + 6) % 7; // segunda=0 … domingo=6
 
   const days = useMemo(() => {
     const out: string[] = [];
-    // Previous month days
     for (let i = 0; i < lead; i++) out.push(addDays(isoKey(year, month, 1), i - lead));
-    // Current month days
     for (let i = 1; i <= total; i++) out.push(isoKey(year, month, i));
-    // Next month days (fill to complete grid)
+    // Completa apenas a última semana (4, 5 ou 6 linhas no total).
     const tail = (-out.length) % 7;
     for (let i = 1; i <= tail; i++) out.push(addDays(monthRange.end, i));
     return out;
@@ -100,15 +99,18 @@ export function MonthView({
   const [popover, setPopover] = useState<{ date: string; left: number; top: number } | null>(null);
   const popoverEl = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
+  const [adjacentDir, setAdjacentDir] = useState<"next" | "prev">("next");
 
   const selectedIdx = days.indexOf(selectedDate);
   const visiblePopover = popover && isCurrentMonth(popover.date) ? popover : null;
 
   const isMobile = sizeMode === "mobile";
   const isTablet = sizeMode === "tablet";
+  const minRow = isMobile ? MIN_ROW_HEIGHT.mobile : isTablet ? MIN_ROW_HEIGHT.tablet : MIN_ROW_HEIGHT.desktop;
   const chipCap = isMobile ? 0 : isTablet ? 2 : 3;
+  const containerHeight = headerHeight ? `calc(100dvh - ${headerHeight}px - ${HEADER_OVERHEAD}px)` : "100vh";
 
-  // Media queries for responsive density
+  // Media queries para ajustar densidade da grade.
   useEffect(() => {
     const mqlDesktop = window.matchMedia("(min-width: 1024px)");
     const mqlTablet = window.matchMedia("(min-width: 640px) and (max-width: 1023px)");
@@ -124,7 +126,8 @@ export function MonthView({
     };
   }, []);
 
-  // Measure grid height to determine chip capacity
+  // Mede a altura da grade para decidir quantos chips cabem em cada célula
+  // (sem hardcode; todas as células de uma linha têm a mesma altura).
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
@@ -132,8 +135,7 @@ export function MonthView({
       const entry = entries[0];
       const box = entry.borderBoxSize?.[0];
       const h = box ? box.blockSize : entry.contentRect.height;
-      const rowGap = 8;
-      const cellH = Math.max(1, (h - rowGap * Math.max(0, rowCount - 1)) / rowCount);
+      const cellH = Math.max(1, h / rowCount);
       const avail = cellH - CELL_OVERHEAD;
       let n = Math.floor(avail / CHIP_PITCH);
       if (chipCap === 0) n = 0;
@@ -144,8 +146,7 @@ export function MonthView({
     return () => ro.disconnect();
   }, [rowCount, chipCap, isMobile]);
 
-  // Close popover on month change
-  const closePopover = useCallback(() => setPopover(null), []);
+  // Fecha o popover ao mudar de mês (derivado durante o render, sem effect).
 
   const handleGridKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -205,12 +206,13 @@ export function MonthView({
     (e: React.MouseEvent, date: string, cur: boolean) => {
       e.stopPropagation();
       if (!cur) {
+        setAdjacentDir(date < monthRange.start ? "prev" : "next");
         onMonthNavigate?.(date);
         return;
       }
       onDateSelect(date);
     },
-    [onDateSelect, onMonthNavigate],
+    [onDateSelect, onMonthNavigate, monthRange.start],
   );
 
   const openPopover = useCallback(
@@ -227,6 +229,8 @@ export function MonthView({
     },
     [],
   );
+
+  const closePopover = useCallback(() => setPopover(null), []);
 
   useEffect(() => {
     if (!popover) return;
@@ -247,64 +251,58 @@ export function MonthView({
     };
   }, [popover, closePopover]);
 
-  // ── Motion Variants ─────────────────
+  // ── Variantes de movimento (apenas transform/opacity) ──────────────────
 
-  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" });
+  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" }); // "outubro de 2026"
+
+  const navVariantsMemo: Variants = useMemo(() => {
+    const baseTransition: { duration: number; ease?: readonly [number, number, number, number] } = reduced
+      ? { duration: 0 }
+      : { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const };
+    const withStagger = (base: typeof baseTransition) => ({ ...base, staggerChildren: rowStagger });
+    return {
+      next: {
+        hidden: { rotateY: -14, translateX: -24, opacity: 0, transition: withStagger(baseTransition) },
+        visible: { rotateY: 0, translateX: 0, opacity: 1, transition: withStagger(baseTransition) },
+      },
+      prev: {
+        hidden: { rotateY: 14, translateX: 24, opacity: 0, transition: withStagger(baseTransition) },
+        visible: { rotateY: 0, translateX: 0, opacity: 1, transition: withStagger(baseTransition) },
+      },
+      zoom: {
+        hidden: { scale: 0.93, opacity: 0, transition: withStagger(baseTransition) },
+        visible: { scale: 1, opacity: 1, transition: withStagger(baseTransition) },
+      },
+    };
+  }, [reduced, rowStagger]);
 
   const cellDuration = reduced ? 0 : 0.28;
-  const cellStagger = false; // Disable stagger for simpler animations
-
-  const navVariantsMemo: Variants = useMemo(
-    () => {
-      const baseTransition: { duration: number; ease?: readonly [number, number, number, number] } = reduced
-        ? { duration: 0 }
-        : { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const };
-      return {
-        next: {
-          hidden: { opacity: 0, x: -24, transition: baseTransition },
-          visible: { opacity: 1, x: 0, transition: baseTransition },
-        },
-        prev: {
-          hidden: { opacity: 0, x: 24, transition: baseTransition },
-          visible: { opacity: 1, x: 0, transition: baseTransition },
-        },
-        zoom: {
-          hidden: { opacity: 0, scale: 0.93, transition: baseTransition },
-          visible: { opacity: 1, scale: 1, transition: baseTransition },
-        },
-        fade: {
-          hidden: { opacity: 0, y: 6, transition: baseTransition },
-          visible: { opacity: 1, y: 0, transition: baseTransition },
-        },
-      };
-    },
-    [reduced],
-  );
+  const rowStagger = firstMount && !reduced ? 0.025 : 0;
+  const cellStagger = firstMount && !reduced ? 0.012 : 0;
 
   const rowVariants: Variants = useMemo(
     () => ({
       hidden: { opacity: 0 },
       visible: {
         opacity: 1,
-        transition: { staggerChildren: 0.012, duration: cellDuration, ease: cellEase },
+        transition: { staggerChildren: cellStagger, duration: cellDuration, ease: cellEase },
       },
     }),
-    [cellDuration],
+    [rowStagger, cellStagger, cellDuration],
   );
 
   const cellVariants: Variants = useMemo(
     () => ({
-      hidden: { opacity: 0, y: 4 },
+      hidden: { opacity: 0 },
       visible: {
         opacity: 1,
-        y: 0,
         transition: { duration: cellDuration, ease: cellEase },
       },
     }),
     [cellDuration],
   );
 
-  // ── Day Cell Component ─────────────────
+  // ── Célula do dia ──────────────────────────────────────────────────────
 
   function MonthCell({
     date,
@@ -329,7 +327,7 @@ export function MonthView({
     const done = dayPlans.filter((p) => Boolean(p.completedAt)).length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const chipZ = hov ? 14 : 0;
-    const tiltZ = hov && !isMobile ? 18 : 0;
+    const tiltZ = hov ? 18 : 0;
 
     const pointerRaf = useRef(0);
 
@@ -341,7 +339,7 @@ export function MonthView({
 
     const cellPointerMove = useCallback(
       (e: React.PointerEvent<HTMLButtonElement>) => {
-        if (reduced || e.pointerType !== "mouse" || isMobile) return;
+        if (reduced || e.pointerType !== "mouse") return;
         cancelAnimationFrame(pointerRaf.current);
         pointerRaf.current = requestAnimationFrame(() => {
           const rect = cellEl.current!.getBoundingClientRect();
@@ -349,21 +347,21 @@ export function MonthView({
           const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
           setMx(x);
           setMy(y);
-          setTiltX((y - 0.5) * 6);
-          setTiltY((x - 0.5) * 6);
+          setTiltX((y - 0.5) * 8);
+          setTiltY((x - 0.5) * 8);
         });
       },
-      [reduced, isMobile],
+      [reduced],
     );
 
     const handlePointerEnter = useCallback(() => {
-      if (!reduced && !isMobile) setHoverDate(date);
-    }, [date, reduced, isMobile]);
+      if (!reduced) setHoverDate(date);
+    }, [reduced, date]);
     const handlePointerLeave = useCallback(() => {
       setHoverDate(null);
       setTiltX(0);
       setTiltY(0);
-    }, []);
+    }, [date]);
 
     const monthName = formatLocalDate(date, { month: "long" });
     const ariaDone =
@@ -374,19 +372,12 @@ export function MonthView({
     const numColor = sel
       ? "text-[var(--accent)]"
       : td
-        ? "text-[var(--accent)]"
+        ? "text-[var(--text)]"
         : !cur
           ? "text-[var(--text-faint)]"
           : "text-[var(--text)]";
-
-    const baseClasses = `mv-cell relative flex flex-col items-start gap-1.5 p-2 min-w-0 overflow-hidden rounded-xl transition-[background_color,border_color,box_shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2`;
-
-    const modClasses = [
-      hov ? "mv-cell--hover" : "",
-      td && sel ? "mv-cell--today-selected" : td ? "mv-cell--today" : "",
-      sel && !td ? "mv-cell--selected" : "",
-      !cur ? "mv-cell--adjacent" : "",
-    ]
+    const baseClasses = `mv-cell relative flex flex-col items-start gap-1.5 p-1.5 min-w-0 overflow-hidden border border-transparent rounded-[8px] text-left cursor-pointer transition-[background_color,border_color,box-shadow] duration-150 ease-out hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2 focus-visible:shadow-[0_0_0_4px_rgba(113,212,255,.20)]`;
+    const modClasses = [hov ? "mv-cell--hover" : "", td ? "mv-cell--today" : "", sel ? "mv-cell--selected" : "", !cur ? "opacity-50" : ""]
       .filter(Boolean)
       .join(" ");
 
@@ -407,12 +398,16 @@ export function MonthView({
               onDateSelect(date);
             }}
             aria-label={completed ? `Concluído: ${title}` : title}
-            className={`mv-chip ${completed ? "mv-chip--completed" : ""} transition-colors`}
+            className={`inline-flex items-center gap-1.5 min-w-[1px] truncate rounded-md border px-2 py-1 text-[10px] font-medium leading-none hover:bg-white/[0.06] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-1 ${
+              completed
+                ? "border-[var(--text-muted)]/40 bg-white/[0.02] line-through opacity-60"
+                : "border-transparent"
+            }`}
+            style={{ borderLeft: `3px solid ${color}`, color: completed ? "var(--text-muted)" : "var(--text)" }}
             title={title}
-            style={{ borderLeft: `3px solid ${color}` }}
           >
-            <span className="mv-chip-dot" aria-hidden="true" />
-            <span className="mv-chip-title">{title}</span>
+            <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+            <span className="min-w-0 truncate">{title}</span>
           </button>
         );
       });
@@ -423,8 +418,11 @@ export function MonthView({
       return (
         <span
           key={p.id}
-          className="mv-dot"
-          style={{ backgroundColor: completed ? "var(--text-muted)" : color, opacity: completed ? 0.45 : 1 }}
+          className="mv-dot rounded-full"
+          style={{
+            backgroundColor: completed ? "var(--text-muted)" : color,
+            opacity: completed ? 0.45 : 1,
+          }}
           aria-hidden="true"
         />
       );
@@ -443,24 +441,26 @@ export function MonthView({
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
         variants={cellVariants}
-        initial="hidden"
+        initial={false}
         animate="visible"
-        className={`${baseClasses} ${modClasses} mv-preserve-3d`}
+        className={`${baseClasses} ${modClasses}`}
         onClick={(e) => handleCellClick(e, date, cur)}
-        style={
-          {
-            "--mv-mx": mx,
-            "--mv-my": my,
-            "--mv-tilt-x": `${tiltX}deg`,
-            "--mv-tilt-y": `${tiltY}deg`,
-            "--mv-tilt-z": `${tiltZ}px`,
-            "--mv-chip-z": `${chipZ}px`,
-            transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(${tiltZ}px)`,
-          } as React.CSSProperties
-        }
       >
-        <div className="mv-cell-inner flex flex-col items-start gap-1.5 w-full">
-          <div className="w-full flex items-start justify-between gap-1">
+        <div
+          className="mv-cell-inner flex flex-col items-start gap-1.5 w-full"
+          style={
+            {
+              "--mv-mx": mx,
+              "--mv-my": my,
+              "--mv-tilt-x": `${tiltX}deg`,
+              "--mv-tilt-y": `${tiltY}deg`,
+              "--mv-tilt-z": `${tiltZ}px`,
+              "--mv-chip-z": `${chipZ}px`,
+              transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(${tiltZ}px)`,
+            } as unknown as React.CSSProperties
+          }
+        >
+          <div className="w-full flex items-start justify-between gap-1 pt-0.5">
             <span className={`mv-number font-mono tabular-nums font-bold text-[11px] leading-none ${numColor}`}>
               {dayNumber}
             </span>
@@ -479,51 +479,55 @@ export function MonthView({
             )}
           </div>
           {hov && <div className="mv-pointer-light" aria-hidden="true" />}
-          {!isMobile && (
+          {td && (
+            <>
+              <div className="mv-today-bar" aria-hidden="true" />
+              <span className="mv-today-dot" aria-hidden="true" />
+            </>
+          )}
+          {!isMobile ? (
             <div className="mv-chips flex flex-row gap-1" style={{ transform: `translateZ(${chipZ}px)` }}>
-              {chips}
-              {total > (chipLimit > 0 ? chipLimit : 0) && (
-                <span
-                  ref={pillRef}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`+${total - chipLimit} mais planos em ${dayNumber} de ${monthName}`}
-                  onClick={(e) => openPopover(e, date)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openPopover(e, date);
-                    }
-                  }}
-                  className="mv-pill"
-                >
-                  +{total - chipLimit} mais
-                </span>
-              )}
-            </div>
-          )}
-          {isMobile && (
-            <div className="mv-dots flex flex-row gap-1">
-              {dots}
-              {total > 3 && <span className="mv-dot-more text-[10px] font-bold text-[var(--text-faint)]">+{total - 3}</span>}
-            </div>
-          )}
-          {!isMobile && total > 0 && (
-            <div className="mv-workload" title={`${done} de ${total} concluídos`} aria-hidden="true">
-              <motion.div
-                className="mv-workload-fill"
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: pct / 100 }}
-                transition={{ duration: reduced ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
-              />
-            </div>
-          )}
+            {chips}
+            {total > (chipLimit > 0 ? chipLimit : 0) && (
+              <span
+                ref={pillRef}
+                role="button"
+                tabIndex={0}
+                aria-label={`+${total - chipLimit} mais planos em ${dayNumber} de ${monthName}`}
+                onClick={(e) => openPopover(e, date)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPopover(e, date);
+                  }
+                }}
+                className="mv-pill"
+              >
+                +{total - chipLimit} mais
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="mv-dots flex flex-row gap-1">
+            {dots}
+            {total > 3 && <span className="mv-dot-more text-[10px] font-bold text-[var(--text-faint)]">+{total - 3}</span>}
+          </div>
+        )}
+        {!isMobile && total > 0 && (
+          <div className="mv-workload" title={`${done} de ${total} concluídos`} aria-hidden="true">
+            <motion.div
+              className="mv-workload-fill"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: pct / 100 }}
+              transition={{ duration: reduced ? 0 : 0.5, ease: [0.16, 1, 0.3, 1] }}
+            />
+          </div>
+        )}
         </div>
       </motion.button>
     );
   }
 
-  // ── Rows and Grid ─────────────────
 
   const rows: string[][] = [];
   for (let r = 0; r < rowCount; r++) rows.push(days.slice(r * 7, (r + 1) * 7));
@@ -536,49 +540,43 @@ export function MonthView({
       className="space-y-1"
       onKeyDown={handleGridKeyDown}
     >
-      {/* Weekday header row - aligned with day number alignment */}
-      <div className="grid grid-cols-7 gap-px bg-[var(--border-subtle)] rounded-xl overflow-hidden">
-        {SHORT_WEEKDAYS.map((name) => (
-          <div key={name} className="mv-weekday px-3 py-2 text-center">
-            {name}
-          </div>
-        ))}
-      </div>
-
       <AnimatePresence mode="popLayout">
         <motion.div
           key={monthKey}
           ref={gridRef}
-          className="mv-panel mv-rows-wrap mv-perspective rounded-xl overflow-hidden"
+          className="mv-panel mv-rows-wrap mv-perspective rounded-xl"
+          style={{ height: containerHeight, minHeight: `${Math.max(1, minRow * rowCount + 32)}px` }}
           variants={navVariantsMemo}
-          initial={false} // Skip initial animation for page transitions
-          animate={navDirection ? navDirection : "fade"}
-          exit={navDirection ?? undefined}
-          transition={{ duration: reduced ? 0 : 0.35, ease: [0.16, 1, 0.3, 1] as const }}
+          initial={firstMount ? false : "hidden"}
+          animate={
+            firstMount
+              ? { opacity: 1, transition: { duration: reduced ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] as const } }
+              : (navDirection ?? adjacentDir)
+          }
+          exit={navDirection ?? adjacentDir}
+          transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] as const }}
         >
+          {/* Rótulos dos dias da semana (alinhados com os números, à esquerda). */}
+          <div className="grid grid-cols-7 gap-[1px]">
+            {SHORT_WEEKDAYS.map((name) => (
+              <div key={name} className="mv-weekday px-1.5 py-1.5" aria-hidden="true">
+                {name}
+              </div>
+            ))}
+          </div>
           {rows.map((week, r) => (
             <motion.div
               key={r}
-              role="row"
-              aria-label={`Semana ${r + 1} de ${rowCount}`}
-              className="grid grid-cols-7 gap-px"
-              variants={rowVariants as unknown as Variants}
-              initial="hidden"
+              className="grid grid-cols-7 gap-[1px] mv-preserve-3d"
+              variants={rowVariants}
+              initial={false}
               animate="visible"
-              style={{ minHeight: `${MIN_ROW_HEIGHT.desktop}px` }}
             >
               {week.map((date, c) => {
                 const dayPlans = (plansByDate.get(date) ?? []).slice().sort(
                   (a, b) => (a.title || "").localeCompare(b.title || ""),
                 );
-                return (
-                  <MonthCell
-                    key={date}
-                    date={date}
-                    dayPlans={dayPlans}
-                    cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx}
-                  />
-                );
+                return <MonthCell key={date} date={date} dayPlans={dayPlans} cellFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx} />;
               })}
             </motion.div>
           ))}
@@ -594,115 +592,10 @@ export function MonthView({
           position={{ left: visiblePopover.left, top: visiblePopover.top }}
           onClose={closePopover}
           onDaySelect={onDateSelect}
-          onToggleCompleted={onToggleCompleted}
-          onDelete={onDelete}
           today={today}
-          reduced={Boolean(reduced)}
-          containerRef={popoverEl}
+          reduced={reduced}
         />
       )}
     </div>
-  );
-}
-
-// ── Day Popover (glass style) ─────────────────
-
-function DayPopover({
-  date,
-  plans,
-  position,
-  onClose,
-  onDaySelect,
-  onToggleCompleted,
-  onDelete,
-  today,
-  reduced,
-  containerRef,
-}: {
-  date: string;
-  plans: WeeklyPlanItem[];
-  position: { left: number; top: number };
-  onClose: () => void;
-  onDaySelect: (date: string) => void;
-  onToggleCompleted?: (id: number, completed: boolean) => void;
-  onDelete?: (id: number) => void;
-  today: string;
-  reduced: boolean;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const total = plans.length;
-  const done = plans.filter((p) => Boolean(p.completedAt)).length;
-  const label = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" });
-  const isTodayPop = date === today;
-
-  return createPortal(
-    <motion.div
-      ref={containerRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Planos de ${label}`}
-      style={{ left: position.left, top: position.top }}
-      initial={{ opacity: 0, scale: 0.95, y: 10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: 10 }}
-      transition={{ duration: reduced ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-      className="mv-popover fixed z-50 w-[270px] max-w-[90vw] rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[20px] backdrop-saturate-[140%] shadow-[var(--glass-shadow)] text-left overflow-hidden"
-    >
-      <div className="flex flex-col gap-2 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-[var(--text)] leading-none">
-              {label}{isTodayPop ? " · hoje" : ""}
-            </p>
-            <p className="text-[10px] text-[var(--text-faint)] leading-none">
-              {total} plano{total !== 1 ? "s" : ""} · {done} concluído{done !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-white/[0.10] hover:text-[var(--text)] transition-colors"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="max-h-[52vh] overflow-y-auto pr-1 space-y-1">
-          {plans.length === 0 ? (
-            <p className="text-[11px] text-[var(--text-faint)] px-2">Sem planos neste dia</p>
-          ) : (
-            plans.map((p) => (
-              <div key={p.id} className="group relative">
-                <TaskCard
-                  plan={p}
-                  onToggle={(completed) => {
-                    onToggleCompleted?.(p.id, completed);
-                    onClose();
-                  }}
-                  onDelete={() => {
-                    onDelete?.(p.id);
-                    onClose();
-                  }}
-                  alwaysVisible
-                />
-              </div>
-            ))
-          )}
-        </div>
-        <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onDaySelect(date);
-            }}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[var(--accent-bg)] px-3 py-2 text-[12px] font-medium text-[var(--accent)] shadow-[0_0_16px_rgba(113,212,255,.25)] hover:bg-[var(--accent-bg)] hover:shadow-[0_0_24px_rgba(113,212,255,.35)] transition-[background_color,box-shadow] duration-150"
-          >
-            Abrir dia <ArrowRight size={14} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-    </motion.div>,
-    document.body,
   );
 }

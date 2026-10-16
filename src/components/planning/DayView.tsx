@@ -43,7 +43,7 @@ export function DayView({ date, plans, onToggleCompleted, onDelete, onPlanCreate
           aria-label="Adicionar plano"
         >
           {shortcutHint && (
-            <kbd className="relative -top-0.5 -mb-0.5 mr-1.5 rounded border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-faint)] leading-none">
+            <kbd className="relative -top-0.5 -mb-0.5 mr-1.5 rounded border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 px-1.5 py-0.5 text-[10px] font-medium text-[var(--text)] leading-none">
               {shortcutHint}
             </kbd>
           )}
@@ -77,16 +77,16 @@ function EmptyState({ weekday, dateLabel, onAdd }: EmptyStateProps) {
     <button
       type="button"
       onClick={onAdd}
-      className="day-empty-state group relative flex flex-col items-center justify-center py-14 text-center"
+      className="day-empty-state group relative flex flex-col items-center justify-center text-center"
       aria-label={`Adicionar plano para ${weekday}, ${dateLabelLower}`}
     >
-      <span className="absolute top-4 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
-        <span className="dot-pulse absolute w-10 h-10 rounded-full bg-[var(--accent)] opacity-20"></span>
-        <Plus size={20} className="relative z-10 text-[var(--accent)] group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
+      <span className="absolute top-4 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
+        <span className="dot-pulse absolute w-16 h-16 rounded-full bg-[var(--accent)] opacity-20"></span>
+        <Plus size={24} className="relative z-10 text-[var(--accent)] group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
       </span>
-      <p className="text-[var(--text)] font-semibold mb-2 relative z-10">Nenhum plano para este dia</p>
-      <p className="text-[var(--text-secondary)] text-sm mb-4 relative z-10">Clique para criar seu primeiro plano</p>
-      <span className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-1.5 text-[13px] font-bold text-[var(--bg-primary)] shadow-[0_0_16px_var(--accent-glow)] hover:shadow-[0_0_24px_var(--accent-glow)] transition-shadow duration-200 relative z-10">
+      <p className="text-[var(--text)] font-semibold mb-4 relative z-10 text-base">Nenhum plano para este dia</p>
+      <p className="text-[var(--text-secondary)] text-sm mb-6 relative z-10">Clique para criar seu primeiro plano</p>
+      <span className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-5 py-2 text-base font-bold text-[var(--bg-primary)] shadow-[0_0_16px_var(--accent-glow)] hover:shadow-[0_0_24px_var(--accent-glow)] transition-shadow duration-200 relative z-10">
         Adicionar plano
       </span>
     </button>

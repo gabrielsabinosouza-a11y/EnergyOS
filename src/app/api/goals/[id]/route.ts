@@ -6,6 +6,10 @@ import { deleteGoal, GOAL_FREQUENCY_VALUES, updateGoal } from "@/lib/db/goals";
 import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/validation";
 import { parseOptionalDate, parseOptionalText } from "@/lib/db/optional-fields";
 
+// Force dynamic rendering - this API should never be cached
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
@@ -42,7 +46,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const goalId = await resolveGoalId(context);
-    await deleteGoal(profileId, goalId);
-    return jsonOk({ ok: true });
+    const deletedId = await deleteGoal(profileId, goalId);
+    return jsonOk({ ok: true, id: deletedId });
   });
 }

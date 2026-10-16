@@ -99,18 +99,44 @@ export interface CreateGoalInput {
 }
 
 /**
- * Garante as colunas novas da meta (unidade/prazo/conclusão). Idempotente e
- * executada uma vez por processo, no mesmo espírito do ensureGoalLogsSchema —
- * o app funciona antes/depois da migração sem depender de ordem de deploy.
+ * Garante as colunas novas da meta (unidade/prazo/conclusão/category_id).
+ * Idempotente e executada uma vez por processo, no mesmo espírito do 
+ * ensureGoalLogsSchema — o app funciona antes/depois da migração sem depender 
+ * de ordem de deploy.
  */
 let goalsSchemaReady: Promise<void> | null = null;
 
 export function ensureGoalsSchema(): Promise<void> {
   goalsSchemaReady ??= (async () => {
-    await pool.query(`alter table goals add column if not exists unit text`);
-    await pool.query(`alter table goals add column if not exists deadline date`);
-    await pool.query(`alter table goals add column if not exists completed_at timestamptz`);
-    await pool.query(`create index if not exists goals_profile_deadline_idx on goals(profile_id, deadline)`);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      
+      // Add unit column (text, max 24 chars)
+      await client.query(`alter table goals add column if not exists unit text`);
+      
+      // Add deadline column
+      await client.query(`alter table goals add column if not exists deadline date`);
+      
+      // Add completed_at column
+      await client.query(`alter table goals add column if not exists completed_at timestamptz`);
+      
+      // Add category_id column (foreign key to categories)
+      await client.query(`alter table goals add column if not exists category_id bigint`);
+      
+      // Create index for profile + deadline queries
+      await client.query(`create index if not exists goals_profile_deadline_idx on goals(profile_id, deadline)`);
+      
+      // Create index for category queries
+      await client.query(`create index if not exists goals_category_id_idx on goals(category_id)`);
+      
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   })().catch((error) => {
     goalsSchemaReady = null;
     throw error;
@@ -337,9 +363,45 @@ export async function updateGoalProgress(profileId: string, goalId: number, curr
   return goal;
 }
 
-export async function deleteGoal(profileId: string, goalId: number): Promise<void> {
+export async function deleteGoal(profileId: string, goalId: number): Promise<number> {
   parseProfileId(profileId);
   assertGoalId(goalId);
-  const result = await pool.query(`delete from goals where profile_id = $1 and id = $2`, [profileId, goalId]);
-  if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Meta não encontrada.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    // Check ownership first
+    const owner = await client.query(`select 1 from goals where id = $1 and profile_id = $2`, [goalId, profileId]);
+    if (!owner.rows[0]) throw new NotFoundError("Meta não encontrada.");
+
+    // Delete all related records first (in order of dependencies)
+    // 1. Delete goal logs (check-ins)
+    await client.query(`delete from goal_logs where goal_id = $1`, [goalId]);
+
+    // 2. Delete habits and their completions
+    await client.query(`
+      delete from habit_completions 
+      where habit_id in (select id from habits where goal_id = $1)
+    `, [goalId]);
+    await client.query(`delete from habits where goal_id = $1`, [goalId]);
+
+    // 3. Delete XP ledger entries for this goal (source_id format: "goalId:period")
+    // For example: "12:d:2026-04-10" (daily), "12:m:2026-10" (monthly)
+    await client.query(
+      `delete from xp_ledger where source = 'goal' and source_id like $1 || ':%'`,
+      [goalId.toString()],
+    );
+
+    // 4. Delete the goal itself
+    await client.query(`delete from goals where id = $1 and profile_id = $2`, [goalId, profileId]);
+
+    await client.query("commit");
+    return goalId;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }

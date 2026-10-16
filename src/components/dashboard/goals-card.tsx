@@ -314,15 +314,18 @@ export function GoalsCard({
                 </motion.div>
 
                 <div className="min-w-0 flex-1 pr-6">
+                  {/* Title - single line with ellipsis, full text in tooltip */}
                   <p
-                    className="line-clamp-2 text-xs font-medium leading-snug text-[var(--text)]"
+                    className="line-clamp-1 text-xs font-medium leading-tight text-[var(--text)]"
                     title={goal.title}
                     style={done ? { textDecoration: "line-through", color: "var(--text-faint)" } : undefined}
                   >
                     {goal.title}
                   </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <p className="text-[10px] text-[var(--text-faint)]">
+                  
+                  {/* Progress line - always on one line, truncates if needed */}
+                  <div className="mt-1 flex items-center gap-2 min-w-0">
+                    <p className="text-[10px] text-[var(--text-faint)] whitespace-nowrap">
                       {done ? (
                         <span style={{ color }}>Concluída</span>
                       ) : (
@@ -334,7 +337,7 @@ export function GoalsCard({
                     </p>
                     {deadline && (
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${
                           deadline.overdue
                             ? "bg-red-500/15 text-red-400"
                             : "bg-[var(--bg-surface-active)] text-[var(--text-muted)]"
@@ -345,7 +348,7 @@ export function GoalsCard({
                     )}
                   </div>
 
-                  {/* Barra de progresso com fill em spring */}
+                  {/* Progress bar */}
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
                     <motion.div
                       className="h-full rounded-full"

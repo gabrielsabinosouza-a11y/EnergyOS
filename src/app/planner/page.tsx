@@ -102,6 +102,14 @@ function MobileDayAgenda({
               />
             </div>
           ))}
+          <button
+            type="button"
+            onClick={() => onPlanCreate(date)}
+            className="day-view-add-row"
+            aria-label={`Adicionar plano para ${weekday}, ${dateLabel.toLowerCase()}`}
+          >
+            + Adicionar plano
+          </button>
         </div>
       )}
     </div>

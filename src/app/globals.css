@@ -1454,6 +1454,23 @@ body { overflow-wrap: break-word; }
   scrollbar-gutter: stable;
 }
 
+/* Grid rows - each week row shares available height equally */
+.mv-rows-wrap > div[role="row"] {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+
+/* Weekday header row - fixed height */
+.mv-weekday-row {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+}
+
 /* Weekday header row - centered alignment to match day number alignment */
 .mv-weekday {
   font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
@@ -1749,7 +1766,9 @@ body { overflow-wrap: break-word; }
   align-items: center;
   justify-content: center;
   padding: 0 16px;
-  min-height: 280px;
+  min-height: calc(100dvh - 280px);
+  max-height: 600px;
+  height: 100%;
   text-align: center;
   border-radius: 16px;
   border: 1px dashed var(--border-subtle);
@@ -1804,7 +1823,9 @@ body { overflow-wrap: break-word; }
   align-items: center;
   justify-content: center;
   padding: 0 12px;
-  min-height: 200px;
+  min-height: calc(100dvh - 260px);
+  max-height: 500px;
+  height: 100%;
   text-align: center;
   border-radius: 12px;
   border: 1px dashed var(--border-subtle);
@@ -1859,6 +1880,41 @@ body { overflow-wrap: break-word; }
 .day-view-add-row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* LED hover animation - 200ms ease */
+@keyframes mv-led-in {
+  0%   { transform: scaleX(0); transform-origin: top; }
+  100% { transform: scaleX(1); transform-origin: top; }
+}
+@keyframes mv-led-out {
+  0%   { transform: scaleX(1); transform-origin: top; }
+  100% { transform: scaleX(0); transform-origin: top; }
+}
+.mv-cell--today--led::after,
+.mv-cell--hover--led::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0.6;
+  pointer-events: none;
+  animation: mv-led-in 0.2s ease-out forwards;
+}
+
+/* Cyan LED ring animation on hover - 200ms */
+@keyframes mv-cyan-pulse {
+  0%   { box-shadow: 0 0 0 0px var(--accent-glow), 0 0 8px 0px rgba(113,212,255,0.30); }
+  40%  { box-shadow: 0 0 0 4px var(--accent-bg), 0 0 12px 2px rgba(113,212,255,0.40); }
+  100% { box-shadow: 0 0 0 0px var(--accent-glow), 0 0 8px 0px rgba(113,212,255,0.30); }
+}
+.mv-cell--hover::before {
+  animation: mv-cyan-pulse 0.2s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

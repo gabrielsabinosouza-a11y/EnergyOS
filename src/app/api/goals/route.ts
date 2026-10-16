@@ -8,6 +8,10 @@ import { assertObject, parseEnum, parseNumber, parseTitle } from "@/lib/db/valid
 import { parseOptionalDate, parseOptionalText } from "@/lib/db/optional-fields";
 import { GOAL_CREATION_XP } from "@/lib/daily-limits";
 
+// Force dynamic rendering - this API should never be cached
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 export interface GoalBundle {
   goal: GoalWithProgress;
   habits: HabitWithCompletion[];

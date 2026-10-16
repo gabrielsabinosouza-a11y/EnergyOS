@@ -9,6 +9,10 @@ import {
 } from "@/lib/db/goal-logs";
 import { assertObject, parseDate, parseEnum, parseNumber } from "@/lib/db/validation";
 
+// Force dynamic rendering - this API should never be cached
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 /**
  * GET /api/goal-logs?from=YYYY-MM-DD&to=YYYY-MM-DD
  * Lista os check-ins do usuário autenticado no intervalo (heatmap/histórico).

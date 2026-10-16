@@ -31,12 +31,39 @@ export interface GoalDraft {
   deadline: string;
 }
 
+/**
+ * Frequency labels for the UI (pt-BR).
+ * These are the only values the UI exposes to users.
+ * The backend supports daily/weekly/monthly/unique, but UI only shows única/mensal.
+ */
+export const GOAL_FREQUENCY_LABELS: Record<string, string> = {
+  unique: "Única",
+  monthly: "Mensal",
+  daily: "Diária",
+  weekly: "Semanal",
+};
+
+/** Maps backend frequency value to UI label */
+export function getFrequencyLabel(freq: string): string {
+  return GOAL_FREQUENCY_LABELS[freq] ?? freq;
+}
+
 export function draftFromGoal(goal: Goal): GoalDraft {
+  // The UI only supports "unique" and "monthly" - map other frequencies to the closest match
+  // For editing purposes, we show "unique" as "Única" and treat daily/weekly as "Única" (one-time)
+  let uiFrequency: "unique" | "monthly" | null = null;
+  if (goal.frequency === "monthly") {
+    uiFrequency = "monthly";
+  } else {
+    // daily, weekly, unique, or any other value -> display as "Única"
+    uiFrequency = "unique";
+  }
+
   return {
     title: goal.title,
     categoryId: goal.categoryId,
     targetValue: goal.targetValue,
-    frequency: goal.frequency === "daily" || goal.frequency === "weekly" ? null : goal.frequency,
+    frequency: uiFrequency,
     unit: goal.unit ?? "",
     deadline: goal.deadline ?? "",
   };

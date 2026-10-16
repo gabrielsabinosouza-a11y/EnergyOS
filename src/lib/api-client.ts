@@ -211,7 +211,7 @@ export const api = {
     request<{ goal: GoalWithProgress; xpAwarded: number }>("/api/goals", { method: "POST", body: JSON.stringify(input) }),
   updateGoal: (id: number, patch: { title?: string; categoryId?: number; targetValue?: number; frequency?: GoalFrequency; unit?: string | null; deadline?: string | null }) =>
     request<{ goal: GoalWithProgress; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
+  deleteGoal: (id: number) => request<{ ok: true; id: number }>(`/api/goals/${id}`, { method: "DELETE" }),
   /** Check-ins de metas no intervalo (heatmap/histórico/calendário). */
   getGoalLogs: (from: string, to: string) =>
     request<{ logs: GoalLogEntry[] }>(`/api/goal-logs?from=${from}&to=${to}`),
