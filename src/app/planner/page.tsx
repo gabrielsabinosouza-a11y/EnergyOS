@@ -16,19 +16,15 @@ import { AppShell } from "@/components/app-shell";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { PlanningToolbar } from "@/components/planning/PlanningToolbar";
 import { MonthView } from "@/components/planning/MonthView";
-import { TaskCard } from "@/components/planning/TaskCard";
 import { WeekView } from "@/components/planning/WeekView";
 import { DayView } from "@/components/planning/DayView";
 import { AddTaskDialog } from "@/components/planning/AddTaskDialog";
+import { TaskCard } from "@/components/planning/TaskCard";
 import { Button } from "@/components/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Plus } from "lucide-react";
 
 type View = "month" | "week" | "day";
-
-// Primeira vez que a vista do mês é montada: entrada com stagger.
-// Variável de módulo (não um ref) para não ler refs durante o render.
-let monthFirstRender = true;
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => {
@@ -124,6 +120,8 @@ export default function PlanningPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<string | null>(null);
+  const [addStartTime, setAddStartTime] = useState<string | undefined>(undefined);
+  const [addEndTime, setAddEndTime] = useState<string | undefined>(undefined);
   const [navDirection, setNavDirection] = useState<"next" | "prev" | "zoom" | null>(null);
   const reduced = useReducedMotion();
 
@@ -146,12 +144,24 @@ export default function PlanningPage() {
       .catch(console.error);
   }, [user]);
 
-  // Marca que o mês já foi montado uma vez (apenas leitura de variável de módulo durante o render).
-  useEffect(() => {
-    if (view === "month") monthFirstRender = false;
-  }, [view]);
-
   // Keyboard shortcut: "N" opens add dialog in day view (ignore when in inputs/textareas/dialog)
+  const openAdd = useCallback(
+    (date: string, minutes?: number) => {
+      setAddDate(date);
+      if (minutes != null) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        setAddStartTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+        setAddEndTime(`${String(h + 1).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+      } else {
+        setAddStartTime(undefined);
+        setAddEndTime(undefined);
+      }
+      setAddOpen(true);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (view !== "day") return;
 
@@ -170,12 +180,11 @@ export default function PlanningPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [view, selectedDate]);
+  }, [view, selectedDate, openAdd]);
 
   const week = weekRange(selectedDate);
   const month = monthRange(selectedDate);
-  const inRange = (start: string, end: string) => (p: WeeklyPlanItem) =>
-    p.planDate >= start && p.planDate <= end;
+  const inRange = (start: string, end: string) => (p: WeeklyPlanItem) => p.planDate >= start && p.planDate <= end;
   const weekTasks = tasks.filter(inRange(week.start, week.end));
   const monthTasks = tasks.filter(inRange(month.start, month.end));
   const dayTasks = tasks.filter((p) => p.planDate === selectedDate);
@@ -199,72 +208,91 @@ export default function PlanningPage() {
 
   /** Cria um plano e o insere imediatamente na lista local (sem refresh). */
   const createTask = useCallback(
-    async (planDate: string, title: string, categoryId: number | undefined): Promise<void> => {
-      const res = await api.createWeeklyPlan({ planDate, title, categoryId });
+    async (planDate: string, title: string, categoryId: number | undefined, startTime?: string, endTime?: string): Promise<void> => {
+      const res = await api.createWeeklyPlan({ planDate, title, categoryId, startTime: startTime ?? null, endTime: endTime ?? null });
       const cat = (categories.find((c) => c.id === res.plan.categoryId) || categories[0]) ?? null;
-      setTasks((prev) => [...prev, toItem(res.plan, cat)]);
+      setTasks((prev) => [
+        ...prev,
+        {
+          id: res.plan.id,
+          seriesId: null,
+          planDate: res.plan.planDate,
+          title: res.plan.title,
+          categoryId: res.plan.categoryId,
+          category: cat ?? ({ id: 0, userId: null, name: "", color: "#94a3b8", icon: null, isCustom: false, createdAt: "" } as Category),
+          iconType: null,
+          iconValue: null,
+          color: cat?.color ?? null,
+          note: null,
+          completedAt: res.plan.completedAt ?? null,
+          skipped: false,
+          startTime: res.plan.startTime ?? null,
+          durationMinutes: null,
+          repeatType: null,
+          repeatDays: null,
+          isRecurring: false,
+        },
+      ]);
     },
     [categories],
   );
 
-  const togglePlan = useCallback(async (id: number, completed: boolean): Promise<void> => {
-    const plan = tasks.find((p) => p.id === id);
-    if (plan && plan.seriesId !== null) {
-      await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
-      setTasks((prev) =>
-        prev.map((p) =>
-          p.seriesId === plan.seriesId && p.planDate === plan.planDate
-            ? { ...p, completedAt: completed ? new Date().toISOString() : null, skipped: false }
-            : p,
-        ),
-      );
-      return;
-    }
-    const res = await api.setWeeklyPlanCompleted(id, completed);
-    setTasks((prev) =>
-      prev.map((p) => (p.id === id ? toItem(res.plan, categories.find((c) => c.id === p.categoryId) || categories[0]) : p)),
-    );
-  }, [tasks, categories]);
+  const togglePlan = useCallback(
+    async (id: number, completed: boolean) => {
+      const plan = tasks.find((p) => p.id === id);
+      if (plan && plan.seriesId !== null) {
+        await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
+        setTasks((prev) =>
+          prev.map((p) =>
+            p.seriesId === plan.seriesId && p.planDate === plan.planDate ? { ...p, completedAt: completed ? new Date().toISOString() : null, skipped: false } : p,
+          ),
+        );
+        return;
+      }
+      const res = await api.setWeeklyPlanCompleted(id, completed);
+      setTasks((prev) => prev.map((p) => (p.id === id ? { ...p, completedAt: completed ? new Date().toISOString() : null } : p)));
+    },
+    [tasks],
+  );
 
-  const deletePlan = useCallback(async (id: number): Promise<void> => {
+  const deletePlan = useCallback(async (id: number) => {
     await api.deleteWeeklyPlan(id);
     setTasks((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  const openAdd = (date: string) => {
-    setAddDate(date);
-    setAddOpen(true);
-  };
-
   const headerLabel = viewLabel(selectedDate, view);
+  const monthTitle = formatLocalDate(monthRange(selectedDate).start, { month: "long", year: "numeric" })
+    .replace(/^./, (c) => c.toUpperCase());
 
-  const monthViewTransitions = reduced
-    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
-    : {
-        initial: { opacity: 0, y: 8 },
-        animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: 8 },
-      };
+  const viewSwitchProps = {
+    onPrev: handlePrev,
+    onNext: handleNext,
+    onToday: handleToday,
+    onViewChange: setView,
+  };
 
   return (
     <AppShell>
-      <div className="panel p-4 sm:p-6">
-        <PlanningToolbar
-          view={view}
-          label={headerLabel}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          onToday={handleToday}
-          onViewChange={setView}
-        />
+      <div className="planner-root flex h-full min-h-0 flex-col">
+        <div className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-6">
+          <PlanningToolbar
+            view={view}
+            label={headerLabel}
+            title={view === "month" ? monthTitle : undefined}
+            {...viewSwitchProps}
+          />
+        </div>
 
-        <div className="flex flex-col gap-4">
-          <AnimatePresence mode="popLayout">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 sm:px-6">
+          <AnimatePresence mode="wait">
             {view === "month" && (
               <motion.div
                 key="month"
-                {...monthViewTransitions}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
                 transition={{ duration: 0.25, ease: "easeOut" }}
+                className="flex min-h-0 flex-1 flex-col"
               >
                 <MonthView
                   monthRange={month}
@@ -278,8 +306,7 @@ export default function PlanningPage() {
                   onPrevMonth={handlePrev}
                   onNextMonth={handleNext}
                   onPlanCreate={openAdd}
-                  onToggleCompleted={togglePlan}
-                  onDelete={deletePlan}
+                  firstMount={navDirection === "zoom"}
                   navDirection={navDirection}
                 />
                 {isMobile && (
@@ -296,8 +323,11 @@ export default function PlanningPage() {
             {view === "week" && (
               <motion.div
                 key="week"
-                {...monthViewTransitions}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
                 transition={{ duration: 0.25, ease: "easeOut" }}
+                className="flex min-h-0 flex-1 flex-col"
               >
                 <WeekView
                   weekRange={week}
@@ -316,12 +346,11 @@ export default function PlanningPage() {
             {view === "day" && (
               <motion.div
                 key="day"
-                {...{
-                  initial: reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92 },
-                  animate: reduced ? { opacity: 1 } : { opacity: 1, scale: 1 },
-                  exit: reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92 },
-                }}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+                animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
+                className="flex min-h-0 flex-1 flex-col"
               >
                 <DayView
                   date={selectedDate}
@@ -340,31 +369,11 @@ export default function PlanningPage() {
           open={addOpen}
           onClose={() => setAddOpen(false)}
           planDate={addDate ?? undefined}
-          onCreate={(planDate, title, categoryId) => createTask(planDate, title, categoryId)}
+          initialStartTime={addStartTime}
+          initialEndTime={addEndTime}
+          onCreate={createTask}
         />
       </div>
     </AppShell>
   );
-}
-
-function toItem(plan: WeeklyPlan, cat: Category | undefined): WeeklyPlanItem {
-  return {
-    id: plan.id,
-    seriesId: null,
-    planDate: plan.planDate,
-    title: plan.title,
-    categoryId: plan.categoryId,
-    category: cat ?? ({ id: 0, userId: null, name: "", color: "#94a3b8", icon: null, isCustom: false, createdAt: "" } as Category),
-    iconType: null,
-    iconValue: null,
-    color: cat?.color ?? null,
-    note: null,
-    completedAt: plan.completedAt ?? null,
-    skipped: false,
-    startTime: plan.startTime ?? null,
-    durationMinutes: null,
-    repeatType: null,
-    repeatDays: null,
-    isRecurring: false,
-  };
 }

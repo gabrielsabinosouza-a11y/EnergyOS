@@ -2,11 +2,13 @@
 
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
-type PlanningView = "month" | "week" | "day";
+export type PlanningView = "month" | "week" | "day";
 
 interface PlanningToolbarProps {
   view: PlanningView;
   label: string;
+  /** Título principal (ex.: "Outubro de 2026" no mês). Maior e mais proeminente. */
+  title?: string;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -19,30 +21,29 @@ const VIEWS: { id: PlanningView; label: string }[] = [
   { id: "day", label: "Dia" },
 ];
 
-export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewChange }: PlanningToolbarProps) {
+export function PlanningToolbar({ view, label, title, onPrev, onNext, onToday, onViewChange }: PlanningToolbarProps) {
   return (
-    <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <CalendarDays size={20} className="text-[var(--accent)]" />
-        <h1 className="text-xl font-semibold">Planejamento</h1>
-      </div>
+    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-2 sm:justify-start">
+        <div className="flex items-center gap-2">
+          <CalendarDays size={20} className="text-[var(--accent)]" aria-hidden="true" />
+          <h1 className="text-lg font-semibold text-[var(--text)]">Planejamento</h1>
+        </div>
 
-      {/* Header row: nav controls left, label center, view switcher right */}
-      <div className="flex w-full items-center justify-between gap-2">
-        {/* Left side: navigation controls */}
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
+        {/* Navegação (< Hoje >) */}
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">
           <button
             type="button"
             onClick={onPrev}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label="Mês anterior"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] transition-colors hover:bg-[var(--bg-surface-hover)]"
+            aria-label="Anterior"
           >
             <ChevronLeft size={18} />
           </button>
           <button
             type="button"
             onClick={onToday}
-            className="px-3 py-1 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--accent-bg)] rounded-md transition-colors"
+            className="rounded-md px-3 py-1 text-[13px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
             aria-label="Hoje"
           >
             Hoje
@@ -50,20 +51,25 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
           <button
             type="button"
             onClick={onNext}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-            aria-label="Mês seguinte"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text)] transition-colors hover:bg-[var(--bg-surface-hover)]"
+            aria-label="Próximo"
           >
             <ChevronRight size={18} />
           </button>
         </div>
+      </div>
 
-        {/* Center: month label - doesn't shrink, stays visible */}
-        <div className="text-sm font-medium text-[var(--text-secondary)] text-center sm:text-left leading-tight min-w-0 flex-1">
-          {label}
-        </div>
+      <div className="flex items-center justify-between gap-2 sm:justify-start">
+        {/* Título principal — maior e mais proeminente na vista de mês. */}
+        <h2
+          className="min-w-0 flex-1 truncate text-center text-2xl font-bold tracking-tight text-[var(--text)] sm:text-left"
+          data-testid="planner-title"
+        >
+          {title ?? label}
+        </h2>
 
-        {/* Right side: view switcher */}
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1 shrink-0">
+        {/* Switcher Mês/Semana/Dia */}
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">
           {VIEWS.map(({ id, label: viewLabel }) => (
             <button
               key={id}
@@ -71,8 +77,8 @@ export function PlanningToolbar({ view, label, onPrev, onNext, onToday, onViewCh
               onClick={() => onViewChange(id)}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
                 view === id
-                  ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+                  ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
               }`}
               aria-pressed={view === id}
             >

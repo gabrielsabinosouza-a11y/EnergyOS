@@ -1,142 +1,230 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { WeeklyPlanItem } from "@/types";
-import { addDays, todayIso } from "@/lib/planning/dates";
-import { SHORT_WEEKDAYS } from "@/lib/planning/dates";
-import { TaskCard } from "@/components/planning/TaskCard";
+import { formatLocalDate, getMonthWeeks, SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
+import { parseIsoKey } from "@/lib/planning/dates";
+import { EventChip } from "./EventChip";
+import { ChevronDown } from "lucide-react";
 
 interface WeekViewProps {
-  weekRange: { start: string; end: string };
+  /** Mês selecionado na vista (agrupado em semanas pelo helper `getMonthWeeks`). */
+  monthRange: { start: string; end: string };
   plans: WeeklyPlanItem[];
   selectedDate: string;
   onDateSelect: (date: string) => void;
   onPlanCreate: (date: string) => void;
-  onToggleCompleted: (id: number, completed: boolean) => void;
-  onDelete: (id: number) => void;
+  /** Mantidos para contratos externos (ex.: futuro chip de ações por dia). */
+  onToggleCompleted?: (id: number, completed: boolean) => void;
+  onDelete?: (id: number) => void;
 }
 
-export function WeekView({
-  weekRange: range,
-  plans,
-  selectedDate,
-  onDateSelect,
-  onPlanCreate,
-  onToggleCompleted,
-  onDelete,
-}: WeekViewProps) {
-  const today = todayIso();
+interface WeekDay {
+  date: string;
+  dayName: string;
+  dayNumber: number;
+  plans: WeeklyPlanItem[];
+  isToday: boolean;
+  isSelected: boolean;
+}
 
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const date = addDays(range.start, i);
-    const dayPlans = plans
-      .filter((p) => p.planDate === date)
-      .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
-    return {
-      date,
-      dayName: SHORT_WEEKDAYS[i],
-      dayNumber: parseInt(date.slice(8, 10), 10),
-      plans: dayPlans,
-      isToday: date === today,
-      isSelected: date === selectedDate,
-    };
-  });
+/** Índice do weekday (Seg=0 … Dom=6) a partir de uma chave YYYY-MM-DD. */
+function weekdayIndex(iso: string): number {
+  const { year, month, day } = parseIsoKey(iso);
+  const d = new Date(year, month - 1, day);
+  return (d.getDay() + 6) % 7; // segunda=0 … domingo=6
+}
+
+export function WeekView({ monthRange, plans, selectedDate, onDateSelect, onPlanCreate }: WeekViewProps) {
+  const reduced = useReducedMotion();
+  const today = todayIso();
+  const year = parseInt(monthRange.start.slice(0, 4), 10);
+  const month = parseInt(monthRange.start.slice(5, 7), 10);
+  const weeks = useMemo(() => getMonthWeeks(year, month), [year, month]);
+
+  const plansByDate = useMemo(() => {
+    const map = new Map<string, WeeklyPlanItem[]>();
+    for (const p of plans) {
+      const list = map.get(p.planDate) ?? [];
+      list.push(p);
+      map.set(p.planDate, list);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? "") || (a.title || "").localeCompare(b.title || ""),
+      );
+    }
+    return map;
+  }, [plans]);
+
+  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  const todayWeekIndex = weeks.find((w) => w.days.includes(today))?.index ?? weeks[0]?.index ?? 1;
+
+  // Na montagem (e ao trocar de mês): a semana atual fica expandida e visível.
+  useEffect(() => {
+    const el = sectionRefs.current[todayWeekIndex];
+    if (!el) return;
+    el.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+  }, [monthRange.start, todayWeekIndex, reduced]);
+
+  const toggleWeek = (index: number) => {
+    setCollapsed((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const renderWeek = (weekIndex: number) => {
+    const week = weeks[weekIndex - 1];
+    if (!week) return null;
+    const isCollapsed = Boolean(collapsed[week.index]);
+    const isCurrentWeek = week.index === todayWeekIndex;
+    const planCount = week.days.reduce((n, d) => n + (plansByDate.get(d)?.length ?? 0), 0);
+    const rangeLabel = `${formatLocalDate(week.start, { day: "numeric" })} – ${formatLocalDate(week.end, { day: "numeric" })} de ${formatLocalDate(week.start, { month: "long" })}`;
+
+    return (
+      <motion.div
+        key={week.index}
+        ref={(el) => {
+          sectionRefs.current[week.index] = el;
+        }}
+        className={`week-section relative flex min-h-0 flex-col rounded-xl border bg-[var(--bg-surface)] transition-[border-color,box-shadow] duration-150 ${
+          isCollapsed ? "flex-none" : "flex-1"
+        } ${isCurrentWeek ? "border-[var(--accent)]" : "border-[var(--border-subtle)]"}`}
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reduced ? 0 : 0.3, ease: "easeOut" }}
+      >
+        {/* Header da semana: rótulo, faixa de datas, contagem e chevron. */}
+        <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-2 pb-2">
+          <h3 className="flex min-w-0 items-center gap-2 text-[11px] font-bold text-[var(--text)]">
+            Semana {week.index}
+            {isCurrentWeek && (
+              <span className="week-badge inline-flex items-center rounded-full bg-[var(--accent)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--bg-primary)]">
+                Esta semana
+              </span>
+            )}
+          </h3>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[10px] text-[var(--text-faint)]">{rangeLabel}</span>
+            <span className="text-[10px] text-[var(--text-faint)]" aria-hidden="true">
+              •
+            </span>
+            <span className="text-[10px] text-[var(--text-faint)]">
+              {planCount} {planCount === 1 ? "plano" : "planos"}
+            </span>
+            <button
+              type="button"
+              onClick={() => toggleWeek(week.index)}
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? `Expandir semana ${week.index}` : `Recolher semana ${week.index}`}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
+            >
+              <ChevronDown size={14} className={`transition-transform duration-200 ${isCollapsed ? "-rotate-90" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {isCollapsed ? null : (
+          <AnimatePresence initial={false}>
+            <motion.div
+              key="week-days"
+              className="week-days min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: reduced ? 0 : 0.2, ease: "easeOut" }}
+            >
+              <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-7">
+                {week.days.map((date) => (
+                  <DayCard
+                    key={date}
+                    day={{
+                      date,
+                      dayName: SHORT_WEEKDAYS[weekdayIndex(date)],
+                      dayNumber: parseInt(date.slice(8, 10), 10),
+                      plans: plansByDate.get(date) ?? [],
+                      isToday: date === today,
+                      isSelected: date === selectedDate,
+                    }}
+                    onSelect={onDateSelect}
+                    onPlanCreate={onPlanCreate}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </motion.div>
+    );
+  };
 
   return (
-    <div
-      className="w-full grid grid-cols-1 lg:grid-cols-7 gap-3 lg:gap-4"
-      style={{ minWidth: 0 }}
-    >
-      {days.map((day) => (
-        <DayColumn
-          key={day.date}
-          day={day}
-          onDateSelect={onDateSelect}
-          onPlanCreate={onPlanCreate}
-          onToggleCompleted={onToggleCompleted}
-          onDelete={onDelete}
-        />
-      ))}
+    <div key={monthRange.start} className="week-view-stack flex h-[calc(100dvh_-_320px)] min-h-0 flex-col gap-4">
+      {weeks.map((_, i) => renderWeek(i + 1))}
     </div>
   );
 }
 
-interface DayColumnProps {
-  day: {
-    date: string;
-    dayName: string;
-    dayNumber: number;
-    plans: WeeklyPlanItem[];
-    isToday: boolean;
-    isSelected: boolean;
-  };
-  onDateSelect: (date: string) => void;
+interface DayCardProps {
+  day: WeekDay;
+  onSelect: (date: string) => void;
   onPlanCreate: (date: string) => void;
-  onToggleCompleted: (id: number, completed: boolean) => void;
-  onDelete: (id: number) => void;
 }
 
-function DayColumn({
-  day,
-  onDateSelect,
-  onPlanCreate,
-  onToggleCompleted,
-  onDelete,
-}: DayColumnProps) {
+function DayCard({ day, onSelect, onPlanCreate }: DayCardProps) {
+  const sortedPlans = [...day.plans].sort(
+    (a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? "") || (a.title || "").localeCompare(b.title || ""),
+  );
+
   return (
     <div
-      className={`flex flex-col min-w-[140px] rounded-xl border bg-[var(--bg-surface)] overflow-hidden transition-colors ${
-        day.isSelected
-          ? "ring-2 ring-[var(--accent)] ring-offset-1 border-[var(--border-subtle)]"
-          : day.isToday
-            ? "border-[var(--accent)]/50"
+      className={`day-card group relative flex min-h-0 flex-col overflow-hidden rounded-xl border bg-[var(--bg-surface)] transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] ${
+        day.isToday
+          ? "border-[var(--accent)]"
+          : day.isSelected
+            ? "border-[var(--border-subtle)] shadow-[0_0_0_2px_var(--accent)]"
             : "border-[var(--border-subtle)]"
       }`}
-      style={{ borderColor: "var(--border-subtle)" }}
+      onClick={() => onSelect(day.date)}
+      onDoubleClick={() => onPlanCreate(day.date)}
     >
-      {/* Header: clickable day -> Dia view */}
-      <button
-        type="button"
-        onClick={() => onDateSelect(day.date)}
-        aria-label={`Selecionar ${day.dayName}, ${day.dayNumber}`}
-        className={`flex flex-col items-center gap-1 p-2 border-b border-[var(--border-subtle)] text-left transition-colors ${
-          day.isSelected
-            ? "bg-[var(--accent-bg)] text-[var(--accent)]"
-            : day.isToday
-              ? "bg-[var(--accent-bg)]/50 text-[var(--accent)]"
-              : "bg-[var(--bg-surface-hover)]/30 text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
-        }}`}
-      >
-        <span className={`text-[11px] font-semibold uppercase tracking-wider ${day.isToday ? "font-bold" : ""}`}>
-          {day.dayName}
-        </span>
-        <span className={`text-[20px] font-mono tabular-nums font-bold ${day.isToday || day.isSelected ? "text-[var(--accent)]" : "text-[var(--text)]"}`}>
+      {/* Header: abreviação do weekday + número do dia (preenchido para hoje). */}
+      <div className="flex shrink-0 items-center justify-between gap-1 px-1 pb-1.5">
+        <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-faint)]">{day.dayName}</span>
+        <span
+          className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums ${
+            day.isToday
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : day.isSelected
+                ? "border border-[var(--accent)] text-[var(--accent)]"
+                : "border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--text)]"
+          }`}
+        >
           {day.dayNumber}
         </span>
-      </button>
-
-      <div className="flex-1 p-2 space-y-1.5 overflow-y-auto min-h-0">
-        {day.plans.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center text-center py-6 text-[12px] text-[var(--text-faint)]">
-            Sem planos
-          </div>
-        )}
-
-        {day.plans.map((plan) => (
-          <div key={plan.id} className="group relative">
-            <TaskCard
-              plan={plan}
-              onToggle={(completed) => onToggleCompleted(plan.id, completed)}
-              onDelete={() => onDelete(plan.id)}
-            />
-          </div>
-        ))}
       </div>
 
+      {/* Planos do dia: chips compactos, uma linha, ellipsis, tooltip com o título. */}
+      <div className="week-card-plans flex min-h-0 flex-col gap-1">
+        {day.plans.length === 0 ? (
+          <span className="px-1 pt-1 text-[11px] text-[var(--text-faint)]">Sem planos</span>
+        ) : (
+          sortedPlans.map((p) => (
+            <EventChip key={p.id} plan={p} onClick={() => onSelect(day.date)} />
+          ))
+        )}
+      </div>
+
+      {/* Ação de criar plano do dia. */}
       <button
         type="button"
-        onClick={() => onPlanCreate(day.date)}
-        aria-label="Adicionar plano"
-        className="mt-2 w-full border-t border-[var(--border-subtle)] pt-2 px-2 py-2.5 text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent-bg)] flex items-center justify-center gap-1 transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          onPlanCreate(day.date);
+        }}
+        className="week-card-add mt-auto flex items-center justify-center rounded-lg border border-dashed border-[var(--border-subtle)] py-1.5 text-[11px] font-medium text-[var(--text-faint)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+        aria-label={`Adicionar plano para ${day.date}`}
       >
         + Adicionar
       </button>

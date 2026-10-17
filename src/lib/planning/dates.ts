@@ -68,6 +68,56 @@ export function daysInMonth(iso: string): number {
   return new Date(year, month, 0).getDate();
 }
 
+/** Uma semana do calendário dentro de um mês específico. */
+export interface MonthWeek {
+  /** 1-based: Semana 1 = dias 1–7, Semana 2 = 8–14, Semana 3 = 15–21, Semana 4 = 22–último. */
+  index: number;
+  /** Primeiro dia da semana dentro do mês (YYYY-MM-DD). */
+  start: string;
+  /** Último dia da semana dentro do mês (YYYY-MM-DD). */
+  end: string;
+  /** Dias do mês desta semana, em ordem crescente. */
+  days: string[];
+}
+
+/**
+ * Agrupa o mês em NO MÁXIMO 4 semanas (regra do produto):
+ *
+ * - Semana 1 = dia 1 até o dia 7
+ * - Semana 2 = dia 8 até o dia 14
+ * - Semana 3 = dia 15 até o dia 21
+ * - Semana 4 = dia 22 até o último dia do mês (absorve dias 29, 30 e 31)
+ *
+ * Assim os dias de "borda" do mês (início e fim) são mergeados nas semanas 1 e 4
+ * e um mês nunca gera uma 5ª ou 6ª semana. Dias de meses vizinhos NÃO entram.
+ */
+export function getMonthWeeks(year: number, month: number): MonthWeek[] {
+  const total = new Date(year, month, 0).getDate(); // dia 0 do mês seguinte = último dia deste mês
+  // [primeiro dia, último dia] de cada semana — a última semana absorve o fim do mês.
+  const ranges: Array<[number, number]> = [
+    [1, 7],
+    [8, 14],
+    [15, 21],
+    [22, total],
+  ];
+  const weeks: MonthWeek[] = [];
+  for (let i = 0; i < ranges.length; i++) {
+    const [from, to] = ranges[i];
+    const start = Math.max(from, 1);
+    const end = Math.min(to, total);
+    const days: string[] = [];
+    for (let d = start; d <= end; d++) days.push(isoKey(year, month, d));
+    weeks.push({ index: i + 1, start: days[0], end: days[days.length - 1], days });
+  }
+  return weeks;
+}
+
+/** Agrupa as semanas do mês que contém a data informada (YYYY-MM-DD). */
+export function getMonthWeeksFor(iso: string): MonthWeek[] {
+  const { year, month } = parseIsoKey(iso);
+  return getMonthWeeks(year, month);
+}
+
 /** Adiciona N meses (calendário local) a uma chave YYYY-MM-DD. */
 export function addMonths(iso: string, n: number): string {
   const { year, month, day } = parseIsoKey(iso);
@@ -93,10 +143,8 @@ export function viewLabel(iso: string, view: "month" | "week" | "day"): string {
     return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); // "outubro de 2026"
   }
   if (view === "week") {
-    const { start, end } = weekRange(iso);
-    const [, , sd] = start.split("-");
-    const [, , ed] = end.split("-");
-    return `${Number(sd)} - ${Number(ed)} de ${date.toLocaleDateString("pt-BR", { month: "long" })}`; // "12 - 18 de outubro"
+    // Na vista Semana o rótulo é o mês/ano inteiro do plano (ex.: "outubro de 2026").
+    return formatLocalDate(iso, { month: "long", year: "numeric" });
   }
   return date.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); // "quinta-feira, 15 de outubro"
 }

@@ -14,16 +14,22 @@ interface AddTaskDialogProps {
   onClose: () => void;
   /** Data pré-selecionada para o novo plano (YYYY-MM-DD). Padrão: hoje. */
   planDate?: string;
-  /** Recebe (planDate, title, categoryId) e deve persistir o plano. */
-  onCreate: (planDate: string, title: string, categoryId: number | undefined) => Promise<void>;
+  /** Início pré-selecionado (HH:MM) — usado ao clicar em um horário livre. */
+  initialStartTime?: string;
+  /** Fim pré-selecionado (HH:MM) — usado ao clicar em um horário livre. */
+  initialEndTime?: string;
+  /** Recebe (planDate, title, categoryId, startTime?, endTime?) e deve persistir o plano. */
+  onCreate: (planDate: string, title: string, categoryId: number | undefined, startTime?: string, endTime?: string) => Promise<void>;
 }
 
-export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDialogProps) {
+export function AddTaskDialog({ open, onClose, planDate, initialStartTime, initialEndTime, onCreate }: AddTaskDialogProps) {
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const defaultCategory = categories[0] ?? null;
@@ -43,6 +49,20 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
     return () => { mounted = false; };
   }, []);
 
+  // Ajusta o estado quando o diálogo abre (padrão: campos limpos; com horário pré-selecionado).
+  const [lastOpen, setLastOpen] = useState(false);
+  if (open && !lastOpen) {
+    setLastOpen(true);
+    setTitle("");
+    setError("");
+    setCategoryId(categories[0]?.id ?? null);
+    setStartTime(initialStartTime ?? "09:00");
+    setEndTime(initialEndTime ?? "10:00");
+  }
+  if (!open && lastOpen) {
+    setLastOpen(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -58,8 +78,7 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
     try {
       const effectiveDate = planDate ?? todayIso();
       const catId = categoryId ?? defaultCategory?.id;
-      // A página é dona da chamada à API e da atualização da lista local.
-      await onCreate(effectiveDate, title.trim(), catId ?? undefined);
+      await onCreate(effectiveDate, title.trim(), catId ?? undefined, startTime, endTime || undefined);
       setTitle("");
       setCategoryId(null);
       onClose();
@@ -114,6 +133,35 @@ export function AddTaskDialog({ open, onClose, planDate, onCreate }: AddTaskDial
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label htmlFor="add-plan-start-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              Início
+            </label>
+            <input
+              id="add-plan-start-time"
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="auth-input"
+              aria-label="Hora de início"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="add-plan-end-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              Fim
+            </label>
+            <input
+              id="add-plan-end-time"
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className="auth-input"
+              aria-label="Hora de fim"
+            />
+          </div>
         </div>
 
         {error && (

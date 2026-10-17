@@ -625,6 +625,8 @@ export interface WeeklyPlanItem {
   completedAt: string | null;
   skipped: boolean;
   startTime: string | null;
+  /** Fim do evento "HH:MM" (prioridade sobre startTime + durationMinutes). */
+  endTime?: string | null;
   durationMinutes: number | null;
   repeatType: PlanRepeatType | null;
   repeatDays: number[] | null;

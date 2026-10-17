@@ -275,7 +275,7 @@ export const api = {
     const params = weekStart ? `?weekStart=${weekStart}` : "";
     return request<WeeklyPlanItem[]>(`/api/weekly-plans${params}`);
   },
-  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number }) =>
+  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
