@@ -80,17 +80,16 @@ function sortGoals(goals: Goal[]): { active: Goal[]; completed: Goal[] } {
 interface GoalCardItemProps {
   goal: Goal;
   color: string;
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  layoutId: string | number;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string; className?: string }>;
+  layoutId: string;
   done: boolean;
   pct: number;
   deadline: { text: string; overdue: boolean } | null;
   onProgress: (goalId: number, action: GoalLogAction) => void;
   onMenu?: (goalId: number) => void;
-  onCloseMenu?: () => void;
   celebrating: boolean;
   flipping: boolean;
-  reduced: boolean;
+  reduced: boolean | null;
 }
 
 const GoalCardItem = memo(function GoalCardItem({
@@ -103,7 +102,6 @@ const GoalCardItem = memo(function GoalCardItem({
   deadline,
   onProgress,
   onMenu,
-  onCloseMenu,
   celebrating,
   flipping,
   reduced,
@@ -180,15 +178,13 @@ const GoalCardItem = memo(function GoalCardItem({
   }, [isSingle, done]);
 
   const ariaDecrement = `Remover 1 do progresso de ${title}`;
-  const ariaIncrement = `Adicionar 1 ao progresso de ${title}`;
 
   const decrementDisabled = currentValue <= 0;
 
   const rolledCurrent = Math.round(animatedValue.get());
 
   return (
-    {/* Wrapper: posicionamento na grade (layout). Sem estilo de transform próprio. */}
-    <motion.div
+      <motion.div
       layout="position"
       layoutId={layoutId}
       key={goal.id}
@@ -201,14 +197,13 @@ const GoalCardItem = memo(function GoalCardItem({
         transition: { duration: duration.exit, ease: "easeOut" },
       }}
       transition={{
-        layout: { type: "spring", ...spring.snappy },
+        layout: { ...spring.snappy },
         opacity: { duration: 0.2 },
       }}
       className="group relative flex"
     >
       {/* Surface com tilt 3D e brilho que seguem o ponteiro. */}
       <motion.div
-        ref={tilt.ref}
         {...tilt.events}
         className="relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
         style={{
@@ -252,7 +247,7 @@ const GoalCardItem = memo(function GoalCardItem({
             boxShadow: celebrating ? `0 0 14px ${color}80` : `0 0 0 transparent`,
           }}
         >
-          <IconComp size={18} style={{ color }} />
+          <IconComp size={18} color={color} />
           {celebrating && (
             <svg
               className="absolute inset-0 rounded-full"
@@ -320,7 +315,7 @@ const GoalCardItem = memo(function GoalCardItem({
               }}
               initial={false}
               animate={{ width: `${done ? 100 : pct}%` }}
-              transition={{ type: "spring", ...spring.progress }}
+              transition={{ ...spring.progress }}
             >
               <AnimatePresence>
                 {shimmerKey > 0 && (
@@ -363,7 +358,7 @@ const GoalCardItem = memo(function GoalCardItem({
                 opacity: decrementDisabled ? 0 : 1,
                 scale: decrementDisabled ? 0.92 : 1,
               }}
-              transition={{ type: "spring", ...spring.press }}
+              transition={{ ...spring.press }}
               className="tap flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text)] disabled:pointer-events-none cursor-pointer"
               style={{
                 opacity: decrementDisabled ? 0 : 1,
@@ -403,7 +398,7 @@ const GoalCardItem = memo(function GoalCardItem({
             }}
             whileTap={reduced ? undefined : { scale: 0.92 }}
             whileHover={reduced ? undefined : { scale: 1.04 }}
-            transition={{ type: "spring", ...spring.press }}
+            transition={{ ...spring.press }}
             className="tap flex h-11 w-11 shrink-0 items-center justify-center rounded-full border cursor-pointer disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               borderColor: `${color}55`,
@@ -469,8 +464,8 @@ const GoalCardItem = memo(function GoalCardItem({
           >
             <motion.div
               initial={{ scale: 0, rotate: -12 }}
-              animate={{ scale: [0, 1.12, 1], rotate: [0] }}
-              transition={{ type: "spring", ...spring.celebrate }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ ...spring.celebrate }}
               className="flex h-14 w-14 items-center justify-center rounded-full"
               style={{
                 background: color,
@@ -681,7 +676,7 @@ export function GoalsCard({
 
       <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
         <AnimatePresence mode="popLayout" initial={false}>
-          {activeGoals.map((goal, index) => {
+          {activeGoals.map((goal) => {
             const { color, icon } = goal.category;
             const IconComp = categoryIcon(icon);
             const done = isComplete(goal);
@@ -693,14 +688,14 @@ export function GoalsCard({
             return (
               <GoalCardItem
                 key={goal.id}
-                layoutId={goal.id}
+                layoutId={String(goal.id)}
                 goal={goal}
                 color={color}
                 Icon={IconComp}
                 done={done}
                 pct={pct}
                 deadline={deadline}
-                onProgress={(action) => {
+                onProgress={(_goalId: number, action: GoalLogAction) => {
                   const predictsCompletion =
                     action === "set" ||
                     (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
@@ -708,7 +703,6 @@ export function GoalsCard({
                   void onProgress(goal.id, action);
                 }}
                 onMenu={openMenu}
-                onCloseMenu={closeMenu}
                 celebrating={isCelebrating}
                 flipping={isFlipping}
                 reduced={reduced}
@@ -727,7 +721,7 @@ export function GoalsCard({
             whileTap={reduced ? undefined : { scale: 0.97 }}
             aria-label="Criar nova meta"
             className="flex min-h-[88px] h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
-            transition={{ type: "spring", ...spring.snappy }}
+            transition={{ ...spring.snappy }}
           >
             <motion.span
               whileHover={reduced ? undefined : { scale: 1.1 }}
@@ -766,16 +760,15 @@ export function GoalsCard({
                   return (
                     <GoalCardItem
                       key={goal.id}
-                      layoutId={goal.id}
+                      layoutId={String(goal.id)}
                       goal={goal}
                       color={color}
                       Icon={categoryIcon(goal.category.icon)}
                       done={done}
                       pct={pct}
                       deadline={deadlineLabel(goal, todayIso())}
-                      onProgress={(action) => void onProgress(goal.id, action)}
+                      onProgress={(_goalId: number, action: GoalLogAction) => void onProgress(goal.id, action)}
                       onMenu={openMenu}
-                      onCloseMenu={closeMenu}
                       celebrating={isCelebrating}
                       flipping={false}
                       reduced={reduced}

@@ -1,17 +1,14 @@
 "use client";
 
+import { useEffect, useRef, useCallback } from "react";
 import {
   useMotionValue,
   useSpring,
   useReducedMotion,
-  useTransform,
-  useTime,
-  useFrame,
   type MotionValue,
   type Transition,
   type Variants,
 } from "framer-motion";
-import { useEffect, useRef, useCallback } from "react";
 
 // ── Spring presets (sempre 2 keyframes — nunca arrays de 3+ com spring) ──────
 export const spring = {
@@ -120,7 +117,6 @@ interface UseCardTiltResult {
     onPointerEnter: () => void;
     onPointerLeave: () => void;
   };
-  ref: (el: HTMLDivElement | null) => void;
   rotateX: MotionValue<number>;
   rotateY: MotionValue<number>;
   lift: MotionValue<number>;
@@ -130,7 +126,6 @@ interface UseCardTiltResult {
 
 export function useCardTilt({ enabled = true }: { enabled?: boolean } = {}): UseCardTiltResult {
   const reduced = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
 
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
@@ -157,8 +152,7 @@ export function useCardTilt({ enabled = true }: { enabled?: boolean } = {}): Use
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!active || pointerFine.current === false) return;
-    const el = ref.current;
-    if (!el) return;
+    const el = e.currentTarget as HTMLElement;
     const rect = el.getBoundingClientRect();
     const nx = (e.clientX - rect.left) / rect.width - 0.5;   // [-0.5, 0.5]
     const ny = (e.clientY - rect.top) / rect.height - 0.5;
@@ -166,12 +160,12 @@ export function useCardTilt({ enabled = true }: { enabled?: boolean } = {}): Use
     my.set(-ny * 6);  // rotateX ~ ±6º (inverte: cima inclina p/ trás)
     hx.set(nx * 100); // highlight segue o cursor (px)
     hy.set(ny * 100);
-  }, [active]);
+  }, [active, mx, my, hx, hy]);
 
   const onPointerEnter = useCallback(() => {
     if (!active || pointerFine.current === false) return;
     lift.set(-2);
-  }, [active]);
+  }, [active, lift]);
 
   const onPointerLeave = useCallback(() => {
     if (!active) return;
@@ -180,21 +174,20 @@ export function useCardTilt({ enabled = true }: { enabled?: boolean } = {}): Use
     lift.set(0);
     hx.set(0);
     hy.set(0);
-  }, [active]);
+  }, [active, mx, my, lift, hx, hy]);
 
-  const style: React.CSSProperties = {
+  const style = {
     transformPerspective: 800,
-    rotateX,
-    rotateY,
-    y: lift,
-  };
+    rotateX: rotateX as unknown as number,
+    rotateY: rotateY as unknown as number,
+    y: lift as unknown as number,
+  } as unknown as React.CSSProperties;
 
   const events = { onPointerMove, onPointerEnter, onPointerLeave };
 
   return {
     style,
     events,
-    ref: (el: HTMLDivElement | null) => { ref.current = el; },
     rotateX,
     rotateY,
     lift,
@@ -209,66 +202,6 @@ export function useCardTilt({ enabled = true }: { enabled?: boolean } = {}): Use
 
 export interface GoalActionQueueOptions {
   onAction: (goalId: number, action: string, seq: number) => Promise<void>;
-  onSuccess?: (goalId: number, seq: number, value: any) => void;
+  onSuccess?: (goalId: number, seq: number, value: unknown) => void;
   onError?: (goalId: number, seq: number, error: Error) => void;
-}
-
-/**
- * Fila serializada por goalId. Garante que respostas nunca sobrescrevam estado
- * mais novo (cada ação carrega um sequence number crescente; apenas a ação com
- * o seq mais recente aplicada pelo servidor é gravada no estado final).
- * Cliques rápidos são coalescidos: só o valor final da rajada viaja ao
- * servidor.
- */
-export function createGoalActionQueue(opts: GoalActionQueueOptions) {
-  const seqByGoal = new Map<number, number>();
-  const abortByGoal = new Map<number, AbortController>();
-  const runningByGoal = new Map<number, boolean>();
-  const pendingValueByGoal = new Map<number, { action: string; value: number }>();
-
-  const enqueue = (goalId: number, action: string, value: number) => {
-    const prev = pendingValueByGoal.get(goalId);
-    pendingValueByGoal.set(goalId, { action, value });
-    if (runningByGoal.get(goalId)) return; // já há um voo em andamento; o próximo pega o valor pendente
-
-    const run = async () => {
-      runningByGoal.set(goalId, true);
-      while (pendingValueByGoal.has(goalId)) {
-        const payload = pendingValueByGoal.get(goalId)!;
-        pendingValueByGoal.delete(goalId);
-        const seq = (seqByGoal.get(goalId) ?? 0) + 1;
-        seqByGoal.set(goalId, seq);
-
-        const ac = new AbortController();
-        abortByGoal.set(goalId, ac);
-
-        try {
-          const result = await opts.onAction(goalId, payload.action, seq);
-          // Só aplica se este for o seq mais recente conhecido para esta meta.
-          if (seqByGoal.get(goalId) === seq) {
-            opts.onSuccess?.(goalId, seq, result);
-          }
-        } catch (error) {
-          if ((error as DOMException).name === "AbortError") return;
-          if (seqByGoal.get(goalId) === seq) {
-            opts.onError?.(goalId, seq, error as Error);
-          }
-        } finally {
-          abortByGoal.delete(goalId);
-        }
-      }
-      runningByGoal.set(goalId, false);
-    };
-
-    void run();
-  };
-
-  const abort = (goalId: number) => {
-    const ac = abortByGoal.get(goalId);
-    if (ac) ac.abort();
-    pendingValueByGoal.delete(goalId);
-    runningByGoal.set(goalId, false);
-  };
-
-  return { enqueue, abort };
 }

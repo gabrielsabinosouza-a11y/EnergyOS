@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { WeeklyPlanItem } from "@/types";
-import { addDays, daysInMonth, formatLocalDate, isoKey, todayIso, SHORT_WEEKDAYS } from "@/lib/planning/dates";
+import { formatLocalDate, parseIsoKey, SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
+import { buildMonthGrid, isInCalendarMonth } from "@/lib/planning/month-grid";
 import { EventChip } from "./EventChip";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 type SizeMode = "mobile" | "tablet" | "desktop";
 
@@ -13,215 +15,268 @@ interface MonthViewProps {
   monthRange: { start: string; end: string };
   plans: WeeklyPlanItem[];
   selectedDate: string;
+  navigationDirection?: "prev" | "next" | "zoom" | null;
+  importantDays: ReadonlyMap<string, readonly string[]>;
+  importantDaysError?: string | null;
+  plansError?: string | null;
   onDateSelect: (date: string) => void;
-  onMonthNavigate?: (date: string) => void;
+  onMonthNavigate?: (date: string, direction: "prev" | "next") => void;
   onPrevMonth?: () => void;
   onNextMonth?: () => void;
   onPlanCreate?: (date: string) => void;
+  onToggleCompleted?: (plan: WeeklyPlanItem, completed: boolean) => Promise<void>;
 }
 
 const CHIP_CAP_TABLET = 2;
 const CHIP_CAP_DESKTOP = 3;
 const POPOVER_WIDTH = 280;
-const POPBOTTOM_PAD = 350;
+const EMPTY_REASONS: readonly string[] = [];
+
+function planItemKey(plan: WeeklyPlanItem): string {
+  return plan.seriesId !== null
+    ? `series:${plan.seriesId}:${plan.planDate}`
+    : `plan:${plan.id}`;
+}
 
 export function MonthView({
   monthRange,
   plans,
   selectedDate,
+  navigationDirection,
+  importantDays,
+  importantDaysError,
+  plansError,
   onDateSelect,
   onMonthNavigate,
   onPrevMonth,
   onNextMonth,
   onPlanCreate,
+  onToggleCompleted,
 }: MonthViewProps) {
+  const reduced = useReducedMotion();
   const today = todayIso();
-  const year = parseInt(monthRange.start.slice(0, 4), 10);
-  const month = parseInt(monthRange.start.slice(5, 7), 10);
+  const { year, month } = parseIsoKey(monthRange.start);
   const monthKey = monthRange.start.slice(0, 7);
-
-  const total = daysInMonth(monthRange.start);
-  const firstOfMonth = new Date(year, month - 1, 1);
-  const lead = (firstOfMonth.getDay() + 6) % 7; // segunda=0 … domingo=6
-
-  const days = useMemo(() => {
-    const out: string[] = [];
-    for (let i = 0; i < lead; i++) out.push(addDays(isoKey(year, month, 1), i - lead));
-    for (let i = 1; i <= total; i++) out.push(isoKey(year, month, i));
-    const tail = (-out.length) % 7;
-    for (let i = 1; i <= tail; i++) out.push(addDays(monthRange.end, i));
-    return out;
-  }, [year, month, total, monthRange.end, lead]);
-
-  const rowCount = days.length / 7;
-
-  const plansByDate = useMemo(() => {
-    const map = new Map<string, WeeklyPlanItem[]>();
-    for (const p of plans) {
-      const list = map.get(p.planDate) ?? [];
-      list.push(p);
-      map.set(p.planDate, list);
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
-    }
-    return map;
-  }, [plans]);
-
-  const isToday = (d: string) => d === today;
-  const isSelected = (d: string) => d === selectedDate;
-  const isCurrentMonth = (d: string) => d.slice(0, 7) === monthKey;
-
-  const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const dates = useMemo(() => buildMonthGrid(year, month), [year, month]);
+  const rowCount = dates.length / 7;
   const [sizeMode, setSizeMode] = useState<SizeMode>("desktop");
-  const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [popover, setPopover] = useState<{ date: string; left: number; top: number } | null>(null);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [desktopChipCap, setDesktopChipCap] = useState(CHIP_CAP_DESKTOP);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const pendingFocusDate = useRef<string | null>(null);
 
   const isMobile = sizeMode === "mobile";
-  const isTablet = sizeMode === "tablet";
-  const chipCap = isMobile ? 0 : isTablet ? CHIP_CAP_TABLET : CHIP_CAP_DESKTOP;
 
-  // Media queries para ajustar densidade da grade.
   useEffect(() => {
-    const mqlDesktop = window.matchMedia("(min-width: 1024px)");
-    const mqlTablet = window.matchMedia("(min-width: 640px) and (max-width: 1023px)");
-    const update = () => {
-      setSizeMode(mqlDesktop.matches ? "desktop" : mqlTablet.matches ? "tablet" : "mobile");
-    };
+    const desktop = window.matchMedia("(min-width: 1101px)");
+    const tablet = window.matchMedia("(min-width: 640px) and (max-width: 1100px)");
+    const update = () => setSizeMode(desktop.matches ? "desktop" : tablet.matches ? "tablet" : "mobile");
     update();
-    mqlDesktop.addEventListener("change", update);
-    mqlTablet.addEventListener("change", update);
+    desktop.addEventListener("change", update);
+    tablet.addEventListener("change", update);
     return () => {
-      mqlDesktop.removeEventListener("change", update);
-      mqlTablet.removeEventListener("change", update);
+      desktop.removeEventListener("change", update);
+      tablet.removeEventListener("change", update);
     };
   }, []);
 
-  const selectedIdx = days.indexOf(selectedDate);
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const measured = (entry.contentRect.height - 32) / rowCount;
+      if (measured > 0) setDesktopChipCap(measured < 132 ? CHIP_CAP_TABLET : CHIP_CAP_DESKTOP);
+    });
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, [rowCount]);
+
+  const chipCap = sizeMode === "mobile" ? 0 : sizeMode === "tablet"
+    ? CHIP_CAP_TABLET
+    : desktopChipCap;
+
+  const plansByDate = useMemo(() => {
+    const grouped = new Map<string, WeeklyPlanItem[]>();
+    for (const plan of plans) {
+      const list = grouped.get(plan.planDate) ?? [];
+      list.push(plan);
+      grouped.set(plan.planDate, list);
+    }
+    for (const list of grouped.values()) {
+      list.sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+    }
+
+    return grouped;
+  }, [plans]);
+
+  const selectedIndex = dates.indexOf(selectedDate);
+
+  const setButtonRef = useCallback((date: string, element: HTMLButtonElement | null) => {
+    if (element) cellRefs.current.set(date, element);
+    else cellRefs.current.delete(date);
+  }, []);
+
+  const selectDate = useCallback(
+    (date: string) => {
+      if (isInCalendarMonth(date, year, month)) onDateSelect(date);
+      else if (onMonthNavigate) onMonthNavigate(date, date < monthRange.start ? "prev" : "next");
+      else onDateSelect(date);
+      if (isMobile) setMobilePanelOpen(true);
+    },
+    [isMobile, month, monthRange.start, onDateSelect, onMonthNavigate, year],
+  );
+
+  useEffect(() => {
+    const date = pendingFocusDate.current;
+    if (date && date === selectedDate) {
+      cellRefs.current.get(date)?.focus({ preventScroll: true });
+      pendingFocusDate.current = null;
+    }
+  }, [monthKey, selectedDate]);
 
   const closePopover = useCallback(() => setPopover(null), []);
 
-  // Fecha o popover: Escape + clique fora.
   useEffect(() => {
-    if (!popover) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePopover();
+    if (!popover && !mobilePanelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (popover) closePopover();
+        else setMobilePanelOpen(false);
+      }
     };
-    const onDown = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) closePopover();
+    const onPointerDown = (event: PointerEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) closePopover();
     };
     const onScroll = () => closePopover();
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDown, true);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("keydown", onKeyDown);
+    if (popover) {
+      document.addEventListener("pointerdown", onPointerDown, true);
+      window.addEventListener("scroll", onScroll, true);
+    }
     return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [popover, closePopover]);
+  }, [closePopover, mobilePanelOpen, popover]);
 
-  const handleGridKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const cells = Array.from(cellRefs.current.values());
-      const n = cells.length;
-      if (n === 0) return;
-      const active = document.activeElement;
-      let focusIdx = cells.indexOf(active as HTMLButtonElement);
-      if (focusIdx < 0) focusIdx = selectedIdx >= 0 ? selectedIdx : 0;
-      const row = Math.floor(focusIdx / 7);
-      const col = focusIdx % 7;
-      let next: number | null = null;
-      switch (e.key) {
-        case "ArrowRight":
-          e.preventDefault();
-          next = col < 6 ? focusIdx + 1 : null;
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          next = col > 0 ? focusIdx - 1 : null;
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          next = row < rowCount - 1 ? focusIdx + 7 : null;
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          next = row > 0 ? focusIdx - 7 : null;
-          break;
-        case "Home":
-          e.preventDefault();
-          next = row * 7;
-          break;
-        case "End":
-          e.preventDefault();
-          next = Math.min(row * 7 + 6, n - 1);
-          break;
-        case "PageUp":
-          e.preventDefault();
-          onPrevMonth?.();
-          break;
-        case "PageDown":
-          e.preventDefault();
-          onNextMonth?.();
-          break;
-      }
-      if (next !== null) cells[next]?.focus({ preventScroll: true });
-    },
-    [rowCount, selectedIdx, onPrevMonth, onNextMonth],
-  );
-
-  const openPopover = useCallback((e: React.SyntheticEvent, date: string) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const left = Math.max(12, Math.min(r.left, window.innerWidth - POPOVER_WIDTH - 12));
-    let top = r.bottom + 10;
-    if (top + POPBOTTOM_PAD > window.innerHeight) {
-      top = Math.max(12, r.top - POPBOTTOM_PAD - 10);
-    }
+  const openPopover = useCallback((event: React.SyntheticEvent, date: string) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 12));
+    const top = rect.bottom + 10 + 360 > window.innerHeight
+      ? Math.max(12, rect.top - 370)
+      : rect.bottom + 10;
     setPopover({ date, left, top });
   }, []);
 
-  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" });
+  const handleGridKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const activeDate = (document.activeElement as HTMLElement | null)?.dataset.date;
+      let index = activeDate ? dates.indexOf(activeDate) : selectedIndex;
+      if (index < 0) index = 0;
+      let next: number | null = null;
 
-  const rows: string[][] = [];
-  for (let r = 0; r < rowCount; r++) rows.push(days.slice(r * 7, (r + 1) * 7));
+      switch (event.key) {
+        case "ArrowRight":
+          next = index + 1;
+          break;
+        case "ArrowLeft":
+          next = index - 1;
+          break;
+        case "ArrowDown":
+          next = index + 7;
+          break;
+        case "ArrowUp":
+          next = index - 7;
+          break;
+        case "Home":
+          next = Math.floor(index / 7) * 7;
+          break;
+        case "End":
+          next = Math.min(Math.floor(index / 7) * 7 + 6, dates.length - 1);
+          break;
+        case "PageUp":
+          event.preventDefault();
+          onPrevMonth?.();
+          return;
+        case "PageDown":
+          event.preventDefault();
+          onNextMonth?.();
+          return;
+        default:
+          return;
+      }
+
+      event.preventDefault();
+      if (next < 0 || next >= dates.length) return;
+      const date = dates[next];
+      pendingFocusDate.current = date;
+      selectDate(date);
+      if (isInCalendarMonth(date, year, month)) {
+        cellRefs.current.get(date)?.focus({ preventScroll: true });
+        pendingFocusDate.current = null;
+      }
+    },
+    [dates, month, onNextMonth, onPrevMonth, selectDate, selectedIndex, year],
+  );
+
+  const monthLabel = formatLocalDate(monthRange.start, { month: "long", year: "numeric" });
+  const gridMinHeight = 32 + rowCount * 96;
+  const slideDirection = navigationDirection === "prev" ? -1 : 1;
+  const dayPlans = plansByDate.get(selectedDate) ?? [];
+  const selectedReasons = importantDays.get(selectedDate) ?? EMPTY_REASONS;
+
+  const renderPanel = () => (
+    <SelectedDayPanel
+      date={selectedDate}
+      plans={dayPlans}
+      importantReasons={selectedReasons}
+      importantDaysError={importantDaysError}
+      plansError={plansError}
+      onPlanCreate={onPlanCreate}
+      onToggleCompleted={onToggleCompleted}
+      onClose={() => setMobilePanelOpen(false)}
+      reduced={Boolean(reduced)}
+    />
+  );
 
   const renderPopover = () => {
-    if (!popover) return null;
-    const visible = isCurrentMonth(popover.date) ? popover : null;
-    if (!visible) return null;
-    const dayPlans = [...(plansByDate.get(visible.date) ?? [])].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+    if (!popover || typeof document === "undefined") return null;
+    const dayPlansForPopover = plansByDate.get(popover.date) ?? [];
+    const label = `${formatLocalDate(popover.date, { weekday: "long" })}, ${formatLocalDate(popover.date, { day: "numeric", month: "long" })}`;
     return createPortal(
       <div
         ref={popoverRef}
         className="mv-popover"
-        style={{ left: visible.left, top: visible.top }}
+        style={{ left: popover.left, top: popover.top }}
         role="dialog"
-        aria-label={`Planos de ${formatLocalDate(visible.date, { weekday: "long" })}, ${formatLocalDate(visible.date, { day: "numeric", month: "long" })}`}
+        aria-label={`Planos de ${label}`}
       >
         <div className="mv-popover-inner">
           <div className="mv-popover-header">
-            <span className="mv-popover-title">{formatLocalDate(visible.date, { weekday: "long" })}</span>
-            <span className="mv-popover-date">{formatLocalDate(visible.date, { day: "numeric", month: "long" })}</span>
+            <span className="mv-popover-title">{formatLocalDate(popover.date, { weekday: "long" })}</span>
+            <span className="mv-popover-date">{formatLocalDate(popover.date, { day: "numeric", month: "long" })}</span>
           </div>
           <div className="mv-popover-list">
-            {dayPlans.length === 0 ? (
-              <p className="mv-popover-empty">Nenhum plano para este dia.</p>
+            {dayPlansForPopover.length === 0 ? (
+              <p className="mv-popover-empty">Nada planejado para este dia.</p>
             ) : (
-              dayPlans.map((p) => (
+              dayPlansForPopover.map((plan) => (
                 <button
-                  key={p.id}
+                  key={planItemKey(plan)}
                   type="button"
                   className="mv-popover-event"
                   onClick={() => {
-                    onDateSelect(p.planDate);
+                    selectDate(popover.date);
                     closePopover();
                   }}
                 >
-                  <span className="mv-chip__dot" style={{ backgroundColor: p.color || p.category.color }} aria-hidden="true" />
-                  <span className="mv-popover-event__title">{p.title || "(sem título)"}</span>
-                  <span className="mv-popover-event__time">{p.startTime ?? ""}</span>
+                  <span className="mv-chip__dot" style={{ backgroundColor: plan.color || plan.category.color }} aria-hidden="true" />
+                  <span className="mv-popover-event__title">{plan.title || "(sem título)"}</span>
+                  <span className="mv-popover-event__time">{plan.startTime ?? ""}</span>
                 </button>
               ))
             )}
@@ -231,11 +286,11 @@ export function MonthView({
               type="button"
               className="mv-popover-add"
               onClick={() => {
-                onPlanCreate(visible.date);
+                onPlanCreate(popover.date);
                 closePopover();
               }}
             >
-              + Adicionar plano
+              + Adicionar
             </button>
           ) : null}
         </div>
@@ -245,243 +300,377 @@ export function MonthView({
   };
 
   return (
-    <div className="mv-month flex min-h-0 flex-1 flex-col">
-      <div className="mv-month-grid flex min-h-0 flex-1 flex-col" onKeyDown={handleGridKeyDown}>
-        {/* Rótulos dos dias da semana (mesma grade de 7 colunas). */}
-        <div className="grid shrink-0 grid-cols-7" style={{ gap: 0 }}>
-          {SHORT_WEEKDAYS.map((name) => (
-            <div key={name} className="mv-weekday flex items-center justify-center px-2 py-2" aria-hidden="true">
-              {name}
-            </div>
-          ))}
-        </div>
-
-        {/* Linhas do mês — cada uma com altura igual (flex-1). */}
-        {rows.map((week, r) => (
-          <div key={r} className="mv-week-row flex min-h-0 flex-1" style={{ gap: 0 }}>
-            {week.map((date, c) => {
-              const dayPlans = plansByDate.get(date) ?? [];
-              return (
+    <div className={`mv-month mv-month--${sizeMode}`}>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={monthKey}
+          className="mv-month-layout"
+          initial={{ opacity: 0, x: slideDirection * 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: slideDirection * -18 }}
+          transition={{
+            x: { type: "spring", stiffness: 380, damping: 34 },
+            opacity: { duration: reduced ? 0 : 0.16 },
+          }}
+        >
+        <section className="mv-calendar" aria-label={`Calendário de ${monthLabel}`}>
+          <div ref={boardRef} className="mv-board" onKeyDown={handleGridKeyDown}>
+            <div
+              className="mv-grid"
+              role="grid"
+              aria-label={`Mês de ${monthLabel}`}
+              style={{
+                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                gridTemplateRows: `32px repeat(${rowCount}, minmax(96px, 1fr))`,
+                minHeight: `max(100%, ${gridMinHeight}px)`,
+              }}
+            >
+              {SHORT_WEEKDAYS.map((name) => (
+                <div key={name} className="mv-weekday" role="columnheader" aria-label={name}>
+                  {name}
+                </div>
+              ))}
+              {dates.map((date, index) => (
                 <MonthCell
                   key={date}
                   date={date}
-                  dayPlans={dayPlans}
-                  isAdjacent={!isCurrentMonth(date)}
+                  dayPlans={plansByDate.get(date) ?? EMPTY_PLANS}
+                  importantReasons={importantDays.get(date) ?? EMPTY_REASONS}
+                  isAdjacent={!isInCalendarMonth(date, year, month)}
                   isToday={date === today}
                   isSelected={date === selectedDate}
-                  hov={hoverDate === date}
+                  isWeekend={index % 7 > 4}
                   chipCap={chipCap}
                   isMobile={isMobile}
-                  selectedFocused={selectedIdx >= 0 && r * 7 + c === selectedIdx}
-                  onSelect={onDateSelect}
-                  onMonthNavigate={onMonthNavigate}
-                  onQuickAdd={() => onPlanCreate?.(date)}
+                  selectedFocused={selectedIndex === index}
+                  reduced={Boolean(reduced)}
+                  onSelectDate={selectDate}
+                  onPlanCreate={onPlanCreate}
                   onOpenPopover={openPopover}
+                  setButtonRef={setButtonRef}
                 />
-              );
-            })}
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
 
+          <div className="mv-legend" aria-label="Legenda do calendário">
+            <span><i className="mv-legend-today" aria-hidden="true" />Hoje</span>
+            <span><i className="mv-legend-important" aria-hidden="true" />Dia importante</span>
+            <span><i className="mv-legend-plans" aria-hidden="true" />Com tarefas</span>
+          </div>
+        </section>
+
+        {sizeMode !== "mobile" ? renderPanel() : null}
+        </motion.div>
+      </AnimatePresence>
+
+      {isMobile && mobilePanelOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="mv-sheet-backdrop" onClick={() => setMobilePanelOpen(false)}>
+              <div className="mv-sheet" role="dialog" aria-modal="true" aria-label={`Agenda de ${selectedDate}`} onClick={(event) => event.stopPropagation()}>
+                {renderPanel()}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       {renderPopover()}
     </div>
   );
 }
 
-// ── Célula do dia ──────────────────────────────────────────────────────────
+const EMPTY_PLANS: WeeklyPlanItem[] = [];
 
 interface MonthCellProps {
   date: string;
   dayPlans: WeeklyPlanItem[];
+  importantReasons: readonly string[];
   isAdjacent: boolean;
   isToday: boolean;
   isSelected: boolean;
-  hov: boolean;
+  isWeekend: boolean;
   chipCap: number;
   isMobile: boolean;
   selectedFocused: boolean;
-  onSelect: (date: string) => void;
-  onMonthNavigate?: (date: string) => void;
-  onQuickAdd: () => void;
-  onOpenPopover: (e: React.SyntheticEvent, date: string) => void;
+  reduced: boolean;
+  onSelectDate: (date: string) => void;
+  onPlanCreate?: (date: string) => void;
+  onOpenPopover: (event: React.SyntheticEvent, date: string) => void;
+  setButtonRef: (date: string, element: HTMLButtonElement | null) => void;
 }
 
-function MonthCell({
+const MonthCell = memo(function MonthCell({
   date,
   dayPlans,
+  importantReasons,
   isAdjacent,
   isToday,
   isSelected,
-  hov,
+  isWeekend,
   chipCap,
   isMobile,
   selectedFocused,
-  onSelect,
-  onMonthNavigate,
-  onQuickAdd,
+  reduced,
+  onSelectDate,
+  onPlanCreate,
   onOpenPopover,
+  setButtonRef,
 }: MonthCellProps) {
-  const cellEl = useRef<HTMLButtonElement>(null);
-  const [mx, setMx] = useState(0.5);
-  const [my, setMy] = useState(0.5);
-  const [tiltX, setTiltX] = useState(0);
-  const [tiltY, setTiltY] = useState(0);
-  const tiltZ = hov ? 18 : 0;
-  const chipZ = hov ? 14 : 0;
-  const pointerRaf = useRef(0);
-
-  const setCellRef = useCallback((el: HTMLButtonElement | null) => {
-    cellEl.current = el;
-  }, []);
-
-  const cellPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (e.pointerType !== "mouse") return;
-      cancelAnimationFrame(pointerRaf.current);
-      pointerRaf.current = requestAnimationFrame(() => {
-        const rect = cellEl.current!.getBoundingClientRect();
-        const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
-        const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
-        setMx(x);
-        setMy(y);
-        setTiltX((y - 0.5) * 8);
-        setTiltY((x - 0.5) * 8);
-      });
-    },
-    [],
-  );
-
+  const { day } = parseIsoKey(date);
   const monthName = formatLocalDate(date, { month: "long" });
-  const dayNumber = parseInt(date.slice(8, 10), 10);
-  const total = dayPlans.length;
-  const done = dayPlans.filter((p) => Boolean(p.completedAt)).length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  const dayLabel = `${day} de ${monthName}`;
+  const completedCount = dayPlans.filter((plan) => Boolean(plan.completedAt)).length;
   const visibleChips = dayPlans.slice(0, chipCap);
-  const hiddenCount = dayPlans.length - visibleChips.length;
-  const showPill = chipCap > 0 && hiddenCount > 0;
+  const hiddenCount = isMobile
+    ? Math.max(0, dayPlans.length - 3)
+    : Math.max(0, dayPlans.length - visibleChips.length);
+  const importantLabel = importantReasons.length > 0 ? importantReasons.join("; ") : null;
+  const ariaLabel = [
+    dayLabel,
+    isToday ? "hoje" : null,
+    dayPlans.length ? `${dayPlans.length} ${dayPlans.length === 1 ? "plano" : "planos"}` : "sem planos",
+    completedCount ? `${completedCount} concluídos` : null,
+    importantLabel ? `dia importante: ${importantLabel}` : null,
+  ].filter(Boolean).join(", ");
 
-  const cellClasses = [
-    "mv-cell",
-    isToday ? "mv-cell--today" : "",
-    isSelected ? "mv-cell--selected" : "",
-    isAdjacent ? "mv-cell--adjacent" : "",
-    hov ? "mv-cell--hover" : "",
-    "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2.5 py-2 text-left cursor-pointer transition-[background_color,border_color,box-shadow] duration-150 ease-out hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const ariaDone = done === 0 ? "sem concluídos" : done === 1 ? "1 concluído" : `${done} concluídos`;
-  const ariaTotal = total === 0 ? "sem planos" : total === 1 ? "1 plano" : `${total} planos`;
-  const ariaLabel = `${dayNumber} de ${monthName}, ${ariaTotal}, ${ariaDone}${isToday ? ", hoje" : ""}`;
+  const setRef = useCallback((element: HTMLButtonElement | null) => setButtonRef(date, element), [date, setButtonRef]);
+  const quickAdd = useCallback(() => onPlanCreate?.(date), [date, onPlanCreate]);
+  const weekday = formatLocalDate(date, { weekday: "long" });
+  const cellClassName = [
+    "mv-cell-wrap",
+    isToday ? "mv-cell-wrap--today" : "",
+    isSelected ? "mv-cell-wrap--selected" : "",
+    isAdjacent ? "mv-cell-wrap--adjacent" : "",
+    isWeekend ? "mv-cell-wrap--weekend" : "",
+  ].filter(Boolean).join(" ");
 
   return (
-    <button
-      type="button"
-      ref={setCellRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (isAdjacent) onMonthNavigate?.(date);
-        else onSelect(date);
-      }}
-      onDoubleClick={() => onQuickAdd()}
-      onPointerMove={cellPointerMove}
-      className={cellClasses}
-      aria-label={ariaLabel}
-      aria-current={isToday ? "date" : undefined}
-      aria-selected={isSelected || undefined}
-      tabIndex={selectedFocused ? 0 : -1}
-    >
-      <div
-        className="mv-cell-inner relative flex min-h-0 w-full flex-col"
-        style={
-          {
-            "--mv-mx": mx,
-            "--mv-my": my,
-            "--mv-tilt-x": `${tiltX}deg`,
-            "--mv-tilt-y": `${tiltY}deg`,
-            "--mv-tilt-z": `${tiltZ}px`,
-            "--mv-chip-z": `${chipZ}px`,
-            transform: `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(${tiltZ}px)`,
-          } as unknown as React.CSSProperties
-        }
-      >
-        {/* Número do dia */}
-        <div className="flex w-full items-start justify-between gap-1 pt-0.5">
-          <span
-            className={`mv-number ${isToday ? "mv-number--today" : ""} ${isSelected ? "mv-number--selected" : ""} ${isAdjacent ? "mv-number--adjacent" : ""}`}
-          >
-            {dayNumber}
+    <div className={cellClassName} role="gridcell" aria-selected={isSelected || undefined}>
+      <button
+        ref={setRef}
+        type="button"
+        data-date={date}
+        className="mv-cell"
+        onClick={() => onSelectDate(date)}
+        aria-label={ariaLabel}
+        title={importantLabel ?? undefined}
+        aria-current={isToday ? "date" : undefined}
+        tabIndex={selectedFocused ? 0 : -1}
+      />
+
+      <div className="mv-cell-content" aria-hidden="true">
+        <div className="mv-cell-heading">
+          <span className={`mv-number${isToday ? " mv-number--today" : ""}${isSelected ? " mv-number--selected" : ""}${isAdjacent ? " mv-number--adjacent" : ""}${importantLabel ? " mv-number--important" : ""}`} title={importantLabel ?? undefined}>
+            {day}
           </span>
-          {(isMobile || hov) && (
-            <span
-              role="button"
-              tabIndex={-1}
-              aria-label={`Adicionar plano para ${dayNumber} de ${monthName}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickAdd();
-              }}
-              className="mv-quick-add"
-            >
-              <Plus size={11} aria-hidden="true" />
-            </span>
-          )}
+          {dayPlans.length > 0 ? <span className="mv-has-plans-dot" /> : null}
+          {importantLabel ? <span className="mv-important-mark" title={`Importante: ${importantLabel}`} aria-label={`Importante: ${importantLabel}`}>!</span> : null}
         </div>
 
-        {/* Eventos / pontos */}
         {isMobile ? (
-          <div className="mv-dots mt-1 flex w-full items-center gap-1">
-            {dayPlans.slice(0, 3).map((p) => {
-              const completed = Boolean(p.completedAt);
-              const color = p.color || p.category.color;
-              return (
-                <span
-                  key={p.id}
-                  className="mv-dot rounded-full"
-                  style={{
-                    backgroundColor: completed ? "var(--text-muted)" : color,
-                    opacity: completed ? 0.45 : 1,
-                  }}
-                  aria-hidden="true"
-                />
-              );
-            })}
-            {total > 3 && <span className="mv-dot-more text-[10px] font-bold text-[var(--text-faint)]">+{total - 3}</span>}
+          <div className="mv-dots">
+            {dayPlans.slice(0, 3).map((plan) => (
+              <span
+                key={planItemKey(plan)}
+                className="mv-dot"
+                style={{
+                  backgroundColor: plan.completedAt ? "var(--text-muted)" : plan.color || plan.category.color,
+                  opacity: plan.completedAt ? 0.45 : 1,
+                }}
+              />
+            ))}
           </div>
         ) : (
-          <div className="mv-chips mt-1 flex w-full flex-col gap-1">
-            {visibleChips.map((p) => (
-              <EventChip key={p.id} plan={p} onClick={() => onSelect(date)} />
-            ))}
-            {showPill && (
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label={`+${hiddenCount} mais planos em ${dayNumber} de ${monthName}`}
-                onClick={(e) => onOpenPopover(e, date)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpenPopover(e, date);
-                  }
-                }}
-                className="mv-pill"
+          <div className="mv-chips">
+            {visibleChips.map((plan) => (
+              <motion.div
+                key={planItemKey(plan)}
+                className="mv-chip-motion"
+                initial={reduced ? false : { opacity: 0, y: 2 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduced ? 0 : 0.16, ease: "easeOut" }}
               >
-                +{hiddenCount} mais
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Barra de progresso da carga de trabalho (somente leitura). */}
-        {!isMobile && total > 0 && (
-          <div className="mv-workload" title={`${done} de ${total} concluídos`} aria-hidden="true">
-            <div className="mv-workload-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+                <EventChip plan={plan} />
+              </motion.div>
+            ))}
           </div>
         )}
       </div>
-    </button>
+
+      {onPlanCreate && !isMobile ? (
+        <button
+          type="button"
+          className="mv-quick-add"
+          onClick={(event) => {
+            event.stopPropagation();
+            quickAdd();
+          }}
+          aria-label={`Adicionar plano para ${weekday}, ${dayLabel}`}
+          title="Adicionar plano"
+        >
+          <Plus size={14} aria-hidden="true" />
+        </button>
+      ) : null}
+
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className={`mv-pill${isMobile ? " mv-pill--mobile" : ""}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenPopover(event, date);
+          }}
+          aria-label={`Mostrar mais ${hiddenCount} planos de ${dayLabel}`}
+        >
+          +{hiddenCount} mais
+        </button>
+      ) : null}
+    </div>
+  );
+});
+
+interface SelectedDayPanelProps {
+  date: string;
+  plans: WeeklyPlanItem[];
+  importantReasons: readonly string[];
+  importantDaysError?: string | null;
+  plansError?: string | null;
+  onPlanCreate?: (date: string) => void;
+  onToggleCompleted?: (plan: WeeklyPlanItem, completed: boolean) => Promise<void>;
+  onClose: () => void;
+  reduced: boolean;
+}
+
+function SelectedDayPanel({
+  date,
+  plans,
+  importantReasons,
+  importantDaysError,
+  plansError,
+  onPlanCreate,
+  onToggleCompleted,
+  onClose,
+  reduced,
+}: SelectedDayPanelProps) {
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { day } = parseIsoKey(date);
+  const weekday = formatLocalDate(date, { weekday: "long" });
+  const monthYear = formatLocalDate(date, { month: "long", year: "numeric" });
+  const tasks = useMemo(
+    () => plans.filter((plan) => !plan.startTime).sort((a, b) => a.title.localeCompare(b.title)),
+    [plans],
+  );
+  const agenda = useMemo(
+    () => plans.filter((plan) => Boolean(plan.startTime)).sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? "")),
+    [plans],
+  );
+
+  const toggleTask = async (plan: WeeklyPlanItem, completed: boolean) => {
+    if (!onToggleCompleted) return;
+    setActionError(null);
+    try {
+      await onToggleCompleted(plan, completed);
+    } catch {
+      setActionError("Não foi possível atualizar a tarefa. Tente novamente.");
+    }
+  };
+
+  return (
+    <aside className="mv-day-panel">
+      <div className="mv-panel-topline">
+        <span className="mv-panel-eyebrow">Dia selecionado</span>
+        <button type="button" className="mv-panel-close" onClick={onClose} aria-label="Fechar agenda do dia">
+          <X size={16} />
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={date}
+          className="mv-panel-content"
+          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: reduced ? 0 : -3 }}
+          transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
+          aria-live="polite"
+        >
+          <header className="mv-selected-date">
+            <span className="mv-selected-date__number">{day}</span>
+            <div className="min-w-0">
+              <p className="mv-selected-date__weekday">{weekday}</p>
+              <h2 className="mv-selected-date__month">{monthYear}</h2>
+            </div>
+          </header>
+
+          {importantReasons.length > 0 ? (
+            <div className="mv-panel-important">
+              <span className="mv-panel-important__ring" aria-hidden="true">!</span>
+              <div>
+                <p className="mv-panel-section-title">Dia importante</p>
+                {importantReasons.map((reason) => <p key={reason} className="mv-panel-important__reason">{reason}</p>)}
+              </div>
+            </div>
+          ) : null}
+
+          {importantDaysError ? <p className="mv-panel-error" role="status">{importantDaysError}</p> : null}
+          {plansError ? <p className="mv-panel-error" role="status">{plansError}</p> : null}
+          {actionError ? <p className="mv-panel-error" role="alert">{actionError}</p> : null}
+
+          <section className="mv-panel-section" aria-labelledby="mv-tasks-heading">
+            <h3 id="mv-tasks-heading" className="mv-panel-section-title">Tarefas</h3>
+            {tasks.length > 0 ? (
+              <ul className="mv-panel-task-list">
+                {tasks.map((plan) => (
+                  <li key={planItemKey(plan)}>
+                    <label className={`mv-panel-task${plan.completedAt ? " mv-panel-task--completed" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(plan.completedAt)}
+                        disabled={!onToggleCompleted}
+                        onChange={(event) => void toggleTask(plan, event.currentTarget.checked)}
+                        aria-label={`${plan.completedAt ? "Reabrir" : "Concluir"} ${plan.title}`}
+                      />
+                      <span className="mv-panel-task__title">{plan.title || "(sem título)"}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mv-panel-empty">Nenhuma tarefa para este dia.</p>
+            )}
+          </section>
+
+          <section className="mv-panel-section" aria-labelledby="mv-agenda-heading">
+            <h3 id="mv-agenda-heading" className="mv-panel-section-title">Agenda</h3>
+            {agenda.length > 0 ? (
+              <ul className="mv-panel-agenda">
+                {agenda.map((plan) => (
+                  <li key={planItemKey(plan)} className="mv-panel-agenda__item">
+                    <time className="mv-panel-agenda__time">{plan.startTime}</time>
+                    <span className="mv-chip__dot" style={{ backgroundColor: plan.color || plan.category.color }} aria-hidden="true" />
+                    <span className="mv-panel-agenda__title">{plan.title || "(sem título)"}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="mv-panel-agenda-empty">
+                <p className="mv-panel-empty">Nada planejado para este dia</p>
+                {onPlanCreate ? (
+                  <button type="button" className="mv-panel-add" onClick={() => onPlanCreate(date)}>
+                    Adicionar
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </section>
+
+          {onPlanCreate && agenda.length > 0 ? (
+            <button type="button" className="mv-panel-add mv-panel-add--footer" onClick={() => onPlanCreate(date)}>
+              <Plus size={14} aria-hidden="true" /> Adicionar
+            </button>
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
+    </aside>
   );
 }

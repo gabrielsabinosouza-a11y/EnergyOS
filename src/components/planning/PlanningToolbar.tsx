@@ -57,16 +57,27 @@ export function PlanningToolbar({ view, label, title, onPrev, onNext, onToday, o
             <ChevronRight size={18} />
           </button>
         </div>
+
+        {title ? (
+          <h2
+            className="hidden min-w-0 max-w-[220px] truncate text-sm font-medium text-[var(--text-secondary)] sm:block"
+            data-testid="planner-title"
+          >
+            {title}
+          </h2>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-2 sm:justify-start">
-        {/* Título principal — maior e mais proeminente na vista de mês. */}
-        <h2
-          className="min-w-0 flex-1 truncate text-center text-2xl font-bold tracking-tight text-[var(--text)] sm:text-left"
-          data-testid="planner-title"
-        >
-          {title ?? label}
-        </h2>
+        {title ? (
+          <h2 className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-secondary)] sm:hidden" data-testid="planner-title">
+            {title}
+          </h2>
+        ) : (
+          <h2 className="min-w-0 flex-1 truncate text-center text-2xl font-bold tracking-tight text-[var(--text)] sm:text-left" data-testid="planner-title">
+            {label}
+          </h2>
+        )}
 
         {/* Switcher Mês/Semana/Dia */}
         <div className="flex items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1">

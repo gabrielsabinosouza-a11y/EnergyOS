@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { WeeklyPlanItem, Category, WeeklyPlan } from "@/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WeeklyPlanItem, Category } from "@/types";
 import { api } from "@/lib/api-client";
 import {
   addDays,
@@ -19,97 +19,25 @@ import { MonthView } from "@/components/planning/MonthView";
 import { WeekView } from "@/components/planning/WeekView";
 import { DayView } from "@/components/planning/DayView";
 import { AddTaskDialog } from "@/components/planning/AddTaskDialog";
-import { TaskCard } from "@/components/planning/TaskCard";
-import { Button } from "@/components/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Plus } from "lucide-react";
 
 type View = "month" | "week" | "day";
 
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(query).matches;
-  });
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const handler = () => setMatches(mql.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
-  return matches;
-}
-
-function MobileDayAgenda({
-  date,
-  plans,
-  onToggleCompleted,
-  onDelete,
-  onPlanCreate,
-}: {
-  date: string;
-  plans: WeeklyPlanItem[];
-  onToggleCompleted: (id: number, completed: boolean) => void;
-  onDelete: (id: number) => void;
-  onPlanCreate: (date: string) => void;
-}) {
-  const today = todayIso();
-  const isToday = date === today;
-  const weekday = formatLocalDate(date, { weekday: "long" });
-  const dateLabel = formatLocalDate(date, { day: "numeric", month: "long" });
-  const sorted = [...plans].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
-  const isEmpty = sorted.length === 0;
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className={`text-sm font-medium ${isToday ? "text-[var(--accent)]" : ""}`}>
-          {weekday}, {dateLabel}{isToday ? " · hoje" : ""}
-        </h3>
-        <Button size="sm" onClick={() => onPlanCreate(date)}>
-          + Adicionar plano
-        </Button>
-      </div>
-      {isEmpty ? (
-        <button
-          type="button"
-          onClick={() => onPlanCreate(date)}
-          className="day-empty-state-mobile group relative flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30 hover:border-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2 transition-all duration-200"
-          aria-label={`Adicionar plano para ${weekday}, ${dateLabel.toLowerCase()}`}
-        >
-          <span className="absolute top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-[var(--accent-bg)] flex items-center justify-center">
-            <Plus size={16} className="text-[var(--accent)]" aria-hidden="true" />
-          </span>
-          <p className="text-[var(--text)] font-semibold mb-1 relative z-10">Nenhum plano para este dia</p>
-          <p className="text-[var(--text-secondary)] text-xs mb-3 relative z-10">Clique para criar seu primeiro plano</p>
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-bold text-[var(--bg-primary)] shadow-[0_0_8px_var(--accent-glow)] relative z-10">
-            Adicionar plano
-          </span>
-        </button>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {sorted.map((plan) => (
-            <div key={plan.id} className="group relative">
-              <TaskCard
-                plan={plan}
-                onToggle={(completed) => onToggleCompleted(plan.id, completed)}
-                onDelete={() => onDelete(plan.id)}
-                alwaysVisible
-              />
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => onPlanCreate(date)}
-            className="day-view-add-row"
-            aria-label={`Adicionar plano para ${weekday}, ${dateLabel.toLowerCase()}`}
-          >
-            + Adicionar plano
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function mergeNewPlans(existing: WeeklyPlanItem[], incoming: WeeklyPlanItem[]): WeeklyPlanItem[] {
+  const merged = new Map<string, WeeklyPlanItem>();
+  for (const plan of existing) {
+    const key = plan.seriesId !== null
+      ? `series:${plan.seriesId}:${plan.planDate}`
+      : `plan:${plan.id}`;
+    merged.set(key, plan);
+  }
+  for (const plan of incoming) {
+    const key = plan.seriesId !== null
+      ? `series:${plan.seriesId}:${plan.planDate}`
+      : `plan:${plan.id}`;
+    if (!merged.has(key)) merged.set(key, plan);
+  }
+  return [...merged.values()];
 }
 
 export default function PlanningPage() {
@@ -117,7 +45,11 @@ export default function PlanningPage() {
   const [view, setView] = useState<View>("week");
   const [selectedDate, setSelectedDate] = useState<string>(todayIso());
   const [tasks, setTasks] = useState<WeeklyPlanItem[]>([]);
+  const tasksRef = useRef<WeeklyPlanItem[]>(tasks);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [goalDeadlines, setGoalDeadlines] = useState<Array<{ date: string; title: string }>>([]);
+  const [goalDeadlinesError, setGoalDeadlinesError] = useState<string | null>(null);
+  const [monthPlansError, setMonthPlansError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<string | null>(null);
   const [addStartTime, setAddStartTime] = useState<string | undefined>(undefined);
@@ -125,16 +57,21 @@ export default function PlanningPage() {
   const [navDirection, setNavDirection] = useState<"next" | "prev" | "zoom" | null>(null);
   const reduced = useReducedMotion();
 
-  const isMobile = useMediaQuery("(max-width: 639px)");
+  const updateTasks = useCallback((updater: (current: WeeklyPlanItem[]) => WeeklyPlanItem[]) => {
+    const next = updater(tasksRef.current);
+    tasksRef.current = next;
+    setTasks(next);
+  }, []);
+  const month = useMemo(() => monthRange(selectedDate), [selectedDate]);
 
   // Load all plans once (no weekStart filter → latest 50) and filter per view
   // client-side, so month/week/day always agree on the same source of truth.
   useEffect(() => {
     if (!user) return;
     api.getWeeklyPlans()
-      .then((items: WeeklyPlanItem[]) => setTasks(items))
+      .then((items: WeeklyPlanItem[]) => updateTasks((existing) => mergeNewPlans(existing, items)))
       .catch(console.error);
-  }, [user]);
+  }, [user, updateTasks]);
 
   // Load categories once.
   useEffect(() => {
@@ -143,6 +80,43 @@ export default function PlanningPage() {
       .then((res) => setCategories(res.categories || []))
       .catch(console.error);
   }, [user]);
+
+  // Goal deadlines are the existing source for important calendar days.
+  useEffect(() => {
+    if (!user || view !== "month") return;
+    api.getGoals()
+      .then((goals) => {
+        setGoalDeadlines(
+          goals.flatMap(({ goal }) => goal.deadline && !goal.completedAt
+            ? [{ date: goal.deadline, title: goal.title }]
+            : []),
+        );
+        setGoalDeadlinesError(null);
+      })
+      .catch(() => setGoalDeadlinesError("Não foi possível carregar os prazos das metas."));
+  }, [user, view]);
+
+  useEffect(() => {
+    if (!user || view !== "month") return;
+    let current = true;
+    const firstWeek = weekRange(month.start).start;
+    const lastWeek = weekRange(month.end).start;
+    const weekStarts: string[] = [];
+    for (let date = firstWeek; date <= lastWeek; date = addDays(date, 7)) weekStarts.push(date);
+
+    Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)))
+      .then((weeks) => {
+        if (!current) return;
+        setMonthPlansError(null);
+        const rangePlans = weeks.flat();
+        updateTasks((existing) => mergeNewPlans(existing, rangePlans));
+      })
+      .catch(() => {
+        if (current) setMonthPlansError("Não foi possível carregar os planos deste mês.");
+      });
+
+    return () => { current = false; };
+  }, [month.end, month.start, updateTasks, user, view]);
 
   // Keyboard shortcut: "N" opens add dialog in day view (ignore when in inputs/textareas/dialog)
   const openAdd = useCallback(
@@ -182,36 +156,52 @@ export default function PlanningPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [view, selectedDate, openAdd]);
 
-  const week = weekRange(selectedDate);
-  const month = monthRange(selectedDate);
+  const week = useMemo(() => weekRange(selectedDate), [selectedDate]);
   const inRange = (start: string, end: string) => (p: WeeklyPlanItem) => p.planDate >= start && p.planDate <= end;
-  const weekTasks = tasks.filter(inRange(week.start, week.end));
-  const monthTasks = tasks.filter(inRange(month.start, month.end));
-  const dayTasks = tasks.filter((p) => p.planDate === selectedDate);
+  const weekTasks = useMemo(() => tasks.filter(inRange(week.start, week.end)), [tasks, week.start, week.end]);
+  const monthGridStart = useMemo(() => weekRange(month.start).start, [month.start]);
+  const monthGridEnd = useMemo(() => weekRange(month.end).end, [month.end]);
+  const monthGridTasks = useMemo(
+    () => tasks.filter(inRange(monthGridStart, monthGridEnd)),
+    [tasks, monthGridEnd, monthGridStart],
+  );
+  const dayTasks = useMemo(() => tasks.filter((p) => p.planDate === selectedDate), [tasks, selectedDate]);
+  const importantDays = useMemo(() => {
+    const result = new Map<string, string[]>();
+    for (const goal of goalDeadlines) {
+      const reasons = result.get(goal.date) ?? [];
+      reasons.push(`Prazo da meta: ${goal.title}`);
+      result.set(goal.date, reasons);
+    }
+    return result;
+  }, [goalDeadlines]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     setNavDirection("prev");
-    if (view === "month") setSelectedDate(addMonths(selectedDate, -1));
+    if (view === "month") setMonthPlansError(null);
+    if (view === "month") setSelectedDate(addMonths(month.start, -1));
     else if (view === "week") setSelectedDate(addDays(selectedDate, -7));
     else setSelectedDate(addDays(selectedDate, -1));
-  };
-  const handleNext = () => {
+  }, [month.start, selectedDate, view]);
+  const handleNext = useCallback(() => {
     setNavDirection("next");
-    if (view === "month") setSelectedDate(addMonths(selectedDate, 1));
+    if (view === "month") setMonthPlansError(null);
+    if (view === "month") setSelectedDate(addMonths(month.start, 1));
     else if (view === "week") setSelectedDate(addDays(selectedDate, 7));
     else setSelectedDate(addDays(selectedDate, 1));
-  };
-  const handleToday = () => {
+  }, [month.start, selectedDate, view]);
+  const handleToday = useCallback(() => {
     setNavDirection("zoom");
+    setMonthPlansError(null);
     setSelectedDate(todayIso());
-  };
+  }, []);
 
   /** Cria um plano e o insere imediatamente na lista local (sem refresh). */
   const createTask = useCallback(
     async (planDate: string, title: string, categoryId: number | undefined, startTime?: string, endTime?: string): Promise<void> => {
       const res = await api.createWeeklyPlan({ planDate, title, categoryId, startTime: startTime ?? null, endTime: endTime ?? null });
       const cat = (categories.find((c) => c.id === res.plan.categoryId) || categories[0]) ?? null;
-      setTasks((prev) => [
+      updateTasks((prev) => [
         ...prev,
         {
           id: res.plan.id,
@@ -234,35 +224,85 @@ export default function PlanningPage() {
         },
       ]);
     },
-    [categories],
+    [categories, updateTasks],
   );
 
   const togglePlan = useCallback(
     async (id: number, completed: boolean) => {
-      const plan = tasks.find((p) => p.id === id);
+      const plan = tasksRef.current.find((p) => p.id === id);
       if (plan && plan.seriesId !== null) {
         await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
-        setTasks((prev) =>
+        updateTasks((prev) =>
           prev.map((p) =>
             p.seriesId === plan.seriesId && p.planDate === plan.planDate ? { ...p, completedAt: completed ? new Date().toISOString() : null, skipped: false } : p,
           ),
         );
         return;
       }
-      const res = await api.setWeeklyPlanCompleted(id, completed);
-      setTasks((prev) => prev.map((p) => (p.id === id ? { ...p, completedAt: completed ? new Date().toISOString() : null } : p)));
+      await api.setWeeklyPlanCompleted(id, completed);
+      updateTasks((prev) => prev.map((p) => (p.id === id ? { ...p, completedAt: completed ? new Date().toISOString() : null } : p)));
     },
-    [tasks],
+    [updateTasks],
   );
+
+  const completionRequests = useRef(new Map<string, Promise<void>>());
+  const completionSequence = useRef(new Map<string, number>());
+  const confirmedCompletion = useRef(new Map<string, string | null>());
+
+  const togglePlanOptimistically = useCallback((plan: WeeklyPlanItem, completed: boolean): Promise<void> => {
+    const key = plan.seriesId !== null ? `series:${plan.seriesId}:${plan.planDate}` : `plan:${plan.id}`;
+    const matches = (item: WeeklyPlanItem) => plan.seriesId !== null
+      ? item.seriesId === plan.seriesId && item.planDate === plan.planDate
+      : item.id === plan.id;
+    if (!confirmedCompletion.current.has(key)) {
+      confirmedCompletion.current.set(key, tasksRef.current.find(matches)?.completedAt ?? null);
+    }
+    const sequence = (completionSequence.current.get(key) ?? 0) + 1;
+    completionSequence.current.set(key, sequence);
+    updateTasks((current) => current.map((item) => matches(item)
+      ? { ...item, completedAt: completed ? new Date().toISOString() : null, skipped: false }
+      : item));
+
+    const previous = completionRequests.current.get(key) ?? Promise.resolve();
+    const request = previous.catch(() => undefined).then(async () => {
+      try {
+        if (plan.seriesId !== null) {
+          await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
+        } else {
+          await api.setWeeklyPlanCompleted(plan.id, completed);
+        }
+        confirmedCompletion.current.set(key, completed ? new Date().toISOString() : null);
+      } catch (error) {
+        if (completionSequence.current.get(key) === sequence) {
+          const confirmed = confirmedCompletion.current.get(key) ?? null;
+          updateTasks((current) => current.map((item) => matches(item)
+            ? { ...item, completedAt: confirmed, skipped: false }
+            : item));
+          throw error;
+        }
+      }
+    });
+    completionRequests.current.set(key, request);
+    const cleanup = () => {
+      if (completionRequests.current.get(key) === request) completionRequests.current.delete(key);
+    };
+    void request.then(cleanup, cleanup);
+    return request;
+  }, [updateTasks]);
 
   const deletePlan = useCallback(async (id: number) => {
     await api.deleteWeeklyPlan(id);
-    setTasks((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+    updateTasks((prev) => prev.filter((p) => p.id !== id));
+  }, [updateTasks]);
 
   const headerLabel = viewLabel(selectedDate, view);
-  const monthTitle = formatLocalDate(monthRange(selectedDate).start, { month: "long", year: "numeric" })
-    .replace(/^./, (c) => c.toUpperCase());
+  const monthTitle = formatLocalDate(month.start, { month: "long", year: "numeric" });
+  const selectMonthDate = useCallback((date: string) => setSelectedDate(date), []);
+  const navigateMonthDate = useCallback((date: string, direction: "prev" | "next") => {
+    setNavDirection(direction);
+    setMonthPlansError(null);
+    setSelectedDate(date);
+  }, []);
 
   const viewSwitchProps = {
     onPrev: handlePrev,
@@ -296,26 +336,19 @@ export default function PlanningPage() {
               >
                 <MonthView
                   monthRange={month}
-                  plans={monthTasks}
+                  plans={monthGridTasks}
                   selectedDate={selectedDate}
-                  onDateSelect={(date) => {
-                    setSelectedDate(date);
-                    if (!isMobile) setView("day");
-                  }}
-                  onMonthNavigate={(date) => setSelectedDate(date)}
+                  navigationDirection={navDirection}
+                  importantDays={importantDays}
+                  importantDaysError={goalDeadlinesError}
+                  plansError={monthPlansError}
+                  onDateSelect={selectMonthDate}
+                  onMonthNavigate={navigateMonthDate}
                   onPrevMonth={handlePrev}
                   onNextMonth={handleNext}
                   onPlanCreate={openAdd}
+                  onToggleCompleted={togglePlanOptimistically}
                 />
-                {isMobile && (
-                  <MobileDayAgenda
-                    date={selectedDate}
-                    plans={dayTasks}
-                    onToggleCompleted={togglePlan}
-                    onDelete={deletePlan}
-                    onPlanCreate={openAdd}
-                  />
-                )}
               </motion.div>
             )}
             {view === "week" && (

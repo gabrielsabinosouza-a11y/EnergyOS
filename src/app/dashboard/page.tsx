@@ -624,11 +624,6 @@ function DashboardContent() {
    * Otimista: aplica o check-in localmente e persiste no servidor. O servidor
    * soma os logs do período e devolve o goal real (fonte da verdade) —
    * concede XP/moedas na conclusão e ESTORNA ao desfazer.
-   */
-  /**
-   * Otimista: aplica o check-in localmente e persiste no servidor. O servidor
-   * soma os logs do período e devolve o goal real (fonte da verdade) —
-   * concede XP/moedas na conclusão e ESTORNA ao desfazer.
    *
    * Cada meta tem sua própria fila serializada com sequence number: a UI é
    * atualizada no mesmo frame do clique, a requisição vai em background e
@@ -658,8 +653,12 @@ function DashboardContent() {
           return g;
       }
     };
-    const prev = goalsRef.current;
-    setGoals((gs) => gs.map((g) => (g.id === goalId ? optimistic(g) : g)));
+    const prev = goalsRef.current; // estado antes desta ação (inclui otimistas anteriores)
+    setGoals((gs) => {
+      const next = gs.map((g) => (g.id === goalId ? optimistic(g) : g));
+      goalsRef.current = next; // mantém o ref sincronizado sem esperar o render
+      return next;
+    });
 
     const send = (actionToSend: GoalLogAction) => {
       const nextSeq = (goalSeqRef.current.get(goalId) ?? 0) + 1;
