@@ -77,6 +77,7 @@ export interface DbGoalRow {
   category_icon: string | null;
   category_is_custom: boolean;
   category_created_at: Date | string;
+  completion_rewarded?: boolean;
 }
 
 export interface DbHabitRow {
@@ -110,6 +111,7 @@ export function mapGoalRow(row: DbGoalRow): Goal {
     unit: row.unit,
     deadline: toIsoDate(row.deadline),
     completedAt: toIsoTimestamp(row.completed_at),
+    rewardsAwarded: Boolean(row.completion_rewarded),
     frequency: row.frequency,
   };
 }
@@ -144,6 +146,12 @@ export function mapHabitRow(row: DbHabitRow): HabitWithCompletion {
 export const GOAL_SELECT = `
   select g.id, g.profile_id, g.title, g.target_value, g.current_value, g.frequency, g.created_at,
          g.unit, g.deadline, g.completed_at,
+         exists (
+           select 1 from xp_ledger reward
+           where reward.profile_id = g.profile_id
+             and reward.source = 'goal'
+             and reward.source_id like g.id::text || ':%'
+         ) as completion_rewarded,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
          c.created_at as category_created_at
@@ -169,4 +177,3 @@ export function withGoalProgress(goal: Goal, derivedCurrentValue?: number): Goal
   const normalized = derivedCurrentValue === undefined ? goal : { ...goal, currentValue: derivedCurrentValue };
   return { ...normalized, progressPercentage: goalProgressPercentage(normalized) };
 }
-

@@ -12,7 +12,7 @@
  */
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
+import { Loader2, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { GoalLogAction } from "@/lib/db/goal-logs";
 import { CategoryChips } from "@/components/category-chips";
@@ -258,7 +258,7 @@ interface EditGoalModalProps {
   onClose: () => void;
   onSave: (patch: GoalDraft) => void;
   /** Mesmo check-in do card: o servidor paga/estorna a recompensa. */
-  onProgress?: (action: GoalLogAction) => Promise<void> | void;
+  onProgress?: (action: GoalLogAction, amount?: number) => Promise<void> | void;
   onDelete?: () => Promise<void> | void;
 }
 
@@ -294,11 +294,13 @@ function EditGoalForm({
     ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100))
     : 0;
 
-  const runProgress = async (action: GoalLogAction) => {
+  const runProgress = async (action: GoalLogAction, amount?: number) => {
     if (!onProgress || progressBusy) return;
     setProgressBusy(true);
     try {
-      await onProgress(action);
+      await onProgress(action, amount);
+    } catch {
+      // O handler pai mostra o erro e restaura o estado otimista.
     } finally {
       setProgressBusy(false);
     }
@@ -423,7 +425,7 @@ return (
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                onClick={() => void runProgress("decrement")}
+                onClick={() => void runProgress(goalDone ? "reset" : "decrement")}
                 disabled={!onProgress || progressBusy || goal.currentValue <= 0}
                 aria-label="Remover −1 do progresso"
                 className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] transition hover:text-[var(--text)] disabled:opacity-30"
@@ -432,12 +434,14 @@ return (
               </button>
               <button
                 type="button"
-                onClick={() => void runProgress(goalDone ? "decrement" : goal.currentValue + 1 >= target ? "set" : "increment")}
+                onClick={() => void runProgress(goalDone ? "reset" : "increment")}
                 disabled={!onProgress || progressBusy}
                 aria-label="Adicionar +1 ao progresso"
                 className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)] transition disabled:opacity-30"
               >
-                {progressBusy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} strokeWidth={3} />}
+                {progressBusy
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : goalDone ? <RotateCcw size={16} /> : <Plus size={16} strokeWidth={3} />}
               </button>
             </div>
           </div>

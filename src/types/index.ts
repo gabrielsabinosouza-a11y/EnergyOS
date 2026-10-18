@@ -480,6 +480,8 @@ export interface Goal {
   deadline: string | null;
   /** ISO — preenchida quando current >= target, removida se o progresso cair. */
   completedAt: string | null;
+  /** Indica se esta meta já concedeu recompensa de conclusão. */
+  rewardsAwarded: boolean;
   /**
    * Metas são sempre "unique" (única): acontecem uma vez na vida e não resetam.
    * A coluna ainda existe no banco para compatibilidade, mas todos os valores são "unique".

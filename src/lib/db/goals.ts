@@ -120,6 +120,9 @@ export function ensureGoalsSchema(): Promise<void> {
       
       // Add completed_at column
       await client.query(`alter table goals add column if not exists completed_at timestamptz`);
+
+      // Progress resets retain historical logs while changing the active baseline.
+      await client.query(`alter table goals add column if not exists progress_reset_at timestamptz`);
       
       // Add category_id column (foreign key to categories)
       await client.query(`alter table goals add column if not exists category_id bigint`);
@@ -386,14 +389,8 @@ export async function deleteGoal(profileId: string, goalId: number): Promise<num
     `, [goalId]);
     await client.query(`delete from habits where goal_id = $1`, [goalId]);
 
-    // 3. Delete XP ledger entries for this goal (source_id format: "goalId:period")
-    // For example: "12:d:2026-04-10" (daily), "12:m:2026-10" (monthly)
-    await client.query(
-      `delete from xp_ledger where source = 'goal' and source_id like $1 || ':%'`,
-      [goalId.toString()],
-    );
-
-    // 4. Delete the goal itself
+    // Keep XP ledger rows as an audit trail and to preserve reward idempotency.
+    // Ledger source IDs are not foreign keys, so the goal can still be deleted.
     await client.query(`delete from goals where id = $1 and profile_id = $2`, [goalId, profileId]);
 
     await client.query("commit");

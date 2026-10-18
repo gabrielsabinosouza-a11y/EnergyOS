@@ -49,6 +49,8 @@ export function getGoogleAuthErrorMessage(
       return "Não foi possível conectar ao serviço de autenticação. Verifique sua conexão.";
     case "auth/internal-error":
       return "O Firebase encontrou um erro interno durante a autenticação.";
+    case "auth/invalid-credential":
+      return "A solicitação de autenticação expirou ou é inválida. Tente entrar novamente.";
     default:
       return action === "signup"
         ? "Não foi possível criar sua conta com o Google. Tente novamente."

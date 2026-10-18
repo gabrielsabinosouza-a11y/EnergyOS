@@ -20,6 +20,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
@@ -52,9 +53,20 @@ function deadlineLabel(goal: Goal, today: string): { text: string; overdue: bool
  * Ativas primeiro pelo prazo mais próximo (sem prazo vão para o fim), concluídas
  * num grupo colapsado no rodapé.
  */
-function sortGoals(goals: Goal[]): { active: Goal[]; completed: Goal[] } {
-  const active = goals.filter((g) => !isComplete(g));
-  const completed = goals.filter(isComplete);
+function sortGoals(goals: Goal[] | null | undefined): { active: Goal[]; completed: Goal[] } {
+  const validGoals = Array.isArray(goals)
+    ? goals.filter((goal): goal is Goal =>
+        !!goal &&
+        Number.isSafeInteger(goal.id) &&
+        typeof goal.title === "string" &&
+        Number.isFinite(goal.targetValue) &&
+        goal.targetValue > 0 &&
+        Number.isFinite(goal.currentValue) &&
+        !!goal.category,
+      )
+    : [];
+  const active = validGoals.filter((g) => !isComplete(g));
+  const completed = validGoals.filter(isComplete);
   const byDeadline = (a: Goal, b: Goal) => {
     if (!a.deadline && !b.deadline) return a.id - b.id;
     if (!a.deadline) return 1;
@@ -85,8 +97,14 @@ interface GoalCardItemProps {
   done: boolean;
   pct: number;
   deadline: { text: string; overdue: boolean } | null;
-  onProgress: (goalId: number, action: GoalLogAction) => void;
-  onMenu?: (goalId: number) => void;
+  onProgress: (goalId: number, action: GoalLogAction, amount?: number) => Promise<void> | void;
+  onMenu?: (goalId: number, rect: DOMRect) => void;
+  menuOpen: boolean;
+  registerMenuTrigger?: (goalId: number, node: HTMLButtonElement | null) => void;
+  onUncomplete?: () => void;
+  uncompletePending: boolean;
+  onConfirmUncomplete?: () => void;
+  onCancelUncomplete?: () => void;
   celebrating: boolean;
   flipping: boolean;
   reduced: boolean | null;
@@ -102,6 +120,12 @@ const GoalCardItem = memo(function GoalCardItem({
   deadline,
   onProgress,
   onMenu,
+  menuOpen,
+  registerMenuTrigger,
+  onUncomplete,
+  uncompletePending,
+  onConfirmUncomplete,
+  onCancelUncomplete,
   celebrating,
   flipping,
   reduced,
@@ -129,8 +153,8 @@ const GoalCardItem = memo(function GoalCardItem({
   }, [pct]);
 
   const handleProgress = useCallback(
-    (action: GoalLogAction) => {
-      onProgress(id, action);
+    (action: GoalLogAction, amount?: number) => {
+      void Promise.resolve(onProgress(id, action, amount)).catch(() => {});
       if (action === "increment" || action === "set") {
         setChipKey((k) => k + 1);
       }
@@ -200,12 +224,12 @@ const GoalCardItem = memo(function GoalCardItem({
         layout: { ...spring.snappy },
         opacity: { duration: 0.2 },
       }}
-      className="group relative flex"
+      className="group relative flex w-full min-w-0"
     >
       {/* Surface com tilt 3D e brilho que seguem o ponteiro. */}
       <motion.div
         {...tilt.events}
-        className="relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
+        className="relative flex w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 pr-14"
         style={{
           ...tilt.style,
           borderColor: done ? `${color}33` : "var(--border-subtle)",
@@ -271,7 +295,7 @@ const GoalCardItem = memo(function GoalCardItem({
           )}
         </motion.div>
 
-        <div className="min-w-0 flex-1 pr-6">
+        <div className="min-w-0 flex-1">
           <p
             className="line-clamp-1 text-xs font-medium leading-tight text-[var(--text)]"
             title={title}
@@ -283,7 +307,9 @@ const GoalCardItem = memo(function GoalCardItem({
           <div className="mt-1 flex items-center gap-2 min-w-0">
             <p className="text-[10px] text-[var(--text-faint)] whitespace-nowrap">
               {done ? (
-                <span style={{ color }}>Concluída</span>
+                <span style={{ color }}>
+                  Concluída{goal.completedAt ? ` · ${new Date(goal.completedAt).toLocaleDateString("pt-BR")}` : ""}
+                </span>
               ) : (
                 <>
                   {Math.min(rolledCurrent, targetValue)}/{targetValue}
@@ -291,7 +317,7 @@ const GoalCardItem = memo(function GoalCardItem({
                 </>
               )}
             </p>
-            {deadline && (
+            {deadline && !done && (
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${
                   deadline.overdue
@@ -339,17 +365,63 @@ const GoalCardItem = memo(function GoalCardItem({
         </div>
 
         {/* ── Zona (b): cluster de ação (− / +), camada própria ── */}
-        <div className="flex shrink-0 items-center gap-1 relative z-10 pointer-events-auto">
+        <div className="relative z-10 flex shrink-0 items-center gap-1 pointer-events-auto">
+          {done ? (
+            uncompletePending ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancelUncomplete?.();
+                  }}
+                  className="min-h-11 rounded-lg px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-surface-active)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onConfirmUncomplete?.();
+                  }}
+                  className="min-h-11 rounded-lg border border-[var(--accent)] px-2 text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  Confirmar
+                </button>
+              </div>
+            ) : (
+              <motion.button
+                type="button"
+                aria-label={`Desconcluir meta ${title}`}
+                title="Desconcluir"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUncomplete?.();
+                }}
+                whileTap={reduced ? undefined : { scale: 0.92 }}
+                whileHover={reduced ? undefined : { scale: 1.02 }}
+                className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 text-xs font-medium text-[var(--text)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                <RotateCcw size={14} />
+                Desconcluir
+              </motion.button>
+            )
+          ) : (
+            <>
           {/* Botão −: sempre renderizado (reserva espaço), oculto quando indisponível. */}
           {!isSingle && (
             <motion.button
               type="button"
               disabled={decrementDisabled}
+              onPointerDown={(e) => e.stopPropagation()}
               aria-label={ariaDecrement}
               title="Remover −1"
               onClick={(e) => {
                 e.stopPropagation();
-                e.preventDefault();
                 if (decrementDisabled) return;
                 handleProgress("decrement");
               }}
@@ -374,28 +446,21 @@ const GoalCardItem = memo(function GoalCardItem({
             type="button"
             aria-label={buttonAria()}
             title={buttonTitle()}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              startHold();
+            }}
             onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
               if (isSingle) {
-                handleProgress(done ? "decrement" : "set");
-              } else if (!done) {
+                handleProgress("set", targetValue);
+              } else {
                 handleProgress("increment");
               }
             }}
-            onPointerDown={startHold}
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                if (isSingle) {
-                  handleProgress(done ? "decrement" : "set");
-                } else if (!done) {
-                  handleProgress("increment");
-                }
-              }
-            }}
+            onPointerCancel={stopHold}
             whileTap={reduced ? undefined : { scale: 0.92 }}
             whileHover={reduced ? undefined : { scale: 1.04 }}
             transition={{ ...spring.press }}
@@ -406,12 +471,14 @@ const GoalCardItem = memo(function GoalCardItem({
               color,
             }}
           >
-            {isSingle || done ? (
+          {isSingle ? (
               <Check size={16} strokeWidth={3} />
             ) : (
               <Plus size={16} strokeWidth={3} />
             )}
           </motion.button>
+          </>
+          )}
         </div>
 
         {/* Chip flutuante "+1" que sobe e some. */}
@@ -435,18 +502,17 @@ const GoalCardItem = memo(function GoalCardItem({
           <button
             type="button"
             aria-label={`Opções da meta ${title}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            data-goal-menu-trigger
             title="Opções"
+            ref={(node) => registerMenuTrigger?.(id, node)}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              onMenu(id);
+              onMenu(id, e.currentTarget.getBoundingClientRect());
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onMenu(id);
-              }
-            }}
-            className="absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-md text-[var(--text-faint)] hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] cursor-pointer"
+            className="pointer-events-auto absolute right-2 top-2 z-20 flex h-10 w-10 items-center justify-center rounded-md text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] cursor-pointer"
           >
             <MoreVertical size={16} />
           </button>
@@ -520,13 +586,15 @@ export function GoalsCard({
   onProgress,
   onDelete,
   onUpdate,
+  onUncomplete,
   onCreate,
   categories,
 }: {
   goals: Goal[];
-  onProgress: (goalId: number, action: GoalLogAction) => Promise<void> | void;
+  onProgress: (goalId: number, action: GoalLogAction, amount?: number) => Promise<void> | void;
   onDelete?: (goalId: number) => Promise<void> | void;
   onUpdate?: (goalId: number, patch: GoalDraft, prev: Goal) => void;
+  onUncomplete?: (goalId: number, allowUndo: boolean) => Promise<void> | void;
   onCreate?: (goal: Goal) => void;
   categories?: Category[];
 }) {
@@ -540,6 +608,7 @@ export function GoalsCard({
   const [confirmGoalId, setConfirmGoalId] = useState<number | null>(null);
   const [deletingGoalId, setDeletingGoalId] = useState<number | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  const [confirmReopenGoalId, setConfirmReopenGoalId] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [flipping, setFlipping] = useState<Set<number>>(new Set());
 
@@ -549,6 +618,7 @@ export function GoalsCard({
     if (activeMenuGoalId === null && confirmGoalId === null) return;
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-goal-menu-trigger]")) return;
       if (!target?.closest("[data-goal-menu]")) {
         setActiveMenuGoalId(null);
         setMenuAnchor(null);
@@ -557,6 +627,7 @@ export function GoalsCard({
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (activeMenuGoalId !== null) triggerRefs.current.get(activeMenuGoalId)?.focus();
         setActiveMenuGoalId(null);
         setMenuAnchor(null);
         setConfirmGoalId(null);
@@ -600,20 +671,47 @@ export function GoalsCard({
     }, 300);
   };
 
-  const openMenu = (goalId: number) => {
-    const el = triggerRefs.current.get(goalId);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      setMenuAnchor({ top: rect.bottom + 6, left: rect.right });
+  const openMenu = (goalId: number, rect: DOMRect) => {
+    if (activeMenuGoalId === goalId) {
+      setActiveMenuGoalId(null);
+      setMenuAnchor(null);
+      setConfirmGoalId(null);
+      return;
     }
+    setMenuAnchor({ top: rect.bottom + 6, left: rect.right });
     setActiveMenuGoalId(goalId);
     setConfirmGoalId(null);
   };
 
-  const closeMenu = () => {
+  const registerMenuTrigger = useCallback((goalId: number, node: HTMLButtonElement | null) => {
+    if (node) triggerRefs.current.set(goalId, node);
+    else triggerRefs.current.delete(goalId);
+  }, []);
+
+  const closeMenu = (restoreFocus = false) => {
+    if (restoreFocus && activeMenuGoalId !== null) {
+      triggerRefs.current.get(activeMenuGoalId)?.focus();
+    }
     setActiveMenuGoalId(null);
     setMenuAnchor(null);
     setConfirmGoalId(null);
+  };
+
+  const requestUncomplete = (goalId: number) => {
+    const goal = goals.find((item) => item.id === goalId);
+    if (!goal) return;
+    closeMenu();
+    if (goal.rewardsAwarded) {
+      setConfirmReopenGoalId(goalId);
+      return;
+    }
+    void onUncomplete?.(goalId, true);
+  };
+
+  const confirmUncomplete = (goalId: number) => {
+    const goal = goals.find((item) => item.id === goalId);
+    setConfirmReopenGoalId(null);
+    if (goal) void onUncomplete?.(goalId, false);
   };
 
   const handleDelete = async (goalId: number) => {
@@ -695,14 +793,20 @@ export function GoalsCard({
                 done={done}
                 pct={pct}
                 deadline={deadline}
-                onProgress={(_goalId: number, action: GoalLogAction) => {
+                onProgress={(_goalId: number, action: GoalLogAction, amount?: number) => {
                   const predictsCompletion =
-                    action === "set" ||
+                    (action === "set" && (amount ?? 1) >= goal.targetValue) ||
                     (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
                   if (!done && predictsCompletion) celebrate(goal.id);
-                  void onProgress(goal.id, action);
+                  return onProgress(goal.id, action, amount);
                 }}
                 onMenu={openMenu}
+                menuOpen={activeMenuGoalId === goal.id}
+                registerMenuTrigger={registerMenuTrigger}
+                onUncomplete={() => requestUncomplete(goal.id)}
+                uncompletePending={confirmReopenGoalId === goal.id}
+                onConfirmUncomplete={() => confirmUncomplete(goal.id)}
+                onCancelUncomplete={() => setConfirmReopenGoalId(null)}
                 celebrating={isCelebrating}
                 flipping={isFlipping}
                 reduced={reduced}
@@ -767,8 +871,14 @@ export function GoalsCard({
                       done={done}
                       pct={pct}
                       deadline={deadlineLabel(goal, todayIso())}
-                      onProgress={(_goalId: number, action: GoalLogAction) => void onProgress(goal.id, action)}
+                      onProgress={(_goalId: number, action: GoalLogAction, amount?: number) => onProgress(goal.id, action, amount)}
                       onMenu={openMenu}
+                      menuOpen={activeMenuGoalId === goal.id}
+                      registerMenuTrigger={registerMenuTrigger}
+                      onUncomplete={() => requestUncomplete(goal.id)}
+                      uncompletePending={confirmReopenGoalId === goal.id}
+                      onConfirmUncomplete={() => confirmUncomplete(goal.id)}
+                      onCancelUncomplete={() => setConfirmReopenGoalId(null)}
                       celebrating={isCelebrating}
                       flipping={false}
                       reduced={reduced}
@@ -798,12 +908,9 @@ export function GoalsCard({
                 if (goal) openEdit(goal);
               }}
               onUncomplete={async () => {
-                const goal = goals.find((g) => g.id === activeMenuGoalId);
-                if (goal) {
-                  await onProgress(goal.id, "decrement");
-                  closeMenu();
-                }
+                requestUncomplete(activeMenuGoalId);
               }}
+              onClose={() => closeMenu(true)}
               onDelete={() => setConfirmGoalId(activeMenuGoalId)}
               onConfirmDelete={() => void handleDelete(activeMenuGoalId)}
               onCancelDelete={() => setConfirmGoalId(null)}
@@ -829,7 +936,7 @@ export function GoalsCard({
             onUpdate(editingGoal.id, patch, editingGoal);
             setEditingGoalId(null);
           }}
-          onProgress={(action) => onProgress(editingGoal.id, action)}
+          onProgress={(action, amount) => onProgress(editingGoal.id, action, amount)}
           onDelete={onDelete ? async () => { await onDelete(editingGoal.id); } : undefined}
         />
       )}
@@ -866,6 +973,7 @@ function DropdownPortal({
   onDelete,
   onConfirmDelete,
   onCancelDelete,
+  onClose,
 }: {
   anchor: { top: number; left: number };
   hasEdit: boolean;
@@ -878,7 +986,9 @@ function DropdownPortal({
   onDelete: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
+  onClose: () => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
   const confirmW = 240;
   const w = confirming ? confirmW : MENU_W;
   const left = Math.max(8, Math.min(anchor.left - w + 4, window.innerWidth - w - 8));
@@ -886,8 +996,35 @@ function DropdownPortal({
 
   const glowColor = "#71d4ff";
 
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"], [data-menu-action]')?.focus();
+  }, [confirming]);
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"], [data-menu-action]'),
+    );
+    if (items.length === 0) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const offset = event.key === "ArrowDown" ? 1 : -1;
+    items[(current + offset + items.length) % items.length]?.focus();
+  };
+
   return (
-    <div data-goal-menu className="fixed z-[120]" style={{ top, left }}>
+    <div
+      ref={menuRef}
+      data-goal-menu
+      className="fixed z-[120]"
+      style={{ top, left }}
+      onKeyDown={handleMenuKeyDown}
+    >
       <AnimatePresence>
         {confirming ? (
           <motion.div
@@ -914,6 +1051,7 @@ function DropdownPortal({
               <button
                 type="button"
                 onClick={onCancelDelete}
+                data-menu-action
                 className="min-h-[44px] rounded-md px-3 text-xs font-medium text-[var(--text-muted)] hover:bg-white/[0.06] hover:text-[var(--text)] transition-colors cursor-pointer"
               >
                 Cancelar
@@ -923,6 +1061,7 @@ function DropdownPortal({
                 whileTap={reduced ? undefined : { scale: 0.94 }}
                 disabled={deleting}
                 onClick={onConfirmDelete}
+                data-menu-action
                 className="flex min-h-[44px] items-center gap-1.5 rounded-md bg-red-500/20 border border-red-500/40 px-3 text-xs font-semibold text-red-400 hover:bg-red-500/30 transition-colors cursor-pointer disabled:opacity-50"
               >
                 {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
@@ -939,6 +1078,8 @@ function DropdownPortal({
             transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 480, damping: 32 }}
             style={{ width: MENU_W, boxShadow: `0 10px 40px -10px rgba(0,0,0,0.8), 0 0 24px -6px ${glowColor}55` }}
             className="relative overflow-hidden rounded-xl border border-white/[0.12] bg-white/[0.08] p-1 backdrop-blur-xl"
+            role="menu"
+            aria-label="Opções da meta"
           >
             <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(113,212,255,0.06), transparent 60%)" }} />
             <div
@@ -954,6 +1095,8 @@ function DropdownPortal({
               <motion.button
                 type="button"
                 onClick={onUncomplete}
+                role="menuitem"
+                tabIndex={-1}
                 whileTap={reduced ? undefined : { scale: 0.97 }}
                 className="relative flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-[var(--text)] transition-colors hover:bg-white/[0.06] cursor-pointer"
               >
@@ -966,6 +1109,8 @@ function DropdownPortal({
               <motion.button
                 type="button"
                 onClick={onEdit}
+                role="menuitem"
+                tabIndex={-1}
                 whileTap={reduced ? undefined : { scale: 0.97 }}
                 className="relative flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-[var(--text)] transition-colors hover:bg-white/[0.06] cursor-pointer"
               >
@@ -977,6 +1122,8 @@ function DropdownPortal({
             <motion.button
               type="button"
               onClick={onDelete}
+              role="menuitem"
+              tabIndex={-1}
               whileTap={reduced ? undefined : { scale: 0.97 }}
               className="relative flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-red-400 transition-colors hover:bg-red-500/10 cursor-pointer"
             >

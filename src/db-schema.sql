@@ -1415,6 +1415,7 @@ alter table daily_task_log add column if not exists doc_id text
 alter table goals add column if not exists unit text;
 alter table goals add column if not exists deadline date;
 alter table goals add column if not exists completed_at timestamptz;
+alter table goals add column if not exists progress_reset_at timestamptz;
 alter table goals add column if not exists migrated_at timestamptz;
 alter table goals add column if not exists migrated_to text check (migrated_to in ('habit','goal'));
 alter table goals alter column frequency set default 'unique';

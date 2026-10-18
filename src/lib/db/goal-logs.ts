@@ -40,7 +40,7 @@ export interface GoalLogEntry {
   amount: number;
 }
 
-export const GOAL_LOG_ACTIONS = ["set", "increment", "decrement", "toggle", "uncheck"] as const;
+export const GOAL_LOG_ACTIONS = ["set", "increment", "decrement", "toggle", "uncheck", "reset"] as const;
 export type GoalLogAction = (typeof GOAL_LOG_ACTIONS)[number];
 
 export interface ApplyGoalLogInput {
@@ -90,6 +90,8 @@ export function ensureGoalLogsSchema(): Promise<void> {
         unique (goal_id, log_date)
       )
     `);
+    await pool.query(`alter table goals add column if not exists completed_at timestamptz`);
+    await pool.query(`alter table goals add column if not exists progress_reset_at timestamptz`);
     await pool.query(
       `create index if not exists goal_logs_profile_date_idx on goal_logs(profile_id, log_date)`,
     );
@@ -111,13 +113,17 @@ function assertGoalId(goalId: number): void {
 async function sumGoalLogs(db: Db, profileId: string, goalId: number, range: DateRange | null): Promise<number> {
   const result = range
     ? await db.query<{ total: string | number }>(
-        `select coalesce(sum(amount), 0) as total from goal_logs
-         where profile_id = $1 and goal_id = $2 and log_date >= $3::date and log_date <= $4::date`,
+        `select coalesce(sum(l.amount), 0) as total
+         from goal_logs l join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+         where l.profile_id = $1 and l.goal_id = $2 and l.log_date >= $3::date and l.log_date <= $4::date
+           and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)`,
         [profileId, goalId, range.start, range.end],
       )
     : await db.query<{ total: string | number }>(
-        `select coalesce(sum(amount), 0) as total from goal_logs
-         where profile_id = $1 and goal_id = $2`,
+        `select coalesce(sum(l.amount), 0) as total
+         from goal_logs l join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+         where l.profile_id = $1 and l.goal_id = $2
+           and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)`,
         [profileId, goalId],
       );
   return Number(result.rows[0]?.total ?? 0);
@@ -125,7 +131,10 @@ async function sumGoalLogs(db: Db, profileId: string, goalId: number, range: Dat
 
 async function dayAmount(db: Db, profileId: string, goalId: number, date: string): Promise<number> {
   const result = await db.query<{ amount: string | number }>(
-    `select amount from goal_logs where profile_id = $1 and goal_id = $2 and log_date = $3::date`,
+    `select l.amount from goal_logs l
+     join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+     where l.profile_id = $1 and l.goal_id = $2 and l.log_date = $3::date
+       and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)`,
     [profileId, goalId, date],
   );
   return Number(result.rows[0]?.amount ?? 0);
@@ -140,18 +149,22 @@ async function latestLogInPeriod(
 ): Promise<{ date: string; amount: number } | null> {
   const result = range
     ? await db.query<{ date: string; amount: string | number }>(
-        `select log_date::text as date, amount from goal_logs
-         where profile_id = $1 and goal_id = $2 and amount > 0
-           and log_date >= $3::date and log_date <= $4::date
-         order by log_date desc limit 1`,
-        [profileId, goalId, range.start, range.end],
-      )
+        `select l.log_date::text as date, l.amount from goal_logs l
+         join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+         where l.profile_id = $1 and l.goal_id = $2 and l.amount > 0
+             and l.log_date >= $3::date and l.log_date <= $4::date
+             and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)
+           order by l.log_date desc limit 1`,
+          [profileId, goalId, range.start, range.end],
+        )
     : await db.query<{ date: string; amount: string | number }>(
-        `select log_date::text as date, amount from goal_logs
-         where profile_id = $1 and goal_id = $2 and amount > 0
-         order by log_date desc limit 1`,
-        [profileId, goalId],
-      );
+          `select l.log_date::text as date, l.amount from goal_logs l
+           join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+           where l.profile_id = $1 and l.goal_id = $2 and l.amount > 0
+             and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)
+           order by l.log_date desc limit 1`,
+          [profileId, goalId],
+        );
   const row = result.rows[0];
   return row ? { date: row.date, amount: Number(row.amount) } : null;
 }
@@ -201,13 +214,17 @@ export async function computeGoalPeriodSums(
 
   const result = lowerBound
     ? await pool.query<{ goal_id: string | number; date: string; amount: string | number }>(
-        `select goal_id, log_date::text as date, amount from goal_logs
-         where profile_id = $1 and log_date >= $2::date and amount > 0`,
+        `select l.goal_id, l.log_date::text as date, l.amount from goal_logs l
+         join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+         where l.profile_id = $1 and l.log_date >= $2::date and l.amount > 0
+           and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)`,
         [profileId, lowerBound],
       )
     : await pool.query<{ goal_id: string | number; date: string; amount: string | number }>(
-        `select goal_id, log_date::text as date, amount from goal_logs
-         where profile_id = $1 and amount > 0`,
+        `select l.goal_id, l.log_date::text as date, l.amount from goal_logs l
+         join goals g on g.id = l.goal_id and g.profile_id = l.profile_id
+         where l.profile_id = $1 and l.amount > 0
+           and l.created_at > coalesce(g.progress_reset_at, '-infinity'::timestamptz)`,
         [profileId],
       );
 
@@ -356,6 +373,25 @@ async function applyOnClient(
     const beforeSum = await sumGoalLogs(client, profileId, goalId, range);
     const wasDone = goal.targetValue > 0 && beforeSum >= goal.targetValue;
 
+    if (input.action === "reset") {
+      await client.query(
+        `update goals
+         set progress_reset_at = now(), completed_at = null
+         where profile_id = $1 and id = $2`,
+        [profileId, goalId],
+      );
+      await client.query("commit");
+      const goalWithProgress = await getGoalWithLogs(profileId, goalId);
+      return {
+        goal: goalWithProgress,
+        log: null,
+        xpAwarded: 0,
+        coinsAwarded: 0,
+        revertedXp: 0,
+        revertedCoins: 0,
+      };
+    }
+
     // Incrementar uma meta já concluída no período é no-op (eco do card).
     if (input.action === "increment" && wasDone) {
       await client.query("commit");
@@ -418,7 +454,8 @@ async function applyOnClient(
       const written = await client.query<{ date: string; amount: string | number }>(
         `insert into goal_logs (profile_id, goal_id, log_date, amount)
          values ($1, $2, $3::date, $4)
-         on conflict (goal_id, log_date) do update set amount = excluded.amount
+         on conflict (goal_id, log_date) do update
+         set amount = excluded.amount, created_at = now()
          returning log_date::text as date, amount`,
         [profileId, goalId, targetDate, nextAmount],
       );
@@ -438,6 +475,12 @@ async function applyOnClient(
       ({ xpAwarded, coinsAwarded } = await awardGoalCompletion(client, profileId, goal, sourceKey));
     } else if (wasDone && !nowDone) {
       ({ revertedXp, revertedCoins } = await revertGoalCompletion(client, profileId, goal, sourceKey, today));
+    }
+    if (wasDone !== nowDone) {
+      await client.query(
+        `update goals set completed_at = $2 where profile_id = $1 and id = $3`,
+        [profileId, nowDone ? new Date().toISOString() : null, goalId],
+      );
     }
 
     await client.query("commit");
