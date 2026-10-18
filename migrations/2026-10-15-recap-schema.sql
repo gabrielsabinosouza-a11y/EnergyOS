@@ -1,104 +1,110 @@
--- Idempotent migration: monthly_recaps schema (unique constraint, status,
--- generation tracking and history table).
---
--- Applies with: psql "$DATABASE_URL" -f migrations/2026-10-15-recap-schema.sql
--- Safe to re-run: every statement is idempotent.
+-- Monthly recap schema: one row per profile/month, with a snapshot history.
+-- Duplicate recaps are reported for manual resolution; this migration never
+-- deletes existing recap records.
 
--- ─── Unique constraint: one recap per (profile, month) ─────────────────────
--- A recap is uniquely identified by (profile_id, recap_month). Regenerating
--- the same month must UPDATE the same row (upsert), never duplicate it.
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'monthly_recaps'::regclass
-      and contype = 'u'
-      and conname = 'monthly_recaps_profile_id_recap_month_key'
-  ) then
-    alter table monthly_recaps
-      add constraint monthly_recaps_profile_id_recap_month_key
-      unique (profile_id, recap_month);
-  end if;
-end $$;
+BEGIN;
 
--- ─── Columns added after the original table was created ────────────────────
-do $$ begin
-  alter table monthly_recaps add column if not exists league_at_start text;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists generation_number integer not null default 1;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists xp_sources jsonb;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists streak_start_date date;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists streak_end_date date;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists streak_is_alive boolean not null default false;
-exception when duplicate_column then null; end $$;
-do $$ begin
-  alter table monthly_recaps add column if not exists status text not null default 'parcial';
-exception when duplicate_column then null; end $$;
+ALTER TABLE monthly_recaps
+  ADD COLUMN IF NOT EXISTS league_at_start text,
+  ADD COLUMN IF NOT EXISTS generation_number integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS xp_sources jsonb,
+  ADD COLUMN IF NOT EXISTS streak_start_date date,
+  ADD COLUMN IF NOT EXISTS streak_end_date date,
+  ADD COLUMN IF NOT EXISTS streak_is_alive boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'live';
 
--- ─── Status check constraint ───────────────────────────────────────────────
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'monthly_recaps'::regclass
-      and conname = 'monthly_recaps_status_check'
-  ) then
-    alter table monthly_recaps
-      add constraint monthly_recaps_status_check
-      check (status = any (array['parcial'::text, 'final'::text]));
-  end if;
-end $$;
+DO $$
+DECLARE
+  profile_attnum smallint;
+  month_attnum smallint;
+BEGIN
+  SELECT attnum INTO profile_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'profile_id' AND NOT attisdropped;
 
--- ─── Deduplicate any existing (profile_id, recap_month) duplicates ─────────
--- Keep the most recently computed row (highest id / generated_at) and delete
--- the rest, so the unique constraint above can be enforced safely.
-do $$
-begin
-  if exists (
-    select 1 from monthly_recaps
-    group by profile_id, recap_month
-    having count(*) > 1
-    limit 1
-  ) then
-    delete from monthly_recaps m
-    using monthly_recaps m2
-    where m.profile_id = m2.profile_id
-      and m.recap_month = m2.recap_month
-      and m.id < m2.id;
-  end if;
-end $$;
+  SELECT attnum INTO month_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'recap_month' AND NOT attisdropped;
 
--- ─── History table (snapshots of previous generations) ─────────────────────
-create table if not exists monthly_recap_history (
-  id integer primary key generated always as identity,
-  recap_id bigint not null references monthly_recaps(id) on delete cascade,
-  profile_id text not null,
-  recap_month date not null,
-  total_focus_minutes integer not null default 0,
-  longest_streak integer not null default 0,
+  IF EXISTS (
+    SELECT 1 FROM monthly_recaps
+    GROUP BY profile_id, recap_month
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'monthly_recaps contains duplicate (profile_id, recap_month) rows; resolve them before adding uniqueness';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'monthly_recaps'::regclass
+      AND contype IN ('u', 'p')
+      AND conkey = ARRAY[profile_attnum, month_attnum]::smallint[]
+  ) THEN
+    ALTER TABLE monthly_recaps
+      ADD CONSTRAINT monthly_recaps_profile_month_unique
+      UNIQUE (profile_id, recap_month);
+  END IF;
+END $$;
+
+-- Accept only known legacy/current statuses, replace old checks before
+-- normalizing rows, then enforce the values used by the application.
+DO $$
+DECLARE
+  status_attnum smallint;
+  status_constraint record;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM monthly_recaps
+    WHERE status NOT IN ('live', 'final', 'parcial')
+  ) THEN
+    RAISE EXCEPTION 'monthly_recaps contains an unknown status; inspect rows before migration';
+  END IF;
+
+  SELECT attnum INTO status_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'status' AND NOT attisdropped;
+
+  FOR status_constraint IN
+    SELECT conname
+    FROM pg_constraint
+    WHERE conrelid = 'monthly_recaps'::regclass
+      AND contype = 'c'
+      AND conkey @> ARRAY[status_attnum]::smallint[]
+  LOOP
+    EXECUTE format('ALTER TABLE monthly_recaps DROP CONSTRAINT %I', status_constraint.conname);
+  END LOOP;
+
+  UPDATE monthly_recaps SET status = 'live' WHERE status = 'parcial';
+
+  ALTER TABLE monthly_recaps
+    ADD CONSTRAINT monthly_recaps_status_check
+    CHECK (status IN ('live', 'final'));
+END $$;
+
+CREATE TABLE IF NOT EXISTS monthly_recap_history (
+  id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  recap_id bigint NOT NULL REFERENCES monthly_recaps(id) ON DELETE CASCADE,
+  profile_id text NOT NULL,
+  recap_month date NOT NULL,
+  total_focus_minutes integer NOT NULL DEFAULT 0,
+  longest_streak integer NOT NULL DEFAULT 0,
   streak_start_date date,
   streak_end_date date,
-  streak_is_alive boolean not null default false,
+  streak_is_alive boolean NOT NULL DEFAULT false,
   league_at_start text,
   league_at_end text,
-  league_promoted boolean default false,
+  league_promoted boolean DEFAULT false,
   productivity_tag text,
-  garden_count integer not null default 0,
-  total_xp integer not null default 0,
+  garden_count integer NOT NULL DEFAULT 0,
+  total_xp integer NOT NULL DEFAULT 0,
   xp_sources jsonb,
-  generation_number integer not null,
-  generation_count integer not null,
-  generated_at timestamptz not null default now()
+  generation_number integer NOT NULL,
+  generation_count integer NOT NULL,
+  generated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists monthly_recap_history_recap_id_idx
-  on monthly_recap_history(recap_id);
+CREATE INDEX IF NOT EXISTS monthly_recap_history_recap_id_idx
+  ON monthly_recap_history(recap_id);
+
+COMMIT;

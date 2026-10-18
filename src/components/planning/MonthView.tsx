@@ -8,6 +8,7 @@ import { formatLocalDate, parseIsoKey, SHORT_WEEKDAYS, todayIso } from "@/lib/pl
 import { buildMonthGrid, isInCalendarMonth } from "@/lib/planning/month-grid";
 import { EventChip } from "./EventChip";
 import { Plus, X } from "lucide-react";
+import { PlanRow, planItemKey } from "./PlanRow";
 
 type SizeMode = "mobile" | "tablet" | "desktop";
 
@@ -25,18 +26,14 @@ interface MonthViewProps {
   onNextMonth?: () => void;
   onPlanCreate?: (date: string) => void;
   onToggleCompleted?: (plan: WeeklyPlanItem, completed: boolean) => Promise<void>;
+  onEditPlan?: (plan: WeeklyPlanItem) => void;
+  onDeletePlan?: (plan: WeeklyPlanItem) => void;
 }
 
 const CHIP_CAP_TABLET = 2;
 const CHIP_CAP_DESKTOP = 3;
 const POPOVER_WIDTH = 280;
 const EMPTY_REASONS: readonly string[] = [];
-
-function planItemKey(plan: WeeklyPlanItem): string {
-  return plan.seriesId !== null
-    ? `series:${plan.seriesId}:${plan.planDate}`
-    : `plan:${plan.id}`;
-}
 
 export function MonthView({
   monthRange,
@@ -52,6 +49,8 @@ export function MonthView({
   onNextMonth,
   onPlanCreate,
   onToggleCompleted,
+  onEditPlan,
+  onDeletePlan,
 }: MonthViewProps) {
   const reduced = useReducedMotion();
   const today = todayIso();
@@ -238,6 +237,8 @@ export function MonthView({
       plansError={plansError}
       onPlanCreate={onPlanCreate}
       onToggleCompleted={onToggleCompleted}
+      onEditPlan={onEditPlan}
+      onDeletePlan={onDeletePlan}
       onClose={() => setMobilePanelOpen(false)}
       reduced={Boolean(reduced)}
     />
@@ -265,19 +266,21 @@ export function MonthView({
               <p className="mv-popover-empty">Nada planejado para este dia.</p>
             ) : (
               dayPlansForPopover.map((plan) => (
-                <button
+                <PlanRow
                   key={planItemKey(plan)}
-                  type="button"
-                  className="mv-popover-event"
-                  onClick={() => {
+                  plan={plan}
+                  compact
+                  onToggleCompleted={(item, completed) => void onToggleCompleted?.(item, completed)}
+                  onEdit={(item) => {
                     selectDate(popover.date);
                     closePopover();
+                    onEditPlan?.(item);
                   }}
-                >
-                  <span className="mv-chip__dot" style={{ backgroundColor: plan.color || plan.category.color }} aria-hidden="true" />
-                  <span className="mv-popover-event__title">{plan.title || "(sem título)"}</span>
-                  <span className="mv-popover-event__time">{plan.startTime ?? ""}</span>
-                </button>
+                  onDelete={(item) => {
+                    closePopover();
+                    onDeletePlan?.(item);
+                  }}
+                />
               ))
             )}
           </div>
@@ -537,6 +540,8 @@ interface SelectedDayPanelProps {
   plansError?: string | null;
   onPlanCreate?: (date: string) => void;
   onToggleCompleted?: (plan: WeeklyPlanItem, completed: boolean) => Promise<void>;
+  onEditPlan?: (plan: WeeklyPlanItem) => void;
+  onDeletePlan?: (plan: WeeklyPlanItem) => void;
   onClose: () => void;
   reduced: boolean;
 }
@@ -549,6 +554,8 @@ function SelectedDayPanel({
   plansError,
   onPlanCreate,
   onToggleCompleted,
+  onEditPlan,
+  onDeletePlan,
   onClose,
   reduced,
 }: SelectedDayPanelProps) {
@@ -556,12 +563,8 @@ function SelectedDayPanel({
   const { day } = parseIsoKey(date);
   const weekday = formatLocalDate(date, { weekday: "long" });
   const monthYear = formatLocalDate(date, { month: "long", year: "numeric" });
-  const tasks = useMemo(
-    () => plans.filter((plan) => !plan.startTime).sort((a, b) => a.title.localeCompare(b.title)),
-    [plans],
-  );
-  const agenda = useMemo(
-    () => plans.filter((plan) => Boolean(plan.startTime)).sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? "")),
+  const sortedPlans = useMemo(
+    () => [...plans].sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99")),
     [plans],
   );
 
@@ -616,55 +619,27 @@ function SelectedDayPanel({
           {plansError ? <p className="mv-panel-error" role="status">{plansError}</p> : null}
           {actionError ? <p className="mv-panel-error" role="alert">{actionError}</p> : null}
 
-          <section className="mv-panel-section" aria-labelledby="mv-tasks-heading">
-            <h3 id="mv-tasks-heading" className="mv-panel-section-title">Tarefas</h3>
-            {tasks.length > 0 ? (
-              <ul className="mv-panel-task-list">
-                {tasks.map((plan) => (
-                  <li key={planItemKey(plan)}>
-                    <label className={`mv-panel-task${plan.completedAt ? " mv-panel-task--completed" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(plan.completedAt)}
-                        disabled={!onToggleCompleted}
-                        onChange={(event) => void toggleTask(plan, event.currentTarget.checked)}
-                        aria-label={`${plan.completedAt ? "Reabrir" : "Concluir"} ${plan.title}`}
-                      />
-                      <span className="mv-panel-task__title">{plan.title || "(sem título)"}</span>
-                    </label>
-                  </li>
+          <section className="mv-panel-section" aria-labelledby="mv-plans-heading">
+            <h3 id="mv-plans-heading" className="mv-panel-section-title">Tarefas e agenda</h3>
+            {sortedPlans.length > 0 ? (
+              <div className="mv-panel-task-list">
+                {sortedPlans.map((plan) => (
+                  <PlanRow
+                    key={planItemKey(plan)}
+                    plan={plan}
+                    compact
+                    onToggleCompleted={(item, completed) => void toggleTask(item, completed)}
+                    onEdit={(item) => onEditPlan?.(item)}
+                    onDelete={(item) => onDeletePlan?.(item)}
+                  />
                 ))}
-              </ul>
-            ) : (
-              <p className="mv-panel-empty">Nenhuma tarefa para este dia.</p>
-            )}
-          </section>
-
-          <section className="mv-panel-section" aria-labelledby="mv-agenda-heading">
-            <h3 id="mv-agenda-heading" className="mv-panel-section-title">Agenda</h3>
-            {agenda.length > 0 ? (
-              <ul className="mv-panel-agenda">
-                {agenda.map((plan) => (
-                  <li key={planItemKey(plan)} className="mv-panel-agenda__item">
-                    <time className="mv-panel-agenda__time">{plan.startTime}</time>
-                    <span className="mv-chip__dot" style={{ backgroundColor: plan.color || plan.category.color }} aria-hidden="true" />
-                    <span className="mv-panel-agenda__title">{plan.title || "(sem título)"}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="mv-panel-agenda-empty">
-                <p className="mv-panel-empty">Nada planejado para este dia</p>
-                {onPlanCreate ? (
-                  <button type="button" className="mv-panel-add" onClick={() => onPlanCreate(date)}>
-                    Adicionar
-                  </button>
-                ) : null}
               </div>
+            ) : (
+              <p className="mv-panel-empty">Nenhum plano para este dia.</p>
             )}
           </section>
 
-          {onPlanCreate && agenda.length > 0 ? (
+          {onPlanCreate ? (
             <button type="button" className="mv-panel-add mv-panel-add--footer" onClick={() => onPlanCreate(date)}>
               <Plus size={14} aria-hidden="true" /> Adicionar
             </button>

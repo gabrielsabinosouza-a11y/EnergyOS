@@ -40,6 +40,7 @@ interface WeeklyPlanRow {
 }
 
 function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
+  const normalizeTime = (time: string | null) => time ? time.slice(0, 5) : undefined;
   return {
     id: Number(row.id),
     profileId: row.profile_id,
@@ -59,8 +60,8 @@ function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
     },
     taskId: row.task_id ? Number(row.task_id) : undefined,
     completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : undefined,
-    startTime: row.start_time ?? undefined,
-    endTime: row.end_time ?? undefined,
+    startTime: normalizeTime(row.start_time),
+    endTime: normalizeTime(row.end_time),
     allDay: row.all_day ?? true,
   };
 }
@@ -97,6 +98,15 @@ export interface CreateWeeklyPlanInput {
   allDay?: boolean;
 }
 
+function parsePlanTime(value: unknown, label: string): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new ValidationError(`${label} inválido.`);
+  }
+  return value;
+}
+
 export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPlanInput): Promise<WeeklyPlan> {
   parseProfileId(profileId);
   const title = parseTitle(input.title);
@@ -108,6 +118,11 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
   }
 
   const planDate = parseDate(input.planDate, "Data do plano");
+  const startTime = parsePlanTime(input.startTime, "Horário de início");
+  const endTime = parsePlanTime(input.endTime, "Horário de fim");
+  if (startTime && endTime && endTime <= startTime) {
+    throw new ValidationError("O horário de fim deve ser posterior ao início.");
+  }
   const allDay = input.allDay ?? true;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
@@ -117,7 +132,7 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
     `insert into weekly_plans (profile_id, plan_date, title, category_id, task_id, start_time, end_time, all_day)
      values ($1, $2::date, $3, $4, $5, $6, $7, $8)
      returning id`,
-    [profileId, planDate, title, categoryId, input.taskId ?? null, input.startTime ?? null, input.endTime ?? null, allDay],
+    [profileId, planDate, title, categoryId, input.taskId ?? null, startTime ?? null, endTime ?? null, allDay],
   );
   const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [inserted.rows[0].id]);
   return mapPlan(result.rows[0]);
@@ -219,9 +234,11 @@ export interface UpdateWeeklyPlanInput {
   title?: string;
   categoryId?: number;
   planDate?: string;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
-/** Edita campos de um plano (título, categoria, data). */
+/** Edita os campos de um plano independente. */
 export async function updateWeeklyPlan(profileId: string, planId: number, input: UpdateWeeklyPlanInput): Promise<WeeklyPlan> {
   parseProfileId(profileId);
   if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
@@ -235,6 +252,11 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : undefined;
+  const startTime = parsePlanTime(input.startTime, "Horário de início");
+  const endTime = parsePlanTime(input.endTime, "Horário de fim");
+  if (startTime && endTime && endTime <= startTime) {
+    throw new ValidationError("O horário de fim deve ser posterior ao início.");
+  }
 
   const sets: string[] = [];
   const colValues: unknown[] = [];
@@ -247,6 +269,8 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   if (title !== undefined) push("title = $N", title);
   if (planDate !== undefined) push("plan_date = $N::date", planDate);
   if (categoryId !== undefined) push("category_id = $N", categoryId);
+  if (startTime !== undefined) push("start_time = $N::time", startTime);
+  if (endTime !== undefined) push("end_time = $N::time", endTime);
   if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
 
   colValues.push(profileId, planId);

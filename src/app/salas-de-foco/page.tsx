@@ -23,7 +23,6 @@ import {
   Eye,
   DoorOpen,
 } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/app-shell";
 import { CoinIcon } from "@/components/coin-icon";
@@ -1738,19 +1737,17 @@ export default function FocusRoomsPage() {
   return (
     <AppShell>
       <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12 lg:py-10">
-        <motion.header
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="mb-8 flex items-center gap-3"
-        >
-          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
-            <ChevronLeft size={18} /> Voltar
-          </Link>
-          <div className="ml-auto" />
-          <Sparkles size={18} className="text-[var(--accent)]" />
-          <span className="font-display text-xl font-semibold tracking-[-0.04em]">Salas de Foco</span>
-        </motion.header>
+        {pageState === "list" && (
+          <motion.header
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="mb-8 flex items-center gap-3"
+          >
+            <Sparkles size={18} className="text-[var(--accent)]" />
+            <span className="font-display text-xl font-semibold tracking-[-0.04em]">Salas de Foco</span>
+          </motion.header>
+        )}
 
         <AnimatePresence mode="wait">{renderCurrentView()}</AnimatePresence>
 

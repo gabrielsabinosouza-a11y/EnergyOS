@@ -1,7 +1,13 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import pool from "../db";
-import { generateRecap, spMonthStartIso, spMonthEndIso } from "./recap";
+import {
+  computeGoalsCompleted,
+  generateRecap,
+  GOALS_COMPLETED_QUERY,
+  spMonthStartIso,
+  spMonthEndIso,
+} from "./recap";
 
 // Helper to format month start
 function getMonthStart(year: number, month: number): string {
@@ -370,5 +376,34 @@ describe("Recap month window (America/Sao_Paulo, pure)", () => {
   it("dezembro rola para janeiro mantendo o fuso SP", () => {
     assert.equal(spMonthStartIso("2026-12-01"), "2026-12-01T03:00:00.000Z");
     assert.equal(spMonthEndIso("2026-12-01"), "2027-01-01T03:00:00.000Z");
+  });
+});
+
+describe("Recap goal completion metric", () => {
+  it("counts persisted goal completions in the half-open São Paulo month window, not progress logs", async () => {
+    const calls: Array<{ sql: string; values: unknown[] }> = [];
+    const count = await computeGoalsCompleted(
+      "profile-1",
+      "2026-10-01T03:00:00.000Z",
+      "2026-11-01T03:00:00.000Z",
+      async (sql, values) => {
+        calls.push({ sql, values });
+        return { rows: [{ count: "2" }] };
+      },
+    );
+
+    assert.equal(count, 2);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].sql, GOALS_COMPLETED_QUERY);
+    assert.match(calls[0].sql, /FROM goals/i);
+    assert.match(calls[0].sql, /completed_at IS NOT NULL/i);
+    assert.match(calls[0].sql, /completed_at >= \$2::timestamptz/i);
+    assert.match(calls[0].sql, /completed_at < \$3::timestamptz/i);
+    assert.doesNotMatch(calls[0].sql, /goal_logs/i);
+    assert.deepEqual(calls[0].values, [
+      "profile-1",
+      "2026-10-01T03:00:00.000Z",
+      "2026-11-01T03:00:00.000Z",
+    ]);
   });
 });

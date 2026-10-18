@@ -8,6 +8,7 @@ import { creditXP } from "./xp";
 import { addCoins } from "./settings";
 import { addLeagueXP } from "./league-new";
 import { ensureXpLedgerSourceCheck } from "./xp-ledger";
+import { addDays, parseIsoKey } from "@/lib/planning/dates";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function mapSeries(row: SeriesRow): WeeklyPlanSeries {
     repeatType: row.repeat_type as PlanRepeatType,
     repeatDays: row.repeat_days,
     repeatInterval: row.repeat_interval,
-    startTime: row.start_time,
+    startTime: row.start_time?.slice(0, 5) ?? null,
     durationMinutes: row.duration_minutes,
     startDate: typeof row.start_date === "string" ? row.start_date : row.start_date.toISOString().slice(0, 10),
     endType: row.end_type as PlanEndType,
@@ -332,117 +333,55 @@ export function expandWeeklyPlanSeries(
   series: Pick<WeeklyPlanSeries, "repeatType" | "repeatDays" | "repeatInterval" | "startDate" | "endType" | "endDate" | "endCount" | "timezone">,
   weekStart: string, // Monday of the week, ISO date
 ): string[] {
-  // Parse dates in the user's timezone
-  const startDate = new Date(series.startDate + "T12:00:00");
-  const weekStartD = new Date(weekStart + "T12:00:00");
-  const weekEndD = new Date(weekStart + "T12:00:00");
-  weekEndD.setDate(weekEndD.getDate() + 6); // Sunday
+  const weekEnd = addDays(weekStart, 6);
+  const endDate = series.endType === "date" ? series.endDate : null;
+  const countLimit = series.endType === "count" && (series.endCount ?? 0) > 0
+    ? series.endCount
+    : null;
+  if (series.repeatType === "once") {
+    return series.startDate >= weekStart
+      && series.startDate <= weekEnd
+      && (!endDate || series.startDate <= endDate)
+      && (countLimit === null || countLimit >= 1)
+      ? [series.startDate]
+      : [];
+  }
 
-  // End date boundary
-  let endDateLimit: Date | null = null;
-  if (series.endType === "date" && series.endDate) {
-    endDateLimit = new Date(series.endDate + "T12:00:00");
+  const targetDays = series.repeatDays ?? [];
+  if (targetDays.length === 0) return [];
+  const interval = Math.max(1, series.repeatInterval ?? 1);
+  const ordinal = (date: string) => {
+    const { year, month, day } = parseIsoKey(date);
+    return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+  };
+  const startOrdinal = ordinal(series.startDate);
+  const isOccurrence = (date: string) => {
+    if (date < series.startDate || (endDate && date > endDate)) return false;
+    const { year, month, day } = parseIsoKey(date);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    if (!targetDays.includes(weekday)) return false;
+    const weeksSinceStart = Math.floor((ordinal(date) - startOrdinal) / 7);
+    return weeksSinceStart % interval === 0;
+  };
+
+  let priorCount = 0;
+  if (countLimit !== null) {
+    for (let date = series.startDate; date < weekStart; date = addDays(date, 1)) {
+      if (endDate && date > endDate) break;
+      if (isOccurrence(date)) {
+        priorCount += 1;
+        if (priorCount >= countLimit) return [];
+      }
+    }
   }
 
   const occurrences: string[] = [];
-
-  // For "once" type, just check if the start date falls in this week
-  if (series.repeatType === "once") {
-    if (startDate >= weekStartD && startDate <= weekEndD) {
-      // Check end count
-      if (series.endType === "count" && series.endCount !== null && series.endCount > 0) {
-        if (1 <= series.endCount) {
-          occurrences.push(series.startDate);
-        }
-      } else if (endDateLimit === null || startDate <= endDateLimit) {
-        occurrences.push(series.startDate);
-      }
-    }
-    return occurrences;
+  for (let date = weekStart; date <= weekEnd; date = addDays(date, 1)) {
+    if (!isOccurrence(date)) continue;
+    if (countLimit !== null && priorCount >= countLimit) break;
+    occurrences.push(date);
+    priorCount += 1;
   }
-
-  // For weekly/interval, iterate through each day of the week
-  const targetDays = series.repeatDays || [];
-  const interval = series.repeatInterval || 1;
-
-  // For end count, we need to count total occurrences across ALL weeks,
-  // not just the current one. We do this by counting how many occurrences
-  // would have happened in weeks before this one.
-  let preWeekCount = 0;
-  if (series.endType === "count" && series.endCount !== null && series.endCount > 0) {
-    // Count occurrences in weeks strictly before this week
-    const prevWeekStart = new Date(weekStartD);
-    prevWeekStart.setDate(prevWeekStart.getDate() - 7); // Start from previous week
-    const tempWeekStart = new Date(prevWeekStart);
-    while (tempWeekStart >= startDate || tempWeekStart.getDate() >= startDate.getDate()) {
-      // Only process if this temp week could have occurrences
-      const tempWeekEnd = new Date(tempWeekStart);
-      tempWeekEnd.setDate(tempWeekEnd.getDate() + 6);
-      if (tempWeekEnd < startDate) break;
-      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-        const d = new Date(tempWeekStart);
-        d.setDate(d.getDate() + dayOffset);
-        if (d < startDate) continue;
-        if (endDateLimit && d > endDateLimit) continue;
-        if (!targetDays.includes(d.getDay())) continue;
-        if (interval > 1) {
-          const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-          const diffMs = d.getTime() - startDate.getTime();
-          const weeksSinceStart = Math.floor(diffMs / msPerWeek);
-          if (weeksSinceStart % interval !== 0) continue;
-        }
-        preWeekCount++;
-        if (preWeekCount >= (series.endCount ?? 0)) break;
-      }
-      if (preWeekCount >= (series.endCount ?? 0)) break;
-      // Go back one week
-      tempWeekStart.setDate(tempWeekStart.getDate() - 7);
-      // Safety: don't loop forever
-      if (tempWeekStart.getTime() < startDate.getTime() - 365 * 7 * 24 * 60 * 60 * 1000) break;
-    }
-  }
-
-  let totalOccurrences = preWeekCount;
-
-  // Calculate which week number this is relative to the series start
-  // We need to check if each day in the week falls on a target day AND
-  // the week number matches the interval
-  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-    const currentDate = new Date(weekStartD);
-    currentDate.setDate(currentDate.getDate() + dayOffset);
-
-    // Check if this date is on or after the series start date
-    if (currentDate < startDate) continue;
-
-    // Check end date
-    if (endDateLimit && currentDate > endDateLimit) continue;
-
-    // Get the JS weekday (0=Sun, 1=Mon, ..., 6=Sat)
-    const jsWeekday = currentDate.getDay();
-
-    // Check if this weekday is in the target days
-    if (!targetDays.includes(jsWeekday)) continue;
-
-    // For interval type, check if this week is within the interval
-    if (interval > 1) {
-      // Calculate weeks since start
-      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-      const diffMs = currentDate.getTime() - startDate.getTime();
-      const weeksSinceStart = Math.floor(diffMs / msPerWeek);
-
-      // Check if this week falls within the interval
-      if (weeksSinceStart % interval !== 0) continue;
-    }
-
-    // Check end count
-    if (series.endType === "count" && series.endCount !== null && series.endCount > 0) {
-      totalOccurrences++;
-      if (totalOccurrences > series.endCount) continue;
-    }
-
-    occurrences.push(currentDate.toISOString().slice(0, 10));
-  }
-
   return occurrences;
 }
 
@@ -570,15 +509,13 @@ export async function updateOccurrenceOverride(
  */
 export async function listWeeklyPlanOccurrences(profileId: string, weekStart: string): Promise<WeeklyPlanItem[]> {
   parseProfileId(profileId);
-  const weekEnd = new Date(weekStart + "T12:00:00");
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+  const weekEndStr = addDays(weekStart, 6);
 
   const items: WeeklyPlanItem[] = [];
 
   // 1. Legacy weekly_plans rows
   const legacyResult = await pool.query(
-    `select w.id, w.plan_date, w.title, w.category_id, w.completed_at, w.start_time,
+    `select w.id, w.plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time,
             c.id as category_id, c.user_id as category_user_id, c.name as category_name,
             c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
             c.created_at as category_created_at
@@ -613,7 +550,8 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
       note: null,
       completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : null,
       skipped: false,
-      startTime: row.start_time,
+      startTime: row.start_time?.slice(0, 5) ?? null,
+      endTime: row.end_time?.slice(0, 5) ?? null,
       durationMinutes: null,
       repeatType: null,
       repeatDays: null,
@@ -640,6 +578,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
         [series.id, date],
       );
       const occ = occResult.rows[0];
+      if (occ?.skipped) continue;
 
       items.push({
         id: occ ? Number(occ.id) : series.id, // use occurrence id if exists, else series id
@@ -654,7 +593,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
         note: series.note,
         completedAt: occ?.completed_at ? (typeof occ.completed_at === "string" ? occ.completed_at : occ.completed_at.toISOString()) : null,
         skipped: occ?.skipped ?? false,
-        startTime: occ?.override_start_time || series.startTime,
+        startTime: occ?.override_start_time?.slice(0, 5) || series.startTime,
         durationMinutes: series.durationMinutes,
         repeatType: series.repeatType,
         repeatDays: series.repeatDays,

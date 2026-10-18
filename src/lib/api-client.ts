@@ -284,7 +284,7 @@ export const api = {
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
   setWeeklyPlanCompleted: (id: number, completed: boolean) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
-  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string }) =>
+  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string; startTime?: string | null; endTime?: string | null }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 

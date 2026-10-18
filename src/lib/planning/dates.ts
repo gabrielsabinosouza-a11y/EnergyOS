@@ -17,6 +17,7 @@ export function todayIso(): string {
 
 /** Chave de data local (YYYY-MM-DD) de um instante, no fuso oficial do produto. */
 export function dayInTz(date: Date | string = new Date()): string {
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(
     typeof date === "string" ? new Date(date) : date,
   );
@@ -36,15 +37,15 @@ export function parseIsoKey(iso: string): { year: number; month: number; day: nu
 /** Soma n dias de calendário a uma chave YYYY-MM-DD (aritmética local de calendário). */
 export function addDays(iso: string, n: number): string {
   const { year, month, day } = parseIsoKey(iso);
-  const d = new Date(year, month - 1, day + n);
-  return isoKey(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  const d = new Date(Date.UTC(year, month - 1, day + n));
+  return isoKey(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
 /** Segunda-feira da semana que contém a data informada. */
 export function weekStart(iso: string): string {
   const { year, month, day } = parseIsoKey(iso);
-  const d = new Date(year, month - 1, day);
-  const mondayOffset = (d.getDay() + 6) % 7; // segunda=0 … domingo=6
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const mondayOffset = (d.getUTCDay() + 6) % 7; // segunda=0 … domingo=6
   return addDays(iso, -mondayOffset);
 }
 
@@ -58,14 +59,14 @@ export function weekRange(iso: string): { start: string; end: string } {
 export function monthRange(iso: string): { start: string; end: string } {
   const { year, month } = parseIsoKey(iso);
   const start = isoKey(year, month, 1);
-  const daysInMonth = new Date(year, month, 0).getDate(); // dia 0 do mês seguinte = último dia deste mês
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return { start, end: isoKey(year, month, daysInMonth) };
 }
 
 /** Quantidade de dias do mês que contém a data. */
 export function daysInMonth(iso: string): number {
   const { year, month } = parseIsoKey(iso);
-  return new Date(year, month, 0).getDate();
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 /** Uma semana do calendário dentro de um mês específico. */
@@ -92,7 +93,7 @@ export interface MonthWeek {
  * e um mês nunca gera uma 5ª ou 6ª semana. Dias de meses vizinhos NÃO entram.
  */
 export function getMonthWeeks(year: number, month: number): MonthWeek[] {
-  const total = new Date(year, month, 0).getDate(); // dia 0 do mês seguinte = último dia deste mês
+  const total = new Date(Date.UTC(year, month, 0)).getUTCDate();
   // [primeiro dia, último dia] de cada semana — a última semana absorve o fim do mês.
   const ranges: Array<[number, number]> = [
     [1, 7],
@@ -121,30 +122,39 @@ export function getMonthWeeksFor(iso: string): MonthWeek[] {
 /** Adiciona N meses (calendário local) a uma chave YYYY-MM-DD. */
 export function addMonths(iso: string, n: number): string {
   const { year, month, day } = parseIsoKey(iso);
-  const d = new Date(year, month - 1 + n, day);
-  return isoKey(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  const targetMonth = new Date(Date.UTC(year, month - 1 + n, 1));
+  const targetYear = targetMonth.getUTCFullYear();
+  const targetMonthNumber = targetMonth.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonthNumber, 0)).getUTCDate();
+  return isoKey(targetYear, targetMonthNumber, Math.min(day, lastDay));
 }
 
 /** Nome curto do dia da semana em pt-BR (segunda = índice 0). */
 export const SHORT_WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-/** Formata uma data local (YYYY-MM-DD) em pt-BR sem risco de deslocamento UTC.
- *  Usa meio-dia local para nunca cruzar o limite do dia em fusos negativo. */
+/** Formata uma chave do calendário do produto em pt-BR sem depender do fuso local do dispositivo. */
 export function formatLocalDate(iso: string, options: Intl.DateTimeFormatOptions = {}): string {
   const { year, month, day } = parseIsoKey(iso);
-  return new Date(year, month - 1, day, 12).toLocaleDateString("pt-BR", { timeZone: APP_TIMEZONE, ...options });
+  return new Date(Date.UTC(year, month - 1, day, 12)).toLocaleDateString("pt-BR", { timeZone: APP_TIMEZONE, ...options });
 }
 
 /** Formata um rótulo de cabeçalho pt-BR de acordo com a vista. */
 export function viewLabel(iso: string, view: "month" | "week" | "day"): string {
-  const { year, month, day } = parseIsoKey(iso);
-  const date = new Date(year, month - 1, day);
   if (view === "month") {
-    return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); // "outubro de 2026"
-  }
-  if (view === "week") {
-    // Na vista Semana o rótulo é o mês/ano inteiro do plano (ex.: "outubro de 2026").
     return formatLocalDate(iso, { month: "long", year: "numeric" });
   }
-  return date.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); // "quinta-feira, 15 de outubro"
+  if (view === "week") {
+    const { start, end } = weekRange(iso);
+    if (start.slice(0, 7) === end.slice(0, 7)) {
+      return `${formatLocalDate(start, { day: "numeric" })}–${formatLocalDate(end, { day: "numeric" })} de ${formatLocalDate(end, { month: "long", year: "numeric" })}`;
+    }
+    const first = formatLocalDate(start, { day: "numeric", month: "short" });
+    const last = formatLocalDate(end, {
+      day: "numeric",
+      month: "short",
+      ...(start.slice(0, 4) !== end.slice(0, 4) ? { year: "numeric" } : {}),
+    });
+    return `${first} – ${last}`;
+  }
+  return formatLocalDate(iso, { weekday: "long", day: "numeric", month: "long" });
 }

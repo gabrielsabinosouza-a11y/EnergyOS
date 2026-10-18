@@ -59,13 +59,13 @@ export function planStartMinutes(plan: {
 }
 
 export interface TimedEventInput {
-  id: number;
+  id: string;
   start: number;
   end: number;
 }
 
 export interface TimedLayout {
-  id: number;
+  id: string;
   top: number;
   height: number;
   /** Posição horizontal dentro do cluster (fração de 0..1). */
@@ -79,11 +79,11 @@ export interface TimedLayout {
  * Distribui eventos sobrepostos lado a lado (algoritmo guloso por lanes).
  * Recebe eventos já convertidos (id, start, end em minutos) e devolve o layout.
  */
-export function layoutTimedEvents(events: TimedEventInput[]): Map<number, { top: number; height: number; leftPct: number; widthPct: number; lanes: number }> {
+export function layoutTimedEvents(events: TimedEventInput[]): Map<string, { top: number; height: number; leftPct: number; widthPct: number; lanes: number }> {
   const sorted = [...events].sort((a, b) => a.start - b.start || b.end - a.end);
   const laneEnd: number[] = [];
   const out = new Map<
-    number,
+    string,
     { top: number; height: number; leftPct: number; widthPct: number; lanes: number }
   >();
 

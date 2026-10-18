@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getMonthWeeks, getMonthWeeksFor, daysInMonth, addDays } from "./dates";
-
-/** Extrai só os números dos dias de uma chave YYYY-MM-DD. */
-const dayNum = (iso: string) => Number(iso.slice(8, 10));
+import { getMonthWeeks, getMonthWeeksFor, daysInMonth, addDays, addMonths, dayInTz, formatLocalDate, monthRange, weekRange, viewLabel } from "./dates";
 
 test("getMonthWeeks sempre retorna no máximo 4 semanas", () => {
   for (let year = 2024; year <= 2028; year++) {
@@ -76,7 +73,7 @@ test("getMonthWeeks: dias de outros meses não aparecem nas semanas", () => {
   // Nenhum dia de janeiro ou março escapou.
   const allDays = weeks.flatMap((w) => w.days);
   for (const d of allDays) {
-    const [y, m] = d.split("-").map(Number);
+    const m = Number(d.slice(5, 7));
     assert.equal(m, 2, `dia ${d} não deve pertencer ao mês 2`);
     assert.ok(d >= "2026-02-01" && d <= "2026-02-28");
   }
@@ -86,4 +83,19 @@ test("getMonthWeeks: dias de outros meses não aparecem nas semanas", () => {
       assert.ok(addDays(w.days[i - 1], 1) === w.days[i], `semana ${w.index} deve estar contígua e ordenada`);
     }
   }
+});
+
+test("planner dates use Monday-first week ranges and preserve local calendar dates", () => {
+  assert.equal(viewLabel("2026-10-15", "week"), "12–18 de outubro de 2026");
+  assert.equal(viewLabel("2026-12-31", "week"), "28 de dez. – 3 de jan. de 2027");
+  assert.equal(formatLocalDate("2026-10-01", { weekday: "long" }), "quinta-feira");
+  assert.equal(formatLocalDate("2028-02-29", { day: "numeric", month: "numeric" }), "29/02");
+  assert.deepEqual(weekRange("2026-10-01"), { start: "2026-09-28", end: "2026-10-04" });
+  assert.deepEqual(monthRange("2028-02-05"), { start: "2028-02-01", end: "2028-02-29" });
+  assert.equal(addMonths("2026-03-31", -1), "2026-02-28");
+  assert.equal(addDays("2026-12-31", 1), "2027-01-01");
+});
+
+test("date-only values passed to dayInTz stay on their written calendar day", () => {
+  assert.equal(dayInTz("2026-10-01"), "2026-10-01");
 });

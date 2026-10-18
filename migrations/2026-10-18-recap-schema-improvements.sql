@@ -1,137 +1,79 @@
--- Migration: Improve monthly_recaps schema for proper month handling
---
--- This migration:
--- 1. Adds finalized_at column to track when a month was finalized
--- 2. Updates status values from 'parcial' to 'live' for consistency
--- 3. Adds proper unique constraint on (profile_id, recap_month)
--- 4. Adds index on finalized_at for performance
---
--- Apply with: psql "$DATABASE_URL" -f migrations/2026-10-18-recap-schema-improvements.sql
--- Safe to re-run: every statement is idempotent.
+-- Monthly recap finalization metadata and canonical statuses.
+-- Older recap months are finalized lazily by the application from source data.
 
--- ============================================================================
--- Step 1: Add finalized_at column
--- ============================================================================
-alter table monthly_recaps add column if not exists finalized_at timestamptz;
+BEGIN;
 
--- ============================================================================
--- Step 2: Update status values: 'parcial' -> 'live'
--- ============================================================================
-update monthly_recaps
-set status = 'live'
-where status = 'parcial';
+ALTER TABLE monthly_recaps
+  ADD COLUMN IF NOT EXISTS finalized_at timestamptz;
 
--- ============================================================================
--- Step 3: Ensure unique constraint on (profile_id, recap_month)
--- ============================================================================
-do $$
-begin
-  if not exists (select 1 from pg_constraint 
-                 where conrelid = 'monthly_recaps'::regclass 
-                   and conname = 'monthly_recaps_profile_month_unique') then
-    alter table monthly_recaps 
-      add constraint monthly_recaps_profile_month_unique 
-      unique (profile_id, recap_month);
-  end if;
-exception when others then null; end $$;
+DO $$
+DECLARE
+  status_attnum smallint;
+  status_constraint record;
+  profile_attnum smallint;
+  month_attnum smallint;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM monthly_recaps
+    WHERE status NOT IN ('live', 'final', 'parcial')
+  ) THEN
+    RAISE EXCEPTION 'monthly_recaps contains an unknown status; inspect rows before migration';
+  END IF;
 
--- ============================================================================
--- Step 4: Add index on finalized_at for querying finalized recaps
--- ============================================================================
-create index if not exists monthly_recaps_finalized_at_idx 
-  on monthly_recaps(finalized_at desc) 
-  where finalized_at is not null;
+  SELECT attnum INTO status_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'status' AND NOT attisdropped;
 
--- ============================================================================
--- Step 5: Backfill: Rebuild August and September 2026 recaps from raw data
--- ============================================================================
--- This ensures the PARCIAL status is replaced with FINAL and data is accurate
--- For each month, we'll regenerate the recap with complete data
+  FOR status_constraint IN
+    SELECT conname
+    FROM pg_constraint
+    WHERE conrelid = 'monthly_recaps'::regclass
+      AND contype = 'c'
+      AND conkey @> ARRAY[status_attnum]::smallint[]
+  LOOP
+    EXECUTE format('ALTER TABLE monthly_recaps DROP CONSTRAINT %I', status_constraint.conname);
+  END LOOP;
 
--- Finalize August 2026
-do $$
-declare
-  v_profile_id text;
-  v_month_start text := '2026-08-01';
-  v_month_end text := '2026-09-01';
-  v_total_focus numeric;
-  v_longest_streak integer;
-  v_total_xp numeric;
-begin
-  -- Update each user's August recap
-  for v_profile_id in select distinct profile_id from monthly_recaps where recap_month = v_month_start::date loop
-    -- Calculate total focus minutes for August
-    select coalesce(sum(duration_minutes), 0) into v_total_focus
-    from focus_sessions
-    where profile_id = v_profile_id
-      and ended_at is not null
-      and started_at >= (v_month_start || 'T00:00:00-03:00')::timestamptz
-      and started_at < (v_month_end || 'T00:00:00-03:00')::timestamptz;
-    
-    -- Calculate longest streak for August (simplified - full calculation would be more complex)
-    select coalesce(longest_streak, 0) into v_longest_streak
-    from monthly_recaps
-    where profile_id = v_profile_id and recap_month = v_month_start::date;
-    
-    -- Calculate total XP for August
-    select coalesce(sum(xp_amount), 0) into v_total_xp
-    from xp_ledger
-    where profile_id = v_profile_id
-      and created_at >= (v_month_start || 'T00:00:00-03:00')::timestamptz
-      and created_at < (v_month_end || 'T00:00:00-03:00')::timestamptz;
-    
-    -- Update the recap
-    update monthly_recaps
-    set 
-      total_focus_minutes = v_total_focus,
-      total_xp = v_total_xp,
-      status = 'final',
-      finalized_at = now(),
-      generated_at = now()
-    where profile_id = v_profile_id and recap_month = v_month_start::date;
-  end loop;
-end $$;
+  UPDATE monthly_recaps SET status = 'live' WHERE status = 'parcial';
+  UPDATE monthly_recaps
+  SET finalized_at = generated_at
+  WHERE status = 'final' AND finalized_at IS NULL;
 
--- Finalize September 2026
-do $$
-declare
-  v_profile_id text;
-  v_month_start text := '2026-09-01';
-  v_month_end string := '2026-10-01';
-  v_total_focus numeric;
-  v_longest_streak integer;
-  v_total_xp numeric;
-begin
-  -- Update each user's September recap
-  for v_profile_id in select distinct profile_id from monthly_recaps where recap_month = v_month_start::date loop
-    -- Calculate total focus minutes for September
-    select coalesce(sum(duration_minutes), 0) into v_total_focus
-    from focus_sessions
-    where profile_id = v_profile_id
-      and ended_at is not null
-      and started_at >= (v_month_start || 'T00:00:00-03:00')::timestamptz
-      and started_at < (v_month_end || 'T00:00:00-03:00')::timestamptz;
-    
-    -- Calculate longest streak for September
-    select coalesce(longest_streak, 0) into v_longest_streak
-    from monthly_recaps
-    where profile_id = v_profile_id and recap_month = v_month_start::date;
-    
-    -- Calculate total XP for September
-    select coalesce(sum(xp_amount), 0) into v_total_xp
-    from xp_ledger
-    where profile_id = v_profile_id
-      and created_at >= (v_month_start || 'T00:00:00-03:00')::timestamptz
-      and created_at < (v_month_end || 'T00:00:00-03:00')::timestamptz;
-    
-    -- Update the recap
-    update monthly_recaps
-    set 
-      total_focus_minutes = v_total_focus,
-      total_xp = v_total_xp,
-      status = 'final',
-      finalized_at = now(),
-      generated_at = now()
-    where profile_id = v_profile_id and recap_month = v_month_start::date;
-  end loop;
-end $$;
+  ALTER TABLE monthly_recaps
+    ADD CONSTRAINT monthly_recaps_status_check
+    CHECK (status IN ('live', 'final'));
+
+  SELECT attnum INTO profile_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'profile_id' AND NOT attisdropped;
+
+  SELECT attnum INTO month_attnum
+  FROM pg_attribute
+  WHERE attrelid = 'monthly_recaps'::regclass AND attname = 'recap_month' AND NOT attisdropped;
+
+  IF EXISTS (
+    SELECT 1 FROM monthly_recaps
+    GROUP BY profile_id, recap_month
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'monthly_recaps contains duplicate (profile_id, recap_month) rows; resolve them before adding uniqueness';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'monthly_recaps'::regclass
+      AND contype IN ('u', 'p')
+      AND conkey = ARRAY[profile_attnum, month_attnum]::smallint[]
+  ) THEN
+    ALTER TABLE monthly_recaps
+      ADD CONSTRAINT monthly_recaps_profile_month_unique
+      UNIQUE (profile_id, recap_month);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS monthly_recaps_finalized_at_idx
+  ON monthly_recaps(finalized_at DESC)
+  WHERE finalized_at IS NOT NULL;
+
+COMMIT;

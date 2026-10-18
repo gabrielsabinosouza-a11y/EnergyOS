@@ -1142,19 +1142,36 @@ create table if not exists monthly_recaps (
   productivity_tag text,
   total_xp integer not null default 0,
   xp_sources jsonb,
+  coins_gained integer not null default 0,
+  coins_spent integer not null default 0,
+  missions_completed integer not null default 0,
+  goals_completed integer not null default 0,
+  achievements_unlocked integer not null default 0,
+  top_focus_category text,
   generation_number integer not null default 1,
-  status text not null default 'parcial',
+  status text not null default 'live',
   has_been_shared boolean default false,
   generated_at timestamptz not null default now(),
+  finalized_at timestamptz,
   unique (profile_id, recap_month),
   constraint monthly_recaps_status_check check (status = any (array['live'::text, 'final'::text]))
 );
 
--- Purge recaps from months before the platform existed
-delete from monthly_recaps where recap_month < '2026-08-01';
-
 -- Capture o XP total do usuário (acumulado) no momento em que o recap é gerado.
 alter table monthly_recaps add column if not exists total_xp integer not null default 0;
+alter table monthly_recaps add column if not exists coins_gained integer not null default 0;
+alter table monthly_recaps add column if not exists coins_spent integer not null default 0;
+alter table monthly_recaps add column if not exists missions_completed integer not null default 0;
+alter table monthly_recaps add column if not exists goals_completed integer not null default 0;
+alter table monthly_recaps add column if not exists achievements_unlocked integer not null default 0;
+alter table monthly_recaps add column if not exists top_focus_category text;
+alter table monthly_recaps add column if not exists finalized_at timestamptz;
+create index if not exists monthly_recaps_finalized_at_idx
+  on monthly_recaps(finalized_at desc)
+  where finalized_at is not null;
+create index if not exists monthly_recaps_top_focus_category_idx
+  on monthly_recaps(top_focus_category)
+  where top_focus_category is not null;
 
 -- ── Monthly Recap History ───────────────────────────────────────────────────
 -- Snapshot da geração anterior antes de cada upsert, para histórico.
@@ -1177,11 +1194,24 @@ create table if not exists monthly_recap_history (
   xp_sources jsonb,
   generation_number integer not null,
   generation_count integer not null,
+  coins_gained integer not null default 0,
+  coins_spent integer not null default 0,
+  missions_completed integer not null default 0,
+  goals_completed integer not null default 0,
+  achievements_unlocked integer not null default 0,
+  top_focus_category text,
   generated_at timestamptz not null default now()
 );
 
 create index if not exists monthly_recap_history_recap_id_idx
   on monthly_recap_history(recap_id);
+
+alter table monthly_recap_history add column if not exists coins_gained integer not null default 0;
+alter table monthly_recap_history add column if not exists coins_spent integer not null default 0;
+alter table monthly_recap_history add column if not exists missions_completed integer not null default 0;
+alter table monthly_recap_history add column if not exists goals_completed integer not null default 0;
+alter table monthly_recap_history add column if not exists achievements_unlocked integer not null default 0;
+alter table monthly_recap_history add column if not exists top_focus_category text;
 
 -- ── Seed streak shield designs ──────────────────────────────────────────
 insert into streak_shield_designs (id, name, description, image_url, icon_url, price, rarity, sort_order) values
@@ -1320,6 +1350,35 @@ begin
   end if;
 end $$;
 
+do $$
+declare
+  missing_count bigint;
+begin
+  select count(*) into missing_count from goals where category_id is null;
+  if missing_count > 0 then
+    raise exception '% goals have no mapped category; resolve category data before enforcing the category foreign key', missing_count;
+  end if;
+  select count(*) into missing_count from tasks where category_id is null;
+  if missing_count > 0 then
+    raise exception '% tasks have no mapped category; resolve category data before enforcing the category foreign key', missing_count;
+  end if;
+  select count(*) into missing_count from kanban_tasks where category_id is null;
+  if missing_count > 0 then
+    raise exception '% kanban tasks have no mapped category; resolve category data before enforcing the category foreign key', missing_count;
+  end if;
+  select count(*) into missing_count from weekly_plans where category_id is null;
+  if missing_count > 0 then
+    raise exception '% weekly plans have no mapped category; resolve category data before enforcing the category foreign key', missing_count;
+  end if;
+
+  if exists (select 1 from goals g left join categories c on c.id = g.category_id where c.id is null)
+     or exists (select 1 from tasks t left join categories c on c.id = t.category_id where c.id is null)
+     or exists (select 1 from kanban_tasks k left join categories c on c.id = k.category_id where c.id is null)
+     or exists (select 1 from weekly_plans w left join categories c on c.id = w.category_id where c.id is null) then
+    raise exception 'A category_id references a missing category; resolve category data before enforcing foreign keys';
+  end if;
+end $$;
+
 alter table goals alter column category_id set not null;
 alter table tasks alter column category_id set not null;
 alter table kanban_tasks alter column category_id set not null;
@@ -1327,16 +1386,16 @@ alter table weekly_plans alter column category_id set not null;
 
 -- FK constraints para bancos existentes (em instalações novas já vêm do create table).
 do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'goals_category_id_fkey') then
+  if not exists (select 1 from pg_constraint where conrelid = 'goals'::regclass and conname = 'goals_category_id_fkey') then
     alter table goals add constraint goals_category_id_fkey foreign key (category_id) references categories(id);
   end if;
-  if not exists (select 1 from pg_constraint where conname = 'tasks_category_id_fkey') then
+  if not exists (select 1 from pg_constraint where conrelid = 'tasks'::regclass and conname = 'tasks_category_id_fkey') then
     alter table tasks add constraint tasks_category_id_fkey foreign key (category_id) references categories(id);
   end if;
-  if not exists (select 1 from pg_constraint where conname = 'kanban_tasks_category_id_fkey') then
+  if not exists (select 1 from pg_constraint where conrelid = 'kanban_tasks'::regclass and conname = 'kanban_tasks_category_id_fkey') then
     alter table kanban_tasks add constraint kanban_tasks_category_id_fkey foreign key (category_id) references categories(id);
   end if;
-  if not exists (select 1 from pg_constraint where conname = 'weekly_plans_category_id_fkey') then
+  if not exists (select 1 from pg_constraint where conrelid = 'weekly_plans'::regclass and conname = 'weekly_plans_category_id_fkey') then
     alter table weekly_plans add constraint weekly_plans_category_id_fkey foreign key (category_id) references categories(id);
   end if;
 end $$;

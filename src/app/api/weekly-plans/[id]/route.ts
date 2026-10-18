@@ -37,6 +37,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       title: body.title as string | undefined,
       categoryId: body.categoryId as number | undefined,
       planDate: body.planDate as string | undefined,
+      startTime: body.startTime as string | null | undefined,
+      endTime: body.endTime as string | null | undefined,
     });
     return jsonOk({ plan });
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo, useId } from "react";
 import { createPortal } from "react-dom";
 import {
   motion,
@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   RotateCcw,
+  Clock3,
 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
@@ -30,7 +31,7 @@ import {
   EditGoalModal,
   type GoalDraft,
 } from "./goals-modals";
-import { todayIso } from "@/lib/db/dates";
+import { diffDaysIso, todayIso } from "@/lib/db/dates";
 import { useCardTilt, spring, ease, duration } from "@/lib/motion";
 
 function isComplete(goal: Goal): boolean {
@@ -40,13 +41,18 @@ function isComplete(goal: Goal): boolean {
 /** "faltam 12 dias" | "hoje" | "amanhã" | "12 dias em atraso" | null (sem prazo). */
 function deadlineLabel(goal: Goal, today: string): { text: string; overdue: boolean } | null {
   if (!goal.deadline) return null;
-  const diff = new Date(goal.deadline).getTime() - new Date(today).getTime();
-  const days = Math.round(diff / (1000 * 60 * 60 * 24));
-  if (isComplete(goal)) return { text: "concluída", overdue: false };
-  if (days < 0) return { text: `${Math.abs(days)} ${Math.abs(days) === 1 ? "dia" : "dias"} em atraso`, overdue: true };
-  if (days === 0) return { text: "vence hoje", overdue: false };
-  if (days === 1) return { text: "vence amanhã", overdue: false };
-  return { text: `faltam ${days} dias`, overdue: false };
+  if (isComplete(goal)) return { text: "Meta concluída!", overdue: false };
+  const days = diffDaysIso(goal.deadline, today);
+  if (days < 0) {
+    const overdueDays = Math.abs(days);
+    return {
+      text: `Prazo vencido há ${overdueDays} ${overdueDays === 1 ? "dia" : "dias"}`,
+      overdue: true,
+    };
+  }
+  if (days === 0) return { text: "Prazo hoje!", overdue: false };
+  if (days === 1) return { text: "Falta 1 dia!", overdue: false };
+  return { text: `Faltam ${days} dias!`, overdue: false };
 }
 
 /**
@@ -136,6 +142,16 @@ const GoalCardItem = memo(function GoalCardItem({
   const [chipKey, setChipKey] = useState(0);
   const [shimmerKey, setShimmerKey] = useState(0);
   const pctRef = useRef(pct);
+  const deadlineTriggerRef = useRef<HTMLButtonElement>(null);
+  const deadlinePointerType = useRef<string | null>(null);
+  const deadlineTooltipId = useId();
+  const [deadlineTooltipOpen, setDeadlineTooltipOpen] = useState(false);
+  const [deadlineTooltipPosition, setDeadlineTooltipPosition] = useState<{
+    top: number;
+    left: number;
+    below: boolean;
+    maxWidth: number;
+  } | null>(null);
 
   const displayValue = useMotionValue(currentValue);
   const animatedValue = useSpring(displayValue, { stiffness: 300, damping: 24 });
@@ -146,6 +162,39 @@ const GoalCardItem = memo(function GoalCardItem({
   useEffect(() => {
     displayValue.set(currentValue);
   }, [currentValue, displayValue]);
+
+  const updateDeadlineTooltipPosition = useCallback(() => {
+    const rect = deadlineTriggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = rect.top < 76 && rect.bottom + 72 < window.innerHeight;
+    const maxWidth = Math.max(0, Math.min(230, window.innerWidth - 24));
+    const halfWidth = maxWidth / 2;
+    setDeadlineTooltipPosition({
+      top: below ? rect.bottom + 10 : Math.max(8, rect.top - 8),
+      left: Math.max(halfWidth + 12, Math.min(window.innerWidth - halfWidth - 12, rect.left + rect.width / 2)),
+      below,
+      maxWidth,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!deadlineTooltipOpen) return;
+    updateDeadlineTooltipPosition();
+    window.addEventListener("resize", updateDeadlineTooltipPosition);
+    window.addEventListener("scroll", updateDeadlineTooltipPosition, true);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDeadlineTooltipOpen(false);
+        deadlineTriggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("resize", updateDeadlineTooltipPosition);
+      window.removeEventListener("scroll", updateDeadlineTooltipPosition, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [deadlineTooltipOpen, updateDeadlineTooltipPosition]);
 
   useEffect(() => {
     if (pct > pctRef.current) setShimmerKey((k) => k + 1);
@@ -305,7 +354,7 @@ const GoalCardItem = memo(function GoalCardItem({
           </p>
 
           <div className="mt-1 flex items-center gap-2 min-w-0">
-            <p className="text-[10px] text-[var(--text-faint)] whitespace-nowrap">
+            <p className="min-w-0 flex-1 truncate text-[10px] text-[var(--text-faint)] whitespace-nowrap">
               {done ? (
                 <span style={{ color }}>
                   Concluída{goal.completedAt ? ` · ${new Date(goal.completedAt).toLocaleDateString("pt-BR")}` : ""}
@@ -317,16 +366,52 @@ const GoalCardItem = memo(function GoalCardItem({
                 </>
               )}
             </p>
-            {deadline && !done && (
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${
-                  deadline.overdue
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-[var(--bg-surface-active)] text-[var(--text-muted)]"
+            {deadline && (
+              <button
+                ref={deadlineTriggerRef}
+                type="button"
+                aria-label={`Ver prazo da meta ${title}`}
+                aria-describedby={deadlineTooltipOpen ? deadlineTooltipId : undefined}
+                aria-expanded={deadlineTooltipOpen}
+                onPointerDown={(event) => {
+                  deadlinePointerType.current = event.pointerType;
+                  event.stopPropagation();
+                }}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "mouse") {
+                    updateDeadlineTooltipPosition();
+                    setDeadlineTooltipOpen(true);
+                  }
+                }}
+                onPointerLeave={(event) => {
+                  if (event.pointerType === "mouse" && document.activeElement !== event.currentTarget) {
+                    setDeadlineTooltipOpen(false);
+                  }
+                }}
+                onFocus={() => {
+                  if (deadlinePointerType.current === "touch") return;
+                  updateDeadlineTooltipPosition();
+                  setDeadlineTooltipOpen(true);
+                }}
+                onBlur={() => {
+                  deadlinePointerType.current = null;
+                  setDeadlineTooltipOpen(false);
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (deadlinePointerType.current === "touch") {
+                    setDeadlineTooltipOpen((open) => !open);
+                  } else {
+                    updateDeadlineTooltipPosition();
+                    setDeadlineTooltipOpen(true);
+                  }
+                }}
+                className={`relative z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-cyan-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  deadline.overdue ? "text-red-400" : "text-cyan-300"
                 }`}
               >
-                {deadline.text}
-              </span>
+                <Clock3 size={14} aria-hidden="true" />
+              </button>
             )}
           </div>
 
@@ -363,6 +448,43 @@ const GoalCardItem = memo(function GoalCardItem({
             </motion.div>
           </div>
         </div>
+
+        {deadline && typeof document !== "undefined" &&
+          createPortal(
+            <AnimatePresence>
+              {deadlineTooltipOpen && deadlineTooltipPosition && (
+                <motion.div
+                  id={deadlineTooltipId}
+                  role="tooltip"
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: deadlineTooltipPosition.below ? -4 : 4, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: deadlineTooltipPosition.below ? -4 : 4, scale: 0.96 }}
+                  transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
+                  className="pointer-events-none fixed z-[200] max-w-[230px] rounded-xl border border-cyan-300/30 bg-[#07182b] px-3 py-2 text-xs font-semibold text-slate-100 shadow-[0_8px_28px_rgba(0,0,0,0.45),0_0_14px_rgba(34,211,238,0.12)]"
+                  style={{
+                    top: deadlineTooltipPosition.top,
+                    left: deadlineTooltipPosition.left,
+                    translate: `-50% ${deadlineTooltipPosition.below ? "0" : "-100%"}`,
+                    maxWidth: deadlineTooltipPosition.maxWidth,
+                  }}
+                >
+                  <span className="mr-1.5" aria-hidden="true">
+                    {deadline.overdue ? "⚠️" : done ? "🎯" : deadline.text === "Prazo hoje!" ? "🔥" : "⏳"}
+                  </span>
+                  {deadline.text}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-cyan-300/30 bg-[#07182b] ${
+                      deadlineTooltipPosition.below
+                        ? "-top-1 border-l border-t"
+                        : "-bottom-1 border-b border-r"
+                    }`}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )}
 
         {/* ── Zona (b): cluster de ação (− / +), camada própria ── */}
         <div className="relative z-10 flex shrink-0 items-center gap-1 pointer-events-auto">

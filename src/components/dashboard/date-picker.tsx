@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday, parseISO, isValid } from "date-fns";
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface DatePickerProps {
@@ -14,6 +14,17 @@ interface DatePickerProps {
   className?: string;
 }
 
+/**
+ * Z-index layering (both Modal and DatePicker are portaled to document.body,
+ * so they share the same stacking context):
+ *   - Modal wrapper / backdrop: z-index 999 (MODAL_Z_INDEX)
+ *   - DatePicker popover:    z-index 1050 — above the modal panel so the
+ *     calendar is never hidden behind the modal backdrop.
+ */
+const POPOVER_WIDTH = 320; // w-80
+const POPOVER_HEIGHT = 440; // approximate rendered height
+const POPOVER_GAP = 8; // distance from trigger
+
 export function DatePicker({ value, onChange, placeholder = "Selecione uma data", className = "" }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -22,12 +33,63 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
   });
   const triggerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; placement: "bottom" | "top" } | null>(null);
+  const reduced = useReducedMotion();
 
-  // Close popover when clicking outside
+  // --- Positioning ---------------------------------------------------------
+  // Computed in an effect (not inline during render) to avoid forced synchronous
+  // layout from getBoundingClientRect() on every render.
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const triggerRect = trigger.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Horizontal: center the popover on the trigger, clamped to viewport edges.
+      const left = Math.max(POPOVER_GAP, Math.min(
+        triggerRect.left + triggerRect.width / 2 - POPOVER_WIDTH / 2,
+        viewportWidth - POPOVER_WIDTH - POPOVER_GAP,
+      ));
+
+      // Try bottom placement first.
+      const bottomTop = triggerRect.bottom + POPOVER_GAP;
+      if (bottomTop + POPOVER_HEIGHT <= viewportHeight) {
+        setPosition({ top: bottomTop, left, placement: "bottom" });
+        return;
+      }
+
+      // Fall back to top placement.
+      const topTop = triggerRect.top - POPOVER_HEIGHT - POPOVER_GAP;
+      if (topTop >= 0) {
+        setPosition({ top: topTop, left, placement: "top" });
+        return;
+      }
+
+      // Not enough space either way: clamp to viewport and render anyway.
+      setPosition({ top: Math.max(POPOVER_GAP, Math.min(bottomTop, viewportHeight - POPOVER_HEIGHT - POPOVER_GAP)), left, placement: "bottom" });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition);
+    };
+  }, [isOpen]);
+
+  // --- Outside click / Escape ---------------------------------------------
   useEffect(() => {
     if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
+      // Stop propagation so the click does not reach the Modal backdrop and
+      // accidentally close the entire goal modal — only the picker closes.
+      e.stopPropagation();
       if (
         triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
         popoverRef.current && !popoverRef.current.contains(e.target as Node)
@@ -37,7 +99,10 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
     };
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsOpen(false);
+      if (e.key === "Escape") {
+        e.stopPropagation(); // keep the modal open; only the picker closes
+        setIsOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -81,34 +146,43 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
   const startDayOfWeek = monthStart.getDay();
   const paddingDays = Array.from({ length: startDayOfWeek }, (_, i) => i);
 
+  const slide = position?.placement === "bottom" ? [0, 8] : [0, -8];
+
   return (
     <div className={`relative ${className}`}>
       {/* Trigger */}
       <div
         ref={triggerRef}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={(e) => {
+          e.stopPropagation(); // prevent the click from reaching modal backdrop
+          setIsOpen((prev) => !prev);
+        }}
         className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] cursor-pointer hover:border-[var(--text-muted)] transition-colors"
       >
         <CalendarDays size={15} className="text-[var(--text-faint)] pointer-events-none" />
         <span className="text-sm text-[var(--text)]">{formatDate(value)}</span>
       </div>
 
-      {/* Popover - portaled to body to avoid overflow issues */}
-      {isOpen &&
+      {/* Popover — portaled to document.body so no modal ancestor can clip it. */}
+      {isOpen && position ? (
         createPortal(
-          <div
+          <motion.div
             ref={popoverRef}
-            className="fixed z-[200] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl shadow-2xl p-4 w-80"
-            style={{
-              top: triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 8 : 0,
-              left: triggerRef.current ? Math.max(8, Math.min(triggerRef.current.getBoundingClientRect().left, window.innerWidth - 320 - 8)) : 0,
-            }}
+            initial={{ opacity: 0, scale: 0.96, y: slide[1] }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: slide[1] }}
+            transition={{ duration: reduced ? 0 : 0.15 }}
+            className="fixed z-[1050] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl shadow-[0_24px_48px_-12px_rgba(0,0,0,.35)] p-4 w-80"
+            style={{ top: position.top, left: position.left }}
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <button
                 type="button"
-                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentMonth(subMonths(currentMonth, 1));
+                }}
                 className="p-1 rounded hover:bg-[var(--bg-surface-active)] transition-colors"
                 aria-label="Mês anterior"
               >
@@ -119,7 +193,10 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
               </span>
               <button
                 type="button"
-                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentMonth(addMonths(currentMonth, 1));
+                }}
                 className="p-1 rounded hover:bg-[var(--bg-surface-active)] transition-colors"
                 aria-label="Próximo mês"
               >
@@ -153,7 +230,10 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
                   <button
                     key={day.toISOString()}
                     type="button"
-                    onClick={() => handleSelectDate(day)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectDate(day);
+                    }}
                     className={`h-8 w-8 rounded-lg text-xs font-medium transition-colors ${
                       isSelected
                         ? "bg-[var(--accent)] text-[#07111f]"
@@ -175,21 +255,21 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
               <div className="flex flex-wrap gap-2 mb-3">
                 <button
                   type="button"
-                  onClick={() => handleQuickSelect(0)}
+                  onClick={(e) => { e.stopPropagation(); handleQuickSelect(0); }}
                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
                 >
                   Hoje
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickSelect(7)}
+                  onClick={(e) => { e.stopPropagation(); handleQuickSelect(7); }}
                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
                 >
                   Em 1 semana
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickSelect(30)}
+                  onClick={(e) => { e.stopPropagation(); handleQuickSelect(30); }}
                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
                 >
                   Em 1 mês
@@ -198,16 +278,17 @@ export function DatePicker({ value, onChange, placeholder = "Selecione uma data"
 
               <button
                 type="button"
-                onClick={handleClear}
+                onClick={(e) => { e.stopPropagation(); handleClear(); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
               >
                 <X size={12} />
                 Limpar
               </button>
             </div>
-          </div>,
-          document.body
-        )}
+          </motion.div>,
+          document.body,
+        )
+      ) : null}
     </div>
   );
 }

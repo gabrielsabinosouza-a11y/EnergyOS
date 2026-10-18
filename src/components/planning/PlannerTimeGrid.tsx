@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HOUR_HEIGHT, layoutTimedEvents, toMinutes } from "@/lib/planning/time";
-import { EventBlock, type EventBlockLayout } from "./EventBlock";
+import { EventBlock } from "./EventBlock";
 import type { WeeklyPlanItem } from "@/types";
+import { planItemKey } from "./PlanRow";
 
 export interface TimeGridDay {
   date: string;
@@ -18,8 +19,6 @@ interface PlannerTimeGridProps {
   onSlotClick: (date: string, minutes: number) => void;
   onEventClick?: (plan: WeeklyPlanItem) => void;
 }
-
-const GUTTER_WIDTH = 48;
 
 /**
  * Grade de timeline compartilhada (Semana com 7 colunas / Dia com 1).
@@ -106,9 +105,9 @@ function DayColumn({ day, onSlotClick, onEventClick, nowMinutes }: DayColumnProp
         const start = toMinutes(p.startTime);
         const end = toMinutes(p.endTime) ?? (start != null && p.durationMinutes ? start + p.durationMinutes : null);
         if (start == null || end == null || end <= start) return null;
-        return { id: p.id, start, end, plan: p };
+        return { id: planItemKey(p), start, end, plan: p };
       })
-      .filter((x): x is { id: number; start: number; end: number; plan: WeeklyPlanItem } => x !== null);
+      .filter((x): x is { id: string; start: number; end: number; plan: WeeklyPlanItem } => x !== null);
     const map = layoutTimedEvents(list);
     return list
       .map((e) => ({ plan: e.plan, layout: map.get(e.id)! }))
@@ -130,7 +129,7 @@ function DayColumn({ day, onSlotClick, onEventClick, nowMinutes }: DayColumnProp
       onClick={handleClick}
     >
       {events.map(({ plan, layout }) => (
-        <EventBlock key={plan.id} plan={plan} layout={layout} onClick={() => onEventClick?.(plan)} />
+        <EventBlock key={planItemKey(plan)} plan={plan} layout={layout} onClick={() => onEventClick?.(plan)} />
       ))}
 
       {day.today ? (

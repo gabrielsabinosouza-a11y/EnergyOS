@@ -200,8 +200,6 @@ interface RecapSummary {
   topFocusCategory?: string;
 }
 
-
-
 /**
  * Computes coins gained in the month from xp_ledger.coins_amount.
  */
@@ -260,30 +258,36 @@ async function computeMissionsCompleted(
 
 
 
+export const GOALS_COMPLETED_QUERY = `
+  SELECT COUNT(*) AS count
+  FROM goals
+  WHERE profile_id = $1
+    AND completed_at IS NOT NULL
+    AND completed_at >= $2::timestamptz
+    AND completed_at < $3::timestamptz
+`;
+
+type RecapCountQuery = (
+  sql: string,
+  values: unknown[],
+) => Promise<{ rows: Array<{ count: string | number }> }>;
+
 /**
- * Computes goal logs recorded during the month.
+ * Counts goals whose persisted completion state was completed within the
+ * month. A progress log alone is not proof that the target was reached.
  */
-async function computeGoalsCompleted(
+export async function computeGoalsCompleted(
   profileId: string,
   monthStartIso: string,
   monthEndIso: string,
+  query: RecapCountQuery = (sql, values) => pool.query(sql, values),
 ): Promise<number> {
-  const result = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) AS count
-     FROM goal_logs
-     WHERE profile_id = $1
-       AND log_date >= $2::date
-       AND log_date < $3::date`,
-    [
-      profileId,
-      monthStartIso.slice(0, 10),
-      monthEndIso.slice(0, 10),
-    ],
+  const result = await query(
+    GOALS_COMPLETED_QUERY,
+    [profileId, monthStartIso, monthEndIso],
   );
-
   return Number(result.rows[0]?.count ?? 0);
 }
-
 
 /**
  * Computes achievements unlocked in the month.
@@ -313,8 +317,8 @@ async function computeTopFocusCategory(
   monthStartIso: string,
   monthEndIso: string,
 ): Promise<string | undefined> {
-  const result = await pool.query<{ category_id: number; total: string }>(
-    `SELECT c.category_id, SUM(fs.duration_minutes) as total
+  const result = await pool.query<{ name: string; total: string }>(
+    `SELECT c.name, SUM(fs.duration_minutes) as total
      FROM focus_sessions fs
      JOIN tasks t ON fs.task_id = t.id
      JOIN categories c ON t.category_id = c.id
@@ -322,21 +326,13 @@ async function computeTopFocusCategory(
        AND fs.ended_at IS NOT NULL
        AND fs.started_at >= $2::timestamptz
        AND fs.started_at < $3::timestamptz
-     GROUP BY c.category_id
+     GROUP BY c.id, c.name
      ORDER BY total DESC
      LIMIT 1`,
     [profileId, monthStartIso, monthEndIso],
   );
 
-  if (!result.rows[0]) return undefined;
-
-  // Get category name
-  const catResult = await pool.query<{ name: string; icon: string | null; color: string }>(
-    `SELECT name, icon, color FROM categories WHERE id = $1`,
-    [Number(result.rows[0].category_id)],
-  );
-
-  return catResult.rows[0]?.name ?? undefined;
+  return result.rows[0]?.name ?? undefined;
 }
 
 /**
@@ -469,91 +465,103 @@ async function upsertRecap(
   summary: RecapSummary,
   status: RecapStatus = "live",
 ): Promise<MonthlyRecap> {
-  // Captura o snapshot ANTES de sobrescrever, para preservar no histórico.
-  const existing = await pool.query<RecapRow>(
-    `SELECT * FROM monthly_recaps WHERE profile_id = $1 AND recap_month = $2`,
-    [profileId, monthStart],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`${profileId}:${monthStart}`],
+    );
 
-  // Se já estiver finalizado, não sobrescreve (idempotência)
-  if (existing.rows.length > 0 && existing.rows[0].status === "final") {
-    return mapRecap(profileId, existing.rows[0]);
-  }
-
-  const finalizedAt = status === "final" ? new Date().toISOString() : null;
-
-  const result = await pool.query<RecapRow>(
-    `INSERT INTO monthly_recaps (
-      profile_id, recap_month, total_focus_minutes, longest_streak, streak_start_date,
-      streak_end_date, streak_is_alive, league_tier, league_at_start, league_promoted,
-      productivity_tag, total_xp, xp_sources, coins_gained, coins_spent,
-      missions_completed, goals_completed, achievements_unlocked, top_focus_category,
-      generation_number, status, finalized_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-      $16, $17, $18, $19, $20, $21, $22
-    ) ON CONFLICT (profile_id, recap_month)
-       DO UPDATE SET
-         total_focus_minutes = excluded.total_focus_minutes,
-         longest_streak = excluded.longest_streak,
-         streak_start_date = excluded.streak_start_date,
-         streak_end_date = excluded.streak_end_date,
-         streak_is_alive = excluded.streak_is_alive,
-         league_tier = excluded.league_tier,
-         league_at_start = excluded.league_at_start,
-         league_promoted = excluded.league_promoted,
-         productivity_tag = excluded.productivity_tag,
-         total_xp = excluded.total_xp,
-         xp_sources = excluded.xp_sources,
-         coins_gained = excluded.coins_gained,
-         coins_spent = excluded.coins_spent,
-         missions_completed = excluded.missions_completed,
-         goals_completed = excluded.goals_completed,
-         achievements_unlocked = excluded.achievements_unlocked,
-         top_focus_category = excluded.top_focus_category,
-         generation_number = monthly_recaps.generation_number + 1,
-         status = excluded.status,
-         finalized_at = COALESCE(monthly_recaps.finalized_at, excluded.finalized_at),
-         generated_at = now()
-    RETURNING *`,
-    [
-      profileId,
-      monthStart,
-      summary.totalFocusMinutes,
-      summary.longestStreak,
-      summary.streakStartDate ?? null,
-      summary.streakEndDate ?? null,
-      summary.streakIsAlive,
-      summary.leagueTier ?? null,
-      summary.leagueAtStart ?? null,
-      summary.promoted ? true : false,
-      summary.productivityTag,
-      summary.totalXp,
-      summary.xpSources ? JSON.stringify(summary.xpSources) : null,
-      summary.coinsGained,
-      summary.coinsSpent,
-      summary.missionsCompleted,
-      summary.goalsCompleted,
-      summary.achievementsUnlocked,
-      summary.topFocusCategory ?? null,
-      1,
-      status,
-      finalizedAt,
-    ],
-  );
-
-  // Save previous generation to history if this is an update (snapshot ANTES da atualização).
-  // Falha aqui não deve impedir o recap atual de ser salvo.
-  if (existing.rows.length > 0) {
+    const existing = await client.query<RecapRow>(
+      `SELECT r.*,
+              (SELECT COUNT(*) FROM garden_entries g
+               WHERE g.profile_id = r.profile_id
+                 AND DATE_TRUNC('year', g.planted_at) = DATE_TRUNC('year', r.recap_month)) AS garden_count
+       FROM monthly_recaps r
+       WHERE r.profile_id = $1 AND r.recap_month = $2
+       FOR UPDATE OF r`,
+      [profileId, monthStart],
+    );
     const old = existing.rows[0];
-    try {
-      await pool.query(
-        `INSERT INTO monthly_recap_history
-         (recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
+
+    if (old?.status === "final" || (old && recapMatchesSummary(old, summary, status))) {
+      await client.query("COMMIT");
+      return mapRecap(profileId, old);
+    }
+
+    const finalizedAt = status === "final" ? new Date().toISOString() : null;
+    const result = await client.query<RecapRow>(
+      `INSERT INTO monthly_recaps (
+        profile_id, recap_month, total_focus_minutes, longest_streak, streak_start_date,
+        streak_end_date, streak_is_alive, league_tier, league_at_start, league_promoted,
+        productivity_tag, total_xp, xp_sources, coins_gained, coins_spent,
+        missions_completed, goals_completed, achievements_unlocked, top_focus_category,
+        generation_number, status, finalized_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19, 1, $20, $21
+      ) ON CONFLICT (profile_id, recap_month)
+         DO UPDATE SET
+           total_focus_minutes = excluded.total_focus_minutes,
+           longest_streak = excluded.longest_streak,
+           streak_start_date = excluded.streak_start_date,
+           streak_end_date = excluded.streak_end_date,
+           streak_is_alive = excluded.streak_is_alive,
+           league_tier = excluded.league_tier,
+           league_at_start = excluded.league_at_start,
+           league_promoted = excluded.league_promoted,
+           productivity_tag = excluded.productivity_tag,
+           total_xp = excluded.total_xp,
+           xp_sources = excluded.xp_sources,
+           coins_gained = excluded.coins_gained,
+           coins_spent = excluded.coins_spent,
+           missions_completed = excluded.missions_completed,
+           goals_completed = excluded.goals_completed,
+           achievements_unlocked = excluded.achievements_unlocked,
+           top_focus_category = excluded.top_focus_category,
+           generation_number = monthly_recaps.generation_number + 1,
+           status = excluded.status,
+           finalized_at = COALESCE(monthly_recaps.finalized_at, excluded.finalized_at),
+           generated_at = now()
+      RETURNING *`,
+      [
+        profileId,
+        monthStart,
+        summary.totalFocusMinutes,
+        summary.longestStreak,
+        summary.streakStartDate ?? null,
+        summary.streakEndDate ?? null,
+        summary.streakIsAlive,
+        summary.leagueTier ?? null,
+        summary.leagueAtStart ?? null,
+        summary.promoted,
+        summary.productivityTag,
+        summary.totalXp,
+        summary.xpSources ? JSON.stringify(summary.xpSources) : null,
+        summary.coinsGained,
+        summary.coinsSpent,
+        summary.missionsCompleted,
+        summary.goalsCompleted,
+        summary.achievementsUnlocked,
+        summary.topFocusCategory ?? null,
+        status,
+        finalizedAt,
+      ],
+    );
+
+    if (old) {
+      await client.query(
+        `INSERT INTO monthly_recap_history (
+          recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
           streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
-          league_promoted, productivity_tag, total_xp, xp_sources, generation_number, generated_at)
-         VALUES
-         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+          league_promoted, productivity_tag, total_xp, xp_sources, generation_number,
+          generation_count, garden_count, coins_gained, coins_spent, missions_completed, goals_completed,
+          achievements_unlocked, top_focus_category, generated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+          $15, $16, $17, $18, $19, $20, $21, $22, $23
+        )`,
         [
           old.id,
           old.profile_id,
@@ -570,15 +578,81 @@ async function upsertRecap(
           old.total_xp,
           old.xp_sources,
           old.generation_number,
+          Number(old.garden_count) || 0,
+          old.coins_gained ?? 0,
+          old.coins_spent ?? 0,
+          old.missions_completed ?? 0,
+          old.goals_completed ?? 0,
+          old.achievements_unlocked ?? 0,
+          old.top_focus_category,
           old.generated_at,
         ],
       );
-    } catch (historyErr) {
-      console.error("[recap/upsert] history insert failed (non-fatal):", historyErr);
     }
-  }
 
-  return mapRecap(profileId, result.rows[0]);
+    const gardenCount = await client.query<{ count: string | number }>(
+      `SELECT COUNT(*) AS count
+       FROM garden_entries
+       WHERE profile_id = $1
+         AND DATE_TRUNC('year', planted_at) = DATE_TRUNC('year', $2::date)`,
+      [profileId, monthStart],
+    );
+
+    await client.query("COMMIT");
+    return mapRecap(profileId, {
+      ...result.rows[0],
+      garden_count: Number(gardenCount.rows[0]?.count ?? 0),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function recapMatchesSummary(
+  row: RecapRow,
+  summary: RecapSummary,
+  status: RecapStatus,
+): boolean {
+  return row.status === status
+    && Number(row.total_focus_minutes) === summary.totalFocusMinutes
+    && Number(row.longest_streak) === summary.longestStreak
+    && recapDateKey(row.streak_start_date) === (summary.streakStartDate ?? null)
+    && recapDateKey(row.streak_end_date) === (summary.streakEndDate ?? null)
+    && row.streak_is_alive === summary.streakIsAlive
+    && row.league_tier === (summary.leagueTier ?? null)
+    && row.league_at_start === (summary.leagueAtStart ?? null)
+    && row.league_promoted === summary.promoted
+    && row.productivity_tag === summary.productivityTag
+    && Number(row.total_xp) === summary.totalXp
+    && stableJson(row.xp_sources) === stableJson(summary.xpSources)
+    && Number(row.coins_gained ?? 0) === summary.coinsGained
+    && Number(row.coins_spent ?? 0) === summary.coinsSpent
+    && Number(row.missions_completed ?? 0) === summary.missionsCompleted
+    && Number(row.goals_completed ?? 0) === summary.goalsCompleted
+    && Number(row.achievements_unlocked ?? 0) === summary.achievementsUnlocked
+    && row.top_focus_category === (summary.topFocusCategory ?? null);
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function recapDateKey(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return typeof value === "string"
+    ? value.slice(0, 10)
+    : value.toISOString().slice(0, 10);
 }
 
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
