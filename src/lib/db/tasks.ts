@@ -3,7 +3,7 @@ import type { StreakDayStatus, Task } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { APP_TIMEZONE, addDaysIso, todayIso } from "./dates";
-import { consumeShield, getShieldCount, isDayProtected, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
+import { consumeShield, isDayProtected, logStreakDay, getEquippedShieldDesignId, getStreakShieldDesignById } from "./store";
 import { calculateStreak } from "@/lib/streak";
 import { reconcileStreak, SHIELD_POLICY } from "@/lib/streak-reconcile";
 import { STREAK_COMPLETION_THRESHOLD } from "@/lib/daily-limits";
@@ -219,52 +219,58 @@ export interface StreakInfo {
 export async function computeStreak(profileId: string, today: string): Promise<StreakInfo> {
   parseProfileId(profileId);
 
-  // Dias com pelo menos uma sessão de foco completada (qualquer duração ≥ 1min).
-  // `ended_at is not null` marca sessões finalizadas; duração 0 (abandono
-  // imediato) não conta. Helpers de outros fluxos (jardim, missões) mantêm
-  // seu critério próprio — aqui vale apenas a regra do streak.
-  const sessions = await pool.query<{ day: string; n: string | number }>(
-    `select to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day, count(*)::int as n
-       from focus_sessions
-      where profile_id = $2
-        and ended_at is not null
-        and duration_minutes >= 1
-        and (ended_at at time zone $1)::date > ($3::date - interval '400 days')
-        and (ended_at at time zone $1)::date <= $3::date
-      group by day`,
-    [APP_TIMEZONE, profileId, today],
-  );
-  const sessionsByDay = new Map<string, number>(
-    sessions.rows.map((r) => [r.day, Number(r.n)]),
-  );
-  const todaySessions = sessionsByDay.get(today) ?? 0;
-  const baseShields = await getShieldCount(profileId);
+  const client = await pool.connect();
+  let reconciliation: ReturnType<typeof reconcileStreak> | null = null;
+  let todayQualified = false;
+  let todaySessions = 0;
+  try {
+    await client.query("begin");
 
-  const protectedRes = await pool.query<{ day: string }>(
-    `select to_char(used_on_date, 'YYYY-MM-DD') as day
-       from streak_shield_usage
-      where profile_id = $1
-        and used_on_date > ($2::date - interval '400 days')
-        and used_on_date <= $2::date`,
-    [profileId, today],
-  );
-  const protectedDays = protectedRes.rows.map((r) => r.day);
+    // Serialize reconciliation with shield purchases and other rollovers.
+    const profile = await client.query<{ streak_shield_count: number }>(
+      `select streak_shield_count from profiles where id = $1 for update`,
+      [profileId],
+    );
+    if (!profile.rows[0]) throw new NotFoundError("Perfil não encontrado.");
+    const baseShields = profile.rows[0].streak_shield_count;
 
-  const { currentStreak, bestStreak, shields, newProtectedDays, lostDays, status } =
-    reconcileStreak({
-      focusDays: [...sessionsByDay.keys()],
+    // Dias com pelo menos uma sessão de foco completada (qualquer duração ≥ 1min).
+    // `ended_at is not null` marca sessões finalizadas; duração 0 (abandono
+    // imediato) não conta.
+    const sessions = await client.query<{ day: string; n: string | number }>(
+      `select to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day, count(*)::int as n
+         from focus_sessions
+        where profile_id = $2
+          and ended_at is not null
+          and duration_minutes >= 1
+          and (ended_at at time zone $1)::date > ($3::date - interval '400 days')
+          and (ended_at at time zone $1)::date <= $3::date
+        group by day`,
+      [APP_TIMEZONE, profileId, today],
+    );
+    const sessionsByDay = new Map<string, number>(
+      sessions.rows.map((r) => [r.day, Number(r.n)]),
+    );
+    todaySessions = sessionsByDay.get(today) ?? 0;
+
+    const protectedRes = await client.query<{ day: string }>(
+      `select to_char(used_on_date, 'YYYY-MM-DD') as day
+         from streak_shield_usage
+        where profile_id = $1
+          and used_on_date > ($2::date - interval '400 days')
+          and used_on_date <= $2::date`,
+      [profileId, today],
+    );
+    const protectedDays = protectedRes.rows.map((r) => r.day);
+    const focusDays = [...sessionsByDay.keys()];
+    reconciliation = reconcileStreak({
+      focusDays,
       protectedDays,
       shields: baseShields,
       today,
     });
-
-  const focusDays = [...sessionsByDay.keys()];
-  const { todayQualified } = calculateStreak(focusDays, today);
-
-  // ─── Persistência em UMA transação ────────────────────────────────────────
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
+    const { currentStreak, bestStreak, shields, newProtectedDays, lostDays } = reconciliation;
+    todayQualified = calculateStreak(focusDays, today).todayQualified;
 
     // Escudos gastos nos dias recém-protegidos (uma linha por dia, idempotente).
     for (const day of newProtectedDays) {
@@ -330,6 +336,9 @@ export async function computeStreak(profileId: string, today: string): Promise<S
   } finally {
     client.release();
   }
+
+  if (!reconciliation) throw new Error("Não foi possível reconciliar a sequência.");
+  const { currentStreak, bestStreak, shields } = reconciliation;
 
     // Debug log removed — exposes PII (profileId, streak details).
     // Use structured logger in production if needed.
@@ -463,4 +472,3 @@ async function persistStreak(profileId: string, current: number, longest: number
      [profileId, current, longest],
   );
 }
-

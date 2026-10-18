@@ -88,7 +88,9 @@ export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
     setLastGeneration(prev => ({ ...prev, [key]: now }));
 
     try {
-      const result = await api.generateRecap(year, month);
+      // Pass month in YYYY-MM format for past months
+      const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
+      const result = await api.generateRecap(monthStr);
       if (result?.recap) {
         setRecaps(prev => ({ ...prev, [result.recap.recapMonth]: result.recap }));
       }
@@ -153,7 +155,8 @@ export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
     setLastGeneration(prev => ({ ...prev, [key]: now }));
 
     try {
-      const result = await api.generateRecap(currentMonth.year, currentMonth.month);
+      // API decides the current month server-side - no parameters needed
+      const result = await api.generateRecap();
       if (result?.recap) {
         setRecaps(prev => ({ ...prev, [result.recap.recapMonth]: result.recap }));
       }

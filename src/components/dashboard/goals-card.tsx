@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
+import {
+  motion,
+  AnimatePresence,
+  useReducedMotion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+} from "framer-motion";
 import {
   Check,
   Plus,
   Minus,
-  Target,
   MoreVertical,
   Trash2,
   Pencil,
@@ -23,7 +29,8 @@ import {
   EditGoalModal,
   type GoalDraft,
 } from "./goals-modals";
-import { diffDaysIso, todayIso } from "@/lib/db/dates";
+import { todayIso } from "@/lib/db/dates";
+import { useCardTilt, spring, ease, duration } from "@/lib/motion";
 
 function isComplete(goal: Goal): boolean {
   return goal.targetValue > 0 && goal.currentValue >= goal.targetValue;
@@ -32,7 +39,8 @@ function isComplete(goal: Goal): boolean {
 /** "faltam 12 dias" | "hoje" | "amanhã" | "12 dias em atraso" | null (sem prazo). */
 function deadlineLabel(goal: Goal, today: string): { text: string; overdue: boolean } | null {
   if (!goal.deadline) return null;
-  const days = diffDaysIso(goal.deadline, today);
+  const diff = new Date(goal.deadline).getTime() - new Date(today).getTime();
+  const days = Math.round(diff / (1000 * 60 * 60 * 24));
   if (isComplete(goal)) return { text: "concluída", overdue: false };
   if (days < 0) return { text: `${Math.abs(days)} ${Math.abs(days) === 1 ? "dia" : "dias"} em atraso`, overdue: true };
   if (days === 0) return { text: "vence hoje", overdue: false };
@@ -58,6 +66,460 @@ function sortGoals(goals: Goal[]): { active: Goal[]; completed: Goal[] } {
   return { active, completed };
 }
 
+/* ============================================================================
+   GoalCardItem — um único card de meta, memoizado.
+   Estrutura:
+     - wrapper (motion, layout="position"): reposiciona na grade sem transform
+       de hover, evitando conflito com o tilt.
+     - surface (motion, tilt): rotaciona/eleva seguindo o ponteiro; overflow-hidden
+       para o visual arredondado.
+   Zonas: (a) área principal, (b) cluster de ação (−/+), (c) botão "⋮" separado.
+   Sem overlay de hover sobre as ações.
+   ============================================================================ */
+
+interface GoalCardItemProps {
+  goal: Goal;
+  color: string;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  layoutId: string | number;
+  done: boolean;
+  pct: number;
+  deadline: { text: string; overdue: boolean } | null;
+  onProgress: (goalId: number, action: GoalLogAction) => void;
+  onMenu?: (goalId: number) => void;
+  onCloseMenu?: () => void;
+  celebrating: boolean;
+  flipping: boolean;
+  reduced: boolean;
+}
+
+const GoalCardItem = memo(function GoalCardItem({
+  goal,
+  color,
+  Icon: IconComp,
+  layoutId,
+  done,
+  pct,
+  deadline,
+  onProgress,
+  onMenu,
+  onCloseMenu,
+  celebrating,
+  flipping,
+  reduced,
+}: GoalCardItemProps) {
+  const { id, title, targetValue, currentValue, unit } = goal;
+  const isSingle = targetValue <= 1;
+
+  const [chipKey, setChipKey] = useState(0);
+  const [shimmerKey, setShimmerKey] = useState(0);
+  const pctRef = useRef(pct);
+
+  const displayValue = useMotionValue(currentValue);
+  const animatedValue = useSpring(displayValue, { stiffness: 300, damping: 24 });
+
+  const tilt = useCardTilt({ enabled: !reduced });
+  const highlightOpacity = useTransform(tilt.lift, [-2, 0], [1, 0]);
+
+  useEffect(() => {
+    displayValue.set(currentValue);
+  }, [currentValue, displayValue]);
+
+  useEffect(() => {
+    if (pct > pctRef.current) setShimmerKey((k) => k + 1);
+    pctRef.current = pct;
+  }, [pct]);
+
+  const handleProgress = useCallback(
+    (action: GoalLogAction) => {
+      onProgress(id, action);
+      if (action === "increment" || action === "set") {
+        setChipKey((k) => k + 1);
+      }
+    },
+    [id, onProgress],
+  );
+
+  // Press-and-hold no +: repete o incremento após ~400 ms, acelerando.
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdCount = useRef(0);
+
+  const startHold = useCallback(() => {
+    if (isSingle || done) return;
+    holdCount.current = 0;
+    holdTimer.current = setTimeout(() => {
+      holdCount.current += 1;
+      const gap = Math.max(80, 400 - holdCount.current * 40);
+      handleProgress("increment");
+      holdInterval.current = setInterval(() => {
+        holdCount.current += 1;
+        handleProgress("increment");
+      }, gap);
+    }, 400);
+  }, [isSingle, done, handleProgress]);
+
+  const stopHold = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    if (holdInterval.current) clearInterval(holdInterval.current);
+    holdTimer.current = null;
+    holdInterval.current = null;
+    holdCount.current = 0;
+  }, []);
+
+  const buttonAria = useCallback(() => {
+    if (isSingle) return done ? "Desconcluir meta" : "Concluir meta";
+    if (done) return "Desconcluir meta";
+    return "Adicionar 1";
+  }, [isSingle, done]);
+
+  const buttonTitle = useCallback(() => {
+    if (isSingle) return done ? "Desconcluir meta" : "Concluir meta";
+    if (done) return "Desconcluir meta concluída";
+    return "Adicionar +1";
+  }, [isSingle, done]);
+
+  const ariaDecrement = `Remover 1 do progresso de ${title}`;
+  const ariaIncrement = `Adicionar 1 ao progresso de ${title}`;
+
+  const decrementDisabled = currentValue <= 0;
+
+  const rolledCurrent = Math.round(animatedValue.get());
+
+  return (
+    {/* Wrapper: posicionamento na grade (layout). Sem estilo de transform próprio. */}
+    <motion.div
+      layout="position"
+      layoutId={layoutId}
+      key={goal.id}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{
+        opacity: 0,
+        scale: 0.9,
+        ...(flipping ? { rotateY: 180 } : {}),
+        transition: { duration: duration.exit, ease: "easeOut" },
+      }}
+      transition={{
+        layout: { type: "spring", ...spring.snappy },
+        opacity: { duration: 0.2 },
+      }}
+      className="group relative flex"
+    >
+      {/* Surface com tilt 3D e brilho que seguem o ponteiro. */}
+      <motion.div
+        ref={tilt.ref}
+        {...tilt.events}
+        className="relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
+        style={{
+          ...tilt.style,
+          borderColor: done ? `${color}33` : "var(--border-subtle)",
+          background: done
+            ? "var(--bg-surface-hover)"
+            : `linear-gradient(135deg, ${color}0d, transparent 55%)`,
+        }}
+      >
+        {/* Camada decorativa: brilho especular que segue o cursor (sem pointer). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-xl overflow-hidden"
+          style={{
+            maskImage:
+              "radial-gradient(circle at var(--hx, 50%) var(--hy, 50%), rgba(255,255,255,0.35) 0%, transparent 55%)",
+            WebkitMaskImage:
+              "radial-gradient(circle at var(--hx, 50%) var(--hy, 50%), rgba(255,255,255,0.35) 0%, transparent 55%)",
+          }}
+        >
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute -inset-px bg-gradient-to-tr from-transparent via-white/20 to-transparent"
+            style={{
+              x: tilt.highlightX,
+              y: tilt.highlightY,
+              rotate: 45,
+              opacity: highlightOpacity,
+            }}
+          />
+        </div>
+
+        {/* ── Zona (a): ícone da categoria ── */}
+        <motion.div
+          animate={celebrating ? { scale: [1, 1.12, 1] } : undefined}
+          transition={{ duration: 0.5 }}
+          className="relative flex shrink-0 h-10 w-10 items-center justify-center rounded-full"
+          style={{
+            background: `${color}1a`,
+            boxShadow: celebrating ? `0 0 14px ${color}80` : `0 0 0 transparent`,
+          }}
+        >
+          <IconComp size={18} style={{ color }} />
+          {celebrating && (
+            <svg
+              className="absolute inset-0 rounded-full"
+              style={{ width: 40, height: 40 }}
+              viewBox="0 0 24 24"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                style={{
+                  strokeDasharray: 62,
+                  strokeDashoffset: celebrating ? 0 : 62,
+                  transition: "stroke-dashoffset 0.5s ease",
+                }}
+              />
+            </svg>
+          )}
+        </motion.div>
+
+        <div className="min-w-0 flex-1 pr-6">
+          <p
+            className="line-clamp-1 text-xs font-medium leading-tight text-[var(--text)]"
+            title={title}
+            style={done ? { textDecoration: "line-through", color: "var(--text-faint)" } : undefined}
+          >
+            {title}
+          </p>
+
+          <div className="mt-1 flex items-center gap-2 min-w-0">
+            <p className="text-[10px] text-[var(--text-faint)] whitespace-nowrap">
+              {done ? (
+                <span style={{ color }}>Concluída</span>
+              ) : (
+                <>
+                  {Math.min(rolledCurrent, targetValue)}/{targetValue}
+                  {unit ? ` ${unit}` : ""} · {pct}%
+                </>
+              )}
+            </p>
+            {deadline && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${
+                  deadline.overdue
+                    ? "bg-red-500/15 text-red-400"
+                    : "bg-[var(--bg-surface-active)] text-[var(--text-muted)]"
+                }`}
+              >
+                {deadline.text}
+              </span>
+            )}
+          </div>
+
+          {/* Barra de progresso: largura com spring + shimmer ao aumentar. */}
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
+            <motion.div
+              className="relative h-full rounded-full overflow-hidden"
+              style={{
+                background: color,
+                boxShadow: `0 0 6px ${color}66`,
+                width: `${done ? 100 : pct}%`,
+              }}
+              initial={false}
+              animate={{ width: `${done ? 100 : pct}%` }}
+              transition={{ type: "spring", ...spring.progress }}
+            >
+              <AnimatePresence>
+                {shimmerKey > 0 && (
+                  <motion.div
+                    key={`shimmer-${shimmerKey}`}
+                    className="pointer-events-none absolute inset-0 h-full rounded-full overflow-hidden"
+                    style={{
+                      maskImage: "linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)",
+                    }}
+                  >
+                    <motion.div
+                      className="pointer-events-none absolute h-full w-1/3 rounded-full bg-white/60"
+                      animate={{ x: ["-130%", "130%"] }}
+                      transition={{ duration: 0.6, ease: ease.circOut }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* ── Zona (b): cluster de ação (− / +), camada própria ── */}
+        <div className="flex shrink-0 items-center gap-1 relative z-10 pointer-events-auto">
+          {/* Botão −: sempre renderizado (reserva espaço), oculto quando indisponível. */}
+          {!isSingle && (
+            <motion.button
+              type="button"
+              disabled={decrementDisabled}
+              aria-label={ariaDecrement}
+              title="Remover −1"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (decrementDisabled) return;
+                handleProgress("decrement");
+              }}
+              whileTap={reduced ? undefined : { scale: 0.92 }}
+              animate={{
+                opacity: decrementDisabled ? 0 : 1,
+                scale: decrementDisabled ? 0.92 : 1,
+              }}
+              transition={{ type: "spring", ...spring.press }}
+              className="tap flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text)] disabled:pointer-events-none cursor-pointer"
+              style={{
+                opacity: decrementDisabled ? 0 : 1,
+                pointerEvents: decrementDisabled ? "none" : "auto",
+              }}
+            >
+              <Minus size={16} strokeWidth={3} />
+            </motion.button>
+          )}
+
+          {/* Botão principal: + (adicionar) ou check (concluir/desconcluir). */}
+          <motion.button
+            type="button"
+            aria-label={buttonAria()}
+            title={buttonTitle()}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (isSingle) {
+                handleProgress(done ? "decrement" : "set");
+              } else if (!done) {
+                handleProgress("increment");
+              }
+            }}
+            onPointerDown={startHold}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (isSingle) {
+                  handleProgress(done ? "decrement" : "set");
+                } else if (!done) {
+                  handleProgress("increment");
+                }
+              }
+            }}
+            whileTap={reduced ? undefined : { scale: 0.92 }}
+            whileHover={reduced ? undefined : { scale: 1.04 }}
+            transition={{ type: "spring", ...spring.press }}
+            className="tap flex h-11 w-11 shrink-0 items-center justify-center rounded-full border cursor-pointer disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            style={{
+              borderColor: `${color}55`,
+              background: done ? `${color}1a` : `${color}14`,
+              color,
+            }}
+          >
+            {isSingle || done ? (
+              <Check size={16} strokeWidth={3} />
+            ) : (
+              <Plus size={16} strokeWidth={3} />
+            )}
+          </motion.button>
+        </div>
+
+        {/* Chip flutuante "+1" que sobe e some. */}
+        <AnimatePresence>
+          {chipKey > 0 && (
+            <motion.div
+              key={`chip-${chipKey}`}
+              className="pointer-events-none absolute -top-3 right-1/2 -translate-x-1/2 text-[10px] font-bold text-[var(--text)]"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: -10 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              +1
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Zona (c): menu "⋮" separado (não fica sobre as ações) ── */}
+        {onMenu && (
+          <button
+            type="button"
+            aria-label={`Opções da meta ${title}`}
+            title="Opções"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMenu(id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onMenu(id);
+              }
+            }}
+            className="absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-md text-[var(--text-faint)] hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] cursor-pointer"
+          >
+            <MoreVertical size={16} />
+          </button>
+        )}
+
+        {/* Celebração no momento da conclusão. */}
+        {celebrating && (
+          <motion.div
+            key="celebrate"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -12 }}
+              animate={{ scale: [0, 1.12, 1], rotate: [0] }}
+              transition={{ type: "spring", ...spring.celebrate }}
+              className="flex h-14 w-14 items-center justify-center rounded-full"
+              style={{
+                background: color,
+                color: "var(--bg-primary)",
+                boxShadow: `0 0 28px ${color}`,
+              }}
+            >
+              <Check size={30} strokeWidth={4} />
+            </motion.div>
+            {[0, 1, 2, 3].map((i) => (
+              <motion.div
+                key={`particle-${i}`}
+                className="pointer-events-none absolute rounded-full"
+                style={{
+                  left: "50%",
+                  top: "50%",
+                  width: 6,
+                  height: 6,
+                  background: color,
+                  boxShadow: `0 0 12px ${color}`,
+                }}
+                initial={{ x: 0, y: 0, opacity: 0 }}
+                animate={{
+                  x: [0, Math.sin((i * Math.PI) / 2) * 24, 0],
+                  y: [0, -Math.cos((i * Math.PI) / 2) * 24, 0],
+                  opacity: [0, 1, 0],
+                }}
+                transition={{ duration: 0.5, ease: ease.circOut }}
+              />
+            ))}
+          </motion.div>
+        )}
+
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -inset-px rounded-xl"
+          style={{ border: `1px solid rgba(255,255,255,0.08)`, borderRadius: "inherit" }}
+        />
+      </motion.div>
+    </motion.div>
+  );
+});
+
+GoalCardItem.displayName = "GoalCardItem";
+
+/* ============================================================================
+   GoalsCard — container: listas Ativas / Concluídas, menus, modais.
+   ============================================================================ */
+
 export function GoalsCard({
   goals,
   onProgress,
@@ -67,11 +529,6 @@ export function GoalsCard({
   categories,
 }: {
   goals: Goal[];
-  /**
-   * Aplica um check-in na meta (increment/decrement/toggle/uncheck). A fonte da
-   * verdade é o servidor (POST /api/goal-logs): ele soma os logs do período e
-   * concede/estorna XP e moedas na transição de conclusão.
-   */
   onProgress: (goalId: number, action: GoalLogAction) => Promise<void> | void;
   onDelete?: (goalId: number) => Promise<void> | void;
   onUpdate?: (goalId: number, patch: GoalDraft, prev: Goal) => void;
@@ -82,28 +539,19 @@ export function GoalsCard({
   const [showCompleted, setShowCompleted] = useState(false);
   const { active: activeGoals, completed: completedGoals } = sortGoals(goals);
 
-  // ids em celebração (acabaram de completar) — controla a animação de parabenização
   const [celebrating, setCelebrating] = useState<Set<number>>(new Set());
-  // id da meta com menu kebab aberto
   const [activeMenuGoalId, setActiveMenuGoalId] = useState<number | null>(null);
-  // posição (tela) do trigger do menu — colapsa quando o menu fecha
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-  // id da meta em confirmação de exclusão
   const [confirmGoalId, setConfirmGoalId] = useState<number | null>(null);
-  // id da meta sendo excluída (loading state)
   const [deletingGoalId, setDeletingGoalId] = useState<number | null>(null);
-  // id da meta em edição (abre o modal)
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
-  // controla o modal de criação de nova meta
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [flipping, setFlipping] = useState<Set<number>>(new Set());
 
-  // refs para os botões de trigger, para ancorar o popover no viewport
   const triggerRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
 
-  // Fecha menus/popovers ao clicar fora ou pressionar Escape
   useEffect(() => {
     if (activeMenuGoalId === null && confirmGoalId === null) return;
-
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target?.closest("[data-goal-menu]")) {
@@ -112,7 +560,6 @@ export function GoalsCard({
         setConfirmGoalId(null);
       }
     };
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setActiveMenuGoalId(null);
@@ -120,11 +567,9 @@ export function GoalsCard({
         setConfirmGoalId(null);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("touchstart", handleClickOutside);
     window.addEventListener("keydown", handleKeyDown);
-
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("touchstart", handleClickOutside);
@@ -138,6 +583,11 @@ export function GoalsCard({
       next.add(goalId);
       return next;
     });
+    setFlipping((prev) => {
+      const next = new Set(prev);
+      next.add(goalId);
+      return next;
+    });
     window.setTimeout(() => {
       setCelebrating((prev) => {
         if (!prev.has(goalId)) return prev;
@@ -145,7 +595,14 @@ export function GoalsCard({
         next.delete(goalId);
         return next;
       });
-    }, 1400);
+    }, 700);
+    window.setTimeout(() => {
+      setFlipping((prev) => {
+        const next = new Set(prev);
+        next.delete(goalId);
+        return next;
+      });
+    }, 300);
   };
 
   const openMenu = (goalId: number) => {
@@ -192,7 +649,7 @@ export function GoalsCard({
           animate={reduced ? {} : { y: [0, -5, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Target size={24} className="text-[var(--text-faint)] mb-3" />
+          <svg className="text-[var(--text-faint)] mb-3" style={{ width: 24, height: 24 }} />
         </motion.div>
         <p className="text-sm text-[var(--text-muted)]">Nenhuma meta ativa</p>
         <button
@@ -224,293 +681,64 @@ export function GoalsCard({
 
       <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
         <AnimatePresence mode="popLayout" initial={false}>
-          {activeGoals.map((goal) => {
+          {activeGoals.map((goal, index) => {
             const { color, icon } = goal.category;
-            const Icon = categoryIcon(icon);
+            const IconComp = categoryIcon(icon);
             const done = isComplete(goal);
             const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
             const deadline = deadlineLabel(goal, todayIso());
             const isCelebrating = celebrating.has(goal.id);
-            const isMenuOpen = activeMenuGoalId === goal.id || confirmGoalId === goal.id;
-
-            const handleProgress = (action: GoalLogAction) => {
-              // Celebra só quando a ação prevista conclui a meta — o servidor
-              // devolve o estado real logo em seguida (otimista vivo).
-              const predictsCompletion =
-                action === "set" ||
-                (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
-              if (!done && predictsCompletion) celebrate(goal.id);
-              void onProgress(goal.id, action);
-            };
+            const isFlipping = flipping.has(goal.id);
 
             return (
-              <motion.div
-                layout="position"
+              <GoalCardItem
                 key={goal.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.85,
-                  transition: { duration: 0.2, ease: "easeOut" },
+                layoutId={goal.id}
+                goal={goal}
+                color={color}
+                Icon={IconComp}
+                done={done}
+                pct={pct}
+                deadline={deadline}
+                onProgress={(action) => {
+                  const predictsCompletion =
+                    action === "set" ||
+                    (action === "increment" && goal.currentValue + 1 >= goal.targetValue);
+                  if (!done && predictsCompletion) celebrate(goal.id);
+                  void onProgress(goal.id, action);
                 }}
-                transition={{
-                  layout: { type: "spring", stiffness: 350, damping: 28 },
-                  opacity: { duration: 0.2 },
-                }}
-                whileHover={reduced || isMenuOpen ? undefined : { y: -2 }}
-                whileTap={reduced || isMenuOpen ? undefined : { scale: 0.97 }}
-                className={`group relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 ${
-                  isMenuOpen ? "overflow-visible z-20" : "overflow-hidden"
-                }`}
-                style={{
-                  borderColor: done ? `${color}33` : "var(--border-subtle)",
-                  background: done
-                    ? "var(--bg-surface-hover)"
-                    : `linear-gradient(135deg, ${color}0d, transparent 55%)`,
-                }}
-                onClick={(e) => {
-                  // Don't trigger menu if clicking on +/- buttons or menu trigger
-                  if ((e.target as HTMLElement).closest('[data-goal-menu]') ||
-                      (e.target as HTMLElement).closest('button[aria-label*="Adicionar"]') ||
-                      (e.target as HTMLElement).closest('button[aria-label*="Remover"]') ||
-                      (e.target as HTMLElement).closest('button[aria-label*="Desmarcar"]')) {
-                    return;
-                  }
-                  // Card click does nothing - only menu trigger opens edit
-                }}
-              >
-                {/* Ação de menu/excluir meta (kebab menu) */}
-                {onDelete && (
-                  <div className="absolute top-1.5 right-1.5 z-20" data-goal-menu>
-                    <button
-                      ref={(el) => {
-                        if (el) triggerRefs.current.set(goal.id, el);
-                        else triggerRefs.current.delete(goal.id);
-                      }}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isMenuOpen) {
-                          closeMenu();
-                        } else {
-                          openMenu(goal.id);
-                        }
-                      }}
-                      aria-label={`Opções da meta ${goal.title}`}
-                      title="Opções"
-                      className={`tap flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-faint)] transition-all hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus:opacity-100 cursor-pointer ${
-                        isMenuOpen
-                          ? "opacity-100 bg-[var(--bg-surface-active)] text-[var(--text)]"
-                          : "opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100"
-                      }`}
-                    >
-                      <MoreVertical size={13} />
-                    </button>
-                  </div>
-                )}
-
-                {/* Ícone da categoria com tint/glow na cor da categoria */}
-                <motion.div
-                  animate={isCelebrating ? { scale: [1, 1.15, 1] } : undefined}
-                  transition={{ duration: 0.5 }}
-                  className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    background: `${color}1a`,
-                    boxShadow: isCelebrating ? `0 0 14px ${color}80` : `0 0 0px transparent`,
-                  }}
-                >
-                  <Icon size={18} style={{ color }} />
-                </motion.div>
-
-                <div className="min-w-0 flex-1 pr-6">
-                  {/* Title - single line with ellipsis, full text in tooltip */}
-                  <p
-                    className="line-clamp-1 text-xs font-medium leading-tight text-[var(--text)]"
-                    title={goal.title}
-                    style={done ? { textDecoration: "line-through", color: "var(--text-faint)" } : undefined}
-                  >
-                    {goal.title}
-                  </p>
-                  
-                  {/* Progress line - always on one line, truncates if needed */}
-                  <div className="mt-1 flex items-center gap-2 min-w-0">
-                    <p className="text-[10px] text-[var(--text-faint)] whitespace-nowrap">
-                      {done ? (
-                        <span style={{ color }}>Concluída</span>
-                      ) : (
-                        <>
-                          {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
-                          {goal.unit ? ` ${goal.unit}` : ""} · {pct}%
-                        </>
-                      )}
-                    </p>
-                    {deadline && (
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${
-                          deadline.overdue
-                            ? "bg-red-500/15 text-red-400"
-                            : "bg-[var(--bg-surface-active)] text-[var(--text-muted)]"
-                        }`}
-                      >
-                        {deadline.text}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: color, boxShadow: `0 0 6px ${color}66` }}
-                      initial={false}
-                      animate={{ width: `${done ? 100 : pct}%` }}
-                      transition={{ type: "spring", stiffness: 120, damping: 20 }}
-                    />
-                  </div>
-                </div>
-
-                {/* Ação: −1/+1. Concluída (current >= target) o check vira botão
-                    de DESMARCAR, e o servidor estorna a recompensa de 50/50. */}
-                <div className="flex shrink-0 items-center gap-1">
-                  {done ? (
-                    <>
-                      {goal.targetValue > 1 && (
-                        <motion.button
-                          whileTap={reduced ? undefined : { scale: 0.92 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleProgress("decrement");
-                          }}
-                          aria-label={`Remover progresso de ${goal.title}`}
-                          title="Remover −1"
-                          className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-                        >
-                          <Minus size={16} strokeWidth={3} />
-                        </motion.button>
-                      )}
-                      <motion.button
-                        initial={{ scale: 0.4 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: "spring", stiffness: 320, damping: 14 }}
-                        whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleProgress("decrement");
-                        }}
-                        aria-label={`Desmarcar ${goal.title}`}
-                        title="Desmarcar meta concluída"
-                        className="tap flex h-8 w-8 items-center justify-center rounded-full cursor-pointer"
-                        style={{ background: `${color}1a`, color }}
-                      >
-                        <Check size={16} strokeWidth={3} />
-                      </motion.button>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      {/* Reserve space for - button to prevent layout shift */}
-                      <div className="h-8 w-8 shrink-0">
-                        {goal.targetValue > 1 && goal.currentValue > 0 && (
-                          <motion.button
-                            whileTap={reduced ? undefined : { scale: 0.92 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleProgress("decrement");
-                            }}
-                            aria-label={`Remover progresso de ${goal.title}`}
-                            title="Remover −1"
-                            className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-                          >
-                            <Minus size={16} strokeWidth={3} />
-                          </motion.button>
-                        )}
-                      </div>
-                      <motion.button
-                        whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleProgress(
-                            goal.currentValue + 1 >= goal.targetValue ? "set" : "increment",
-                          );
-                        }}
-                        aria-label={`Adicionar +1 a ${goal.title}`}
-                        title="Adicionar +1"
-                        className="tap flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
-                        style={{
-                          borderColor: `${color}55`,
-                          background: `${color}14`,
-                          color,
-                        }}
-                      >
-                        <Plus size={16} strokeWidth={3} />
-                      </motion.button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Explosão de celebração */}
-                <AnimatePresence>
-                  {isCelebrating && (
-                    <motion.div
-                      key="pop"
-                      className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      <motion.div
-                        initial={{ scale: 0.3, rotate: -8 }}
-                        animate={{ scale: [0.3, 1.5, 1], rotate: [0, 6, 0] }}
-                        exit={{ scale: 0.5, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 380, damping: 14 }}
-                        style={{
-                          background: color,
-                          color: "var(--bg-primary)",
-                          boxShadow: `0 0 24px ${color}`,
-                        }}
-                        className="flex h-12 w-12 items-center justify-center rounded-full"
-                      >
-                        <Check size={26} strokeWidth={3.5} />
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+                onMenu={openMenu}
+                onCloseMenu={closeMenu}
+                celebrating={isCelebrating}
+                flipping={isFlipping}
+                reduced={reduced}
+              />
             );
           })}
 
-          {/* Ghost placeholder — preenche espaço vazio e convida a criar uma nova meta */}
-          <motion.div
-              layout="position"
-              key="ghost-placeholder"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{
-                layout: { type: "spring", stiffness: 350, damping: 28 },
-                opacity: { duration: 0.2 },
-              }}
-              className="h-full"
+          {/* "Criar nova meta" — sempre após a última meta ativa, parte do layout. */}
+          <motion.button
+            layout="position"
+            layoutId="create-goal-tile"
+            key="create-goal-tile"
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            whileHover={reduced ? undefined : { borderColor: "rgba(113,212,255,0.5)", color: "#71d4ff" }}
+            whileTap={reduced ? undefined : { scale: 0.97 }}
+            aria-label="Criar nova meta"
+            className="flex min-h-[88px] h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
+            transition={{ type: "spring", ...spring.snappy }}
+          >
+            <motion.span
+              whileHover={reduced ? undefined : { scale: 1.1 }}
+              whileTap={reduced ? undefined : { scale: 0.94 }}
+              transition={{ type: "spring", stiffness: 320, damping: 18 }}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-current/30"
             >
-              <motion.button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                whileHover={reduced ? undefined : { borderColor: "rgba(113,212,255,0.5)", color: "#71d4ff" }}
-                whileTap={reduced ? undefined : { scale: 0.97 }}
-                aria-label="Criar nova meta"
-                className="group flex min-h-[72px] h-full w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
-              >
-                <motion.span
-                  whileHover={reduced ? undefined : { scale: 1.1, rotate: 90 }}
-                  whileTap={reduced ? undefined : { scale: 0.94 }}
-                  transition={{ type: "spring", stiffness: 320, damping: 18 }}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-current/30"
-                >
-                  <Plus size={16} strokeWidth={2.5} />
-                </motion.span>
-                <span className="text-xs font-medium">Criar nova meta</span>
-              </motion.button>
-            </motion.div>
+              <Plus size={16} strokeWidth={2.5} />
+            </motion.span>
+            <span className="text-xs font-medium">Criar nova meta</span>
+          </motion.button>
         </AnimatePresence>
       </div>
 
@@ -526,65 +754,32 @@ export function GoalsCard({
             {showCompleted ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             Concluídas ({completedGoals.length})
           </button>
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout" initial={false}>
             {showCompleted && (
               <div className="mt-2 space-y-2">
                 {completedGoals.map((goal) => {
                   const { color } = goal.category;
-                  const isMenuOpen = activeMenuGoalId === goal.id || confirmGoalId === goal.id;
-
-                  const handleUncomplete = async () => {
-                    // Use decrement action to un-complete - this will revert the reward
-                    // If current == target, it will be decremented to target - 1
-                    await onProgress(goal.id, "decrement");
-                  };
+                  const done = isComplete(goal);
+                  const pct = Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
+                  const isCelebrating = celebrating.has(goal.id);
 
                   return (
-                    <div
+                    <GoalCardItem
                       key={goal.id}
-                      className={`relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2 opacity-70 group hover:opacity-100 transition-opacity ${
-                        isMenuOpen ? "overflow-visible z-20" : ""
-                      }`}
-                    >
-                      <Check size={16} strokeWidth={3} style={{ color }} className="shrink-0" />
-                      <span
-                        className="line-clamp-1 min-w-0 flex-1 text-xs text-[var(--text-faint)] line-through"
-                        title={goal.title}
-                      >
-                        {goal.title}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-[var(--text-faint)]">
-                        {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
-                        {goal.unit ? ` ${goal.unit}` : ""}
-                      </span>
-
-                      {/* Menu trigger for completed goals */}
-                      <button
-                        ref={(el) => {
-                          if (el) triggerRefs.current.set(goal.id, el);
-                          else triggerRefs.current.delete(goal.id);
-                        }}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isMenuOpen) {
-                            closeMenu();
-                          } else {
-                            openMenu(goal.id);
-                          }
-                        }}
-                        aria-label={`Opções da meta ${goal.title}`}
-                        title="Opções"
-                        className={`tap flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-faint)] transition-all hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus:opacity-100 cursor-pointer ${
-                          isMenuOpen
-                            ? "opacity-100 bg-[var(--bg-surface-active)] text-[var(--text)]"
-                            : "opacity-40 group-hover:opacity-100 hover:opacity-100"
-                        }`}
-                        data-goal-menu
-                      >
-                        <MoreVertical size={13} />
-                      </button>
-                    </div>
+                      layoutId={goal.id}
+                      goal={goal}
+                      color={color}
+                      Icon={categoryIcon(goal.category.icon)}
+                      done={done}
+                      pct={pct}
+                      deadline={deadlineLabel(goal, todayIso())}
+                      onProgress={(action) => void onProgress(goal.id, action)}
+                      onMenu={openMenu}
+                      onCloseMenu={closeMenu}
+                      celebrating={isCelebrating}
+                      flipping={false}
+                      reduced={reduced}
+                    />
                   );
                 })}
               </div>
@@ -593,7 +788,7 @@ export function GoalsCard({
         </div>
       )}
 
-      {/* ── Menu dropdown portado (não fica preso ao overflow do card) ── */}
+      {/* ── Menu dropdown portado ── */}
       {activeMenuGoalId !== null && menuAnchor && typeof document !== "undefined"
         ? createPortal(
             <DropdownPortal
@@ -625,7 +820,7 @@ export function GoalsCard({
           )
         : null}
 
-      {/* ── Modal de edição (reuso do Modal compartilhado) ── */}
+      {/* ── Modal de edição ── */}
       {editingGoal && (
         <EditGoalModal
           key={editingGoal.id}
@@ -646,7 +841,7 @@ export function GoalsCard({
         />
       )}
 
-      {/* ── Modal de criação de nova meta (premium) ── */}
+      {/* ── Modal de criação de nova meta ── */}
       <CreateGoalModal
         open={showCreateModal}
         categories={sortedCategories}
@@ -661,7 +856,7 @@ export function GoalsCard({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Dropdown portado (menu kebab ancorado no trigger, fora do card)     */
+/*  Dropdown portado (menu kebab ancorado no trigger, fora do card)   */
 /* ------------------------------------------------------------------ */
 
 const MENU_W = 178;
@@ -691,7 +886,6 @@ function DropdownPortal({
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
 }) {
-  // Desloca o popover para não estourar a borda direita/inferior da viewport.
   const confirmW = 240;
   const w = confirming ? confirmW : MENU_W;
   const left = Math.max(8, Math.min(anchor.left - w + 4, window.innerWidth - w - 8));
@@ -700,11 +894,7 @@ function DropdownPortal({
   const glowColor = "#71d4ff";
 
   return (
-    <div
-      data-goal-menu
-      className="fixed z-[120]"
-      style={{ top, left }}
-    >
+    <div data-goal-menu className="fixed z-[120]" style={{ top, left }}>
       <AnimatePresence>
         {confirming ? (
           <motion.div
@@ -757,11 +947,7 @@ function DropdownPortal({
             style={{ width: MENU_W, boxShadow: `0 10px 40px -10px rgba(0,0,0,0.8), 0 0 24px -6px ${glowColor}55` }}
             className="relative overflow-hidden rounded-xl border border-white/[0.12] bg-white/[0.08] p-1 backdrop-blur-xl"
           >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0"
-              style={{ background: "linear-gradient(180deg, rgba(113,212,255,0.06), transparent 60%)" }}
-            />
+            <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(113,212,255,0.06), transparent 60%)" }} />
             <div
               aria-hidden
               className="pointer-events-none absolute inset-x-0 top-0 h-px"

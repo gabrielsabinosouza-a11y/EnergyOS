@@ -54,8 +54,8 @@ export function XPBadge({
       } else {
         setRemainingSeconds(0);
       }
-    } catch {
-      // Mantém os valores anteriores em caso de falha.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível atualizar os dados da poção.");
     }
   }, [onBoostChange]);
 

@@ -3,9 +3,9 @@ import { requireAuth } from "@/lib/server-auth";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { readJsonBody } from "@/lib/http";
 import { getRecaps, generateRecap } from "@/lib/db/recap";
 import { BadRequestError } from "@/lib/errors";
+import { todayIso } from "@/lib/db/dates";
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,9 +29,19 @@ export async function POST(request: NextRequest) {
     // Rate limiting: 5 generations per hour
     rateLimitForProfile(profileId, "recap-generate", 5, 3_600_000);
 
-    // Server decides the month: always the current month in America/Sao_Paulo
-    const today = todayIso();
-    const monthStr = today.slice(0, 7) + "-01";
+    // Check for optional month parameter (for generating past months)
+    const url = new URL(request.url);
+    const monthParam = url.searchParams.get("month");
+
+    let monthStr: string;
+    if (monthParam) {
+      // Parse the month parameter (YYYY-MM format) and convert to start of month
+      monthStr = monthParam.slice(0, 7) + "-01";
+    } else {
+      // Server decides the month: always the current month in America/Sao_Paulo
+      const today = todayIso();
+      monthStr = today.slice(0, 7) + "-01";
+    }
 
     const recap = await generateRecap(profileId, monthStr);
     return NextResponse.json({ recap });

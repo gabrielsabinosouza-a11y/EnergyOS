@@ -115,6 +115,14 @@ function DashboardContent() {
   const [streakPop, setStreakPop] = useState(false);
   const [streakCalendarOpen, setStreakCalendarOpen] = useState(false);
   const prevStreakRef = useRef(0);
+  const goalsRef = useRef(goals);
+  useEffect(() => { goalsRef.current = goals; }, [goals]);
+  // Fila serializada por meta: evita que respostas fora de ordem sobrescrevam
+  // estado mais novo e serializa cliques rápidos (uma requisição por vez por
+  // meta, na ordem em que foram iniciadas).
+  const goalSeqRef = useRef<Map<number, number>>(new Map());
+  const goalRunningRef = useRef<Map<number, boolean>>(new Map());
+  const goalPendingRef = useRef<Map<number, GoalLogAction[]>>(new Map());
 
   useEffect(() => {
     const currentStreak = snapshot?.streak.currentStreak ?? 0;
@@ -617,9 +625,23 @@ function DashboardContent() {
    * soma os logs do período e devolve o goal real (fonte da verdade) —
    * concede XP/moedas na conclusão e ESTORNA ao desfazer.
    */
+  /**
+   * Otimista: aplica o check-in localmente e persiste no servidor. O servidor
+   * soma os logs do período e devolve o goal real (fonte da verdade) —
+   * concede XP/moedas na conclusão e ESTORNA ao desfazer.
+   *
+   * Cada meta tem sua própria fila serializada com sequence number: a UI é
+   * atualizada no mesmo frame do clique, a requisição vai em background e
+   * respostas fora de ordem nunca sobrescrevem estado mais novo. Em caso de
+   * falha, fazemos rollback do otimista com toast (sem refetch de toda a
+   * lista).
+   */
   function goalProgressAction(goalId: number, action: GoalLogAction) {
-    const target = goals.find((g) => g.id === goalId);
+    const target = goalsRef.current.find((g) => g.id === goalId);
     if (!target) return;
+
+    const seq = (goalSeqRef.current.get(goalId) ?? 0) + 1;
+    goalSeqRef.current.set(goalId, seq);
 
     // Palpite otimista; o servidor confirma/refina no retorno.
     const optimistic = (g: Goal): Goal => {
@@ -636,34 +658,62 @@ function DashboardContent() {
           return g;
       }
     };
+    const prev = goalsRef.current;
     setGoals((gs) => gs.map((g) => (g.id === goalId ? optimistic(g) : g)));
 
-    return api
-      .postGoalLog({ goalId, action })
-      .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
-        setGoals((gs) => gs.map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
-        // Reward popup — same alert as the missions/daily tasks, shown when the
-        // goal actually completes this period (server returns 0/0 on repeats).
-        if (xpAwarded > 0 || coinsAwarded > 0) {
-          setCoins((c) => {
-            const newBalance = c + coinsAwarded;
-            setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
-            return newBalance;
-          });
-          showSuccess(`+${coinsAwarded} moedas, +${xpAwarded} XP`);
-          api.getFocusData().then((f) => setFocusData(f));
-        } else if (revertedXp > 0 || revertedCoins > 0) {
-          // Desfez a conclusão do período: o servidor estornou a recompensa.
-          setCoins((c) => Math.max(0, c - revertedCoins));
-          showSuccess("Progresso atualizado — recompensa do período revertida.");
-          api.getFocusData().then((f) => setFocusData(f));
-        }
-      })
-      .catch((error) => {
-        // Roll back to server truth on failure.
-        api.getGoals().then((bundles) => setGoals(bundles.map((b) => b.goal))).catch(() => {});
-        showError(error instanceof Error ? error.message : "Não foi possível atualizar a meta.");
-      });
+    const send = (actionToSend: GoalLogAction) => {
+      const nextSeq = (goalSeqRef.current.get(goalId) ?? 0) + 1;
+      goalSeqRef.current.set(goalId, nextSeq);
+      goalRunningRef.current.set(goalId, true);
+      void api
+        .postGoalLog({ goalId, action: actionToSend })
+        .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
+          // Só aplica se esta for a resposta mais recente para esta meta.
+          if (goalSeqRef.current.get(goalId) === nextSeq) {
+            setGoals((gs) => gs.map((g) => (g.id === goalId ? { ...g, ...goal } : g)));
+          }
+          if (xpAwarded > 0 || coinsAwarded > 0) {
+            setCoins((c) => {
+              const newBalance = c + coinsAwarded;
+              setRewardModal({ coins: coinsAwarded, xp: xpAwarded, balance: newBalance });
+              return newBalance;
+            });
+            showSuccess(`+${coinsAwarded} moedas, +${xpAwarded} XP`);
+            api.getFocusData().then((f) => setFocusData(f));
+          } else if (revertedXp > 0 || revertedCoins > 0) {
+            setCoins((c) => Math.max(0, c - revertedCoins));
+            showSuccess("Progresso atualizado — recompensa do período revertida.");
+            api.getFocusData().then((f) => setFocusData(f));
+          }
+          drain();
+        })
+        .catch((error) => {
+          if (goalSeqRef.current.get(goalId) === nextSeq) {
+            // Rollback do otimista apenas para esta ação falha.
+            setGoals(prev);
+            showError(error instanceof Error ? error.message : "Não foi possível atualizar a meta.");
+          }
+          drain();
+        });
+    };
+
+    const drain = () => {
+      const pending = goalPendingRef.current.get(goalId);
+      if (pending && pending.length > 0) {
+        const next = pending.shift()!;
+        void send(next);
+      } else {
+        goalRunningRef.current.set(goalId, false);
+        goalPendingRef.current.delete(goalId);
+      }
+    };
+
+    // Se já há uma requisição em voo para esta meta, enfileira; senão envia.
+    if (goalRunningRef.current.get(goalId)) {
+      (goalPendingRef.current.get(goalId) ?? []).push(action);
+    } else {
+      void send(action);
+    }
   }
 
   /** Criação de meta diretamente pelo modal do dashboard. */

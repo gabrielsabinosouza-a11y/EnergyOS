@@ -54,6 +54,45 @@ begin
       end as new_tier
     from legacy
   ),
+  alive_days as (
+    select profile_id, day, bool_or(has_focus) as has_focus
+    from (
+      select
+        profile_id,
+        (ended_at at time zone 'America/Sao_Paulo')::date as day,
+        true as has_focus
+      from focus_sessions
+      where ended_at is not null and duration_minutes >= 1
+      union all
+      select profile_id, used_on_date as day, false as has_focus
+      from streak_shield_usage
+    ) days
+    group by profile_id, day
+  ),
+  streak_runs as (
+    select *,
+      day - row_number() over (partition by profile_id order by day)::int as run_id
+    from alive_days
+  ),
+  streak_progress as (
+    select *,
+      sum(case when has_focus then 1 else 0 end) over (
+        partition by profile_id, run_id
+        order by day
+        rows between unbounded preceding and current row
+      ) as focus_days_in_run
+    from streak_runs
+  ),
+  streak_dates as (
+    select
+      profile_id,
+      min(day) filter (where focus_days_in_run = 7) as tier_7_at,
+      min(day) filter (where focus_days_in_run = 14) as tier_14_at,
+      min(day) filter (where focus_days_in_run = 30) as tier_30_at,
+      min(day) filter (where focus_days_in_run = 100) as tier_100_at
+    from streak_progress
+    group by profile_id
+  ),
   reward_dates as (
     select
       profile_id,
@@ -73,16 +112,35 @@ begin
     t.new_tier,
     case t.new_tier
       when 0 then null
-      when 1 then coalesce(d.tier_1_at, case when t.old_tier >= 1 then t.old_unlocked_at end, now())
-      when 2 then now()
-      when 3 then coalesce(d.tier_2_at, case when t.old_tier >= 2 then t.old_unlocked_at end, now())
-      when 4 then coalesce(d.tier_3_at, case when t.old_tier >= 3 then t.old_unlocked_at end, now())
+      when 1 then coalesce(
+        d.tier_1_at,
+        s.tier_7_at::timestamp at time zone 'America/Sao_Paulo',
+        case when t.old_tier >= 1 then t.old_unlocked_at end,
+        now()
+      )
+      when 2 then coalesce(
+        s.tier_14_at::timestamp at time zone 'America/Sao_Paulo',
+        now()
+      )
+      when 3 then coalesce(
+        d.tier_2_at,
+        s.tier_30_at::timestamp at time zone 'America/Sao_Paulo',
+        case when t.old_tier >= 2 then t.old_unlocked_at end,
+        now()
+      )
+      when 4 then coalesce(
+        d.tier_3_at,
+        s.tier_100_at::timestamp at time zone 'America/Sao_Paulo',
+        case when t.old_tier >= 3 then t.old_unlocked_at end,
+        now()
+      )
     end,
     case when t.new_tier > t.old_tier then null else t.old_seen_at end,
     t.is_featured,
     t.featured_order
   from tiered t
   left join reward_dates d on d.profile_id = t.profile_id
+  left join streak_dates s on s.profile_id = t.profile_id
   on conflict (profile_id, achievement_id) do update set
     current_value = greatest(user_achievement_progress.current_value, excluded.current_value),
     unlocked_tier = excluded.unlocked_tier,

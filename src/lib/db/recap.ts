@@ -19,9 +19,6 @@ import pool from "../db";
  */
 export const RECAP_SCHEMA_VERSION = 2;
 
-/** Idempotência: repetir a geração em menos de 15s devolve o snapshot atual. */
-const GENERATION_COOLDOWN_MS = 15_000;
-
 /** Meia-noite de São Paulo (UTC−3, sem DST) como instante UTC ISO. */
 function spUtcIso(isoDate: string): string {
   return new Date(`${isoDate}T00:00:00-03:00`).toISOString();
@@ -341,7 +338,6 @@ async function computeTopFocusCategory(
 async function computeXpForMonth(
   profileId: string,
   monthStart: string,
-  monthEnd: string,
 ): Promise<{ totalXp: number; breakdown: Record<string, number> }> {
   // Convert to ISO timestamps with São Paulo timezone offset
   const monthStartIso = spMonthStartIso(monthStart);
@@ -412,7 +408,7 @@ async function buildRecapSummary(
     computeLongestStreakForMonth(profileId, monthStart, monthEnd),
     getLeagueAtPoint(profileId, monthStart),
     getLeagueAtPoint(profileId, monthEnd),
-    computeXpForMonth(profileId, monthStart, monthEnd),
+    computeXpForMonth(profileId, monthStart),
     computeCoinsForMonth(profileId, monthStartIso, monthEndIso),
     computeMissionsCompleted(profileId, monthStartIso, monthEndIso),
     computeGoalsCompleted(profileId, monthStartIso, monthEndIso),
@@ -578,6 +574,8 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
     `SELECT r.id, r.profile_id, r.recap_month, r.total_focus_minutes, r.longest_streak,
             r.streak_start_date, r.streak_end_date, r.streak_is_alive, r.league_tier, r.league_at_start,
             r.league_promoted, r.productivity_tag, r.generated_at, r.total_xp, r.xp_sources,
+            r.coins_gained, r.coins_spent, r.missions_completed, r.goals_completed,
+            r.achievements_unlocked, r.top_focus_category,
             r.generation_number, r.has_been_shared, r.status, r.finalized_at,
             (SELECT COUNT(*) FROM garden_entries g
              WHERE g.profile_id = r.profile_id
@@ -589,7 +587,6 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   );
 
   const currentMonth = currentMonthStart();
-  const today = todayIso();
   const output: MonthlyRecap[] = [];
 
   for (const row of result.rows) {
@@ -603,7 +600,7 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
       const monthEnd = spMonthEndIso(monthStart);
       const summary = await buildRecapSummary(profileId, monthStart, monthEnd, true);
       output.push(await upsertRecap(profileId, monthStart, summary, "live"));
-    } else if ((row.status ?? "parcial") !== "final" && monthStart < today) {
+    } else if (row.status !== "final" && monthStart < currentMonth) {
       // Mês encerrado ainda não finalizado: calcula uma última vez com os
       // totais completos do mês e grava como "final" (lazy finalize na leitura).
       const monthEnd = spMonthEndIso(monthStart);

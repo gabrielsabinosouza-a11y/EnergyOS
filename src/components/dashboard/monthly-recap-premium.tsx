@@ -41,8 +41,8 @@ interface MonthlyRecapPremiumProps {
   onCoinsAwarded?: (amount: number, newBalance: number) => void;
   /** Recap do mês corrente (ainda em andamento) — dados atualizados ao vivo. */
   isLive?: boolean;
-  /** 'parcial' enquanto o mês está em andamento, 'final' após o fechamento. */
-  status?: "parcial" | "final";
+  /** Status do recap: 'live' enquanto o mês está em andamento, 'final' após o fechamento. */
+  status?: "live" | "final";
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
