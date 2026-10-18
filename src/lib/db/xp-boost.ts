@@ -7,9 +7,8 @@ import {
   XP_BOOST_MULTIPLIER,
   applyXPBoost,
 } from "@/lib/xp-boost";
-import { ConflictError, ForbiddenError } from "../errors";
-import { ValidationError, parseProfileId } from "./validation";
-import { getCoinBalance } from "./store";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors";
+import { parseProfileId } from "./validation";
 
 export interface UserPotionInventory {
   userId: string;
@@ -41,40 +40,98 @@ export async function getUserPotionInventory(profileId: string): Promise<UserPot
   return { userId: profileId, itemType: XP_BOOST_ITEM_TYPE, quantity };
 }
 
-export async function purchaseXpBoost(profileId: string): Promise<{ balance: number; quantity: number }> {
+export async function purchaseXpBoost(
+  profileId: string,
+  quantity: number,
+  idempotencyKey: string,
+): Promise<{ balance: number; quantity: number }> {
   parseProfileId(profileId);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > XP_BOOST_MAX_HELD) {
+    throw new BadRequestError("Quantidade de poções inválida.");
+  }
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idempotencyKey)
+  ) {
+    throw new BadRequestError("Chave de compra inválida.");
+  }
 
   const client = await pool.connect();
+  let transactionStarted = false;
   try {
     await client.query("begin");
+    transactionStarted = true;
 
-    // Authoritative, race-safe balance check inside the transaction.
-    const deduct = await client.query<{ coins: number }>(
-      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
-      [XP_BOOST_COST, profileId],
+    const settings = await client.query<{ coins: number }>(
+      `select coins from user_settings where profile_id = $1 for update`,
+      [profileId],
     );
-    if (!deduct.rows[0]) throw new ForbiddenError("Moedas insuficientes");
+    if (!settings.rows[0]) throw new NotFoundError("Configurações do usuário não encontradas.");
 
-    // Server-side cap enforcement — never trust client-side disabling alone.
-    // The conditional upsert reports whether the quantity actually increased;
-    // if the cap was hit concurrently, the whole purchase rolls back so coins
-    // are never deducted without granting the potion.
+    const previousPurchase = await client.query<{
+      requested_quantity: number;
+      balance: number;
+      potion_quantity: number;
+    }>(
+      `select requested_quantity, balance, potion_quantity
+       from xp_boost_purchase_requests
+       where profile_id = $1 and idempotency_key = $2`,
+      [profileId, idempotencyKey],
+    );
+    const previous = previousPurchase.rows[0];
+    if (previous) {
+      if (previous.requested_quantity !== quantity) {
+        throw new BadRequestError("Chave de compra já utilizada para outra quantidade.");
+      }
+      await client.query("commit");
+      transactionStarted = false;
+      return { balance: previous.balance, quantity: previous.potion_quantity };
+    }
+
+    const inventory = await client.query<{ quantity: number }>(
+      `select quantity from user_potions
+       where profile_id = $1 and item_type = $2
+       for update`,
+      [profileId, XP_BOOST_ITEM_TYPE],
+    );
+    const currentQuantity = inventory.rows[0]?.quantity ?? 0;
+    if (currentQuantity + quantity > XP_BOOST_MAX_HELD) {
+      throw new BadRequestError(`Seu inventário está cheio (${XP_BOOST_MAX_HELD}/${XP_BOOST_MAX_HELD}).`);
+    }
+
+    const totalPrice = XP_BOOST_COST * quantity;
+    if (settings.rows[0].coins < totalPrice) {
+      throw new BadRequestError(`Moedas insuficientes. São necessárias ${totalPrice} moedas.`);
+    }
+
+    const deduct = await client.query<{ coins: number }>(
+      `update user_settings set coins = coins - $1 where profile_id = $2 returning coins`,
+      [totalPrice, profileId],
+    );
+    const balance = deduct.rows[0]?.coins;
+    if (balance === undefined) throw new NotFoundError("Configurações do usuário não encontradas.");
+
     const upserted = await client.query<{ quantity: number }>(
       `insert into user_potions (profile_id, item_type, quantity, updated_at)
-       values ($1, $2, 1, now())
+       values ($1, $2, $3, now())
        on conflict (profile_id, item_type)
-       do update set quantity = user_potions.quantity + 1, updated_at = now()
-       where user_potions.quantity < $3
+       do update set quantity = user_potions.quantity + excluded.quantity, updated_at = now()
        returning quantity`,
-      [profileId, XP_BOOST_ITEM_TYPE, XP_BOOST_MAX_HELD],
+      [profileId, XP_BOOST_ITEM_TYPE, quantity],
     );
-    if (!upserted.rows[0]) throw new ConflictError("Você já possui o máximo de poções permitido");
+    if (!upserted.rows[0]) throw new ConflictError("Não foi possível atualizar o inventário de poções.");
 
+    await client.query(
+      `insert into xp_boost_purchase_requests
+       (profile_id, idempotency_key, requested_quantity, balance, potion_quantity)
+       values ($1, $2, $3, $4, $5)`,
+      [profileId, idempotencyKey, quantity, balance, upserted.rows[0].quantity],
+    );
     await client.query("commit");
+    transactionStarted = false;
 
-    return { balance: deduct.rows[0].coins, quantity: upserted.rows[0].quantity };
+    return { balance, quantity: upserted.rows[0].quantity };
   } catch (error) {
-    await client.query("rollback");
+    if (transactionStarted) await client.query("rollback");
     throw error;
   } finally {
     client.release();

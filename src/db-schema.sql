@@ -810,6 +810,11 @@ create table if not exists achievement_rewards (
 create index if not exists achievement_rewards_profile_idx
   on achievement_rewards(profile_id);
 
+create table if not exists streak_achievement_tier_migrations (
+  migration_key text primary key,
+  applied_at timestamptz not null default now()
+);
+
 -- Append-only ledger for achievements whose progress is earned by an event.
 -- Unlike room/session joins, these rows survive deletion of the source room.
 create table if not exists achievement_progress_events (
@@ -1097,6 +1102,17 @@ create table if not exists user_potions (
   quantity integer not null default 0,
   updated_at timestamptz not null default now(),
   primary key (profile_id, item_type)
+);
+
+-- Purchase keys make potion grants safe to retry without charging twice.
+create table if not exists xp_boost_purchase_requests (
+  profile_id text not null references profiles(id) on delete cascade,
+  idempotency_key uuid not null,
+  requested_quantity integer not null,
+  balance integer not null,
+  potion_quantity integer not null,
+  created_at timestamptz not null default now(),
+  primary key (profile_id, idempotency_key)
 );
 
 -- Single active 2x XP boost per user at a time; `isActive` is implied by

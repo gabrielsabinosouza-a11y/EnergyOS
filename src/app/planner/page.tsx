@@ -306,8 +306,6 @@ export default function PlanningPage() {
                   onPrevMonth={handlePrev}
                   onNextMonth={handleNext}
                   onPlanCreate={openAdd}
-                  firstMount={navDirection === "zoom"}
-                  navDirection={navDirection}
                 />
                 {isMobile && (
                   <MobileDayAgenda
@@ -330,7 +328,7 @@ export default function PlanningPage() {
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <WeekView
-                  weekRange={week}
+                  monthRange={week}
                   plans={weekTasks}
                   selectedDate={selectedDate}
                   onDateSelect={(date) => {

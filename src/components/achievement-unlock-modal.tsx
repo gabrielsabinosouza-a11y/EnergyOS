@@ -34,7 +34,7 @@ export function AchievementUnlockModal({
     >
       <AnimatePresence>
         {achievement && (
-          <div className="relative overflow-hidden rounded-3xl border border-[var(--border-strong)] bg-[var(--bg-surface)] px-8 pb-9 pt-8 text-center">
+          <div className="relative max-h-[90dvh] overflow-y-auto rounded-3xl border border-[var(--border-strong)] bg-[var(--bg-primary)] px-8 pb-9 pt-8 text-center shadow-2xl shadow-black/50">
             {/* soft category glow behind the icon */}
             <div
               className="pointer-events-none absolute inset-x-0 -top-24 mx-auto h-60 w-60 rounded-full blur-3xl"
@@ -72,7 +72,7 @@ export function AchievementUnlockModal({
 
             {/* square achievement image container */}
             <motion.div
-              className="relative mx-auto mt-2 flex h-32 w-32 items-center justify-center rounded-2xl"
+              className="relative mx-auto mt-2 flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl sm:h-32 sm:w-32"
               style={{
                 background: colors.bg,
                 boxShadow: `0 0 60px -8px ${colors.glow}`,

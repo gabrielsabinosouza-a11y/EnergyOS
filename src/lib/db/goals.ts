@@ -33,7 +33,7 @@ import {
 export { GOAL_SELECT, goalProgressPercentage };
 export type { GoalWithProgress };
 
-export const GOAL_FREQUENCY_VALUES = ["daily", "weekly", "monthly", "unique"] as const;
+export const GOAL_FREQUENCY_VALUES = ["unique"] as const;
 export type GoalFrequency = (typeof GOAL_FREQUENCY_VALUES)[number];
 
 function assertGoalId(goalId: number): void {

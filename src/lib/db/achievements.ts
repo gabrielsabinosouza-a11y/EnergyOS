@@ -9,9 +9,10 @@ import { ACHIEVEMENT_REWARD_TIERS, ACHIEVEMENT_REWARD_FALLBACK, STREAK_COMPLETIO
 import { ENERGY_TYPES } from "../energy-assets";
 import { getOwnedAuras } from "./store";
 import { APP_TIMEZONE } from "./dates";
+import { STREAK_TIERS, streakTierForValue } from "../streak-tiers";
 
 export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
-  streak_master: [7, 30, 100, 365],
+  streak_master: [...STREAK_TIERS],
   deep_focus: [60, 120, 240, 520],
   early_riser: [5, 25, 100],
   sleep_champion: [10, 50, 100],
@@ -164,8 +165,13 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     ownedAuras,
   ] = await Promise.all([
     safeQuery("streak_master", () =>
-      pool.query<{ current_streak: number; longest_streak: number }>(
-        `select current_streak, longest_streak from profiles where id = $1`,
+      pool.query<{ current_streak: number; longest_streak: number; saved_best_streak: number }>(
+        `select p.current_streak, p.longest_streak,
+                coalesce(uap.current_value, 0) as saved_best_streak
+         from profiles p
+         left join user_achievement_progress uap
+           on uap.profile_id = p.id and uap.achievement_id = 'streak_master'
+         where p.id = $1`,
         [profileId],
       ),
     ),
@@ -285,6 +291,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
   const longestStreak = Math.max(
     streakRow?.rows[0]?.longest_streak ?? 0,
     streakRow?.rows[0]?.current_streak ?? 0,
+    streakRow?.rows[0]?.saved_best_streak ?? 0,
   );
 
   const knownAuraTypes = new Set<string>(ENERGY_TYPES);
@@ -314,7 +321,10 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
   await awardAchievementRewards(profileId, values);
 
   const lockedIds = ALL_ACHIEVEMENT_IDS.filter(
-    (id) => tierFor(values[id] ?? 0, thresholdsFor(id)) === 0,
+    (id) =>
+      (id === "streak_master"
+        ? streakTierForValue(values[id] ?? 0)
+        : tierFor(values[id] ?? 0, thresholdsFor(id))) === 0,
   );
   if (lockedIds.length > 0) {
     await pool.query(
@@ -352,7 +362,9 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
     const currentValue = ["focus_companion", "deep_focus", "flow_state"].includes(id)
       ? Math.max(values[id] ?? 0, prev?.current_value ?? 0)
       : values[id] ?? 0;
-    const unlockedTier = tierFor(currentValue, thresholds);
+    const unlockedTier = id === "streak_master"
+      ? streakTierForValue(currentValue)
+      : tierFor(currentValue, thresholds);
     const newlyUnlocked = unlockedTier > (prev?.unlocked_tier ?? 0);
     // An achievement is surfaced in the unlock modal when its tier just rose in
     // this evaluation — first unlock (0→1) OR a level-up of an already-seen tier

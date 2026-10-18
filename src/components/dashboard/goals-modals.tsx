@@ -12,13 +12,13 @@
  */
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { CalendarDays, Loader2, Minus, Plus, Trash2 } from "lucide-react";
+import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
 import type { Category, Goal } from "@/types";
 import type { GoalLogAction } from "@/lib/db/goal-logs";
-import type { GoalFrequency } from "@/lib/db/goals";
 import { CategoryChips } from "@/components/category-chips";
 import { CategoryForm } from "@/components/category-form";
 import { Modal } from "@/components/modal";
+import { DatePicker } from "@/components/dashboard/date-picker";
 import { api } from "@/lib/api-client";
 
 /** Campos editáveis de uma meta. */
@@ -26,44 +26,15 @@ export interface GoalDraft {
   title: string;
   categoryId: number;
   targetValue: number;
-  frequency: GoalFrequency | null;
   unit: string;
   deadline: string;
 }
 
-/**
- * Frequency labels for the UI (pt-BR).
- * These are the only values the UI exposes to users.
- * The backend supports daily/weekly/monthly/unique, but UI only shows única/mensal.
- */
-export const GOAL_FREQUENCY_LABELS: Record<string, string> = {
-  unique: "Única",
-  monthly: "Mensal",
-  daily: "Diária",
-  weekly: "Semanal",
-};
-
-/** Maps backend frequency value to UI label */
-export function getFrequencyLabel(freq: string): string {
-  return GOAL_FREQUENCY_LABELS[freq] ?? freq;
-}
-
 export function draftFromGoal(goal: Goal): GoalDraft {
-  // The UI only supports "unique" and "monthly" - map other frequencies to the closest match
-  // For editing purposes, we show "unique" as "Única" and treat daily/weekly as "Única" (one-time)
-  let uiFrequency: "unique" | "monthly" | null = null;
-  if (goal.frequency === "monthly") {
-    uiFrequency = "monthly";
-  } else {
-    // daily, weekly, unique, or any other value -> display as "Única"
-    uiFrequency = "unique";
-  }
-
   return {
     title: goal.title,
     categoryId: goal.categoryId,
     targetValue: goal.targetValue,
-    frequency: uiFrequency,
     unit: goal.unit ?? "",
     deadline: goal.deadline ?? "",
   };
@@ -73,7 +44,6 @@ export const EMPTY_GOAL_DRAFT: GoalDraft = {
   title: "",
   categoryId: 0,
   targetValue: 1,
-  frequency: "unique",
   unit: "",
   deadline: "",
 };
@@ -100,12 +70,7 @@ interface GoalFormParts {
   error: string;
 }
 
-const GOAL_FREQUENCIES: { value: "unique" | "monthly"; label: string; hint: string }[] = [
-  { value: "unique", label: "Única", hint: "Única: termina quando você alcançar a quantidade" },
-  { value: "monthly", label: "Mensal", hint: "Mensal: reinicia todo mês" },
-];
-
-/** Campos comuns aos dois modais: Título, Categoria, Quantidade, Frequência, Unidade e Prazo. */
+/** Campos comuns aos dois modais: Título, Categoria, Quantidade, Unidade e Prazo. */
 function GoalFields({ draft, setDraft, categories, showCategoryForm, setShowCategoryForm, onCategoryCreated, error }: GoalFormParts) {
   return (
     <div className="space-y-4">
@@ -166,44 +131,12 @@ function GoalFields({ draft, setDraft, categories, showCategoryForm, setShowCate
         </Field>
       </div>
 
-      <Field label="Frequência">
-        <div className="grid grid-cols-2 gap-2">
-          {GOAL_FREQUENCIES.map((frequency) => (
-            <button
-              key={frequency.value}
-              type="button"
-              aria-pressed={draft.frequency === frequency.value}
-              onClick={() => setDraft({ ...draft, frequency: frequency.value })}
-              className={`min-h-[42px] cursor-pointer rounded-lg border px-3 text-sm font-medium transition ${
-                draft.frequency === frequency.value
-                  ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]"
-                  : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              {frequency.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-1.5 space-y-0.5">
-          {GOAL_FREQUENCIES.map((frequency) => (
-            <p key={frequency.value} className="text-[11px] text-[var(--text-faint)]">{frequency.hint}</p>
-          ))}
-        </div>
-      </Field>
-
       <Field label="Prazo" hint="Opcional. A meta aparece como atrasada quando o prazo passa sem conclusão.">
-        <div className="relative">
-          <CalendarDays
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
-          />
-          <input
-            type="date"
-            value={draft.deadline}
-            onChange={(e) => setDraft({ ...draft, deadline: e.target.value })}
-            className="auth-input pl-9"
-          />
-        </div>
+        <DatePicker
+          value={draft.deadline}
+          onChange={(value) => setDraft({ ...draft, deadline: value })}
+          placeholder="Selecione uma data"
+        />
       </Field>
     </div>
   );
@@ -256,7 +189,7 @@ function CreateGoalForm({
   }
 
   const handleSave = async () => {
-    if (!draft.title.trim() || !draft.categoryId || !draft.frequency || saving) return;
+    if (!draft.title.trim() || !draft.categoryId || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -264,7 +197,6 @@ function CreateGoalForm({
         title: draft.title.trim(),
         categoryId: draft.categoryId,
         targetValue: Math.max(1, draft.targetValue || 1),
-        frequency: draft.frequency ?? "unique",
         unit: draft.unit.trim(),
         deadline: draft.deadline,
       });
@@ -295,7 +227,7 @@ function CreateGoalForm({
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={!draft.title.trim() || !draft.categoryId || !draft.frequency || saving}
+            disabled={!draft.title.trim() || !draft.categoryId || saving}
             className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : "Criar meta"}
@@ -373,13 +305,12 @@ function EditGoalForm({
   };
 
   const handleSave = () => {
-    if (!draft.title.trim() || !draft.frequency || saving) return;
+    if (!draft.title.trim() || saving) return;
     setSaving(true);
     onSave({
       title: draft.title.trim(),
       categoryId: draft.categoryId,
       targetValue: Math.max(1, draft.targetValue || 1),
-      frequency: draft.frequency,
       unit: draft.unit.trim(),
       deadline: draft.deadline,
     });
@@ -457,7 +388,7 @@ return (
             <button
               type="button"
               onClick={handleSave}
-              disabled={!draft.title.trim() || !draft.frequency || saving}
+              disabled={!draft.title.trim() || saving}
               className="min-h-[42px] cursor-pointer rounded-lg bg-[var(--accent)] px-5 text-sm font-semibold text-[#07111f] transition hover:opacity-90 disabled:opacity-40"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : "Salvar"}
@@ -524,11 +455,6 @@ return (
           onCategoryCreated={handleCategoryCreated}
           error={error}
         />
-        {!draft.frequency ? (
-          <p className="text-[11px] text-[var(--text-faint)]">
-            Esta meta usa uma frequência antiga. Escolha Única ou Mensal para atualizá-la.
-          </p>
-        ) : null}
       </div>
     </Modal>
   );

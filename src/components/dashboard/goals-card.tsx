@@ -269,6 +269,16 @@ export function GoalsCard({
                     ? "var(--bg-surface-hover)"
                     : `linear-gradient(135deg, ${color}0d, transparent 55%)`,
                 }}
+                onClick={(e) => {
+                  // Don't trigger menu if clicking on +/- buttons or menu trigger
+                  if ((e.target as HTMLElement).closest('[data-goal-menu]') ||
+                      (e.target as HTMLElement).closest('button[aria-label*="Adicionar"]') ||
+                      (e.target as HTMLElement).closest('button[aria-label*="Remover"]') ||
+                      (e.target as HTMLElement).closest('button[aria-label*="Desmarcar"]')) {
+                    return;
+                  }
+                  // Card click does nothing - only menu trigger opens edit
+                }}
               >
                 {/* Ação de menu/excluir meta (kebab menu) */}
                 {onDelete && (
@@ -368,7 +378,10 @@ export function GoalsCard({
                       {goal.targetValue > 1 && (
                         <motion.button
                           whileTap={reduced ? undefined : { scale: 0.92 }}
-                          onClick={() => handleProgress("decrement")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleProgress("decrement");
+                          }}
                           aria-label={`Remover progresso de ${goal.title}`}
                           title="Remover −1"
                           className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
@@ -381,7 +394,10 @@ export function GoalsCard({
                         animate={{ scale: 1 }}
                         transition={{ type: "spring", stiffness: 320, damping: 14 }}
                         whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={() => handleProgress("decrement")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleProgress("decrement");
+                        }}
                         aria-label={`Desmarcar ${goal.title}`}
                         title="Desmarcar meta concluída"
                         className="tap flex h-8 w-8 items-center justify-center rounded-full cursor-pointer"
@@ -392,24 +408,31 @@ export function GoalsCard({
                     </>
                   ) : (
                     <div className="flex items-center gap-1">
-                      {goal.targetValue > 1 && goal.currentValue > 0 && (
-                        <motion.button
-                          whileTap={reduced ? undefined : { scale: 0.92 }}
-                          onClick={() => handleProgress("decrement")}
-                          aria-label={`Remover progresso de ${goal.title}`}
-                          title="Remover −1"
-                          className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-                        >
-                          <Minus size={16} strokeWidth={3} />
-                        </motion.button>
-                      )}
+                      {/* Reserve space for - button to prevent layout shift */}
+                      <div className="h-8 w-8 shrink-0">
+                        {goal.targetValue > 1 && goal.currentValue > 0 && (
+                          <motion.button
+                            whileTap={reduced ? undefined : { scale: 0.92 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleProgress("decrement");
+                            }}
+                            aria-label={`Remover progresso de ${goal.title}`}
+                            title="Remover −1"
+                            className="tap flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                          >
+                            <Minus size={16} strokeWidth={3} />
+                          </motion.button>
+                        )}
+                      </div>
                       <motion.button
                         whileTap={reduced ? undefined : { scale: 0.92 }}
-                        onClick={() =>
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleProgress(
                             goal.currentValue + 1 >= goal.targetValue ? "set" : "increment",
-                          )
-                        }
+                          );
+                        }}
                         aria-label={`Adicionar +1 a ${goal.title}`}
                         title="Adicionar +1"
                         className="tap flex h-8 w-8 items-center justify-center rounded-full border text-[var(--text)] transition-colors cursor-pointer"
@@ -508,10 +531,20 @@ export function GoalsCard({
               <div className="mt-2 space-y-2">
                 {completedGoals.map((goal) => {
                   const { color } = goal.category;
+                  const isMenuOpen = activeMenuGoalId === goal.id || confirmGoalId === goal.id;
+
+                  const handleUncomplete = async () => {
+                    // Use decrement action to un-complete - this will revert the reward
+                    // If current == target, it will be decremented to target - 1
+                    await onProgress(goal.id, "decrement");
+                  };
+
                   return (
                     <div
                       key={goal.id}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2 opacity-70"
+                      className={`relative flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2 opacity-70 group hover:opacity-100 transition-opacity ${
+                        isMenuOpen ? "overflow-visible z-20" : ""
+                      }`}
                     >
                       <Check size={16} strokeWidth={3} style={{ color }} className="shrink-0" />
                       <span
@@ -524,6 +557,33 @@ export function GoalsCard({
                         {Math.min(goal.currentValue, goal.targetValue)}/{goal.targetValue}
                         {goal.unit ? ` ${goal.unit}` : ""}
                       </span>
+
+                      {/* Menu trigger for completed goals */}
+                      <button
+                        ref={(el) => {
+                          if (el) triggerRefs.current.set(goal.id, el);
+                          else triggerRefs.current.delete(goal.id);
+                        }}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isMenuOpen) {
+                            closeMenu();
+                          } else {
+                            openMenu(goal.id);
+                          }
+                        }}
+                        aria-label={`Opções da meta ${goal.title}`}
+                        title="Opções"
+                        className={`tap flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-faint)] transition-all hover:bg-[var(--bg-surface-active)] hover:text-[var(--text)] focus:opacity-100 cursor-pointer ${
+                          isMenuOpen
+                            ? "opacity-100 bg-[var(--bg-surface-active)] text-[var(--text)]"
+                            : "opacity-40 group-hover:opacity-100 hover:opacity-100"
+                        }`}
+                        data-goal-menu
+                      >
+                        <MoreVertical size={13} />
+                      </button>
                     </div>
                   );
                 })}
@@ -541,9 +601,20 @@ export function GoalsCard({
               hasEdit={!!onUpdate}
               deleting={deletingGoalId === activeMenuGoalId}
               reduced={!!reduced}
+              isCompleted={(() => {
+                const goal = goals.find((g) => g.id === activeMenuGoalId);
+                return goal ? goal.currentValue >= goal.targetValue : false;
+              })()}
               onEdit={() => {
                 const goal = goals.find((g) => g.id === activeMenuGoalId);
                 if (goal) openEdit(goal);
+              }}
+              onUncomplete={async () => {
+                const goal = goals.find((g) => g.id === activeMenuGoalId);
+                if (goal) {
+                  await onProgress(goal.id, "decrement");
+                  closeMenu();
+                }
               }}
               onDelete={() => setConfirmGoalId(activeMenuGoalId)}
               onConfirmDelete={() => void handleDelete(activeMenuGoalId)}
@@ -601,7 +672,9 @@ function DropdownPortal({
   deleting,
   reduced,
   confirming,
+  isCompleted,
   onEdit,
+  onUncomplete,
   onDelete,
   onConfirmDelete,
   onCancelDelete,
@@ -611,7 +684,9 @@ function DropdownPortal({
   deleting: boolean;
   reduced: boolean;
   confirming: boolean;
+  isCompleted?: boolean;
   onEdit: () => void;
+  onUncomplete?: () => Promise<void>;
   onDelete: () => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
@@ -695,6 +770,18 @@ function DropdownPortal({
                 boxShadow: "0 0 8px rgba(113,212,255,0.4)",
               }}
             />
+
+            {isCompleted && onUncomplete && (
+              <motion.button
+                type="button"
+                onClick={onUncomplete}
+                whileTap={reduced ? undefined : { scale: 0.97 }}
+                className="relative flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-[var(--text)] transition-colors hover:bg-white/[0.06] cursor-pointer"
+              >
+                <Check size={14} className="text-[#6bffb8]" />
+                <span>Desconcluir</span>
+              </motion.button>
+            )}
 
             {hasEdit && (
               <motion.button

@@ -23,8 +23,14 @@ export interface RecapData {
   productivityTag?: string;
   gardenCount?: number;
   totalXp: number;
+  coinsGained?: number;
+  coinsSpent?: number;
+  missionsCompleted?: number;
+  goalsCompleted?: number;
+  achievementsUnlocked?: number;
+  topFocusCategory?: string;
   hasBeenShared?: boolean;
-  status?: "parcial" | "final";
+  status?: "live" | "final";
 }
 
 interface MonthlyRecapPremiumProps {
@@ -1006,22 +1012,33 @@ export function MonthlyRecapPremium({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--text)]">Ver recap de {monthLabel}</p>
-          <p className="truncate text-xs text-[var(--text-muted)]">
-            {isLive ? "Mês em andamento — dados atualizados até agora · " : ""}
-            {formatMinutes(recap.totalFocusMinutes)} de foco · {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")} de sequência · {(recap.totalXp ?? 0).toLocaleString("pt-BR")} XP
-          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            {isLive && <span className="text-[var(--accent)]">Ao vivo</span>}
+            <span className="inline-flex items-center gap-0.5">
+              <Timer size={10} />
+              {formatMinutes(recap.totalFocusMinutes)}
+            </span>
+            <span className="inline-flex items-center gap-0.5">
+              <Flame size={10} />
+              {recap.longestStreak} {plural(recap.longestStreak, "dia", "dias")}
+            </span>
+            <span className="inline-flex items-center gap-0.5">
+              <Zap size={10} />
+              {(recap.totalXp ?? 0).toLocaleString("pt-BR")} XP
+            </span>
+          </div>
         </div>
         {isLive ? (
           <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
             Ao vivo
           </span>
         ) : recap.status === "final" ? (
-          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[#4ade80]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">
+          <span className="shrink-0 rounded-full border border-[#4ade80]/30 bg-[#4ade80]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#4ade80]">
             Final
           </span>
         ) : (
-          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[#fbbf24]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#fbbf24]">
-            Parcial
+          <span className="shrink-0 rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+            Ao vivo
           </span>
         )}
       </motion.button>

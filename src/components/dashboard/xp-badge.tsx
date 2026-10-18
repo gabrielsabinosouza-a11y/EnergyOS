@@ -34,6 +34,7 @@ export function XPBadge({
   const [error, setError] = useState<string | null>(null);
   const boostRef = useRef<string | null>(boostExpiresAt);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buyLockRef = useRef(false);
 
   const levelInfo = levelFromXP(xp);
   const boostActive = remainingSeconds > 0;
@@ -93,6 +94,8 @@ export function XPBadge({
   }
 
   async function handleBuy() {
+    if (buyLockRef.current || buyDisabled) return;
+    buyLockRef.current = true;
     setProcessing("buy");
     setError(null);
     try {
@@ -102,6 +105,7 @@ export function XPBadge({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao comprar a poção.");
     } finally {
+      buyLockRef.current = false;
       setProcessing(null);
     }
   }
@@ -155,7 +159,7 @@ export function XPBadge({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 shadow-xl shadow-black/40 backdrop-blur-xl"
+            className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 shadow-2xl shadow-black/50"
           >
             {/* Cabecalho: XP + Nível + progresso */}
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -200,8 +204,9 @@ export function XPBadge({
                 </span>
               </div>
             ) : (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-[var(--text-faint)]">
-                <XpIcon size={12} variant="double" /> Sem boost ativo · ative ou compre uma poção
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-3 py-2 text-xs leading-5 text-[var(--text-faint)]">
+                <XpIcon size={12} variant="double" className="mt-1 shrink-0" />
+                <span>Sem boost ativo · ative ou compre uma poção</span>
               </div>
             )}
 
@@ -216,20 +221,23 @@ export function XPBadge({
             )}
 
             {/* Estoque */}
-            <div className="mb-3 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <FlaskConical size={13} className="text-[#b69cff]" />
-              Você possui: <strong className="text-[#b69cff]">{potionQuantity} / {XP_BOOST_MAX_HELD}</strong>
-              <span className="text-[var(--text-faint)]">· {XP_BOOST_ITEM.price} moedas cada</span>
+            <div className="mb-3 flex items-start gap-2 text-xs leading-5 text-[var(--text-secondary)]">
+              <FlaskConical size={13} className="mt-1 shrink-0 text-[#b69cff]" />
+              <div className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+                <span>Você possui:</span>
+                <strong className="text-[#b69cff]">{potionQuantity} / {XP_BOOST_MAX_HELD}</strong>
+                <span className="text-[var(--text-faint)]">· {XP_BOOST_ITEM.price} moedas cada</span>
+              </div>
             </div>
 
             {/* Acoes */}
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={handleUse}
                 disabled={useDisabled}
                 title={boostActive ? "Poção já ativa" : undefined}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#b69cff]/20 px-3 py-2 text-xs font-semibold text-[#b69cff] transition hover:bg-[#b69cff]/30 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[#b69cff]/20 px-2 py-2 text-xs font-semibold text-[#b69cff] transition hover:bg-[#b69cff]/30 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {processing === "use" ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -241,7 +249,7 @@ export function XPBadge({
               </button>
 
               {atMaxHeld ? (
-                <span className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-[var(--text-faint)]">
+                <span className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-xs font-semibold text-[var(--text-faint)]">
                   <Lock size={12} /> Cheio
                 </span>
               ) : (
@@ -250,16 +258,21 @@ export function XPBadge({
                   onClick={handleBuy}
                   disabled={buyDisabled}
                   title={coins < XP_BOOST_COST ? "Moedas insuficientes" : undefined}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--green-bg)] px-3 py-2 text-xs font-semibold text-[var(--green)] transition hover:bg-[var(--green)]/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[var(--green-bg)] px-2 py-2 text-xs font-semibold text-[var(--green)] transition hover:bg-[var(--green)]/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {processing === "buy" ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : (
-                    <><CoinIcon size={13} /> Comprar poção · {XP_BOOST_COST}</>
+                    <><CoinIcon size={13} /> Comprar · {XP_BOOST_COST}</>
                   )}
                 </button>
               )}
             </div>
+            {!atMaxHeld && coins < XP_BOOST_COST && (
+              <p className="mt-2 text-[11px] leading-4 text-[var(--text-faint)]">
+                Moedas insuficientes para comprar uma poção.
+              </p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

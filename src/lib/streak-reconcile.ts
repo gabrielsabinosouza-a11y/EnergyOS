@@ -11,8 +11,8 @@
 
 /** How to react when the missed-day region is wider than the shield budget. */
 export const SHIELD_POLICY = {
-  /** "reset": streak goes to 0 and NO shield is consumed. */
-  onShortage: "reset" as "reset" | "bridgeWhatFits",
+  /** Spend remaining shields on the earliest missed days; the later gap resets the streak. */
+  onShortage: "bridgeWhatFits" as "reset" | "bridgeWhatFits",
 };
 
 export interface ReconcileStreakInput {
@@ -89,11 +89,11 @@ export function reconcileStreak({
     remainingShields -= missedRegion.length;
   } else if (SHIELD_POLICY.onShortage === "bridgeWhatFits") {
     for (let i = 0; i < remainingShields; i += 1) {
-      const day = missedRegion[missedRegion.length - 1 - i];
+      const day = missedRegion[i];
       protectedSet.add(day);
       newProtectedDays.push(day);
     }
-    lostDays = missedRegion.slice(0, missedRegion.length - remainingShields);
+    lostDays = missedRegion.slice(remainingShields);
     remainingShields = 0;
   } else {
     // Shortage → streak broken, no shield consumed.
@@ -120,10 +120,12 @@ export function reconcileStreak({
   const bestStreak = computeBest(focusSet, protectedSet);
 
   const status: ReconcileStreakResult["status"] =
-    currentStreak === 0 && newProtectedDays.length === 0
+    currentStreak === 0
       ? lostDays.length > 0
         ? "broken"
-        : "empty"
+        : newProtectedDays.length > 0
+          ? "protected"
+          : "empty"
       : newProtectedDays.length > 0
         ? "protected"
         : focusSet.has(today)

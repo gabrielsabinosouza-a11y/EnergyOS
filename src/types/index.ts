@@ -481,11 +481,10 @@ export interface Goal {
   /** ISO — preenchida quando current >= target, removida se o progresso cair. */
   completedAt: string | null;
   /**
-   * @deprecated Metas NÃO têm mais frequência (daily/weekly/monthly). A coluna
-   * legada continua sendo lida só para migração/histórico; a UI não a usa e o
-   * servidor ignora o valor (toda meta é concluída uma única vez).
+   * Metas são sempre "unique" (única): acontecem uma vez na vida e não resetam.
+   * A coluna ainda existe no banco para compatibilidade, mas todos os valores são "unique".
    */
-  frequency: "daily" | "weekly" | "monthly" | "unique";
+  frequency: "unique";
 }
 
 export interface Habit {
@@ -809,9 +808,16 @@ export interface MonthlyRecap {
   gardenCount?: number;
   totalXp: number;           // XP gained IN THIS MONTH (not cumulative!)
   xpSources?: XpSourceBreakdown;  // Breakdown by source for debugging
+  coinsGained?: number;      // Coins earned in this month
+  coinsSpent?: number;       // Coins spent (purchases) in this month
+  missionsCompleted?: number;  // Daily quests completed in this month
+  goalsCompleted?: number;   // Goals completed in this month
+  achievementsUnlocked?: number;  // Achievements unlocked in this month
+  topFocusCategory?: string;  // Most used category for focus sessions
   hasBeenShared?: boolean;
   generatedAt: string;
-  status: "parcial" | "final";  // 'parcial' enquanto o mês está em andamento, 'final' após o fechamento
+  finalizedAt?: string;      // When the month was finalized (for past months)
+  status: "live" | "final";  // 'live' while month is in progress, 'final' after month end
 }
 
 export interface XpSourceBreakdown {

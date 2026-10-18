@@ -30,9 +30,9 @@ tags: [energyos, achievements, conquistas, badges, obsidian-checklist]
 - **Unique/one-time badge?** No — normal multi-tier progression
 - **Tiers:**
   - [ ] Tier 1 — threshold: **7** days
-  - [ ] Tier 2 — threshold: **30** days
-  - [ ] Tier 3 — threshold: **100** days
-  - [ ] Tier 4 — threshold: **365** days
+  - [ ] Tier 2 — threshold: **14** days
+  - [ ] Tier 3 — threshold: **30** days
+  - [ ] Tier 4 — threshold: **100** days
 
 ## 2. Deep Focus
 - **ID:** `deep_focus`

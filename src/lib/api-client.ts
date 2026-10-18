@@ -170,6 +170,8 @@ export interface DailyTaskHistoryEntry {
   completedAt?: string;
 }
 
+let xpBoostPurchaseInFlight: Promise<{ balance: number; quantity: number }> | null = null;
+
 export const api = {
   // Dashboard
   getDashboard: () => request<DashboardSnapshot>("/api/dashboard"),
@@ -551,17 +553,23 @@ export const api = {
     request<{ success: boolean }>("/api/store/shield-designs", { method: "PATCH", body: JSON.stringify({ shieldDesignId }) }),
   getXpBoost: () =>
     request<{ quantity: number; itemType: string; boost: import("@/types").ActiveXPBoost | null }>("/api/store/xp-boost"),
-  purchaseXpBoost: () =>
-    request<{ balance: number; quantity: number }>("/api/store/xp-boost", { method: "POST" }),
+  purchaseXpBoost: () => {
+    if (xpBoostPurchaseInFlight) return xpBoostPurchaseInFlight;
+    const idempotencyKey = globalThis.crypto.randomUUID();
+    const purchase = request<{ balance: number; quantity: number }>("/api/store/xp-boost", {
+      method: "POST",
+      body: JSON.stringify({ quantity: 1, idempotencyKey }),
+    }).finally(() => {
+      if (xpBoostPurchaseInFlight === purchase) xpBoostPurchaseInFlight = null;
+    });
+    xpBoostPurchaseInFlight = purchase;
+    return purchase;
+  },
   activateXpBoost: () =>
     request<{ boost: import("@/types").ActiveXPBoost; extended: boolean; quantity: number }>("/api/store/xp-boost/activate", { method: "POST" }),
   getRecaps: () => request<{ recaps: import("@/types").MonthlyRecap[] }>("/api/recap"),
-  generateRecap: (year: number, month: number) => {
-    const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
-    return request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month: monthStr }) });
-  },
-  generateRecapByMonthString: (monthStr: string) =>
-    request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST", body: JSON.stringify({ month: monthStr }) }),
+  generateRecap: () =>
+    request<{ recap: import("@/types").MonthlyRecap }>("/api/recap", { method: "POST" }),
   shareRecap: (recapId: number) =>
     request<{ success: boolean; newBalance: number; wasFirstShare: boolean; coinsAwarded: number }>("/api/recap/share", { method: "POST", body: JSON.stringify({ recapId }) }),
 };

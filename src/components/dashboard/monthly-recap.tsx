@@ -18,6 +18,13 @@ interface MonthlyRecapProps {
     leagueTier?: string;
     leaguePromoted?: boolean;
     productivityTag?: string;
+    totalXp?: number;
+    coinsGained?: number;
+    coinsSpent?: number;
+    missionsCompleted?: number;
+    goalsCompleted?: number;
+    achievementsUnlocked?: number;
+    topFocusCategory?: string;
   };
   userName: string;
   userPhotoUrl?: string;

@@ -37,6 +37,7 @@ import {
   AchievementIcon,
   AchievementTile,
   AchievementAddSlot,
+  achievementThresholds,
 } from "@/lib/achievement-ui";
 import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premium";
 // Keep the old import for fallback if needed
@@ -97,14 +98,15 @@ function AchievementModal({
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
+  const thresholds = achievementThresholds(achievement);
   // Active tier is the first not-yet-completed one (where live progress shows);
   // when the achievement is maxed out, fall back to the last tier.
-  const activeIdx = Math.min(achievement.unlockedTier, achievement.thresholds.length - 1);
+  const activeIdx = Math.min(achievement.unlockedTier, thresholds.length - 1);
 
   return (
     <Modal onClose={onClose}>
       <div
-        className="glass-card relative w-full max-w-sm overflow-hidden p-6"
+        className="relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-2xl shadow-black/50"
         style={{ border: `1px solid ${colors.primary}22` }}
       >
         <button
@@ -136,7 +138,7 @@ function AchievementModal({
 
         <div className="mb-4">
           <div className="mb-2 text-xs uppercase tracking-widest text-[var(--text-faint)]">Progresso</div>
-          {achievement.thresholds.map((threshold, i) => {
+          {thresholds.map((threshold, i) => {
             const unlocked = i < achievement.unlockedTier;
             const isLive = i === achievement.unlockedTier;
             const isCurrent = i === activeIdx;
@@ -464,22 +466,19 @@ export default function PerfilPage() {
 
   async function handleGenerateRecap() {
     // Mês CORRENTE em America/Sao_Paulo (nunca o mês anterior, nunca UTC).
-    const hoje = todayIso();
-    const year = Number(hoje.slice(0, 4));
-    const month = Number(hoje.slice(5, 7)) - 1; // API espera mês 0-11
-
+    // O servidor decide qual mês gerar - não enviamos parâmetro de mês.
     setGeneratingRecap(true);
     setRecapError("");
     setRecapSuccess("");
     try {
-      const result = await api.generateRecap(year, month);
+      const result = await api.generateRecap();
       if (result?.recap) {
         setRecaps((prev) => {
           const exists = prev.some((r) => r.recapMonth === result.recap.recapMonth);
           if (exists) return prev.map((r) => r.recapMonth === result.recap.recapMonth ? result.recap : r);
           return [result.recap, ...prev];
         });
-        setRecapSuccess(`Recap de ${labelMes(result.recap.recapMonth)} gerado com sucesso.`);
+        setRecapSuccess(`Recap de ${labelMes(result.recap.recapMonth)} atualizado com sucesso.`);
         setTimeout(() => setRecapSuccess(""), 4000);
       }
     } catch (e) {
@@ -854,10 +853,14 @@ export default function PerfilPage() {
               </button>
             </div>
             {recapError && (
-              <p className="relative mb-3 text-xs text-[var(--red)]">{recapError}</p>
+              <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-400">
+                {recapError}
+              </div>
             )}
             {recapSuccess && (
-              <p className="relative mb-3 text-xs text-[var(--green)]">{recapSuccess}</p>
+              <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-xs text-green-400">
+                {recapSuccess}
+              </div>
             )}
             {recaps.length === 0 ? (
               <p className="relative py-6 text-center text-sm text-[var(--text-muted)]">
@@ -878,6 +881,12 @@ export default function PerfilPage() {
                       productivityTag: recap.productivityTag,
                       gardenCount: recap.gardenCount,
                       totalXp: recap.totalXp,
+                      coinsGained: recap.coinsGained,
+                      coinsSpent: recap.coinsSpent,
+                      missionsCompleted: recap.missionsCompleted,
+                      goalsCompleted: recap.goalsCompleted,
+                      achievementsUnlocked: recap.achievementsUnlocked,
+                      topFocusCategory: recap.topFocusCategory,
                       hasBeenShared: recap.hasBeenShared,
                     }}
                     status={recap.status}

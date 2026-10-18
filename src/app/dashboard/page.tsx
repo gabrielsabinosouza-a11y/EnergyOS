@@ -699,7 +699,6 @@ function DashboardContent() {
               title: patch.title,
               categoryId: patch.categoryId,
               targetValue: patch.targetValue,
-              frequency: patch.frequency ?? g.frequency,
               unit: patch.unit,
               deadline: patch.deadline || null,
               category: categories.find((c) => c.id === patch.categoryId) ?? g.category,
@@ -712,7 +711,6 @@ function DashboardContent() {
         title: patch.title,
         categoryId: patch.categoryId,
         targetValue: patch.targetValue,
-        ...(patch.frequency ? { frequency: patch.frequency } : {}),
         unit: patch.unit || null,
         deadline: patch.deadline || null,
       })
@@ -767,7 +765,7 @@ function DashboardContent() {
     <AppShell>
       <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
         {/* Header */}
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-2">
+        <header className="relative z-50 mb-8 flex flex-wrap items-start justify-between gap-2">
           <motion.div variants={fadeUp} initial="hidden" animate="visible" className="min-w-0">
             <p className="mb-2 text-[10px] uppercase tracking-[.2em] text-[var(--accent)]">{todayLabel()}</p>
             <h1 className="font-display text-2xl tracking-[-.04em] sm:text-3xl text-[var(--text)]">

@@ -1427,11 +1427,12 @@ body { overflow-wrap: break-word; }
 }
 
 /* ── Tokens de raio/espacing do planner ─────────────────────────────────── */
-.planner-radius-sm: 8px;
-.planner-radius: 12px;
-.planner-hour-height: 56px;
-.planner-chip-height: 18px;
-
+:root{
+ --planner-radius-sm: 8px;
+ --planner-radius: 12px;
+ --planner-hour-height: 56px;
+ --planner-chip-height: 18px;
+}
 /* ── Mês: grade ─────────────────────────────────────────────────────────── */
 .mv-month { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .mv-month-grid { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }

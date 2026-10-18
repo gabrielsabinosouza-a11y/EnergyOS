@@ -25,27 +25,14 @@ export async function POST(request: NextRequest) {
   try {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
-    
+
     // Rate limiting: 5 generations per hour
     rateLimitForProfile(profileId, "recap-generate", 5, 3_600_000);
-    
-    const body = await readJsonBody(request);
-    
-    // Accept both { month: "2026-09-01" } and { year: 2026, month: 9 } formats
-    let monthStr = body.month;
-    if (body.year && body.month) {
-      const year = Number(body.year);
-      const month = Number(body.month);
-      if (year < 2026 || (year === 2026 && month < 8) || month > 12) {
-        throw new BadRequestError("Mês inválido.");
-      }
-      monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
-    }
-    
-    if (!monthStr || typeof monthStr !== "string") {
-      throw new BadRequestError("Campo 'month' é obrigatório.");
-    }
-    
+
+    // Server decides the month: always the current month in America/Sao_Paulo
+    const today = todayIso();
+    const monthStr = today.slice(0, 7) + "-01";
+
     const recap = await generateRecap(profileId, monthStr);
     return NextResponse.json({ recap });
   } catch (error) {

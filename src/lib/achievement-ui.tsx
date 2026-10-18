@@ -5,6 +5,11 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
 import type { LucideIcon } from "lucide-react";
+import { STREAK_TIERS } from "@/lib/streak-tiers";
+
+export function achievementThresholds(achievement: AchievementProgress): readonly number[] {
+  return achievement.id === "streak_master" ? STREAK_TIERS : achievement.thresholds;
+}
 
 export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow: string }> = {
   streak: { primary: "#ff8c42", bg: "rgba(255,140,66,0.12)", glow: "rgba(255,140,66,0.4)" },
@@ -213,12 +218,13 @@ export function AchievementTile({
   showProgress?: boolean;
   feature?: boolean;
 }) {
+  const thresholds = achievementThresholds(achievement);
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
   // icon container size
   const inner = size;
   const radius = (inner / 2) - 2; // small padding for progress ring
-  const firstThreshold = achievement.thresholds[0] ?? 1;
+  const firstThreshold = thresholds[0] ?? 1;
   const progress = Math.min((achievement.currentValue ?? 0) / firstThreshold, 1);
   const pct = Math.round(progress * 100);
   const circumference = 2 * Math.PI * radius;
@@ -273,9 +279,9 @@ export function AchievementTile({
       </span>
 
       {/* tier dots */}
-      {isEarned && achievement.thresholds.length > 1 && (
+      {isEarned && thresholds.length > 1 && (
         <span className="mt-1.5 flex justify-center gap-1">
-          {achievement.thresholds.map((_, i) => (
+          {thresholds.map((_, i) => (
             <span
               key={i}
               className="block h-1.5 w-1.5 rounded-full"

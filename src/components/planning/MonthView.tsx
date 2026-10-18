@@ -22,6 +22,8 @@ interface MonthViewProps {
 
 const CHIP_CAP_TABLET = 2;
 const CHIP_CAP_DESKTOP = 3;
+const POPOVER_WIDTH = 280;
+const POPBOTTOM_PAD = 350;
 
 export function MonthView({
   monthRange,

@@ -23,7 +23,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { CATEGORY_COLORS, AchievementIcon, AchievementTile } from "@/lib/achievement-ui";
+import { CATEGORY_COLORS, AchievementIcon, AchievementTile, achievementThresholds } from "@/lib/achievement-ui";
 
 /* ------------------------------------------------------------------ */
 /*  Animation variants                                                */
@@ -54,14 +54,15 @@ function AchievementModal({
 }) {
   const colors = CATEGORY_COLORS[achievement.category] ?? { primary: "#71d4ff", bg: "rgba(113,212,255,0.12)", glow: "rgba(113,212,255,0.4)" };
   const isEarned = achievement.unlockedTier > 0;
+  const thresholds = achievementThresholds(achievement);
   // Active tier is the first not-yet-completed one (where live progress shows);
   // when the achievement is maxed out, fall back to the last tier.
-  const activeIdx = Math.min(achievement.unlockedTier, achievement.thresholds.length - 1);
+  const activeIdx = Math.min(achievement.unlockedTier, thresholds.length - 1);
 
   return (
     <Modal onClose={onClose}>
       <div
-        className="glass-card relative w-full max-w-sm overflow-hidden p-6"
+        className="relative max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-2xl shadow-black/50"
         style={{ border: `1px solid ${colors.primary}22` }}
       >
         <button
@@ -92,7 +93,7 @@ function AchievementModal({
 
         <div className="mb-4">
           <div className="mb-2 text-xs uppercase tracking-widest text-[var(--text-faint)]">Progresso</div>
-          {achievement.thresholds.map((threshold, i) => {
+          {thresholds.map((threshold, i) => {
             const unlocked = i < achievement.unlockedTier;
             const isLive = i === achievement.unlockedTier;
             const isCurrent = i === activeIdx;

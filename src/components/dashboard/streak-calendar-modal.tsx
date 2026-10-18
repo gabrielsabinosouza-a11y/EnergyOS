@@ -7,6 +7,8 @@ import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
 import { StreakIcon, ShieldIcon } from "@/components/streak-icon";
 import type { StreakDayStatus } from "@/types";
+import { todayIso } from "@/lib/db/dates";
+import { formatCalendarMonth, getCalendarMonthCells } from "@/lib/calendar-grid";
 
 const WEEKDAY_LABELS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
@@ -24,19 +26,13 @@ export function StreakCalendarModal({
   onClose,
 }: StreakCalendarModalProps) {
   const reduced = useReducedMotion();
-  const now = new Date();
-  const [cursorYear, setCursorYear] = useState(now.getFullYear());
-  const [cursorMonth, setCursorMonth] = useState(now.getMonth());
+  const today = todayIso();
+  const [cursorYear, setCursorYear] = useState(Number(today.slice(0, 4)));
+  const [cursorMonth, setCursorMonth] = useState(Number(today.slice(5, 7)) - 1);
   const [days, setDays] = useState<Record<string, StreakDayStatus>>({});
   const glowColor = "#ffb86b";
 
-  const todayIsoStr = (() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  })();
+  const todayIsoStr = today;
 
   useEffect(() => {
     if (!open) return;
@@ -69,17 +65,8 @@ export function StreakCalendarModal({
     });
   };
 
-  const monthLabel = new Date(cursorYear, cursorMonth, 1).toLocaleDateString("pt-BR", {
-    month: "long",
-    year: "numeric",
-  });
-
-  // Grid: first weekday (dom-base) offset + days in month.
-  const firstWeekday = new Date(cursorYear, cursorMonth, 1).getDay();
-  const daysInMonth = new Date(cursorYear, cursorMonth + 1, 0).getDate();
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+  const monthLabel = formatCalendarMonth(cursorYear, cursorMonth);
+  const cells = getCalendarMonthCells(cursorYear, cursorMonth);
 
   const dayStatus = (day: number, dateStr: string): { kind: StreakDayStatus | "future" | "none" } => {
     if (dateStr > todayIsoStr) return { kind: "future" };
@@ -91,7 +78,7 @@ export function StreakCalendarModal({
   const isTodayDate = (dateStr: string) => dateStr === todayIsoStr;
 
   return (
-    <Modal open={open} onClose={onClose} panelClassName="max-w-md w-full">
+    <Modal open={open} onClose={onClose} panelClassName="max-h-[min(90dvh,760px)] w-full max-w-md overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.92, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -99,7 +86,7 @@ export function StreakCalendarModal({
         transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 340, damping: 26 }}
       >
         <div
-          className="glass-card relative w-full overflow-hidden p-6"
+          className="relative w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-2xl shadow-black/40"
           style={{ border: `1px solid ${glowColor}30` }}
         >
           {/* brilho ambiente */}
@@ -148,7 +135,7 @@ export function StreakCalendarModal({
             >
               <ChevronLeft size={18} />
             </button>
-            <span className="text-sm font-semibold capitalize text-[var(--text)]">{monthLabel}</span>
+            <span className="text-sm font-semibold text-[var(--text)]">{monthLabel}</span>
             <button
               onClick={() => changeMonth(1)}
               className="icon-button small"
@@ -178,7 +165,7 @@ export function StreakCalendarModal({
               return (
                 <div
                   key={dateStr}
-                  className={`relative flex aspect-square items-center justify-center rounded-lg text-xs ${
+                  className={`relative flex aspect-square min-w-0 items-center justify-center rounded-lg text-xs ${
                     isToday ? "ring-1 ring-[var(--accent)]" : ""
                   }`}
                   style={
@@ -190,19 +177,19 @@ export function StreakCalendarModal({
                 >
                   {(kind === "success") && (
                     <span
-                      className="flex h-11 w-11 items-center justify-center rounded-full"
+                      className="flex h-6 w-6 items-center justify-center rounded-full sm:h-8 sm:w-8"
                       style={{ background: `${glowColor}1f`, boxShadow: `0 0 14px ${glowColor}50` }}
                     >
-                      <StreakIcon size={28} variant="saved" />
+                      <StreakIcon size={20} variant="saved" />
                     </span>
                   )}
                   {kind === "protected" && (
                     <span
-                      className="flex h-11 w-11 items-center justify-center rounded-full"
+                      className="flex h-6 w-6 items-center justify-center rounded-full sm:h-8 sm:w-8"
                       title="Protegido por escudo"
                       style={{ background: "#71d4ff1f", boxShadow: `0 0 14px #71d4ff50` }}
                     >
-                      <ShieldIcon size={28} />
+                      <ShieldIcon size={20} />
                     </span>
                   )}
                   {kind === "none" && (
