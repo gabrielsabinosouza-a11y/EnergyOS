@@ -10,9 +10,9 @@ test("4xx status codes are never retried", () => {
   assert.equal(isRetryableStatus(422), false);
 });
 
-test("5xx, 408 and 429 are retried", () => {
+test("5xx and 408 are retried, 429 is not", () => {
   assert.equal(isRetryableStatus(408), true);
-  assert.equal(isRetryableStatus(429), true);
+  assert.equal(isRetryableStatus(429), false);
   assert.equal(isRetryableStatus(500), true);
   assert.equal(isRetryableStatus(502), true);
   assert.equal(isRetryableStatus(503), true);

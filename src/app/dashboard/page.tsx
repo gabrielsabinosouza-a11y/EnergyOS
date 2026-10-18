@@ -152,6 +152,7 @@ function DashboardContent() {
   const [streakCalendarOpen, setStreakCalendarOpen] = useState(false);
   const prevStreakRef = useRef(0);
   const goalsRef = useRef(goals);
+  const goalServerRef = useRef<Map<number, Goal>>(new Map());
   useEffect(() => { goalsRef.current = goals; }, [goals]);
   // Fila serializada por meta: evita que respostas fora de ordem sobrescrevam
   // estado mais novo e serializa cliques rápidos (uma requisição por vez por
@@ -220,6 +221,7 @@ function DashboardContent() {
             if (cancelled || !Array.isArray(bundles)) return;
             const loadedGoals = bundles.flatMap((bundle) => bundle?.goal ? [bundle.goal] : []);
             goalsRef.current = loadedGoals;
+            goalServerRef.current = new Map(loadedGoals.map((goal) => [goal.id, goal]));
             setGoals(loadedGoals);
           })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, goals: "Erro ao carregar metas." })); }),
@@ -741,6 +743,7 @@ function DashboardContent() {
         void api
           .postGoalLog({ goalId, action: nextJob.action, amount: nextJob.amount })
           .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
+            if (goal) goalServerRef.current.set(goalId, goal);
             if (goal && goalSeqRef.current.get(goalId) === nextJob.sequence) {
               updateGoalState((current) =>
                 current.map((item) => item.id === goalId ? { ...item, ...goal } : item),
@@ -764,8 +767,9 @@ function DashboardContent() {
           })
           .catch((error: unknown) => {
             if (goalSeqRef.current.get(goalId) === nextJob.sequence) {
+              const rollbackGoal = goalServerRef.current.get(goalId) ?? nextJob.previousGoal;
               updateGoalState((current) =>
-                current.map((item) => item.id === goalId ? nextJob.previousGoal : item),
+                current.map((item) => item.id === goalId ? rollbackGoal : item),
               );
               showError(error instanceof Error ? error.message : "Não foi possível atualizar a meta.");
             }
@@ -787,6 +791,7 @@ function DashboardContent() {
   /** Criação de meta diretamente pelo modal do dashboard. */
   async function createGoal(goal: Goal) {
     if (!goal || !Number.isSafeInteger(goal.id)) return;
+    goalServerRef.current.set(goal.id, goal);
     updateGoalState((current) => [...current.filter((item) => item.id !== goal.id), goal]);
     // The goal was already created server-side by CreateGoalModal; fetch fresh
     // reward info from the API response stored in the goal object isn't available
@@ -803,9 +808,11 @@ function DashboardContent() {
     updateGoalState((current) => current.filter((goal) => goal.id !== goalId));
     try {
       await api.deleteGoal(goalId);
+      goalServerRef.current.delete(goalId);
       showSuccess("Meta excluída com sucesso.");
     } catch (error) {
       if (goalSeqRef.current.get(goalId) === sequence) {
+        goalServerRef.current.set(goalId, previousGoal);
         updateGoalState((current) =>
           current.some((goal) => goal.id === goalId) ? current : [...current, previousGoal],
         );
@@ -845,6 +852,7 @@ function DashboardContent() {
         deadline: patch.deadline || null,
       })
       .then(({ goal, xpAwarded, coinsAwarded, revertedXp, revertedCoins }) => {
+        if (goal) goalServerRef.current.set(goalId, goal);
         if (goal && goalSeqRef.current.get(goalId) === sequence) {
           updateGoalState((current) =>
             current.map((item) => item.id === goalId ? { ...item, ...goal } : item),

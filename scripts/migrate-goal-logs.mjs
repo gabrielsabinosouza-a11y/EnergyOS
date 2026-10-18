@@ -1,4 +1,4 @@
-// Adds the goal_logs table + index (idempotent) — daily check-in logs for goals.
+// Adds the goal_logs table, progress-reset metadata, and index (idempotent).
 // Mirrors src/db-schema.sql and ensureGoalLogsSchema() in src/lib/db/goal-logs.ts.
 // Run: npm run db:migrate-goal-logs
 import { readFile } from "node:fs/promises";
@@ -39,6 +39,8 @@ const client = new pg.Client({
 await client.connect();
 
 const statements = [
+  `alter table goals add column if not exists completed_at timestamptz`,
+  `alter table goals add column if not exists progress_reset_at timestamptz`,
   `create table if not exists goal_logs (
      id bigserial primary key,
      profile_id text not null references profiles(id) on delete cascade,

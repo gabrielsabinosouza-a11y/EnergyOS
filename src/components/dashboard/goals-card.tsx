@@ -992,7 +992,10 @@ function DropdownPortal({
   const confirmW = 240;
   const w = confirming ? confirmW : MENU_W;
   const left = Math.max(8, Math.min(anchor.left - w + 4, window.innerWidth - w - 8));
-  const top = Math.min(anchor.top, window.innerHeight - 48);
+  const height = confirming ? 120 : 16 + (isCompleted ? 44 : 0) + (hasEdit ? 44 : 0) + 44;
+  const top = anchor.top + height > window.innerHeight - 8
+    ? Math.max(8, anchor.top - height - 6)
+    : anchor.top;
 
   const glowColor = "#71d4ff";
 
@@ -1012,8 +1015,9 @@ function DropdownPortal({
     );
     if (items.length === 0) return;
     event.preventDefault();
-    const current = items.indexOf(document.activeElement as HTMLElement);
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
     const offset = event.key === "ArrowDown" ? 1 : -1;
+    const current = currentIndex < 0 ? (offset > 0 ? -1 : 0) : currentIndex;
     items[(current + offset + items.length) % items.length]?.focus();
   };
 

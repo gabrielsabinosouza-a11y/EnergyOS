@@ -1147,7 +1147,7 @@ create table if not exists monthly_recaps (
   has_been_shared boolean default false,
   generated_at timestamptz not null default now(),
   unique (profile_id, recap_month),
-  constraint monthly_recaps_status_check check (status = any (array['parcial'::text, 'final'::text]))
+  constraint monthly_recaps_status_check check (status = any (array['live'::text, 'final'::text]))
 );
 
 -- Purge recaps from months before the platform existed

@@ -25,6 +25,8 @@ import { addLeagueXP, recomputeWeeklyLeagueXP } from "./league-new";
  *   - weekly:  semana atual (segunda → domingo)
  *   - monthly: mês atual
  *   - unique:  todos os logs, para sempre
+ * Um reset grava `goals.progress_reset_at`: os logs anteriores continuam no
+ * histórico/recap, mas deixam de compor o progresso atual.
  * `unique (goal_id, log_date)` é o equivalente ao doc id determinístico
  * `goalId_date` pedido no briefing: um registro por meta por dia.
  *
@@ -105,6 +107,23 @@ export function ensureGoalLogsSchema(): Promise<void> {
 }
 
 type Db = Pick<PoolClient, "query">;
+type GoalProgressResetDb = {
+  query: (text: string, values: unknown[]) => Promise<unknown>;
+};
+
+/** Persiste uma nova linha de base sem apagar logs históricos. */
+export async function resetGoalProgressInTransaction(
+  client: GoalProgressResetDb,
+  profileId: string,
+  goalId: number,
+): Promise<void> {
+  await client.query(
+    `update goals
+     set progress_reset_at = now(), completed_at = null
+     where profile_id = $1 and id = $2`,
+    [profileId, goalId],
+  );
+}
 
 function assertGoalId(goalId: number): void {
   if (!Number.isInteger(goalId) || goalId <= 0) throw new ValidationError("Meta inválida.");
@@ -374,12 +393,7 @@ async function applyOnClient(
     const wasDone = goal.targetValue > 0 && beforeSum >= goal.targetValue;
 
     if (input.action === "reset") {
-      await client.query(
-        `update goals
-         set progress_reset_at = now(), completed_at = null
-         where profile_id = $1 and id = $2`,
-        [profileId, goalId],
-      );
+      await resetGoalProgressInTransaction(client, profileId, goalId);
       await client.query("commit");
       const goalWithProgress = await getGoalWithLogs(profileId, goalId);
       return {

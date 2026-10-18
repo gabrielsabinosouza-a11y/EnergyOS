@@ -79,9 +79,9 @@ const RETRY_BASE_DELAY_MS = 200;  // exponential: 200, 400
 
 /** Returns true for status codes that warrant a retry (5xx, 408, 429). 4xx client errors are never retried except 408 (timeout) and 429 (rate limited). */
 export function isRetryableStatus(status: number): boolean {
-  // 4xx client errors are never retried — EXCEPT 408 (timeout) and 429.
+  // 4xx client errors are never retried — EXCEPT 408 (timeout).
   if (status >= 400 && status < 500) {
-    return status === 408 || status === 429;
+    return status === 408;
   }
   // Retry on any 5xx.
   return status >= 500;
@@ -221,6 +221,7 @@ export const api = {
    * Aplica um check-in de meta. A conclusão NÃO é um flag: o servidor soma os
    * logs do período (dia/semana/mês/única) e concede ou estorna a recompensa
    * na transição — eventos equivalentes a setDoc/deleteDoc de `goalLogs`.
+   * `reset` inicia uma nova linha de base sem apagar histórico ou a chave de recompensa.
    */
   postGoalLog: (input: { goalId: number; action: GoalLogAction; date?: string; amount?: number }) =>
     request<{ goal: GoalWithProgress; log: GoalLogEntry | null; xpAwarded: number; coinsAwarded: number; revertedXp: number; revertedCoins: number }>("/api/goal-logs", { method: "POST", body: JSON.stringify(input) }),

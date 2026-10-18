@@ -200,6 +200,8 @@ interface RecapSummary {
   topFocusCategory?: string;
 }
 
+
+
 /**
  * Computes coins gained in the month from xp_ledger.coins_amount.
  */
@@ -256,8 +258,10 @@ async function computeMissionsCompleted(
   return Number(result.rows[0]?.count ?? 0);
 }
 
+
+
 /**
- * Computes goals completed in the month (based on goal_logs completed_at in month).
+ * Computes goal logs recorded during the month.
  */
 async function computeGoalsCompleted(
   profileId: string,
@@ -265,16 +269,21 @@ async function computeGoalsCompleted(
   monthEndIso: string,
 ): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    `SELECT COALESCE(COUNT(*), 0) as count
+    `SELECT COUNT(*) AS count
      FROM goal_logs
      WHERE profile_id = $1
-       AND completed_at IS NOT NULL
-       AND completed_at >= $2::timestamptz
-       AND completed_at < $3::timestamptz`,
-    [profileId, monthStartIso, monthEndIso],
+       AND log_date >= $2::date
+       AND log_date < $3::date`,
+    [
+      profileId,
+      monthStartIso.slice(0, 10),
+      monthEndIso.slice(0, 10),
+    ],
   );
+
   return Number(result.rows[0]?.count ?? 0);
 }
+
 
 /**
  * Computes achievements unlocked in the month.
@@ -286,7 +295,7 @@ async function computeAchievementsUnlocked(
 ): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COALESCE(COUNT(*), 0) as count
-     FROM achievement_progress
+     FROM user_achievement_progress
      WHERE profile_id = $1
        AND unlocked_at IS NOT NULL
        AND unlocked_at >= $2::timestamptz
@@ -534,34 +543,39 @@ async function upsertRecap(
   );
 
   // Save previous generation to history if this is an update (snapshot ANTES da atualização).
+  // Falha aqui não deve impedir o recap atual de ser salvo.
   if (existing.rows.length > 0) {
     const old = existing.rows[0];
-    await pool.query(
-      `INSERT INTO monthly_recap_history
-       (recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
-        streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
-        league_promoted, productivity_tag, total_xp, xp_sources, generation_number, generated_at)
-       VALUES
-       ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-      [
-        old.id,
-        old.profile_id,
-        old.recap_month,
-        old.total_focus_minutes,
-        old.longest_streak,
-        old.streak_start_date,
-        old.streak_end_date,
-        old.streak_is_alive,
-        old.league_at_start,
-        old.league_tier,
-        old.league_promoted,
-        old.productivity_tag,
-        old.total_xp,
-        old.xp_sources,
-        old.generation_number,
-        old.generated_at,
-      ],
-    );
+    try {
+      await pool.query(
+        `INSERT INTO monthly_recap_history
+         (recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
+          streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
+          league_promoted, productivity_tag, total_xp, xp_sources, generation_number, generated_at)
+         VALUES
+         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        [
+          old.id,
+          old.profile_id,
+          old.recap_month,
+          old.total_focus_minutes,
+          old.longest_streak,
+          old.streak_start_date,
+          old.streak_end_date,
+          old.streak_is_alive,
+          old.league_at_start,
+          old.league_tier,
+          old.league_promoted,
+          old.productivity_tag,
+          old.total_xp,
+          old.xp_sources,
+          old.generation_number,
+          old.generated_at,
+        ],
+      );
+    } catch (historyErr) {
+      console.error("[recap/upsert] history insert failed (non-fatal):", historyErr);
+    }
   }
 
   return mapRecap(profileId, result.rows[0]);
