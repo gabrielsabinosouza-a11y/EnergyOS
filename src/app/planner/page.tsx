@@ -24,6 +24,7 @@ import { Button } from "@/components/ui";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { PLANNER_TASK_REWARD } from "@/lib/daily-limits";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { scheduleReminder, createPermissionPromptHandler } from "@/lib/notifications";
 
 type View = "month" | "week" | "day";
 type PlanFormValues = {
@@ -35,7 +36,19 @@ type PlanFormValues = {
   repeatType: "once" | "weekly";
   repeatDays: number[];
   repeatUntil: string | null;
+  reminderOffsetMin: number | null;
 };
+
+// Permission state
+const PERMISSION_KEY = "energyos_notifications_prompted";
+const DENIED_KEY = "energyos_notifications_denied";
+
+declare global {
+  interface Window {
+    /** Timeouts de lembrete agendados pelo Planejamento (para cleanup). */
+    __energyos_reminder_timeouts__?: Map<number, ReturnType<typeof setTimeout>>;
+  }
+}
 
 function planKey(plan: WeeklyPlanItem): string {
   return plan.seriesId !== null
@@ -73,6 +86,7 @@ function fromWeeklyPlan(plan: WeeklyPlan): WeeklyPlanItem {
     repeatType: null,
     repeatDays: null,
     isRecurring: false,
+    reminderOffsetMin: plan.reminderOffsetMin,
   };
 }
 
@@ -105,6 +119,11 @@ export default function PlanningPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [navDirection, setNavDirection] = useState<"next" | "prev" | "zoom" | null>(null);
   const reduced = useReducedMotion();
+
+  // Permission prompt for notifications
+  const [showPermissionPrompt] = useState<((onApprove: () => void) => void) | null>(
+    () => createPermissionPromptHandler(),
+  );
 
   const updateTasks = useCallback((updater: (current: WeeklyPlanItem[]) => WeeklyPlanItem[]) => {
     const next = updater(tasksRef.current);
@@ -179,6 +198,73 @@ export default function PlanningPage() {
       });
     return () => { current = false; };
   }, [user, view]);
+
+  // Auto-schedule reminders for all plans
+  useEffect(() => {
+    if (!user) return;
+    const now = new Date();
+
+    tasks.forEach((plan) => {
+      // Skip if already completed, has no reminder, or no start time
+      if (plan.completedAt || plan.skipped || !plan.reminderOffsetMin || plan.reminderOffsetMin <= 0) return;
+      if (!plan.startTime) return;
+
+      // Calculate plan start time in America/Sao_Paulo timezone
+      const [hours, minutes] = plan.startTime.split(":").map(Number);
+      const planDate = new Date(plan.planDate);
+      planDate.setHours(hours, minutes, 0, 0);
+
+      // Convert to America/Sao_Paulo time
+      const planTimeSP = new Date(planDate.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+
+      // Calculate reminder time
+      const reminderTime = new Date(planTimeSP.getTime() - plan.reminderOffsetMin * 60000);
+
+      // Calculate delay
+      const delayMs = reminderTime.getTime() - now.getTime();
+      if (delayMs > 0 && delayMs < 24 * 60 * 60 * 1000) { // Max 24 hours
+        const timeoutId = setTimeout(() => {
+          if (typeof window === "undefined") return;
+
+          // Create notification
+          const notificationId = `reminder-${plan.id}-${plan.planDate}-${plan.reminderOffsetMin}`;
+
+          // Dispatch custom event for toast
+          const event = new CustomEvent("energyosReminder", {
+            detail: { plan, type: "reminder", action: "planStart", id: notificationId },
+          });
+          window.dispatchEvent(event);
+
+          // Send to service worker
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.ready.then((registration) => {
+              registration.active?.postMessage({
+                type: "REMINDER",
+                title: `Próxima etapa: ${plan.title}`,
+                body: plan.startTime ? `Começa agora em ${plan.startTime}` : plan.planDate,
+                tag: notificationId,
+                url: "/planner",
+              });
+            }).catch(() => {});
+          }
+        }, delayMs);
+
+        // Store timeout for cleanup
+        if (!window.__energyos_reminder_timeouts__) {
+          window.__energyos_reminder_timeouts__ = new Map();
+        }
+        window.__energyos_reminder_timeouts__.set(plan.id, timeoutId);
+      }
+    });
+
+    // Cleanup
+    return () => {
+      if (window.__energyos_reminder_timeouts__) {
+        window.__energyos_reminder_timeouts__.forEach((timeoutId) => clearTimeout(timeoutId));
+        window.__energyos_reminder_timeouts__.clear();
+      }
+    };
+  }, [tasks, user]);
 
   const openCreate = useCallback((date: string, minutes?: number) => {
     setEditorSession((session) => session + 1);
@@ -271,22 +357,32 @@ export default function PlanningPage() {
         await api.updateWeeklyPlanSeries(plan.seriesId, {
           title: values.title,
           startTime: values.startTime,
+          reminderOffsetMin: values.reminderOffsetMin,
         });
       } else {
         await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
           title: values.title,
           startTime: values.startTime,
+          reminderOffsetMin: values.reminderOffsetMin,
         });
       }
       mutationVersion.current += 1;
-      updateTasks((current) => current.map((item) => (
-        item.seriesId === plan.seriesId && (scope === "series" || item.planDate === plan.planDate)
-      )
-        ? { ...item, title: values.title, startTime: values.startTime }
-        : item));
+      updateTasks((current) =>
+        current.map((item) =>
+          item.seriesId === plan.seriesId &&
+          (scope === "series" || item.planDate === plan.planDate)
+            ? {
+                ...item,
+                title: values.title,
+                startTime: values.startTime,
+                reminderOffsetMin: values.reminderOffsetMin,
+              }
+            : item
+        )
+      );
       announce(scope === "series" ? "Série atualizada." : "Ocorrência atualizada.");
       return;
-    }
+         }
 
     if (plan) {
       const { plan: updated } = await api.updateWeeklyPlan(plan.id, {
@@ -295,6 +391,7 @@ export default function PlanningPage() {
         planDate: values.planDate,
         startTime: values.startTime,
         endTime: values.endTime,
+        reminderOffsetMin: values.reminderOffsetMin,
       });
       mutationVersion.current += 1;
       updateTasks((current) => current.map((item) => item.seriesId === null && item.id === plan.id
@@ -318,6 +415,7 @@ export default function PlanningPage() {
         endType: values.repeatUntil ? "date" : "never",
         endDate: values.repeatUntil,
         timezone: "America/Sao_Paulo",
+        reminderOffsetMin: values.reminderOffsetMin,
       });
       mutationVersion.current += 1;
       const weeks = await Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)));
@@ -336,6 +434,7 @@ export default function PlanningPage() {
       categoryId: values.categoryId,
       startTime: values.startTime,
       endTime: values.endTime,
+      reminderOffsetMin: values.reminderOffsetMin,
     });
     mutationVersion.current += 1;
     updateTasks((current) => mergePlans(current, [fromWeeklyPlan(created)]));
@@ -583,6 +682,7 @@ export default function PlanningPage() {
           categories={categories}
           onClose={closeEditor}
           onSave={savePlan}
+          showNotificationPermissionPrompt={showPermissionPrompt ?? undefined}
         />
 
         <Modal

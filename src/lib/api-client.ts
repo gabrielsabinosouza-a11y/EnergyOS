@@ -278,13 +278,13 @@ export const api = {
     const params = weekStart ? `?weekStart=${weekStart}` : "";
     return request<WeeklyPlanItem[]>(`/api/weekly-plans${params}`);
   },
-  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean }) =>
+  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean; reminderOffsetMin?: number | null }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
   setWeeklyPlanCompleted: (id: number, completed: boolean) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
-  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string; startTime?: string | null; endTime?: string | null }) =>
+  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string; startTime?: string | null; endTime?: string | null; reminderOffsetMin?: number | null }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 
@@ -296,6 +296,7 @@ export const api = {
     repeatType: "once" | "weekly" | "interval"; repeatDays?: number[] | null; repeatInterval?: number | null;
     startTime?: string | null; durationMinutes?: number | null; startDate: string;
     endType?: "never" | "date" | "count"; endDate?: string | null; endCount?: number | null; timezone?: string;
+    reminderOffsetMin?: number | null;
   }) => request<{ series: WeeklyPlanSeries }>("/api/weekly-plans/series", { method: "POST", body: JSON.stringify(input) }),
   updateWeeklyPlanSeries: (id: number, input: {
     title?: string; categoryId?: number;
@@ -303,6 +304,7 @@ export const api = {
     repeatType?: "once" | "weekly" | "interval"; repeatDays?: number[] | null; repeatInterval?: number | null;
     startTime?: string | null; durationMinutes?: number | null; startDate?: string;
     endType?: "never" | "date" | "count"; endDate?: string | null; endCount?: number | null;
+    reminderOffsetMin?: number | null;
   }) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteWeeklyPlanSeries: (id: number) => request<{ ok: true }>(`/api/weekly-plans/series/${id}`, { method: "DELETE" }),
   getWeeklyPlanSeriesById: (id: number) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`),
@@ -310,7 +312,7 @@ export const api = {
     request<{ ok: true; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   skipPlanOccurrence: (seriesId: number, date: string) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/skip`, { method: "PATCH" }),
-  updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null }) =>
+  updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null; reminderOffsetMin?: number | null }) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/override`, { method: "PATCH", body: JSON.stringify(input) }),
 
   // Focus

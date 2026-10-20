@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       endDate: body.endDate as string | null | undefined,
       endCount: body.endCount as number | null | undefined,
       timezone: body.timezone as string | undefined,
+      reminderOffsetMin: body.reminderOffsetMin as number | null | undefined,
     });
     return jsonOk({ series }, 201);
   });

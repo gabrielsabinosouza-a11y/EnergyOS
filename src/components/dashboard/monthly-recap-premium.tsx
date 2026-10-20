@@ -1,12 +1,28 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X, Download, Share2, ChevronLeft, ChevronRight, Timer, Award, Zap, Flame, Trophy } from "lucide-react";
+import {
+  X,
+  Download,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  Timer,
+  Award,
+  Zap,
+  Flame,
+  Trophy,
+  Volume2,
+  VolumeX,
+  Loader2,
+} from "lucide-react";
 import Image from "next/image";
 import { Modal } from "@/components/modal";
 import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
+import { GlassPanel, ParticleField, Recap3DIcon } from "@/components/recap/recap-fx";
+import { useRecapSound } from "@/lib/recap-sound";
 import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -49,6 +65,31 @@ interface MonthlyRecapPremiumProps {
 
 const SLIDE_COUNT = 7;
 const SHARE_REWARD_COINS = 50;
+
+/**
+ * Artes 3D dos slides. Os arquivos são OPTIONAIS: enquanto o asset não existir
+ * em /public/recap/icons, o componente usa o ícone line original como fallback.
+ */
+const RECAP_ART = {
+  foco: "/recap/icons/recap-foco.png",
+  sequencia: "/recap/icons/recap-sequencia.png",
+  jardim: "/recap/icons/recap-jardim.png",
+} as const;
+
+/** Cores de destaque por slide (as únicas cores novas do redesign). */
+const ACCENT = {
+  focus: "#5CC8FF",
+  streak: "#FFB067",
+  garden: "#3DDC84",
+  xp: "#B69CFF",
+} as const;
+
+/**
+ * Largura do modal 9:16.
+ * 56.25dvh - 3.9375rem = (100dvh - 7rem) * 9/16 → altura útil do card.
+ * `min()` com 100vw-2rem mantém as margens em telas estreitas (320px+).
+ */
+const MODAL_WIDTH = "min(420px, calc(56.25dvh - 3.9375rem), calc(100vw - 2rem))";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -139,68 +180,70 @@ function AmbientGlow({ accent, glow }: { accent: string; glow: string }) {
   );
 }
 
-function ProgressBar({ current, total }: { current: number; total: number }) {
+/** Barras de progresso segmentadas — o preenchimento acompanha a troca de slide. */
+function ProgressBar({ current, total, accent }: { current: number; total: number; accent: string }) {
+  const reduced = useReducedMotion();
   return (
-    <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
-      {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[3px] flex-1 rounded-full transition-all duration-500"
-          style={{
-            background: i <= current ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.18)",
-          }}
-        />
+    <div
+      className="flex flex-1 gap-1"
+      role="progressbar"
+      aria-label="Progresso do recap"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={current + 1}
+    >
+      {Array.from({ length: total }).map((_, index) => (
+        <div key={index} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/15">
+          <motion.div
+            className="h-full w-full origin-left rounded-full"
+            style={{ background: `linear-gradient(90deg, ${accent}, rgba(255,255,255,.9))` }}
+            initial={false}
+            animate={{ scaleX: index <= current ? 1 : 0 }}
+            transition={{ duration: reduced ? 0 : 0.34, ease: "easeOut" }}
+          />
+        </div>
       ))}
     </div>
   );
 }
 
-function SlideFrame({ children, bg }: { children: React.ReactNode; bg: string }) {
+/**
+ * Moldura do slide: área útil com respiro de 20px nas laterais e folga no topo
+ * para o cabeçalho (progresso + som + fechar). Nenhum elemento encosta nas
+ * bordas do cartão.
+ */
+function SlideFrame({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden p-8 text-center"
-      style={{ background: bg }}
-    >
+    <div className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-5 pb-6 pt-16 text-center ${className}`}>
       {children}
     </div>
   );
 }
 
-function SparkleEffect({ color = "#ffffff", count = 8 }: { color?: string; count?: number }) {
-  const reduced = useReducedMotion();
-  if (reduced) return null;
+/** Linha luminosa sob o número principal. */
+function GlowUnderline({ accent, width = 68 }: { accent: string; width?: number }) {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {Array.from({ length: count }).map((_, i) => {
-        const size = 2 + (i % 3) + 1;
-        const x = 10 + (i * 13) % 80;
-        const y = 5 + (i * 17) % 85;
-        const delay = (i * 0.4) % 3;
-        const duration = 2.5 + (i % 3) * 0.8;
-        return (
-          <motion.div
-            key={i}
-            className="absolute rounded-full"
-            style={{ width: size, height: size, background: color, boxShadow: `0 0 ${size * 2}px ${color}`, left: `${x}%`, top: `${y}%` }}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: [0.15, 0.75, 0.15, 0], scale: [0, 1, 0], y: [-8, -18, -8, 0] }}
-            transition={{ duration, delay, repeat: Infinity, ease: "easeInOut" }}
-          />
-        );
-      })}
-    </div>
+    <span
+      aria-hidden="true"
+      className="mt-2 block h-[3px] rounded-full"
+      style={{
+        width,
+        background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+        boxShadow: `0 0 14px ${accent}`,
+      }}
+    />
   );
 }
 
 // ─── Slide themes ─────────────────────────────────────────────────────────────
 
 const THEMES = {
-  intro:   { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
-  focus:   { bg: "linear-gradient(160deg, #071828 0%, #0a2540 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.35)" },
-  streak:  { bg: "linear-gradient(160deg, #1a0e06 0%, #2d1a08 100%)",          accent: "#ffb86b", glow: "rgba(255,184,107,0.38)" },
-  garden:  { bg: "linear-gradient(160deg, #071a0e 0%, #0d2a18 100%)",          accent: "#4ade80", glow: "rgba(74,222,128,0.32)"  },
-  xp:      { bg: "linear-gradient(160deg, #12061f 0%, #26103f 100%)",          accent: "#b69cff", glow: "rgba(182,156,255,0.38)" },
-  summary: { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)",          accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
+  intro:   { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)", accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
+  focus:   { bg: "linear-gradient(160deg, #071828 0%, #0a2540 100%)", accent: ACCENT.focus,  glow: "rgba(92,200,255,0.35)" },
+  streak:  { bg: "linear-gradient(160deg, #1a0e06 0%, #2d1a08 100%)", accent: ACCENT.streak, glow: "rgba(255,176,103,0.38)" },
+  garden:  { bg: "linear-gradient(160deg, #071a0e 0%, #0d2a18 100%)", accent: ACCENT.garden, glow: "rgba(61,220,132,0.32)" },
+  xp:      { bg: "linear-gradient(160deg, #12061f 0%, #26103f 100%)", accent: ACCENT.xp,     glow: "rgba(182,156,255,0.38)" },
+  summary: { bg: "linear-gradient(160deg, #07111f 0%, #0d1b2d 100%)", accent: "#71d4ff", glow: "rgba(113,212,255,0.3)"  },
 };
 
 function leagueTheme(tier: NewLeagueTier | null) {
@@ -221,29 +264,32 @@ function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
 }) {
   const reduced = useReducedMotion();
   return (
-    <SlideFrame bg={theme.bg}>
+    <SlideFrame>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
-      <SparkleEffect color={theme.accent} count={10} />
+      <ParticleField accent={theme.accent} count={16} />
+
       <motion.div
-        className="relative z-10 flex flex-col items-center gap-4"
+        className="relative z-10 flex flex-col items-center gap-3"
         initial={reduced ? undefined : { opacity: 0, y: 28 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: "easeOut" }}
       >
         {/* Logo mark */}
-        <div
-          className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl"
+        <motion.div
+          className="mb-1 grid h-14 w-14 place-items-center rounded-2xl"
           style={{ background: theme.accent, boxShadow: `0 0 32px ${theme.glow}` }}
+          animate={reduced ? undefined : { y: [0, -6, 0] }}
+          transition={reduced ? undefined : { duration: 4, repeat: Infinity, ease: "easeInOut" }}
         >
           <Zap size={28} color="#07111f" strokeWidth={2.5} />
-        </div>
+        </motion.div>
 
-        <p className="text-sm font-medium tracking-widest uppercase" style={{ color: "rgba(231,244,255,.4)" }}>
+        <p className="text-xs font-medium tracking-[0.28em] uppercase" style={{ color: "rgba(231,244,255,.4)" }}>
           Recap de
         </p>
 
         <motion.h2
-          className="font-display text-5xl font-extrabold leading-none capitalize"
+          className="font-display max-w-full text-[clamp(1.4rem,6vw,2.25rem)] font-extrabold leading-none break-words capitalize"
           style={{ background: "linear-gradient(135deg, #71d4ff 0%, #b69cff 50%, #ffb86b 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
           initial={reduced ? undefined : { opacity: 0, scale: 0.82 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
@@ -253,13 +299,21 @@ function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
         </motion.h2>
 
         <motion.div
-          className="mt-2 flex items-center gap-2.5"
+          className="mt-1 flex items-center gap-2.5"
           initial={reduced ? undefined : { opacity: 0, y: 14 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.5 }}
         >
           {userPhotoUrl ? (
-            <img src={userPhotoUrl} alt={userName} className="h-9 w-9 rounded-full object-cover ring-2 ring-[rgba(255,255,255,.18)]" />
+            <Image
+              src={userPhotoUrl}
+              alt={userName}
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-full object-cover ring-2 ring-[rgba(255,255,255,.18)]"
+              unoptimized
+              draggable={false}
+            />
           ) : (
             <div className="h-9 w-9 rounded-full" style={{ background: `linear-gradient(135deg, ${theme.accent}, #b69cff)` }} />
           )}
@@ -267,7 +321,7 @@ function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
         </motion.div>
 
         <motion.p
-          className="mt-4 text-[11px] tracking-[0.2em] uppercase"
+          className="mt-3 text-[10px] tracking-[0.2em] uppercase"
           style={{ color: "rgba(231,244,255,.3)" }}
           initial={reduced ? undefined : { opacity: 0 }}
           animate={reduced ? undefined : { opacity: 1 }}
@@ -282,49 +336,48 @@ function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
 
 // ─── Hero stat slide ──────────────────────────────────────────────────────────
 
-function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, animateNumber = true }: {
+function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, iconSrc, animateNumber = true }: {
   numericValue: number;
   valueSuffix?: string;
   label: string;
   copy: string;
   theme: { bg: string; accent: string; glow: string };
   icon: React.ReactNode;
+  iconSrc?: string;
   animateNumber?: boolean;
 }) {
   const reduced = useReducedMotion();
   return (
-    <SlideFrame bg={theme.bg}>
+    <SlideFrame>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
-      <SparkleEffect color={theme.accent} count={7} />
+      <ParticleField accent={theme.accent} />
 
       <motion.div
-        className="relative z-10 flex flex-col items-center"
+        className="relative z-10 flex w-full flex-col items-center"
         initial={reduced ? undefined : { opacity: 0, y: 24 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.65, ease: "easeOut" }}
       >
-        {/* Icon halo */}
+        {/* Ícone 3D com bloom de LED */}
         <motion.div
-          className="relative mb-8 flex items-center justify-center"
+          className="relative mb-5 flex items-center justify-center"
           initial={reduced ? undefined : { scale: 0.55, opacity: 0 }}
           animate={reduced ? undefined : { scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 22 }}
         >
-          <div
-            className="absolute rounded-full"
-            style={{ width: 120, height: 120, background: `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`, filter: "blur(18px)" }}
+          <Recap3DIcon
+            src={iconSrc}
+            fallback={icon}
+            alt={label}
+            accent={theme.accent}
+            size={132}
+            artSize={92}
           />
-          <div
-            className="relative flex h-24 w-24 items-center justify-center rounded-full"
-            style={{ background: `radial-gradient(circle at 35% 30%, ${theme.accent}30, ${theme.accent}08)`, border: `1px solid ${theme.accent}40`, boxShadow: `0 0 28px -6px ${theme.glow}` }}
-          >
-            {icon}
-          </div>
         </motion.div>
 
-        {/* Hero number */}
+        {/* Número principal + unidade em linhas próprias */}
         <motion.div
-          className="flex items-baseline gap-2"
+          className="flex w-full flex-col items-center gap-1"
           initial={reduced ? undefined : { opacity: 0, scale: 0.6 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
           transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
@@ -332,25 +385,32 @@ function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, an
           {animateNumber ? (
             <AnimatedNumber
               value={numericValue}
-              className="font-display font-extrabold leading-none"
-              style={{ fontSize: 88, color: theme.accent, letterSpacing: "-0.04em" }}
+              className="font-display max-w-full font-extrabold leading-none tabular-nums"
+              style={{ fontSize: "clamp(2.5rem, 12vw, 5rem)", color: theme.accent, letterSpacing: "-0.04em" }}
               duration={1.1}
             />
           ) : (
-            <span className="font-display font-extrabold leading-none" style={{ fontSize: 88, color: theme.accent, letterSpacing: "-0.04em" }}>
+            <span
+              className="font-display max-w-full font-extrabold leading-none tabular-nums"
+              style={{ fontSize: "clamp(2.5rem, 12vw, 5rem)", color: theme.accent, letterSpacing: "-0.04em" }}
+            >
               {numericValue}
             </span>
           )}
-          {valueSuffix && (
-            <span className="font-display font-extrabold" style={{ fontSize: 36, color: theme.accent, opacity: 0.85 }}>
+          {valueSuffix ? (
+            <span
+              className="font-display max-w-full text-center font-bold leading-tight break-words"
+              style={{ fontSize: "clamp(0.85rem, 3.4vw, 1.35rem)", color: theme.accent, opacity: 0.85 }}
+            >
               {valueSuffix}
             </span>
-          )}
+          ) : null}
+          <GlowUnderline accent={theme.accent} />
         </motion.div>
 
         {/* Label */}
         <motion.p
-          className="mt-3 text-sm font-bold uppercase tracking-[0.18em]"
+          className="mt-3 text-xs font-bold uppercase tracking-[0.18em] sm:text-sm"
           style={{ color: theme.accent }}
           initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
@@ -361,7 +421,7 @@ function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, an
 
         {/* Contextual copy */}
         <motion.p
-          className="mt-5 max-w-[260px] text-sm leading-relaxed"
+          className="mt-4 max-w-[280px] text-[13px] leading-relaxed text-balance"
           style={{ color: "rgba(231,244,255,.52)" }}
           initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
@@ -387,52 +447,47 @@ function LeagueSlide({ tier, meta, promoted, theme }: {
   const copy = leagueCopy(tier, promoted);
 
   return (
-    <SlideFrame bg={theme.bg}>
+    <SlideFrame>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
-      <SparkleEffect color={theme.accent} count={8} />
+      <ParticleField accent={theme.accent} />
 
       <motion.div
-        className="relative z-10 flex flex-col items-center"
+        className="relative z-10 flex w-full flex-col items-center"
         initial={reduced ? undefined : { opacity: 0, y: 24 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.65, ease: "easeOut" }}
       >
         {/* League icon halo */}
         <motion.div
-          className="relative mb-8 flex items-center justify-center"
+          className="relative mb-5 flex items-center justify-center"
           initial={reduced ? undefined : { scale: 0.55, opacity: 0 }}
           animate={reduced ? undefined : { scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 22 }}
         >
-          <div
-            className="absolute rounded-full"
-            style={{ width: 130, height: 130, background: `radial-gradient(circle, ${theme.glow} 0%, transparent 70%)`, filter: "blur(20px)" }}
+          <Recap3DIcon
+            src={meta?.iconPath}
+            fallback={<Award size={52} color={theme.accent} />}
+            alt={meta?.label ?? "Liga"}
+            accent={theme.accent}
+            size={140}
+            artSize={96}
           />
-          <div
-            className="relative flex h-28 w-28 items-center justify-center rounded-full"
-            style={{ background: `radial-gradient(circle at 35% 30%, ${theme.accent}28, ${theme.accent}06)`, border: `1px solid ${theme.accent}38`, boxShadow: `0 0 32px -8px ${theme.glow}` }}
-          >
-            {meta ? (
-              <Image src={meta.iconPath} alt={meta.label} width={64} height={64} style={{ objectFit: "contain" }} unoptimized draggable={false} />
-            ) : (
-              <Award size={52} color={theme.accent} />
-            )}
-          </div>
         </motion.div>
 
         {/* Hero text */}
         <motion.p
-          className="font-display font-extrabold leading-none uppercase"
-          style={{ fontSize: 72, color: theme.accent, letterSpacing: "-0.03em" }}
+          className="font-display max-w-full break-words text-[clamp(2rem,9vw,3.5rem)] font-extrabold leading-none uppercase"
+          style={{ color: theme.accent, letterSpacing: "-0.03em" }}
           initial={reduced ? undefined : { opacity: 0, scale: 0.65 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
           transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
         >
           {label}
         </motion.p>
+        <GlowUnderline accent={theme.accent} />
 
         <motion.p
-          className="mt-3 text-sm font-bold uppercase tracking-[0.18em]"
+          className="mt-3 text-xs font-bold uppercase tracking-[0.18em] sm:text-sm"
           style={{ color: theme.accent }}
           initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
@@ -455,7 +510,7 @@ function LeagueSlide({ tier, meta, promoted, theme }: {
         )}
 
         <motion.p
-          className="mt-5 max-w-[260px] text-sm leading-relaxed"
+          className="mt-4 max-w-[280px] text-[13px] leading-relaxed text-balance"
           style={{ color: "rgba(231,244,255,.52)" }}
           initial={reduced ? undefined : { opacity: 0, y: 8 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
@@ -470,93 +525,163 @@ function LeagueSlide({ tier, meta, promoted, theme }: {
 
 // ─── Summary slide ────────────────────────────────────────────────────────────
 
-function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, onDownload, onShare, theme }: {
+interface SummaryStat {
+  key: string;
+  label: string;
+  value: string;
+  color: string;
+  art?: string;
+  fallback: React.ReactNode;
+  wide?: boolean;
+}
+
+/** Ícone do card de estatística: arte 3D se existir, ícone line como fallback. */
+function SummaryStatIcon({ art, label, fallback }: { art?: string; label: string; fallback: React.ReactNode }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const artFailed = Boolean(art) && failedSrc === art;
+
+  if (!art || artFailed) {
+    return <span aria-hidden="true" className="grid place-items-center">{fallback}</span>;
+  }
+
+  return (
+    <Image
+      src={art}
+      alt={label}
+      width={16}
+      height={16}
+      style={{ objectFit: "contain" }}
+      unoptimized
+      draggable={false}
+      onError={() => setFailedSrc(art)}
+    />
+  );
+}
+
+function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
   recap: RecapData; userName: string; userPhotoUrl?: string; monthLabel: string;
-  onDownload: () => void; onShare: () => void;
   theme: { bg: string; accent: string; glow: string };
 }) {
   const reduced = useReducedMotion();
-  const { meta, tier } = tierMeta(recap.leagueTier);
+  const { meta } = tierMeta(recap.leagueTier);
   const tierColor = meta ? meta.color : "#71d4ff";
   const garden = recap.gardenCount ?? 0;
 
-  const stats = [
-    { label: "Foco",      value: formatMinutes(recap.totalFocusMinutes), color: "#71d4ff" },
-    { label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: "#ffb86b" },
-    { label: "Liga",      value: meta ? meta.label : "—",                color: tierColor  },
-    { label: plural(garden, "energia", "energias"), value: String(garden), color: "#4ade80" },
-    { label: "XP total",  value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: "#b69cff" },
+  const stats: SummaryStat[] = [
+    {
+      key: "foco",
+      label: "Foco",
+      value: formatMinutes(recap.totalFocusMinutes),
+      color: ACCENT.focus,
+      art: RECAP_ART.foco,
+      fallback: <Timer size={16} color={ACCENT.focus} strokeWidth={1.8} />,
+    },
+    {
+      key: "sequencia",
+      label: plural(recap.longestStreak, "dia", "dias"),
+      value: String(recap.longestStreak),
+      color: ACCENT.streak,
+      art: RECAP_ART.sequencia,
+      fallback: <Flame size={16} color={ACCENT.streak} strokeWidth={1.8} />,
+    },
+    {
+      key: "liga",
+      label: "Liga",
+      value: meta ? meta.label : "—",
+      color: tierColor,
+      art: meta?.iconPath,
+      fallback: <Award size={16} color={tierColor} strokeWidth={1.8} />,
+    },
+    {
+      key: "jardim",
+      label: plural(garden, "energia", "energias"),
+      value: String(garden),
+      color: ACCENT.garden,
+      art: RECAP_ART.jardim,
+      fallback: <Zap size={16} color={ACCENT.garden} strokeWidth={1.8} />,
+    },
+    {
+      key: "xp",
+      label: "XP total",
+      value: (recap.totalXp ?? 0).toLocaleString("pt-BR"),
+      color: ACCENT.xp,
+      art: "/xp/xp_double_thunder.png",
+      fallback: <Zap size={16} color={ACCENT.xp} strokeWidth={1.8} />,
+      wide: true,
+    },
   ];
 
   return (
-    <SlideFrame bg={theme.bg}>
+    <SlideFrame className="justify-center gap-0">
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
+
       <motion.div
-        className="relative z-10 flex w-full max-w-[300px] flex-col items-center"
+        className="relative z-10 flex w-full max-w-[320px] flex-col items-center"
         initial={reduced ? undefined : { opacity: 0, y: 24 }}
         animate={reduced ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.65, ease: "easeOut" }}
       >
-        <p className="text-xs font-medium tracking-widest uppercase" style={{ color: "rgba(231,244,255,.38)" }}>Recap de</p>
+        {/* Bloco de título centralizado (abaixo do cabeçalho) */}
+        <p className="text-[10px] font-medium tracking-[0.28em] uppercase" style={{ color: "rgba(231,244,255,.38)" }}>Recap de</p>
         <h2
-          className="font-display mt-1 text-3xl font-extrabold capitalize"
+          className="font-display mt-1 max-w-full text-center text-[clamp(1.35rem,5.5vw,1.9rem)] font-extrabold leading-tight break-words capitalize"
           style={{ background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           {monthLabel}
         </h2>
 
-        {userPhotoUrl && (
-          <div className="mt-3 flex items-center gap-2">
-            <img src={userPhotoUrl} alt={userName} className="h-7 w-7 rounded-full object-cover ring-1 ring-[rgba(255,255,255,.15)]" />
+        {userPhotoUrl ? (
+          <div className="mt-2 flex items-center gap-2">
+            <Image
+              src={userPhotoUrl}
+              alt={userName}
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-full object-cover ring-1 ring-[rgba(255,255,255,.15)]"
+              unoptimized
+              draggable={false}
+            />
             <span className="text-xs font-medium" style={{ color: "rgba(231,244,255,.7)" }}>{userName}</span>
           </div>
-        )}
+        ) : null}
 
-        {/* 2×2 summary grid */}
-        <div className="mt-5 grid w-full grid-cols-2 gap-2.5">
-          {stats.map((s, i) => (
+        {/* Bento 2 colunas — o 5º card ocupa as duas colunas, alturas iguais */}
+        <div className="mt-4 grid w-full grid-cols-2 gap-2.5" style={{ gridAutoRows: "1fr" }}>
+          {stats.map((stat, index) => (
             <motion.div
-              key={s.label}
-              className="flex flex-col items-center justify-center rounded-2xl p-4"
-              style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${s.color}28`, boxShadow: `0 0 20px -8px ${s.color}44` }}
-              initial={reduced ? undefined : { opacity: 0, y: 14 }}
-              animate={reduced ? undefined : { opacity: 1, y: 0 }}
-              transition={{ delay: 0.12 + i * 0.07 }}
+              key={stat.key}
+              className={stat.wide ? "col-span-2" : ""}
+              initial={reduced ? undefined : { opacity: 0, y: 16, scale: 0.94 }}
+              animate={reduced ? undefined : { opacity: 1, y: 0, scale: 1 }}
+              transition={reduced ? undefined : { delay: 0.12 + index * 0.07, type: "spring", stiffness: 260, damping: 20 }}
             >
-              <span className="font-display text-2xl font-extrabold" style={{ color: s.color }}>{s.value}</span>
-              <span className="mt-0.5 text-[10px] uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>{s.label}</span>
+              <GlassPanel
+                accent={stat.color}
+                className={`flex h-full items-center justify-center px-2 py-2.5 ${
+                  stat.wide ? "flex-row gap-3 text-left" : "flex-col gap-2 text-center"
+                }`}
+              >
+                <span
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
+                  style={{ background: `${stat.color}22`, boxShadow: `0 0 14px -4px ${stat.color}` }}
+                >
+                  <SummaryStatIcon art={stat.art} label={stat.label} fallback={stat.fallback} />
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span
+                    className="font-display max-w-full truncate text-[clamp(0.95rem,4.2vw,1.3rem)] font-extrabold leading-none tabular-nums"
+                    style={{ color: stat.color }}
+                  >
+                    {stat.value}
+                  </span>
+                  <span className="mt-1 max-w-full truncate text-[9px] uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>
+                    {stat.label}
+                  </span>
+                </span>
+              </GlassPanel>
             </motion.div>
           ))}
         </div>
-
-        {/* Action buttons */}
-        <motion.div
-          className="mt-5 flex gap-2.5"
-          initial={reduced ? undefined : { opacity: 0, y: 14 }}
-          animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <button onClick={onDownload} className="primary-button min-w-[110px] gap-1.5 text-xs">
-            <Download size={14} /> Baixar
-          </button>
-          <button
-            onClick={onShare}
-            className="icon-button min-w-[110px] gap-1.5 text-xs"
-            style={{ width: "auto", padding: "0 14px" }}
-          >
-            <Share2 size={14} /> Compartilhar
-          </button>
-        </motion.div>
-
-        <motion.p
-          className="mt-3 text-[10px] tracking-[0.18em] uppercase"
-          style={{ color: "rgba(231,244,255,.2)" }}
-          initial={reduced ? undefined : { opacity: 0 }}
-          animate={reduced ? undefined : { opacity: 1 }}
-          transition={{ delay: 0.65 }}
-        >
-          energyOS
-        </motion.p>
       </motion.div>
     </SlideFrame>
   );
@@ -580,7 +705,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
@@ -603,6 +728,13 @@ function drawGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 }
 
+/**
+ * Exporta o recap como imagem 1080×1920 (9:16).
+ *
+ * O desenho é feito à mão no canvas (sem html2canvas/dom-to-image): por isso
+ * `backdrop-filter`/blur do redesign NUNCA é rasterizado — cada superfície de
+ * vidro vira uma cor sólida equivalente, guaranteeing um PNG correto.
+ */
 export async function captureRecapCard(
   recap: RecapData,
   userName: string,
@@ -615,7 +747,7 @@ export async function captureRecapCard(
   const pad = 80;
   const CX = CARD_W / 2;
 
-  const { meta, tier } = tierMeta(recap.leagueTier);
+  const { meta } = tierMeta(recap.leagueTier);
   const tierColor = meta ? meta.color : "#71d4ff";
   const monthLabel = formatMonth(recap.recapMonth);
   const garden = recap.gardenCount ?? 0;
@@ -652,21 +784,21 @@ export async function captureRecapCard(
   ctx.fillRect(0, 0, CARD_W, 4);
 
   // ── Header ──
-  let y = 110;
+  let y = 150;
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(231,244,255,.38)";
   ctx.font = "500 32px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("Recap de", CX, y);
-  y += 72;
+  ctx.fillText("RECAP DE", CX, y);
+  y += 86;
 
   const titleGrad = ctx.createLinearGradient(CARD_W * 0.2, 0, CARD_W * 0.8, 0);
   titleGrad.addColorStop(0, "#71d4ff");
   titleGrad.addColorStop(0.5, "#b69cff");
   titleGrad.addColorStop(1, "#ffb86b");
   ctx.fillStyle = titleGrad;
-  ctx.font = "800 80px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(monthLabel, CX, y);
-  y += 56;
+  ctx.font = "800 78px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(monthLabel.toUpperCase(), CX, y);
+  y += 76;
 
   // User avatar + name
   if (userPhotoUrl) {
@@ -697,122 +829,132 @@ export async function captureRecapCard(
     ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
     ctx.fillText(userName, CX, y + 12);
   }
-  y += 80;
+  y += 90;
 
-  // Divider
-  const div1 = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
-  div1.addColorStop(0, "rgba(113,212,255,0)");
-  div1.addColorStop(0.5, "rgba(113,212,255,.28)");
-  div1.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = div1;
-  ctx.fillRect(CARD_W * 0.25, y, CARD_W * 0.5, 2);
-  y += 60;
-
-  // ── Five hero stat rows ──
-  const statRows = [
-    { label: "Foco total",  value: formatMinutes(recap.totalFocusMinutes), color: "#71d4ff", glow: "rgba(113,212,255,.32)", copy: focusCopy(recap.totalFocusMinutes) },
-    { label: plural(recap.longestStreak, "dia de sequência", "dias de sequência"), value: String(recap.longestStreak), color: "#ffb86b", glow: "rgba(255,184,107,.32)", copy: streakCopy(recap.longestStreak) },
-    { label: "Liga",        value: meta ? meta.label : "—",                color: tierColor, glow: `${tierColor}55`,       copy: leagueCopy(tier, recap.leaguePromoted ?? false) },
-    { label: plural(garden, "energia plantada", "energias plantadas"), value: String(garden), color: "#4ade80", glow: "rgba(74,222,128,.32)", copy: gardenCopy(garden) },
-    { label: "XP total",    value: `⚡${(recap.totalXp ?? 0).toLocaleString("pt-BR")}`, color: "#b69cff", glow: "rgba(182,156,255,.32)", copy: xpCopy(recap.totalXp ?? 0) },
+  // ── Bento grid: 2 colunas, o 5º card ocupa as duas ──
+  const stats = [
+    { key: "foco", label: "Foco", value: formatMinutes(recap.totalFocusMinutes), color: ACCENT.focus, art: RECAP_ART.foco },
+    { key: "sequencia", label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: ACCENT.streak, art: RECAP_ART.sequencia },
+    { key: "liga", label: "Liga", value: meta ? meta.label : "—", color: tierColor, art: meta?.iconPath },
+    { key: "jardim", label: plural(garden, "energia", "energias"), value: String(garden), color: ACCENT.garden, art: RECAP_ART.jardim },
+    { key: "xp", label: "XP total", value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: ACCENT.xp, art: "/xp/xp_double_thunder.png" },
   ];
 
-  const rowH = 260;
-  const cardR = 28;
+  const gap = 28;
+  const colW = (CARD_W - pad * 2 - gap) / 2;
+  const rowH = 270;
+  const gridTop = y;
+  const arts = await Promise.all(
+    stats.map(async (stat) => (stat.art ? await loadImage(stat.art).catch(() => null) : null)),
+  );
 
-  // Preload league icon
-  const tierImg = tier && meta ? await loadImage(meta.iconPath).catch(() => null) : null;
+  stats.forEach((stat, index) => {
+    const wide = index === stats.length - 1;
+    const col = wide ? 0 : index % 2;
+    const row = wide ? 2 : Math.floor(index / 2);
+    const x = pad + col * (colW + gap);
+    const yTop = gridTop + row * (rowH + gap);
+    const w = wide ? CARD_W - pad * 2 : colW;
+    const h = rowH;
 
-  for (let i = 0; i < statRows.length; i++) {
-    const s = statRows[i];
-    const sx = pad;
-    const sy = y;
-    const cw = CARD_W - pad * 2;
-    const ch = rowH - 18;
-
-    // Card shadow
+    // Vidro → cor sólida (o canvas não rasteriza backdrop-filter)
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.45)";
-    ctx.shadowBlur = 22;
-    ctx.shadowOffsetY = 10;
-    roundRect(ctx, sx, sy, cw, ch, cardR);
-    ctx.fillStyle = "rgba(10,18,32,.7)";
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 12;
+    roundRect(ctx, x, yTop, w, h, 30);
+    ctx.fillStyle = "rgba(12,22,38,.72)";
     ctx.fill();
     ctx.restore();
 
-    // Card glow border
     ctx.save();
-    ctx.shadowColor = s.glow;
-    ctx.shadowBlur = 28;
-    roundRect(ctx, sx, sy, cw, ch, cardR);
-    ctx.fillStyle = "rgba(255,255,255,.03)";
+    roundRect(ctx, x, yTop, w, h, 30);
+    ctx.fillStyle = hexToRgba(stat.color, 0.07);
     ctx.fill();
-    ctx.strokeStyle = hexToRgba(s.color, 0.38);
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hexToRgba(stat.color, 0.42);
+    ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
 
-    // Inner glow
-    const innerGlow = ctx.createRadialGradient(sx + cw * 0.5, sy + ch * 0.7, 0, sx + cw * 0.5, sy + ch * 0.7, cw * 0.55);
-    innerGlow.addColorStop(0, s.glow);
-    innerGlow.addColorStop(1, "transparent");
-    ctx.fillStyle = innerGlow;
-    ctx.fillRect(sx, sy, cw, ch);
+    // Brilho interno no topo-esquerda
+    const inner = ctx.createRadialGradient(x + w * 0.2, yTop, 0, x + w * 0.2, yTop, w * 0.6);
+    inner.addColorStop(0, hexToRgba(stat.color, 0.16));
+    inner.addColorStop(1, "transparent");
+    ctx.fillStyle = inner;
+    ctx.fillRect(x, yTop, w, h);
 
-    // Stat value — large, left-aligned
-    ctx.fillStyle = s.color;
-    ctx.font = "800 96px 'Inter', -apple-system, sans-serif";
+    // Arte 3D (opcional) — no card largo fica à esquerda, nos demais no topo-direita.
+    // Sem o arquivo, entra um marcador circular para o layout não ficar torto.
+    const art = arts[index];
+    const artSize = wide ? 84 : 72;
+    const artX = wide ? x + 44 : x + w - artSize - 30;
+    const artY = wide ? yTop + (h - artSize) / 2 : yTop + 26;
+    if (art) {
+      ctx.drawImage(art, artX, artY, artSize, artSize);
+    } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(artX + artSize / 2, artY + artSize / 2, artSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = hexToRgba(stat.color, 0.16);
+      ctx.fill();
+      ctx.strokeStyle = hexToRgba(stat.color, 0.5);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const textX = wide && art ? x + 152 : x + 34;
+    const valueY = wide ? yTop + 148 : yTop + 168;
+    const labelY = valueY + 46;
+    const barY = labelY + 18;
+
+    // Valor
+    ctx.fillStyle = stat.color;
+    ctx.font = "800 76px 'Inter', -apple-system, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(s.value, sx + 52, sy + 118);
+    ctx.fillText(stat.value, textX, valueY);
 
     // Label
-    ctx.fillStyle = hexToRgba(s.color, 0.75);
-    ctx.font = "700 28px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(s.label.toUpperCase(), sx + 52, sy + 162);
+    ctx.fillStyle = hexToRgba(stat.color, 0.78);
+    ctx.font = "700 26px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(stat.label.toUpperCase(), textX, labelY);
 
-    // Copy line
-    ctx.fillStyle = "rgba(231,244,255,.45)";
-    ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
-    // Wrap copy text
-    const maxW = cw - 104;
-    const words = s.copy.split(" ");
-    let line = "";
-    let lineY = sy + 210;
-    for (const word of words) {
-      const test = line ? line + " " + word : word;
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line, sx + 52, lineY);
-        line = word;
-        lineY += 34;
-      } else {
-        line = test;
-      }
+    // Barra luminosa
+    ctx.fillStyle = hexToRgba(stat.color, 0.55);
+    roundRect(ctx, textX, barY, 120, 4, 2);
+    ctx.fill();
+  });
+
+  // ── Destaque do mês ──
+  const highlightY = gridTop + 3 * (rowH + gap) + 90;
+  const div = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
+  div.addColorStop(0, "rgba(113,212,255,0)");
+  div.addColorStop(0.5, "rgba(113,212,255,.28)");
+  div.addColorStop(1, "rgba(113,212,255,0)");
+  ctx.fillStyle = div;
+  ctx.fillRect(CARD_W * 0.25, highlightY, CARD_W * 0.5, 2);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(231,244,255,.5)";
+  ctx.font = "400 34px 'Inter', -apple-system, sans-serif";
+  const highlight = focusCopy(recap.totalFocusMinutes);
+  const words = highlight.split(" ");
+  let line = "";
+  let lineY = highlightY + 76;
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > CARD_W - pad * 2 - 60 && line) {
+      ctx.fillText(line, CX, lineY);
+      line = word;
+      lineY += 44;
+    } else {
+      line = test;
     }
-    if (line) ctx.fillText(line, sx + 52, lineY);
-
-    // League icon on the right
-    if (i === 2 && tierImg) {
-      const iconS = 80;
-      ctx.drawImage(tierImg, sx + cw - iconS - 44, sy + ch / 2 - iconS / 2, iconS, iconS);
-    }
-
-    // Promoted badge
-    if (i === 2 && recap.leaguePromoted) {
-      ctx.fillStyle = "rgba(74,222,128,.15)";
-      roundRect(ctx, sx + cw - 220, sy + 28, 180, 44, 22);
-      ctx.fill();
-      ctx.fillStyle = "#4ade80";
-      ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("⬆ Promovido!", sx + cw - 130, sy + 56);
-      ctx.textAlign = "left";
-    }
-
-    y += rowH;
   }
+  if (line) ctx.fillText(line, CX, lineY);
 
   // ── Footer ──
-  const footY = CARD_H - 120;
+  const footY = CARD_H - 150;
   const footDiv = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
   footDiv.addColorStop(0, "rgba(113,212,255,0)");
   footDiv.addColorStop(0.5, "rgba(113,212,255,.18)");
@@ -823,7 +965,7 @@ export async function captureRecapCard(
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(231,244,255,.2)";
   ctx.font = "800 38px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("energyOS", CX, footY + 68);
+  ctx.fillText("ENERGYOS", CX, footY + 74);
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"));
 }
@@ -845,30 +987,67 @@ export function MonthlyRecapPremium({
   const [rewardToast, setRewardToast] = useState<{ amount: number; balance: number } | null>(null);
   const reduced = useReducedMotion();
   const { user } = useAuthRedirect({ ifGuest: "/" });
+  const { enabled: soundEnabled, toggle: toggleSound, play: playSound } = useRecapSound();
 
   const monthLabel = formatMonth(recap.recapMonth);
   const { meta, tier } = tierMeta(recap.leagueTier);
   const garden = recap.gardenCount ?? 0;
+  const isSummary = currentSlide === SLIDE_COUNT - 1;
 
-  const goNext = useCallback(() => setCurrentSlide((s) => Math.min(s + 1, SLIDE_COUNT - 1)), []);
-  const goPrev = useCallback(() => setCurrentSlide((s) => Math.max(s - 1, 0)), []);
+  const theme = useMemo(() => {
+    switch (currentSlide) {
+      case 1: return THEMES.focus;
+      case 2: return THEMES.streak;
+      case 3: return leagueTheme(tier);
+      case 4: return THEMES.garden;
+      case 5: return THEMES.xp;
+      case 6: return THEMES.summary;
+      default: return THEMES.intro;
+    }
+  }, [currentSlide, tier]);
 
-  const handleSlideTap = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    if (x < rect.width / 3) goPrev(); else goNext();
-  }, [goPrev, goNext]);
+  const goNext = useCallback(() => {
+    if (currentSlide >= SLIDE_COUNT - 1) return;
+    playSound("slide");
+    setCurrentSlide(currentSlide + 1);
+  }, [currentSlide, playSound]);
+
+  const goPrev = useCallback(() => {
+    if (currentSlide <= 0) return;
+    playSound("slide");
+    setCurrentSlide(currentSlide - 1);
+  }, [currentSlide, playSound]);
+
+  // Zonas de toque: 30% à esquerda (anterior) e 30% à direita (próximo).
+  const handleTapZone = useCallback((direction: "prev" | "next") => {
+    if (direction === "prev") goPrev();
+    else goNext();
+  }, [goNext, goPrev]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") goPrev();
-      if (e.key === "ArrowRight" || e.key === " ") goNext();
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "ArrowRight" || e.key === " ") {
+        e.preventDefault();
+        goNext();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, goPrev, goNext]);
+  }, [open, goNext, goPrev]);
+
+  // Som: tique do contador + brilho do slide final.
+  useEffect(() => {
+    if (!open) return;
+    if (isSummary) {
+      playSound("sparkle");
+      return;
+    }
+    if (currentSlide === 0) return;
+    const timer = window.setTimeout(() => playSound("tick"), 260);
+    return () => window.clearTimeout(timer);
+  }, [currentSlide, isSummary, open, playSound]);
 
   const handleDownload = useCallback(async () => {
     setIsDownloading(true);
@@ -932,6 +1111,7 @@ export function MonthlyRecapPremium({
             label="Foco total"
             copy={focusCopy(recap.totalFocusMinutes)}
             theme={THEMES.focus}
+            iconSrc={RECAP_ART.foco}
             icon={<Timer size={48} color={THEMES.focus.accent} strokeWidth={1.5} />}
           />
         );
@@ -943,6 +1123,7 @@ export function MonthlyRecapPremium({
             label="Sequência"
             copy={streakCopy(recap.longestStreak)}
             theme={THEMES.streak}
+            iconSrc={RECAP_ART.sequencia}
             icon={<Flame size={52} color={THEMES.streak.accent} strokeWidth={1.5} />}
           />
         );
@@ -963,6 +1144,7 @@ export function MonthlyRecapPremium({
             label="Jardim"
             copy={gardenCopy(garden)}
             theme={THEMES.garden}
+            iconSrc={RECAP_ART.jardim}
             icon={<Zap size={52} color={THEMES.garden.accent} strokeWidth={1.5} />}
           />
         );
@@ -984,8 +1166,6 @@ export function MonthlyRecapPremium({
             userName={userName}
             userPhotoUrl={userPhotoUrl}
             monthLabel={monthLabel}
-            onDownload={handleDownload}
-            onShare={handleShare}
             theme={THEMES.summary}
           />
         );
@@ -1047,63 +1227,154 @@ export function MonthlyRecapPremium({
       <AnimatePresence>
         {open && (
           <Modal onClose={() => setOpen(false)}>
-            <div className="relative flex w-full max-w-[420px] flex-col items-center">
-              <button
-                onClick={() => setOpen(false)}
-                className="absolute right-2 top-2 z-30 rounded-full bg-[rgba(0,0,0,0.45)] p-2 backdrop-blur-sm transition-colors hover:bg-[rgba(0,0,0,0.65)]"
-                aria-label="Fechar"
-              >
-                <X size={18} className="text-white/80" />
-              </button>
-
+            <div className="mx-auto flex flex-col items-center gap-2.5 pb-2 sm:pb-0" style={{ width: MODAL_WIDTH }}>
+              {/* Cartão 9:16 — header / content / footer */}
               <div
-                className="relative w-full overflow-hidden rounded-2xl"
-                style={{ aspectRatio: "9/16", maxHeight: "calc(100dvh - 80px)", boxShadow: "0 25px 60px -12px rgba(0,0,0,.65)" }}
-                onClick={handleSlideTap}
+                className="relative flex flex-col overflow-hidden rounded-2xl"
+                style={{
+                  width: "100%",
+                  aspectRatio: "9 / 16",
+                  background: "#07111f",
+                  boxShadow: "0 25px 60px -12px rgba(0,0,0,.65), 0 0 60px -20px rgba(113,212,255,.35)",
+                }}
               >
-                <ProgressBar current={currentSlide} total={SLIDE_COUNT} />
+                {/* Fundo do slide (cross-fade) */}
+                <motion.div
+                  key={`bg-${currentSlide}`}
+                  aria-hidden="true"
+                  className="absolute inset-0"
+                  style={{ background: theme.bg }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: reduced ? 0 : 0.3, ease: "easeOut" }}
+                />
 
-                {!reduced && (
-                  <>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); goPrev(); }}
-                      disabled={currentSlide === 0}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
-                      aria-label="Slide anterior"
+                {/* Conteúdo */}
+                <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={currentSlide}
+                      className="absolute inset-0"
+                      initial={reduced ? { opacity: 0 } : { opacity: 0, x: 48 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={reduced ? { opacity: 0 } : { opacity: 0, x: -48 }}
+                      transition={{ duration: reduced ? 0 : 0.3, ease: "easeOut" }}
                     >
-                      <ChevronLeft size={18} className="text-white/70" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); goNext(); }}
-                      disabled={currentSlide === SLIDE_COUNT - 1}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 z-20 rounded-full bg-[rgba(0,0,0,0.35)] p-1.5 backdrop-blur-sm transition-all hover:bg-[rgba(0,0,0,0.55)] disabled:opacity-0"
-                      aria-label="Próximo slide"
-                    >
-                      <ChevronRight size={18} className="text-white/70" />
-                    </button>
-                  </>
-                )}
+                      {renderSlide()}
+                    </motion.div>
+                  </AnimatePresence>
 
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={currentSlide}
-                    className="absolute inset-0"
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 1.02 }}
-                    transition={{ duration: reduced ? 0 : 0.22, ease: "easeInOut" }}
+                  {/* Zonas de toque (invisíveis) — 30% em cada lado */}
+                  <div
+                    aria-hidden="true"
+                    onClick={() => handleTapZone("prev")}
+                    className="absolute inset-y-0 left-0 z-20 w-[30%] cursor-pointer"
+                  />
+                  <div
+                    aria-hidden="true"
+                    onClick={() => handleTapZone("next")}
+                    className="absolute inset-y-0 right-0 z-20 w-[30%] cursor-pointer"
+                  />
+                </div>
+
+                {/* Cabeçalho — progresso, som e fechar */}
+                <div className="absolute inset-x-0 top-0 z-30 flex items-center gap-2 px-3 pt-3">
+                  <ProgressBar current={currentSlide} total={SLIDE_COUNT} accent={theme.accent} />
+
+                  <button
+                    type="button"
+                    onClick={toggleSound}
+                    aria-label={soundEnabled ? "Desativar sons do recap" : "Ativar sons do recap"}
+                    aria-pressed={soundEnabled}
+                    className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-[rgba(0,0,0,0.45)] text-white/75 backdrop-blur-sm transition hover:bg-[rgba(0,0,0,0.65)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
                   >
-                    {renderSlide()}
-                  </motion.div>
-                </AnimatePresence>
+                    {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    aria-label="Fechar"
+                    className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-[rgba(0,0,0,0.45)] text-white/75 backdrop-blur-sm transition hover:bg-[rgba(0,0,0,0.65)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Setas — encostadas na borda do cartão, fora da área de conteúdo */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                  disabled={currentSlide === 0}
+                  aria-label="Slide anterior"
+                  className="absolute top-1/2 left-1 z-30 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-[rgba(0,0,0,0.35)] text-white/70 backdrop-blur-sm transition hover:bg-[rgba(0,0,0,0.55)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:pointer-events-none disabled:opacity-0"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); goNext(); }}
+                  disabled={currentSlide === SLIDE_COUNT - 1}
+                  aria-label="Próximo slide"
+                  className="absolute top-1/2 right-1 z-30 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-[rgba(0,0,0,0.35)] text-white/70 backdrop-blur-sm transition hover:bg-[rgba(0,0,0,0.55)] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:pointer-events-none disabled:opacity-0"
+                >
+                  <ChevronRight size={18} />
+                </button>
+
+                {/* Rodapé — ações do slide final (fora do conteúdo, sem sobreposição) */}
+                {isSummary ? (
+                  <div className="relative z-20 shrink-0 px-5 pt-1 pb-4">
+                    <p className="mb-2 text-center text-[9px] font-bold uppercase tracking-[0.4em]" style={{ color: "rgba(231,244,255,.2)" }}>
+                      energyOS
+                    </p>
+                    <div className="flex items-center gap-2.5">
+                      <motion.button
+                        type="button"
+                        whileHover={reduced ? undefined : { y: -2 }}
+                        whileTap={reduced ? undefined : { scale: 0.97 }}
+                        onClick={handleDownload}
+                        disabled={isDownloading}
+                        className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
+                        style={{
+                          background: "linear-gradient(135deg, #71d4ff, #5CC8FF)",
+                          color: "#07111f",
+                          boxShadow: "0 10px 26px -12px rgba(113,212,255,.85)",
+                        }}
+                      >
+                        {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                        Baixar
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        whileHover={reduced ? undefined : { y: -2 }}
+                        whileTap={reduced ? undefined : { scale: 0.97 }}
+                        onClick={handleShare}
+                        disabled={isSharing}
+                        className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
+                        style={{
+                          background: "rgba(255,255,255,.07)",
+                          border: "1px solid rgba(113,212,255,.35)",
+                          color: "#71d4ff",
+                          backdropFilter: "blur(10px)",
+                          WebkitBackdropFilter: "blur(10px)",
+                        }}
+                      >
+                        {isSharing ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+                        Compartilhar
+                      </motion.button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
+              {/* Dica fora e abaixo do cartão */}
               <motion.p
-                className="mt-3 text-[10px] tracking-[0.18em] uppercase"
-                style={{ color: "rgba(231,244,255,.22)" }}
+                className="px-2 text-center text-[10px] tracking-[0.18em] uppercase"
+                style={{ color: "rgba(231,244,255,.28)" }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1.2 }}
+                transition={{ delay: 0.6 }}
               >
                 Toque nos lados ou use as setas para navegar
               </motion.p>

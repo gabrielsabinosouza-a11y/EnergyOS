@@ -446,6 +446,7 @@ function DashboardContent() {
         repeatType: null,
         repeatDays: null,
         isRecurring: false,
+        reminderOffsetMin: result.plan.reminderOffsetMin ?? null,
       };
       setWeeklyPlans((ps) => ps.map((p) => (p.id === id ? item : p)));
       if (completed) {
@@ -492,6 +493,7 @@ function DashboardContent() {
         repeatType: null,
         repeatDays: null,
         isRecurring: false,
+        reminderOffsetMin: result.plan.reminderOffsetMin ?? null,
       };
       setWeeklyPlans((ps) => ps.map((p) => p.id === id ? item : p));
     } catch (error) {
@@ -531,6 +533,7 @@ function DashboardContent() {
         repeatType: null,
         repeatDays: null,
         isRecurring: false,
+        reminderOffsetMin: result.plan.reminderOffsetMin ?? null,
       };
       setWeeklyPlans((prev) => [...prev, item]);
     } catch (error) {

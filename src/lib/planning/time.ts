@@ -26,6 +26,32 @@ export function toTimeLabel(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * Normaliza a digitação de um horário em 24 horas (padrão pt-BR).
+ *
+ * Aceita só dígitos, insere ":" após as duas primeiras casas e limita o
+ * campo a 4 dígitos ("HH:MM"). Assim o usuário pode digitar "0900" e o
+ * campo mostra "09:00" — nunca AM/PM. Um ":" digitado é preservado.
+ */
+export function formatTimeInput(value: string): string {
+  const raw = value.trim();
+  const colon = raw.indexOf(":");
+  if (colon >= 0) {
+    const hours = raw.slice(0, colon).replace(/\D/g, "").slice(0, 2);
+    const minutes = raw.slice(colon + 1).replace(/\D/g, "").slice(0, 2);
+    if (!minutes) return hours;
+    return `${hours.padStart(2, "0")}:${minutes}`;
+  }
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+/** "HH:MM" válido (00:00 – 23:59). */
+export function isValidTime24(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 /** Soma N minutos a um "HH:MM" e devolve "HH:MM". */
 export function addMinutesToTime(time: string, minutes: number): string {
   const base = toMinutes(time) ?? 0;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, MoreHorizontal, Pencil, Repeat, Trash2 } from "lucide-react";
+import { Bell, Check, MoreHorizontal, Pencil, Repeat, Trash2 } from "lucide-react";
 import type { WeeklyPlanItem } from "@/types";
 import { eventColor, shortTimeLabel } from "@/lib/planning/categories";
 
@@ -81,6 +81,9 @@ export function PlanRow({ plan, compact = false, onToggleCompleted, onEdit, onDe
         {plan.title || "(sem título)"}
       </button>
       {time ? <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-faint)]">{time}</span> : null}
+      {plan.reminderOffsetMin !== null ? (
+        <Bell size={12} className="shrink-0 text-[var(--accent)]" aria-label="Plano com lembrete" />
+      ) : null}
       <div ref={menuRef} className="relative shrink-0">
         <button
           ref={triggerRef}

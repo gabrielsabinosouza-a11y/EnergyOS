@@ -49,6 +49,18 @@ export function weekStart(iso: string): string {
   return addDays(iso, -mondayOffset);
 }
 
+/**
+ * Dia da semana de uma chave de calendário (0 = domingo … 6 = sábado),
+ * no mesmo formato de `Date#getUTCDay`.
+ *
+ * Calculado a partir das partes locais da chave — nunca via `new Date(iso)`,
+ * que interpretaria "YYYY-MM-DD" como UTC e poderia deslocar o dia (fuso -3).
+ */
+export function weekdayOfIso(iso: string): number {
+  const { year, month, day } = parseIsoKey(iso);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
 /** Intervalo segunda → domingo da semana que contém a data. */
 export function weekRange(iso: string): { start: string; end: string } {
   const start = weekStart(iso);

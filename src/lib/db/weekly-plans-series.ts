@@ -26,6 +26,7 @@ export async function ensureWeeklyPlanSeriesSchema() {
       repeat_interval int,
       start_time      time,
       duration_minutes int,
+      reminder_offset_min int,
       start_date      date not null,
       end_type        text not null default 'never',
       end_date        date,
@@ -44,6 +45,7 @@ export async function ensureWeeklyPlanSeriesSchema() {
       skipped            boolean not null default false,
       override_title     text,
       override_start_time time,
+      reminder_offset_min int,
       unique (series_id, occurrence_date)
     )
   `);
@@ -59,7 +61,7 @@ export async function ensureWeeklyPlanSeriesSchema() {
 const SERIES_SELECT = `
   select s.id, s.profile_id, s.title, s.category_id, s.icon_type, s.icon_value,
          s.color, s.note, s.repeat_type, s.repeat_days, s.repeat_interval,
-         s.start_time, s.duration_minutes, s.start_date::text as start_date, s.end_type, s.end_date::text as end_date,
+         s.start_time, s.duration_minutes, s.reminder_offset_min, s.start_date::text as start_date, s.end_type, s.end_date::text as end_date,
          s.end_count, s.timezone, s.archived, s.created_at,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
@@ -82,6 +84,7 @@ interface SeriesRow {
   repeat_interval: number | null;
   start_time: string | null;
   duration_minutes: number | null;
+  reminder_offset_min: number | null;
   start_date: Date | string;
   end_type: string;
   end_date: Date | string | null;
@@ -127,6 +130,7 @@ function mapSeries(row: SeriesRow): WeeklyPlanSeries {
     repeatInterval: row.repeat_interval,
     startTime: row.start_time?.slice(0, 5) ?? null,
     durationMinutes: row.duration_minutes,
+    reminderOffsetMin: row.reminder_offset_min,
     startDate: typeof row.start_date === "string" ? row.start_date : row.start_date.toISOString().slice(0, 10),
     endType: row.end_type as PlanEndType,
     endDate: row.end_date ? (typeof row.end_date === "string" ? row.end_date : row.end_date.toISOString().slice(0, 10)) : null,
@@ -165,6 +169,7 @@ export interface CreateWeeklyPlanSeriesInput {
   endDate?: string | null;
   endCount?: number | null;
   timezone?: string;
+  reminderOffsetMin?: number | null;
 }
 
 function validateSeriesRule(input: {
@@ -255,15 +260,15 @@ export async function createWeeklyPlanSeries(
 
   const inserted = await pool.query<{ id: string | number }>(
     `insert into weekly_plan_series (profile_id, title, category_id, icon_type, icon_value, color, note,
-       repeat_type, repeat_days, repeat_interval, start_time, duration_minutes, start_date,
+       repeat_type, repeat_days, repeat_interval, start_time, duration_minutes, reminder_offset_min, start_date,
        end_type, end_date, end_count, timezone)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::date, $14, $15::date, $16, $17)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::date, $15, $16::date, $17, $18)
      returning id`,
     [
       profileId, title, categoryId,
       input.iconType ?? "asset", input.iconValue ?? null, input.color ?? null, input.note ?? null,
       input.repeatType, input.repeatDays ?? null, input.repeatInterval ?? null,
-      startTime, durationMinutes, startDate,
+      startTime, durationMinutes, input.reminderOffsetMin ?? null, startDate,
       endType, endDate, input.endCount ?? null,
       timezone,
     ],
@@ -288,6 +293,7 @@ export interface UpdateWeeklyPlanSeriesInput {
   endType?: PlanEndType;
   endDate?: string | null;
   endCount?: number | null;
+  reminderOffsetMin?: number | null;
 }
 
 export async function updateWeeklyPlanSeries(
@@ -340,6 +346,7 @@ export async function updateWeeklyPlanSeries(
   if (input.repeatInterval !== undefined) push("repeat_interval = $N", input.repeatInterval);
   if (startTime !== undefined) push("start_time = $N", startTime);
   if (input.durationMinutes !== undefined) push("duration_minutes = $N", input.durationMinutes);
+  if (input.reminderOffsetMin !== undefined) push("reminder_offset_min = $N", input.reminderOffsetMin);
   if (startDate !== undefined) push("start_date = $N::date", startDate);
   if (input.endType !== undefined) push("end_type = $N", input.endType);
   if (endDate !== undefined) push("end_date = $N::date", endDate);
@@ -548,6 +555,7 @@ export async function skipOccurrence(profileId: string, seriesId: number, occurr
 export interface OccurrenceOverrideInput {
   title?: string;
   startTime?: string | null;
+  reminderOffsetMin?: number | null;
 }
 
 export async function updateOccurrenceOverride(
@@ -578,6 +586,7 @@ export async function updateOccurrenceOverride(
   };
   if (input.title !== undefined) push("override_title = $N", input.title);
   if (input.startTime !== undefined) push("override_start_time = $N", input.startTime);
+  if (input.reminderOffsetMin !== undefined) push("reminder_offset_min = $N", input.reminderOffsetMin);
   if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
 
   values.push(seriesId, occurrenceDate);
@@ -605,7 +614,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
 
   // 1. Legacy weekly_plans rows
   const legacyResult = await pool.query(
-    `select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time,
+    `select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time, w.reminder_offset_min,
             c.id as category_id, c.user_id as category_user_id, c.name as category_name,
             c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
             c.created_at as category_created_at
@@ -646,6 +655,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
       repeatType: null,
       repeatDays: null,
       isRecurring: false,
+      reminderOffsetMin: row.reminder_offset_min,
     });
   }
 
@@ -662,7 +672,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
     for (const date of dates) {
       // Check if there's an occurrence record with state
       const occResult = await pool.query(
-        `select id, completed_at, skipped, override_title, override_start_time
+        `select id, completed_at, skipped, override_title, override_start_time, reminder_offset_min
          from weekly_plan_occurrences
          where series_id = $1 and occurrence_date = $2::date`,
         [series.id, date],
@@ -688,6 +698,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
         repeatType: series.repeatType,
         repeatDays: series.repeatDays,
         isRecurring: series.repeatType !== "once",
+        reminderOffsetMin: occ?.remider_offset_min ?? series.reminderOffsetMin,
       });
     }
   }

@@ -289,6 +289,51 @@ create table if not exists weekly_plans (
 
 create index if not exists weekly_plans_profile_date_idx on weekly_plans(profile_id, plan_date);
 
+-- ── Planejamento: séries recorrentes (regra) + estado por ocorrência ──────
+-- A repetição é guardada como REGRA (repeat_type/repeat_days/end_*), nunca como
+-- milhares de linhas copiadas. As ocorrências são geradas sob demanda para o
+-- intervalo visível (semana/mês/dia) e o estado individual de cada ocorrência
+-- vive em weekly_plan_occurrences, chaveada por (series_id, occurrence_date) —
+-- assim concluir a segunda-feira não conclui a segunda seguinte.
+create table if not exists weekly_plan_series (
+  id               serial primary key,
+  profile_id       text not null references profiles(id) on delete cascade,
+  title            text not null,
+  category_id      int not null references categories(id),
+  icon_type        text default 'asset',
+  icon_value       text,
+  color            text,
+  note             text,
+  repeat_type      text not null default 'once',
+  repeat_days      int[],
+  repeat_interval  int,
+  start_time       time,
+  duration_minutes int,
+  reminder_offset_min int,
+  start_date       date not null,
+  end_type         text not null default 'never',
+  end_date         date,
+  end_count        int,
+  timezone         text not null default 'America/Sao_Paulo',
+  archived         boolean not null default false,
+  created_at       timestamptz not null default now()
+);
+
+create table if not exists weekly_plan_occurrences (
+  id                  serial primary key,
+  series_id           int not null references weekly_plan_series(id) on delete cascade,
+  occurrence_date     date not null,
+  completed_at        timestamptz,
+  skipped             boolean not null default false,
+  override_title      text,
+  override_start_time time,
+  reminder_offset_min int,
+  unique (series_id, occurrence_date)
+);
+
+create index if not exists idx_wps_profile on weekly_plan_series(profile_id, archived);
+create index if not exists idx_wpo_series_date on weekly_plan_occurrences(series_id, occurrence_date);
+
 create table if not exists focus_sessions (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
@@ -1252,6 +1297,7 @@ on conflict (id) do update set
 ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS start_time time;
 ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS end_time time;
 ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS all_day boolean NOT NULL DEFAULT true;
+ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS reminder_offset_min int;
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_time time;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS end_time time;

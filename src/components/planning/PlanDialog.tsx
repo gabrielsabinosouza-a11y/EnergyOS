@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Repeat } from "lucide-react";
+import { Repeat, Bell } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
-import { SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
+import { SHORT_WEEKDAYS, todayIso, weekdayOfIso } from "@/lib/planning/dates";
+import { formatTimeInput, isValidTime24 } from "@/lib/planning/time";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
 import { PlannerDatePicker } from "./PlannerDatePicker";
 
 type RepeatScope = "occurrence" | "series";
+type ReminderOption = "sem-lembrete" | "no-horario" | "5-min" | "10-min" | "30-min" | "1-hora";
 type PlanFormValues = {
   planDate: string;
   title: string;
@@ -19,7 +21,17 @@ type PlanFormValues = {
   repeatType: "once" | "weekly";
   repeatDays: number[];
   repeatUntil: string | null;
+  reminderOffsetMin: number | null;
 };
+
+const REMINDER_OPTIONS: { value: ReminderOption; label: string; offsetMin: number | null }[] = [
+  { value: "sem-lembrete", label: "Sem lembrete", offsetMin: null },
+  { value: "no-horario", label: "No horário do plano", offsetMin: 0 },
+  { value: "5-min", label: "5 minutos antes", offsetMin: 5 },
+  { value: "10-min", label: "10 minutos antes", offsetMin: 10 },
+  { value: "30-min", label: "30 minutos antes", offsetMin: 30 },
+  { value: "1-hora", label: "1 hora antes", offsetMin: 60 },
+];
 
 interface PlanDialogProps {
   open: boolean;
@@ -30,6 +42,7 @@ interface PlanDialogProps {
   categories: Category[];
   onClose: () => void;
   onSave: (plan: WeeklyPlanItem | null, values: PlanFormValues, scope?: RepeatScope) => Promise<void>;
+  showNotificationPermissionPrompt?: (onApprove: () => void) => void;
 }
 
 const WEEKDAYS = [
@@ -42,11 +55,6 @@ const WEEKDAYS = [
   { label: SHORT_WEEKDAYS[6], value: 0 },
 ];
 
-function weekdayOf(date: string): number {
-  const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-}
-
 export function PlanDialog({
   open,
   plan,
@@ -56,6 +64,7 @@ export function PlanDialog({
   categories,
   onClose,
   onSave,
+  showNotificationPermissionPrompt,
 }: PlanDialogProps) {
   const [title, setTitle] = useState(() => plan?.title ?? "");
   const [categoryId, setCategoryId] = useState(() => String(plan?.categoryId ?? categories[0]?.id ?? ""));
@@ -67,6 +76,12 @@ export function PlanDialog({
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState("");
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
+  const [reminderOption, setReminderOption] = useState<ReminderOption>(() => {
+    const offset = plan?.reminderOffsetMin;
+    if (offset === null || offset === undefined) return "sem-lembrete";
+    const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
+    return found?.value ?? "sem-lembrete";
+  });
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -74,12 +89,12 @@ export function PlanDialog({
 
   function handleDateChange(date: string) {
     setPlanDate(date);
-    if (!repeatDaysTouched && date) setRepeatDays([weekdayOf(date)]);
+    if (!repeatDaysTouched && date) setRepeatDays([weekdayOfIso(date)]);
   }
 
   function handleRepeatChange(weekly: boolean) {
     setRepeatWeekly(weekly);
-    if (weekly && repeatDays.length === 0) setRepeatDays([weekdayOf(planDate)]);
+    if (weekly && repeatDays.length === 0) setRepeatDays([weekdayOfIso(planDate)]);
     setError("");
   }
 
@@ -89,6 +104,9 @@ export function PlanDialog({
       ? current.filter((selected) => selected !== day)
       : [...current, day].sort((a, b) => (a + 6) % 7 - (b + 6) % 7));
   }
+
+  const selectedReminderOffset = REMINDER_OPTIONS.find((opt) => opt.value === reminderOption)?.offsetMin ?? null;
+  const needsPermission = selectedReminderOffset != null;
 
   function validate(): PlanFormValues | null {
     const trimmedTitle = title.trim();
@@ -105,8 +123,7 @@ export function PlanDialog({
       setError("Escolha uma categoria.");
       return null;
     }
-    if ((startTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime))
-      || (endTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime))) {
+    if ((startTime && !isValidTime24(startTime)) || (endTime && !isValidTime24(endTime))) {
       setError("Informe os horários no formato 24 horas, como 09:00.");
       return null;
     }
@@ -131,6 +148,7 @@ export function PlanDialog({
       repeatType: repeatWeekly ? "weekly" : "once",
       repeatDays: repeatWeekly ? repeatDays : [],
       repeatUntil: repeatWeekly && hasRepeatEnd ? repeatUntil : null,
+      reminderOffsetMin: selectedReminderOffset,
     };
   }
 
@@ -138,6 +156,17 @@ export function PlanDialog({
     setLoading(true);
     setError("");
     try {
+      // Handle notification permission if needed
+      if (needsPermission && showNotificationPermissionPrompt) {
+        let permissionGranted = false;
+        await new Promise<void>((resolve) => {
+          showNotificationPermissionPrompt(() => { permissionGranted = true; resolve(); });
+        });
+        if (!permissionGranted) {
+          // User denied permission - still save the plan but without reminder
+          values.reminderOffsetMin = null;
+        }
+      }
       await onSave(plan ?? null, values, scope);
       setPendingScope(null);
       onClose();
@@ -246,7 +275,7 @@ export function PlanDialog({
                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                 maxLength={5}
                 value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
+                onChange={(event) => setStartTime(formatTimeInput(event.target.value))}
                 placeholder="09:00"
                 aria-label="Horário de início, formato 24 horas"
                 className="auth-input tabular-nums"
@@ -264,7 +293,7 @@ export function PlanDialog({
                   pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                   maxLength={5}
                   value={endTime}
-                  onChange={(event) => setEndTime(event.target.value)}
+                  onChange={(event) => setEndTime(formatTimeInput(event.target.value))}
                   placeholder="10:00"
                   aria-label="Horário de fim, formato 24 horas"
                   className="auth-input tabular-nums"
@@ -364,6 +393,28 @@ export function PlanDialog({
                   </fieldset>
                 </>
               ) : null}
+
+              {!recurringOccurrence && (
+                <section className="space-y-3 border-t border-[var(--border-subtle)] pt-4" aria-labelledby="planner-reminder-label">
+                  <div>
+                    <h3 id="planner-reminder-label" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      Lembrete
+                    </h3>
+                    <div className="mt-2">
+                      <select
+                        id="planner-plan-reminder"
+                        value={reminderOption}
+                        onChange={(event) => setReminderOption(event.target.value as ReminderOption)}
+                        className="auth-input"
+                      >
+                        {REMINDER_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </section>
+              )}
             </section>
           ) : recurringOccurrence ? (
             <p className="flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-3 py-2 text-xs text-[var(--text-secondary)]">

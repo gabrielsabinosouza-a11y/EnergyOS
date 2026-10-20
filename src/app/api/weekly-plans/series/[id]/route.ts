@@ -43,6 +43,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       endType: body.endType as "never" | "date" | "count" | undefined,
       endDate: body.endDate as string | null | undefined,
       endCount: body.endCount as number | null | undefined,
+      reminderOffsetMin: body.reminderOffsetMin as number | null | undefined,
     });
     return jsonOk({ series });
   });

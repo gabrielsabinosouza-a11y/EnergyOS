@@ -133,7 +133,7 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
     throw new ValidationError("O horário de fim deve ser posterior ao início.");
   }
   const allDay = input.allDay ?? true;
-  const reminderOffsetMin = parseReminderOffset(input.reminderOffsetMin, "Lembrete") ?? null;
+  const reminderOffsetMin = parseReminderOffset(input.reminderOffsetMin) ?? null;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();

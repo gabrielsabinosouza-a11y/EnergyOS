@@ -35,6 +35,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       planDate: body.planDate as string | undefined,
       startTime: body.startTime as string | null | undefined,
       endTime: body.endTime as string | null | undefined,
+      reminderOffsetMin: body.reminderOffsetMin as number | null | undefined,
     });
     return jsonOk({ plan });
   });
