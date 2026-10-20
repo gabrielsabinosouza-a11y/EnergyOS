@@ -1,17 +1,17 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 
 const EMAIL = "e2e.planner@energyos.test";
 const PASS = "Planner123!";
-const TITLE = `DEBUG recorrente ${Date.now()}`;
+const TITLE = `DEBUG ${Date.now()}`;
 
-test("debug: criação do plano recorrente", async ({ page }) => {
+test("debug create", async ({ page }) => {
   test.setTimeout(120000);
   page.on("pageerror", (e) => console.log("[pageerror]", e.message));
-  page.on("console", (msg) => { if (msg.type() === "error") console.log("[console]", msg.text()); });
+  page.on("console", (m) => { if (m.type() === "error") console.log("[console]", m.text()); });
   page.on("response", async (res) => {
     if (!res.url().includes("/api/weekly-plans")) return;
     let body = "";
-    try { body = JSON.stringify(await res.json()).slice(0, 300); } catch { body = "(não json)"; }
+    try { body = JSON.stringify(await res.json()).slice(0, 400); } catch { body = "(não json)"; }
     console.log(`[API] ${res.status()} ${res.request().method()} ${res.url()} → ${body}`);
   });
 
@@ -33,18 +33,19 @@ test("debug: criação do plano recorrente", async ({ page }) => {
 
   await page.locator('button[aria-label^="Adicionar plano para segunda-feira"]').first().click();
   await page.waitForTimeout(500);
+  console.log("[DEBUG] data:", await page.locator("#planner-plan-date").textContent());
   await page.locator('input[placeholder="Ex.: Ir à academia"]').fill(TITLE);
   await page.getByRole("button", { name: "Semanalmente" }).click();
   await page.waitForTimeout(300);
-  console.log("[DEBUG] data exibida:", await page.locator("#planner-plan-date").textContent());
-  console.log("[DEBUG] valor data:", await page.locator("#planner-plan-date").getAttribute("aria-label"));
   console.log("[DEBUG] categoria:", await page.locator("#planner-plan-category").inputValue());
+  console.log("[DEBUG] inicio:", await page.locator("#planner-plan-start-time").inputValue());
+  console.log("[DEBUG] fim:", await page.locator("#planner-plan-end-time").inputValue());
 
   await page.getByRole("button", { name: "Criar plano" }).click();
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(4000);
 
   const alert = page.locator('[role="alert"]');
-  if (await alert.count()) console.log("[DEBUG] erro no modal:", await alert.first().textContent());
-  console.log("[DEBUG] modal aberto?", await page.getByRole("button", { name: "Criar plano" }).count());
+  if (await alert.count()) console.log("[DEBUG] erro:", await alert.first().textContent());
+  console.log("[DEBUG] modal ainda aberto?", await page.getByRole("button", { name: "Criar plano" }).count());
   console.log("[DEBUG] linhas:", await page.locator('[data-testid^="plan-series:"]').count());
 });

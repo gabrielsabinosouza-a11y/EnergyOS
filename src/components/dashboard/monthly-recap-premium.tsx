@@ -67,13 +67,18 @@ const SLIDE_COUNT = 7;
 const SHARE_REWARD_COINS = 50;
 
 /**
- * Artes 3D dos slides. Os arquivos são OPTIONAIS: enquanto o asset não existir
- * em /public/recaps, o componente usa o ícone line original como fallback.
+ * Artes 3D dos slides. Cada slide aceita VÁRIOS caminhos: o primeiro que
+ * carregar é usado e, se nenhum existir, o ícone line original entra como
+ * fallback (sem quebrar nada).
+ *
+ * - /recap/icons/recap-*.png → nomes previstos para os novos assets
+ * - /recaps/*.png           → artes já disponíveis no repositório
  */
 const RECAP_ART = {
-  foco: "/recaps/clock.png",
-  sequencia: "/recaps/streak.png",
-  jardim: "/recaps/energy.png",
+  foco: ["/recap/icons/recap-foco.png", "/recaps/clock.png"],
+  sequencia: ["/recap/icons/recap-sequencia.png", "/recaps/streak.png"],
+  jardim: ["/recap/icons/recap-jardim.png", "/recaps/energy.png"],
+  xp: ["/recap/icons/recap-xp.png", "/recaps/xp.png", "/xp/xp_double_thunder.png"],
 } as const;
 
 /** Cores de destaque por slide (as únicas cores novas do redesign). */
@@ -530,30 +535,30 @@ interface SummaryStat {
   label: string;
   value: string;
   color: string;
-  art?: string;
+  art?: readonly string[];
   fallback: React.ReactNode;
   wide?: boolean;
 }
 
 /** Ícone do card de estatística: arte 3D se existir, ícone line como fallback. */
-function SummaryStatIcon({ art, label, fallback }: { art?: string; label: string; fallback: React.ReactNode }) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const artFailed = Boolean(art) && failedSrc === art;
+function SummaryStatIcon({ art, label, fallback }: { art?: readonly string[]; label: string; fallback: React.ReactNode }) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const current = (art ?? []).find((candidate) => !failed.includes(candidate)) ?? null;
 
-  if (!art || artFailed) {
+  if (!current) {
     return <span aria-hidden="true" className="grid place-items-center">{fallback}</span>;
   }
 
   return (
     <Image
-      src={art}
+      src={current}
       alt={label}
       width={16}
       height={16}
       style={{ objectFit: "contain" }}
       unoptimized
       draggable={false}
-      onError={() => setFailedSrc(art)}
+      onError={() => setFailed((prev) => (prev.includes(current) ? prev : [...prev, current]))}
     />
   );
 }
@@ -835,9 +840,9 @@ export async function captureRecapCard(
   const stats = [
     { key: "foco", label: "Foco", value: formatMinutes(recap.totalFocusMinutes), color: ACCENT.focus, art: RECAP_ART.foco },
     { key: "sequencia", label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: ACCENT.streak, art: RECAP_ART.sequencia },
-    { key: "liga", label: "Liga", value: meta ? meta.label : "—", color: tierColor, art: meta?.iconPath },
+    { key: "liga", label: "Liga", value: meta ? meta.label : "—", color: tierColor, art: meta?.iconPath ? [meta.iconPath] : [] },
     { key: "jardim", label: plural(garden, "energia", "energias"), value: String(garden), color: ACCENT.garden, art: RECAP_ART.jardim },
-    { key: "xp", label: "XP total", value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: ACCENT.xp, art: "/xp/xp_double_thunder.png" },
+    { key: "xp", label: "XP total", value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: ACCENT.xp, art: RECAP_ART.xp },
   ];
 
   const gap = 28;
@@ -845,7 +850,13 @@ export async function captureRecapCard(
   const rowH = 270;
   const gridTop = y;
   const arts = await Promise.all(
-    stats.map(async (stat) => (stat.art ? await loadImage(stat.art).catch(() => null) : null)),
+    stats.map(async (stat) => {
+      for (const candidate of stat.art) {
+        const img = await loadImage(candidate).catch(() => null);
+        if (img) return img;
+      }
+      return null;
+    }),
   );
 
   stats.forEach((stat, index) => {

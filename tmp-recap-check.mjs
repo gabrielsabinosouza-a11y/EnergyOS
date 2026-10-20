@@ -63,7 +63,7 @@ async function openRecap(width, height, tag) {
     await page.locator('button:has-text("Entrar")').click();
     await page.waitForTimeout(2500);
   }
-  await page.goto(BASE + "/perfil", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/perfil", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1200);
   const skip = page.locator('button:has-text("Pular tour")');
   if ((await skip.count()) > 0) { await skip.first().click(); await page.waitForTimeout(300); }

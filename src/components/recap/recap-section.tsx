@@ -26,6 +26,7 @@ interface MonthCard {
 interface RecapSectionProps {
   userName: string;
   userPhotoUrl?: string;
+  favoriteCategory?: string;
 }
 
 export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
@@ -296,6 +297,7 @@ export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
             recap={openFinal}
             userName={userName}
             userPhotoUrl={userPhotoUrl}
+            favoriteCategory={favoriteCategory}
             onClose={() => setOpenFinal(null)}
           />
         )}

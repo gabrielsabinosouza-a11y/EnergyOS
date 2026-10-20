@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Repeat, Bell } from "lucide-react";
+import { Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 import { SHORT_WEEKDAYS, todayIso, weekdayOfIso } from "@/lib/planning/dates";

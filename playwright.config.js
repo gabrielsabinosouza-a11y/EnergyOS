@@ -4,7 +4,8 @@ module.exports = {
   testDir: ".",
   testMatch: /.*\.test\.js$/,
   use: {
-    baseURL: "http://localhost:3000",
+    // E2E_BASE_URL permite rodar contra outro servidor (ex.: `next start`).
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
     headless: true,
     launchOptions: { args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"] },
     contextOptions: { timezoneId: "America/Sao_Paulo" },

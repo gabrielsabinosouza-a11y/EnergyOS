@@ -7,16 +7,19 @@ const pool = new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: fal
 const client = await pool.connect();
 const PROFILE = "bf4489eb-03eb-43a2-ac95-2f9d6b3c0ef3";
 
-const s = await client.query(`select * from weekly_plan_series where profile_id = $1 order by id`, [PROFILE]);
-console.log("== séries ==");
-for (const r of s.rows) console.log(JSON.stringify(r, null, 1));
-
-const o = await client.query(
-  `select * from weekly_plan_occurrences where series_id in (select id from weekly_plan_series where profile_id = $1)`,
+const s = await client.query(
+  `select id, title, repeat_type, repeat_days, start_date::text as start_date, end_type, archived, created_at from weekly_plan_series where profile_id = $1 order by id desc limit 5`,
   [PROFILE],
 );
-console.log("== ocorrências ==", o.rows.length);
-for (const r of o.rows) console.log(JSON.stringify(r));
+console.log("== séries do perfil e2e ==");
+for (const r of s.rows) console.log(JSON.stringify(r));
+
+const p = await client.query(
+  `select id, title, plan_date::text as plan_date, created_at from weekly_plans where profile_id = $1 order by id desc limit 5`,
+  [PROFILE],
+);
+console.log("== planos avulsos ==");
+for (const r of p.rows) console.log(JSON.stringify(r));
 
 await client.release();
 await pool.end();

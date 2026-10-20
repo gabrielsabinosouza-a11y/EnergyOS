@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
   motion,
@@ -210,8 +210,11 @@ export function ParticleField({ accent, count = 20 }: { accent: string; count?: 
 // ─── Ícone 3D ──────────────────────────────────────────────────────────────────
 
 export interface Recap3DIconProps {
-  /** Arte 3D opcional (PNG). Se faltar, cai no ícone line atual. */
-  src?: string;
+  /**
+   * Arte(s) 3D opcional (PNG). Pode ser uma lista: a primeira que carregar
+   * vence; se todas falharem, entra o ícone line original.
+   */
+  src?: string | string[];
   /** Ícone line usado como fallback quando a arte não carrega. */
   fallback: React.ReactNode;
   alt: string;
@@ -225,8 +228,8 @@ export interface Recap3DIconProps {
 
 /**
  * Ícone principal do slide: bloom de LED pulsante, flutuação suave, inclinação
- * 3D seguindo o ponteiro e glare especular. A arte 3D é opcional — se o
- * arquivo não existir, o ícone line original é usado sem quebrar nada.
+ * 3D seguindo o ponteiro e glare especular. A arte 3D é opcional — se nenhum
+ * arquivo existir, o ícone line original é usado sem quebrar nada.
  */
 export function Recap3DIcon({
   src,
@@ -238,9 +241,13 @@ export function Recap3DIcon({
   className = "",
 }: Recap3DIconProps) {
   const reduced = useReducedMotion();
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const sources = useMemo(() => {
+    if (!src) return [] as string[];
+    return Array.isArray(src) ? src : [src];
+  }, [src]);
+  const [failed, setFailed] = useState<string[]>([]);
+  const current = sources.find((candidate) => !failed.includes(candidate)) ?? null;
   const tilt = useRecapTilt(8);
-  const artFailed = Boolean(src) && failedSrc === src;
   const glareBackground = useTransform(
     [tilt.glareX, tilt.glareY],
     ([x, y]) => `radial-gradient(circle at ${x} ${y}, rgba(255,255,255,.30), transparent 58%)`,
@@ -293,13 +300,13 @@ export function Recap3DIcon({
               boxShadow: `0 0 30px -8px ${accent}, inset 0 1px 0 rgba(255,255,255,.22)`,
             }}
           >
-            {src && !artFailed ? (
+            {current ? (
               <Image
-                src={src}
+                src={current}
                 alt={alt}
                 width={artSize}
                 height={artSize}
-                onError={() => setFailedSrc(src)}
+                onError={() => setFailed((prev) => (prev.includes(current) ? prev : [...prev, current]))}
                 style={{ objectFit: "contain" }}
                 unoptimized
                 draggable={false}
