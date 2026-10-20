@@ -281,9 +281,9 @@ export const api = {
   createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
-    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
+    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
   setWeeklyPlanCompleted: (id: number, completed: boolean) =>
-    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string; startTime?: string | null; endTime?: string | null }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
@@ -307,7 +307,7 @@ export const api = {
   deleteWeeklyPlanSeries: (id: number) => request<{ ok: true }>(`/api/weekly-plans/series/${id}`, { method: "DELETE" }),
   getWeeklyPlanSeriesById: (id: number) => request<{ series: WeeklyPlanSeries }>(`/api/weekly-plans/series/${id}`),
   setPlanOccurrenceCompleted: (seriesId: number, date: string, completed: boolean) =>
-    request<{ ok: true; xpAwarded: number; coinsAwarded: number }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
+    request<{ ok: true; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   skipPlanOccurrence: (seriesId: number, date: string) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/skip`, { method: "PATCH" }),
   updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null }) =>

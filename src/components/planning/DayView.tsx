@@ -50,7 +50,8 @@ export function DayView({
           <button
             type="button"
             onClick={() => onPlanCreate(date)}
-            className="group flex h-full min-h-[260px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            aria-label={`Adicionar plano em ${dateLabel}`}
+            className="group flex h-full min-h-[260px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           >
             <span className="grid h-14 w-14 place-items-center rounded-full border border-[var(--border-subtle)] text-[var(--accent)] transition-colors group-hover:border-[var(--accent)] group-hover:bg-[var(--accent-bg)]">
               <Plus size={24} aria-hidden="true" />
@@ -75,14 +76,17 @@ export function DayView({
               {dateLabel}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={() => onPlanCreate(date)}
-            aria-label={`Adicionar plano em ${dateLabel}`}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          >
-            <Plus size={16} aria-hidden="true" />
-          </button>
+          {sorted.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onPlanCreate(date)}
+              aria-label={`Adicionar plano em ${dateLabel}`}
+              title="Adicionar plano"
+              className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            >
+              <Plus size={16} aria-hidden="true" />
+            </button>
+          ) : null}
         </header>
 
         <div className="grid grid-cols-2 gap-2">

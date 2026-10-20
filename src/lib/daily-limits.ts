@@ -72,12 +72,8 @@ export const KANBAN_DONE_XP = 25;
 export const KANBAN_DONE_COINS = 25;
 
 // ── Weekly planner ────────────────────────────────────────────────────────────
-/** Weekly planner completion economy, aligned with the daily habits reward (same source of truth). */
-export const WEEKLY_PLAN_COMPLETION_REWARD = {
-  xp: HABIT_REWARD.xp,
-  coins: HABIT_REWARD.coins,
-  dailyLimit: DAILY_REWARDED_HABITS_CAP,
-} as const;
+/** Recompensa única por conclusão de cada plano/ocorrência no Planejamento. */
+export const PLANNER_TASK_REWARD = { xp: 20, coins: 20 } as const;
 
 /** Maximum number of active recurring plan series per user. */
 export const WEEKLY_PLAN_SERIES_LIMIT = 200;

@@ -21,6 +21,8 @@ import { DayView } from "@/components/planning/DayView";
 import { PlanDialog } from "@/components/planning/PlanDialog";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
+import { RewardClaimModal } from "@/components/reward-claim-modal";
+import { PLANNER_TASK_REWARD } from "@/lib/daily-limits";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 type View = "month" | "week" | "day";
@@ -87,6 +89,7 @@ export default function PlanningPage() {
   const [goalDeadlinesError, setGoalDeadlinesError] = useState<string | null>(null);
   const [plansError, setPlansError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
+  const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; baseXp: number; balance?: number } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorSession, setEditorSession] = useState(0);
   const [editingPlan, setEditingPlan] = useState<WeeklyPlanItem | null>(null);
@@ -297,11 +300,11 @@ export default function PlanningPage() {
     announce("Plano criado.");
   }, [announce, updateTasks]);
 
-  const completionRequests = useRef(new Map<string, Promise<void>>());
+  const completionRequests = useRef(new Map<string, Promise<{ xpAwarded: number; coinsAwarded: number; balance?: number }>>());
   const completionSequence = useRef(new Map<string, number>());
   const confirmedCompletion = useRef(new Map<string, string | null>());
 
-  const togglePlan = useCallback((plan: WeeklyPlanItem, completed: boolean): Promise<void> => {
+  const togglePlan = useCallback((plan: WeeklyPlanItem, completed: boolean): Promise<{ xpAwarded: number; coinsAwarded: number; balance?: number }> => {
     const key = planKey(plan);
     const matches = (item: WeeklyPlanItem) => planKey(item) === key;
     if (!confirmedCompletion.current.has(key)) {
@@ -314,15 +317,17 @@ export default function PlanningPage() {
       : item));
 
     const previous = completionRequests.current.get(key) ?? Promise.resolve();
-    const request = previous.catch(() => undefined).then(async () => {
+    const request = previous.catch(() => ({ xpAwarded: 0, coinsAwarded: 0 })).then(async () => {
       try {
+        let result: { xpAwarded: number; coinsAwarded: number; balance?: number };
         if (plan.seriesId !== null) {
-          await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
+          result = await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
         } else {
-          await api.setWeeklyPlanCompleted(plan.id, completed);
+          result = await api.setWeeklyPlanCompleted(plan.id, completed);
         }
         mutationVersion.current += 1;
         confirmedCompletion.current.set(key, completed ? new Date().toISOString() : null);
+        return result;
       } catch (error) {
         if (completionSequence.current.get(key) === sequence) {
           const confirmed = confirmedCompletion.current.get(key) ?? null;
@@ -343,8 +348,19 @@ export default function PlanningPage() {
 
   const handleToggleCompleted = useCallback(async (plan: WeeklyPlanItem, completed: boolean) => {
     try {
-      await togglePlan(plan, completed);
-      announce(completed ? "Plano concluído." : "Plano reaberto.");
+      const reward = await togglePlan(plan, completed);
+      if (reward.xpAwarded > 0 || reward.coinsAwarded > 0) {
+        setRewardModal({
+          xp: reward.xpAwarded,
+          baseXp: PLANNER_TASK_REWARD.xp,
+          coins: reward.coinsAwarded,
+          balance: reward.balance,
+        });
+        announce(`+${reward.xpAwarded} XP e +${reward.coinsAwarded} moedas!`);
+        window.dispatchEvent(new Event("energyos:achievements-changed"));
+      } else if (!completed) {
+        announce("Plano reaberto.");
+      }
     } catch {
       announce("Não foi possível atualizar o plano. Tente novamente.", true);
     }
@@ -507,6 +523,8 @@ export default function PlanningPage() {
             </motion.p>
           ) : null}
         </AnimatePresence>
+
+        <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
 
         <PlanDialog
           key={editorSession}

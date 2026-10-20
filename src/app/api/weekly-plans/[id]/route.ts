@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
-import { awardWeeklyPlanCompletion, deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
+import { deleteWeeklyPlan, setWeeklyPlanCompleted, updateWeeklyPlan } from "@/lib/db/weekly-plans";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -17,13 +17,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     const planId = Number(id);
     if (body.completed === false) {
-      const plan = await setWeeklyPlanCompleted(profileId, planId, false);
-      return jsonOk({ plan, xpAwarded: 0, coinsAwarded: 0 });
+      return jsonOk(await setWeeklyPlanCompleted(profileId, planId, false));
     }
-    const plan = await setWeeklyPlanCompleted(profileId, planId, true);
-    // Recompensa única por plano (10 XP + 10 moedas), idempotente via xp_ledger.
-    const { xpAwarded, coinsAwarded } = await awardWeeklyPlanCompletion(profileId, planId);
-    return jsonOk({ plan, xpAwarded, coinsAwarded });
+    return jsonOk(await setWeeklyPlanCompleted(profileId, planId, true));
   });
 }
 

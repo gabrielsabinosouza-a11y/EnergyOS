@@ -49,7 +49,7 @@ export async function creditXP(
   source: string,
   sourceId: number | string,
   xp: number,
-  options?: { recordMission?: boolean; questDate?: string; db?: PoolClient },
+  options?: { recordMission?: boolean; questDate?: string; db?: PoolClient; coinsAmount?: number },
 ): Promise<number> {
   parseProfileId(profileId);
   if (!Number.isFinite(xp) || xp <= 0) return 0;
@@ -63,11 +63,11 @@ export async function creditXP(
   // ON CONFLICT DO NOTHING makes every award idempotent: a duplicate insert
   // (double-submit, race, replay) returns no row and nothing else is credited.
   const ledger = await db.query(
-    `insert into xp_ledger (profile_id, source, source_id, xp_amount)
-     values ($1, $2, $3, $4)
+    `insert into xp_ledger (profile_id, source, source_id, xp_amount, coins_amount)
+     values ($1, $2, $3, $4, $5)
      on conflict (profile_id, source, coalesce(source_id, '')) do nothing
      returning id`,
-    [profileId, source, sourceKey, finalXP],
+    [profileId, source, sourceKey, finalXP, options?.coinsAmount ?? 0],
   );
   if (!ledger.rows[0]) return 0;
 

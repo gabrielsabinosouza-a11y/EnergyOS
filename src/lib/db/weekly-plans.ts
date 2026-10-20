@@ -3,11 +3,8 @@ import type { WeeklyPlan } from "@/types";
 import { NotFoundError } from "../errors";
 import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
-import { recordMissionProgress } from "./daily-quests";
-import { creditXP } from "./xp";
-import { addCoins } from "./settings";
-import { addLeagueXP } from "./league-new";
-import { WEEKLY_PLAN_COMPLETION_REWARD, PLAN_NAME_MAX } from "../daily-limits";
+import { PLAN_NAME_MAX } from "../daily-limits";
+import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerRewardResult } from "./planner-rewards";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
@@ -138,96 +135,45 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
   return mapPlan(result.rows[0]);
 }
 
-export async function completeWeeklyPlan(profileId: string, planId: number): Promise<WeeklyPlan> {
-  parseProfileId(profileId);
-  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
-  const updated = await pool.query<{ id: string | number }>(
-    `update weekly_plans set completed_at = now()
-     where profile_id = $1 and id = $2 and completed_at is null
-     returning id`,
-    [profileId, planId],
-  );
-  if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado ou já concluído.");
-  await recordMissionProgress(profileId, "WEEKLY_PLAN_COMPLETED", { incrementBy: 1 });
-  const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
-  return mapPlan(result.rows[0]);
-}
-
-/** Define o estado de conclusão do plano (true = concluído, false = reabrir). */
-export async function setWeeklyPlanCompleted(profileId: string, planId: number, completed: boolean): Promise<WeeklyPlan> {
-  parseProfileId(profileId);
-  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
-  const updated = await pool.query<{ id: string | number }>(
-    `update weekly_plans set completed_at = ${completed ? "now()" : "null"}
-     where profile_id = $1 and id = $2
-     returning id`,
-    [profileId, planId],
-  );
-  if (!updated.rows[0]) throw new NotFoundError("Plano não encontrado.");
-  const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [updated.rows[0].id]);
-  return mapPlan(result.rows[0]);
-}
-
-/**
- * Awards fixed XP + coins when a weekly-plan task is completed. Returns the
- * amounts credited (0/0 if already awarded, not owned, or not completed).
- *
- * Mirrors awardKanbanCompletion: the whole award is a single transaction and
- * idempotency comes from the xp_ledger unique index (profile_id, source,
- * source_id) — completing, reopening and re-completing a plan forever pays
- * the WEEKLY_PLAN_DONE_XP/COINS exactly once per plan. Reopening a plan never
- * claws back rewards (same rule as kanban "done").
- */
-export async function awardWeeklyPlanCompletion(
+/** Atualiza a conclusão e concede a recompensa no mesmo commit. */
+export async function setWeeklyPlanCompleted(
   profileId: string,
   planId: number,
-): Promise<{ xpAwarded: number; coinsAwarded: number }> {
+  completed: boolean,
+): Promise<{ plan: WeeklyPlan } & PlannerRewardResult> {
   parseProfileId(profileId);
+  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
   const client = await pool.connect();
+  let reward: PlannerRewardResult = { xpAwarded: 0, coinsAwarded: 0 };
+  let plan: WeeklyPlan;
   try {
     await client.query("begin");
-
-    // Lock the row and re-verify ownership + the completed state inside the
-    // same transaction that credits the rewards, so no reward is ever paid
-    // for plans the caller doesn't own or that are not actually completed.
-    const planRow = await client.query<{ completed_at: Date | string | null }>(
-      `select completed_at from weekly_plans where id = $1 and profile_id = $2 for update`,
+    const planRow = await client.query<{ id: string | number }>(
+      `select id from weekly_plans where id = $1 and profile_id = $2 for update`,
       [planId, profileId],
     );
-    if (!planRow.rows[0]?.completed_at) {
-      await client.query("commit");
-      return { xpAwarded: 0, coinsAwarded: 0 };
-    }
+    if (!planRow.rows[0]) throw new NotFoundError("Plano não encontrado.");
 
-    await client.query(`select pg_advisory_xact_lock(hashtext($1), hashtext((now() at time zone 'America/Sao_Paulo')::date::text))`, [profileId]);
-
-    const rewardCount = await client.query<{ count: number }>(
-      `select count(*)::int as count from xp_ledger
-        where profile_id = $1 and source in ('weekly_plan', 'weekly_plan_occurrence')
-          and (created_at at time zone 'America/Sao_Paulo')::date = (now() at time zone 'America/Sao_Paulo')::date`,
-      [profileId],
+    await client.query(
+      `update weekly_plans set completed_at = ${completed ? "now()" : "null"}
+       where profile_id = $1 and id = $2`,
+      [profileId, planId],
     );
-    const xpAwarded = Number(rewardCount.rows[0]?.count ?? 0) < WEEKLY_PLAN_COMPLETION_REWARD.dailyLimit
-      ? await creditXP(profileId, "weekly_plan", planId, WEEKLY_PLAN_COMPLETION_REWARD.xp, { db: client })
-      : 0;
-    let coinsAwarded = 0;
-    if (xpAwarded > 0) {
-      await addCoins(profileId, WEEKLY_PLAN_COMPLETION_REWARD.coins, client);
-      coinsAwarded = WEEKLY_PLAN_COMPLETION_REWARD.coins;
-    }
+    reward = await grantPlannerCompletionReward(profileId, "weekly_plan", planId, completed, client);
+    const result = await client.query<WeeklyPlanRow>(
+      `${PLAN_SELECT} where w.profile_id = $1 and w.id = $2`,
+      [profileId, planId],
+    );
+    plan = mapPlan(result.rows[0]);
     await client.query("commit");
-
-    // League XP is applied after commit: addLeagueXP writes its own tables on
-    // separate connections and cannot join this transaction (see creditXP).
-    if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
-
-    return { xpAwarded, coinsAwarded };
   } catch (err) {
     await client.query("rollback").catch(() => {});
     throw err;
   } finally {
     client.release();
   }
+  await updatePlannerLeagueXP(profileId, reward.xpAwarded);
+  return { plan, ...reward };
 }
 
 export interface UpdateWeeklyPlanInput {

@@ -16,6 +16,27 @@ interface WeekDay {
   isSelected: boolean;
 }
 
+interface AddPlanButtonProps {
+  date: string;
+  onPlanCreate: (date: string) => void;
+}
+
+/** Controle único de criação de plano do card do dia. */
+function AddPlanButton({ date, onPlanCreate }: AddPlanButtonProps) {
+  const dateLabel = formatLocalDate(date, { weekday: "long", day: "numeric", month: "long" });
+  return (
+    <button
+      type="button"
+      onClick={() => onPlanCreate(date)}
+      aria-label={`Adicionar plano para ${dateLabel}`}
+      title="Adicionar plano"
+      className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+    >
+      <Plus size={16} aria-hidden="true" />
+    </button>
+  );
+}
+
 interface WeekViewProps {
   weekRange: { start: string; end: string };
   plans: WeeklyPlanItem[];
@@ -108,38 +129,29 @@ export function WeekView({
             </div>
 
             {day.plans.length ? (
-              <div className="flex min-w-0 flex-col gap-1.5">
-                {day.plans.map((plan) => (
-                  <PlanRow
-                    key={planItemKey(plan)}
-                    plan={plan}
-                    compact
-                    onToggleCompleted={onToggleCompleted}
-                    onEdit={onEditPlan}
-                    onDelete={onDeletePlan}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  {day.plans.map((plan) => (
+                    <PlanRow
+                      key={planItemKey(plan)}
+                      plan={plan}
+                      compact
+                      onToggleCompleted={onToggleCompleted}
+                      onEdit={onEditPlan}
+                      onDelete={onDeletePlan}
+                    />
+                  ))}
+                </div>
+                <div className="mt-auto flex justify-center pt-1.5">
+                  <AddPlanButton date={day.date} onPlanCreate={onPlanCreate} />
+                </div>
+              </>
             ) : (
-              <button
-                type="button"
-                onClick={() => onPlanCreate(day.date)}
-                className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[11px] text-[var(--text-faint)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                aria-label={`Criar plano em ${formatLocalDate(day.date, { weekday: "long", day: "numeric", month: "long" })}`}
-              >
-                <Plus size={16} aria-hidden="true" />
-                Sem planos
-              </button>
+              <div className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1.5 text-[11px] text-[var(--text-faint)]">
+                <AddPlanButton date={day.date} onPlanCreate={onPlanCreate} />
+                <span>Sem planos</span>
+              </div>
             )}
-
-            <button
-              type="button"
-              onClick={() => onPlanCreate(day.date)}
-              className="mt-auto flex min-h-8 items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--border-subtle)] px-2 text-[11px] font-medium text-[var(--text-faint)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-              aria-label={`Adicionar plano para ${formatLocalDate(day.date, { weekday: "long", day: "numeric", month: "long" })}`}
-            >
-              <Plus size={12} aria-hidden="true" /> Adicionar
-            </button>
           </motion.article>
         ))}
       </div>
