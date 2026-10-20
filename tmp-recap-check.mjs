@@ -34,7 +34,7 @@ const SYNTHETIC_RECAP = {
 };
 
 async function openRecap(width, height, tag) {
-  const page = await browser.newPage({ viewport: { width, height }, timezoneId: "America/Sao_Paulo" });
+  const page = await browser.newPage({ viewport: { width, height }, timezoneId: "America/Sao_Paulo", serviceWorkers: "block" });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 

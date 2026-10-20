@@ -214,7 +214,7 @@ export interface Recap3DIconProps {
    * Arte(s) 3D opcional (PNG). Pode ser uma lista: a primeira que carregar
    * vence; se todas falharem, entra o ícone line original.
    */
-  src?: string | string[];
+  src?: string | readonly string[];
   /** Ícone line usado como fallback quando a arte não carrega. */
   fallback: React.ReactNode;
   alt: string;
@@ -242,8 +242,8 @@ export function Recap3DIcon({
 }: Recap3DIconProps) {
   const reduced = useReducedMotion();
   const sources = useMemo(() => {
-    if (!src) return [] as string[];
-    return Array.isArray(src) ? src : [src];
+    if (!src) return [] as readonly string[];
+    return Array.isArray(src) ? src : [src as string];
   }, [src]);
   const [failed, setFailed] = useState<string[]>([]);
   const current = sources.find((candidate) => !failed.includes(candidate)) ?? null;

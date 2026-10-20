@@ -642,11 +642,15 @@ function ChatPanel({
   /* Poll */
   useEffect(() => {
     const interval = setInterval(async () => {
+      // Use incremental fetch: only get messages after the last known ID
+      const afterId = lastIdRef.current;
       try {
-        const { messages: msgs } = await api.getMessages(friend.id);
-        applyServerMessages(msgs);
+        const { messages: msgs } = await api.getMessages(friend.id, afterId);
+        if (msgs.length > 0) {
+          applyServerMessages(msgs);
+        }
       } catch { /* silent */ }
-    }, 5000);
+    }, 3000); // Faster polling for near real-time feel
     return () => clearInterval(interval);
   }, [friend.id, applyServerMessages]);
 

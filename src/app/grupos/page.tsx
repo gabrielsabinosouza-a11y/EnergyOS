@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, X as XIcon, Zap, Settings,
   Image as ImageIcon,
   Trash2, UserMinus,
-  VolumeX, Ban, MoreVertical, Volume2, UserCheck,
+  Ban, MoreVertical, UserCheck,
   Sparkles, Mail,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -55,9 +55,7 @@ type MemberAction =
   | { type: "unban"; member: GroupMember }
   | { type: "kick"; member: GroupMember }
   | { type: "promote"; member: GroupMember }
-  | { type: "demote"; member: GroupMember }
-  | { type: "mute"; member: GroupMember }
-  | { type: "unmute"; member: GroupMember };
+  | { type: "demote"; member: GroupMember };
 
 function MemberActionMenu({
   anchor, actions, busy, onAction, onClose,
@@ -74,8 +72,6 @@ function MemberActionMenu({
     kick: <UserMinus size={13} />,
     promote: <ArrowUp size={13} />,
     demote: <ArrowDown size={13} />,
-    mute: <VolumeX size={13} />,
-    unmute: <Volume2 size={13} />,
   };
   const labels: Record<MemberAction["type"], string> = {
     ban: "Banir do grupo",
@@ -83,8 +79,6 @@ function MemberActionMenu({
     kick: "Expulsar",
     promote: "Promover a admin",
     demote: "Rebaixar a membro",
-    mute: "Silenciar",
-    unmute: "Desilenciar",
   };
   return (
     <>
@@ -1369,12 +1363,6 @@ function GroupDetailPanel({
         const role = action.type === "promote" ? "ADMIN" : "MEMBER";
         await api.updateGroupMemberRole(group.id, m.id, role);
         setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, role } : x) } : g);
-      } else if (action.type === "mute") {
-        await api.setGroupMemberMuted(group.id, m.id, true);
-        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: true } : x) } : g);
-      } else if (action.type === "unmute") {
-        await api.setGroupMemberMuted(group.id, m.id, false);
-        setGroup((g) => g ? { ...g, members: g.members.map((x) => x.id === m.id ? { ...x, isMuted: false } : x) } : g);
       }
     } catch (e) {
       setMessageError(e instanceof Error ? e.message : "Operação falhou.");
@@ -1390,9 +1378,6 @@ function GroupDetailPanel({
       if (isOwner || (isAdmin && m.role === "MEMBER")) actions.push({ type: "unban", member: m });
       if (isOwner) actions.push({ type: "kick", member: m });
       return actions;
-    }
-    if ((isOwner || isAdmin) && m.role === "MEMBER") {
-      actions.push(m.isMuted ? { type: "unmute", member: m } : { type: "mute", member: m });
     }
     if (isOwner) {
       if (m.role === "ADMIN") actions.push({ type: "demote", member: m }, { type: "ban", member: m });
@@ -1614,11 +1599,6 @@ function GroupDetailPanel({
                   {m.isBanned && (
                     <span className="rounded-full bg-[var(--red-bg)] px-2 py-0.5 text-[9px] font-medium text-[var(--red)]">
                       banido
-                    </span>
-                  )}
-                  {m.isMuted && (
-                    <span className="rounded-full bg-[var(--accent-bg)] px-2 py-0.5 text-[9px] font-medium text-[var(--accent)]">
-                      silenciado
                     </span>
                   )}
                   {actionsFor(m).length > 0 && (

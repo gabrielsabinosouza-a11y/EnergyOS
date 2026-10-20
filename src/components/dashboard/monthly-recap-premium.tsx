@@ -348,7 +348,7 @@ function HeroStatSlide({ numericValue, valueSuffix, label, copy, theme, icon, ic
   copy: string;
   theme: { bg: string; accent: string; glow: string };
   icon: React.ReactNode;
-  iconSrc?: string;
+  iconSrc?: string | readonly string[];
   animateNumber?: boolean;
 }) {
   const reduced = useReducedMotion();
@@ -594,7 +594,7 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
       label: "Liga",
       value: meta ? meta.label : "—",
       color: tierColor,
-      art: meta?.iconPath,
+      art: meta?.iconPath ? [meta.iconPath] : undefined,
       fallback: <Award size={16} color={tierColor} strokeWidth={1.8} />,
     },
     {
@@ -610,7 +610,7 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
       label: "XP total",
       value: (recap.totalXp ?? 0).toLocaleString("pt-BR"),
       color: ACCENT.xp,
-      art: "/xp/xp_double_thunder.png",
+      art: RECAP_ART.xp,
       fallback: <Zap size={16} color={ACCENT.xp} strokeWidth={1.8} />,
       wide: true,
     },
@@ -1167,6 +1167,7 @@ export function MonthlyRecapPremium({
             label="XP total"
             copy={xpCopy(recap.totalXp ?? 0)}
             theme={THEMES.xp}
+            iconSrc={RECAP_ART.xp}
             icon={<Zap size={52} color={THEMES.xp.accent} strokeWidth={1.5} />}
           />
         );
