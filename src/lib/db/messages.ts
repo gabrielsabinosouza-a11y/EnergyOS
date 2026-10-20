@@ -390,6 +390,35 @@ export async function markDmRead(profileId: string, otherId: string): Promise<vo
   );
 }
 
+/**
+ * Get the set of message IDs that the recipient has read.
+ * Used to show double-check mark on sent messages.
+ */
+export async function getDmReadMessageIds(
+  profileId: string,
+  otherId: string,
+  sinceId?: number,
+): Promise<Set<number>> {
+  parseProfileId(profileId);
+  const other = parseProfileId(otherId);
+  await assertFriends(profileId, other);
+
+  // Get messages sent by the current user (profileId is sender) that the
+  // recipient (otherId) has read
+  const result = await pool.query<{ message_id: number }>(
+    `select dm.id as message_id
+     from direct_messages dm
+     join dm_reads dr on dr.profile_id = $1 and dr.other_id = $2
+     where dm.sender_id = $1
+       and dm.recipient_id = $2
+       ${sinceId ? "and dm.id > $3" : ""}
+     order by dm.id`,
+    sinceId ? [profileId, otherId, sinceId] : [profileId, otherId],
+  );
+
+  return new Set(result.rows.map((r) => r.message_id));
+}
+
 export async function editDirectMessage(
   profileId: string,
   messageId: number,

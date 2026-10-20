@@ -4,7 +4,7 @@ import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { AppError } from "@/lib/errors";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http";
-import { listDirectMessages, sendDirectMessage } from "@/lib/db/messages";
+import { listDirectMessages, sendDirectMessage, getDmReadMessageIds } from "@/lib/db/messages";
 
 export async function GET(
   request: NextRequest,
@@ -14,6 +14,20 @@ export async function GET(
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
     const { friendId } = await params;
+
+    // Check if this is a read-messages query
+    const isReadMessages = request.nextUrl.searchParams.get("readMessages") === "true";
+    if (isReadMessages) {
+      const sinceId = request.nextUrl.searchParams.get("since");
+      const messageIds = await getDmReadMessageIds(
+        profileId,
+        friendId,
+        sinceId ? Number(sinceId) : undefined,
+      );
+      return NextResponse.json({ messageIds: Array.from(messageIds) });
+    }
+
+    // Regular messages fetch
     const afterId = request.nextUrl.searchParams.get("after");
     const messages = await listDirectMessages(profileId, friendId, afterId ? Number(afterId) : undefined);
     return NextResponse.json({ messages });

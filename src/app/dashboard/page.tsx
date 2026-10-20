@@ -931,7 +931,7 @@ function DashboardContent() {
 
   return (
     <AppShell>
-      <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
+      <main className="min-h-screen w-full max-w-none px-4 py-7 sm:px-6 sm:py-8 lg:px-8 lg:py-10 xl:px-12">
         {/* Header */}
         <header className="relative z-50 mb-8 flex flex-wrap items-start justify-between gap-2">
           <motion.div variants={fadeUp} initial="hidden" animate="visible" className="min-w-0">
@@ -1058,8 +1058,8 @@ function DashboardContent() {
           />
         </section>
 
-        {/* Focus + Goals */}
-        <section className="mb-8 grid gap-5 lg:grid-cols-2">
+        {/* Focus + Goals - stacked on mobile/tablet, side-by-side on xl+ */}
+        <section className="mb-8 grid gap-5 xl:grid-cols-2">
           <FocusTimer
             todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
             history={focusData?.history ?? []}

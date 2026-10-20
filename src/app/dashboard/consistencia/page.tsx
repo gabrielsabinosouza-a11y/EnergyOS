@@ -34,7 +34,7 @@ export default function ConsistenciaPage() {
 
   return (
     <AppShell>
-      <main className="min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
+      <main className="min-h-screen w-full max-w-none px-4 py-7 sm:px-6 sm:py-8 lg:px-8 lg:py-10 xl:px-12">
         <header className="mb-8">
           <div>
             <p className="mb-2 text-xs uppercase tracking-[.2em] text-[#71d4ff]">CONSISTÊNCIA</p>
@@ -51,7 +51,7 @@ export default function ConsistenciaPage() {
         )}
 
         <div className="space-y-8">
-          <section className="consistency-stats-grid grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="consistency-stats-grid grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Sequência atual"
               value={stats.current}

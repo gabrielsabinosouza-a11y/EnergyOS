@@ -441,6 +441,10 @@ export const api = {
     request<{ ok: true }>(`/api/dm/messages/${messageId}/pin`, { method: "POST" }),
   markDmRead: (friendId: string) =>
     request<{ ok: true }>(`/api/dm/${friendId}/read`, { method: "POST" }),
+  getDmReadMessageIds: (friendId: string, sinceId?: number) => {
+    const query = sinceId ? `?readMessages=true&since=${sinceId}` : "?readMessages=true";
+    return request<{ messageIds: number[] }>(`/api/dm/${friendId}${query}`);
+  },
   startChatByUsername: (username: string) =>
     request<import("@/types").StartChatResult>(`/api/dm/by-username?username=${encodeURIComponent(username)}`),
   sendMessageByUsername: (username: string, body: string) =>

@@ -18,9 +18,9 @@ const PASS = "Planner123!";
 const TITLE = `E2E recorrente ${Date.now()}`;
 
 async function authenticate(page) {
-  await page.goto("/login", { waitUntil: "networkidle" });
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   if (!page.url().includes("/login")) {
-    await page.goto("/planner", { waitUntil: "networkidle" });
+    await page.goto("/planner", { waitUntil: "domcontentloaded" });
     await dismissTour(page);
     return;
   }
@@ -41,11 +41,11 @@ async function dismissTour(page) {
 }
 
 async function goToWeek(page) {
-  await page.goto("/planner", { waitUntil: "networkidle" });
-  await page.waitForTimeout(400);
+  await page.goto("/planner", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(800);
   await dismissTour(page);
   await page.getByRole("button", { name: "Semana", exact: true }).first().click({ force: true });
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(800);
 }
 
 function planRows(page, title = TITLE) {
@@ -54,14 +54,14 @@ function planRows(page, title = TITLE) {
 
 async function nextPeriod(page) {
   const before = await page.locator("h2").first().textContent();
-  await page.locator('button[aria-label^="Próximo período"]').first().click({ force: true });
+  await page.locator('button[aria-label^="Próximo período"]').first().click();
   await expect(page.locator("h2").first()).not.toHaveText(before ?? "", { timeout: 15000 });
   await page.waitForTimeout(300);
 }
 
 async function prevPeriod(page) {
   const before = await page.locator("h2").first().textContent();
-  await page.locator('button[aria-label^="Período anterior"]').first().click({ force: true });
+  await page.locator('button[aria-label^="Período anterior"]').first().click();
   await expect(page.locator("h2").first()).not.toHaveText(before ?? "", { timeout: 15000 });
   await page.waitForTimeout(300);
 }
@@ -102,6 +102,9 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
 
   await page.getByRole("button", { name: "Criar plano" }).click();
   await page.waitForTimeout(1200);
+  // O modal fecha (com animação) — esperar para o clique seguinte não ser
+  // engolido pelo overlay.
+  await expect(page.getByRole("button", { name: "Criar plano" })).toHaveCount(0, { timeout: 10000 });
 
   // Aparece na semana atual (na segunda-feira)
   await expect(planRows(page).first()).toBeVisible({ timeout: 15000 });
@@ -134,17 +137,20 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
     page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /^Concluir/ }),
   ).toBeVisible();
 
-  // "Todos os dias da série" (edição) — abre o diálogo de escopo
+  // "Todos os dias da série" (edição) — o modal pede o escopo ao salvar
   await page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Editar")').click();
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
   await page.waitForTimeout(500);
   await expect(page.getByRole("button", { name: "Apenas este dia" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Todos os dias da série" })).toBeVisible();
 
   // Aplica só nesta ocorrência
   await page.getByRole("button", { name: "Apenas este dia" }).click();
-  await page.waitForTimeout(1000);
+  await expect(page.getByRole("button", { name: "Apenas este dia" })).toHaveCount(0, { timeout: 20000 });
+  await page.waitForTimeout(500);
 
   // Volta uma semana: o título da série não pode ter mudado
   await prevPeriod(page);
@@ -160,8 +166,8 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
 
   // "Apenas este dia" remove só a ocorrência desta semana
   await page.getByRole("button", { name: "Apenas este dia" }).click();
-  await page.waitForTimeout(1000);
-  await expect(planRows(page)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Apenas este dia" })).toHaveCount(0, { timeout: 20000 });
+  await expect(planRows(page)).toHaveCount(0, { timeout: 20000 });
 
   // A próxima semana ainda tem o plano
   await nextPeriod(page);
@@ -173,8 +179,8 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
   await page.locator('[role="menu"] button:has-text("Excluir")').click();
   await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Todos os dias da série" }).click();
-  await page.waitForTimeout(1000);
-  await expect(planRows(page)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Todos os dias da série" })).toHaveCount(0, { timeout: 20000 });
+  await expect(planRows(page)).toHaveCount(0, { timeout: 20000 });
 
   expect(errors).toEqual([]);
   await page.close();

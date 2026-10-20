@@ -268,7 +268,7 @@ export default function AmigosPage() {
 
   return (
     <AppShell>
-      <main className="relative min-h-screen px-5 py-7 sm:px-8 lg:px-12 lg:py-10">
+      <main className="relative min-h-screen w-full max-w-none px-4 py-7 sm:px-6 sm:py-8 lg:px-8 lg:py-10 xl:px-12">
         <Header eyebrow="Social" title="Amigos" />
 
         {error && (
@@ -460,7 +460,7 @@ export default function AmigosPage() {
               variants={stagger}
               initial="hidden"
               animate="visible"
-              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+              className="grid gap-2.5 sm:gap-3 md:grid-cols-2 lg:grid-cols-3"
             >
               {friends.map((f) => (
                 <motion.button
@@ -480,24 +480,24 @@ export default function AmigosPage() {
                       );
                     }
                   }}
-                  className="glass-card group relative flex items-center gap-3 px-4 py-3 text-left transition hover:border-[var(--accent)]/30"
+                  className="glass-card group relative flex items-center gap-3 px-3 py-2.5 sm:px-4 sm:py-3 text-left transition hover:border-[var(--accent)]/30 min-w-0"
                 >
-                  <UserAvatar user={f} />
+                  <UserAvatar user={f} size={f.photoUrl ? 36 : 36} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[var(--text)] group-hover:text-[var(--accent)]">
+                    <p className="truncate text-xs sm:text-sm font-medium text-[var(--text)] group-hover:text-[var(--accent)]">
                       {f.displayName}
                     </p>
                     {f.username && (
-                      <p className="truncate text-xs text-[var(--text-muted)]">
+                      <p className="truncate text-[10px] sm:text-xs text-[var(--text-muted)]">
                         @{f.username}
                       </p>
                     )}
-                    <div className="mt-1 flex items-center gap-3 text-[10px] text-[var(--text-faint)]">
-                      <span className="flex items-center gap-1 text-[var(--orange)]">
-                        <Image src={streakIconSource(f.currentStreak)} alt="streak" width={11} height={11} style={{ objectFit: "contain" }} unoptimized />
-                        {f.currentStreak}
+                    <div className="mt-1 flex items-center gap-2 sm:gap-3 text-[8px] sm:text-[10px] text-[var(--text-faint)]">
+                      <span className="flex items-center gap-0.5 sm:gap-1 text-[var(--orange)]">
+                        <Image src={streakIconSource(f.currentStreak)} alt="streak" width={9} height={9} style={{ objectFit: "contain" }} unoptimized />
+                        <span className="text-[9px] sm:text-xs">{f.currentStreak}</span>
                       </span>
-                      {f.lastActiveAt && <span>{relativeTime(f.lastActiveAt)} atras</span>}
+                      {f.lastActiveAt && <span className="truncate">{relativeTime(f.lastActiveAt)} atras</span>}
                     </div>
                   </div>
 
@@ -592,7 +592,9 @@ function ChatPanel({
 }) {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [replyingTo, setReplyingTo] = useState<DirectMessage | null>(null);
+  const [readMessageIds, setReadMessageIds] = useState<Set<number>>(() => new Set());
   const lastIdRef = useRef<number | undefined>(undefined);
+  const lastReadCheckRef = useRef<number | undefined>(undefined);
   // Optimistic sends: messages shown immediately with a negative temp id while
   // the request is in flight. Merged back into every server list so polls can
   // never "lose" a message that hasn't been confirmed yet.
@@ -667,6 +669,28 @@ function ChatPanel({
       clearInterval(interval);
     };
   }, [friend.id, applyServerMessages]);
+
+  /* Poll for read receipts (every 3 seconds for sender to see when recipient reads) */
+  useEffect(() => {
+    if (document.hidden) return;
+
+    const interval = setInterval(async () => {
+      // Only fetch read status after we have messages
+      const lastId = lastIdRef.current;
+      if (!lastId || lastId <= 0) return;
+
+      // Only check if we haven't already fetched for this message
+      if (lastReadCheckRef.current === lastId) return;
+      lastReadCheckRef.current = lastId;
+
+      try {
+        const { messageIds } = await api.getDmReadMessageIds(friend.id, lastId);
+        setReadMessageIds(new Set(messageIds));
+      } catch { /* silent */ }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [friend.id]);
 
   /* Optimistic helper: append a temp message immediately, return its id. */
   const addOptimisticMessage = useCallback((message: DirectMessage) => {
@@ -811,6 +835,7 @@ function ChatPanel({
           onReact={handleReactMessage}
           onTogglePin={handleTogglePin}
           showAvatar
+          readMessageIds={readMessageIds}
           onReplyMessage={(m) => {
             const dm = messages.find((x) => x.id === m.id);
             if (dm) setReplyingTo(dm);

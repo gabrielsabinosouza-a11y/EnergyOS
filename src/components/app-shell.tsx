@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <MobileNav pathname={pathname} />
       </div>
       <div className="lg:pl-[252px]">
-        <div className="mx-auto max-w-[1500px] pb-[calc(72px+env(safe-area-inset-bottom,0px))] lg:pb-0">
+        <div className="mx-auto w-full max-w-[1500px] px-3 sm:px-4 pb-[calc(72px+env(safe-area-inset-bottom,0px))] pt-2 lg:px-6 lg:pb-0 lg:pt-4">
           <motion.div
             key={pathname}
             initial={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}

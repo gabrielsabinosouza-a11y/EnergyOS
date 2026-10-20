@@ -859,14 +859,14 @@ export function GoalsCard({
 
   if (goals.length === 0) {
     return (
-      <div className="panel p-6 h-full flex flex-col items-center justify-center">
+      <div className="panel p-4 sm:p-6 h-full flex flex-col items-center justify-center">
         <motion.div
           animate={reduced ? {} : { y: [0, -5, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         >
           <svg className="text-[var(--text-faint)] mb-3" style={{ width: 24, height: 24 }} />
         </motion.div>
-        <p className="text-sm text-[var(--text-muted)]">Nenhuma meta ativa</p>
+        <p className="text-sm text-[var(--text-muted)] text-center px-4">Nenhuma meta ativa</p>
         <button
           type="button"
           onClick={() => setShowCreateModal(true)}
@@ -888,13 +888,13 @@ export function GoalsCard({
   }
 
   return (
-    <div className="panel p-6 h-full flex flex-col">
+    <div className="panel p-4 sm:p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <span className="eyebrow muted">METAS ATIVAS</span>
         <span className="text-xs text-[var(--text-muted)]">{goals.length} meta{goals.length === 1 ? "" : "s"}</span>
       </div>
 
-      <div className="relative grid grow grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+      <div className="relative grid grow grid-cols-1 md:grid-cols-2 gap-3 content-start min-w-0">
         <AnimatePresence mode="popLayout" initial={false}>
           {activeGoals.map((goal) => {
             const { color, icon } = goal.category;
@@ -946,7 +946,7 @@ export function GoalsCard({
             whileHover={reduced ? undefined : { borderColor: "rgba(113,212,255,0.5)", color: "#71d4ff" }}
             whileTap={reduced ? undefined : { scale: 0.97 }}
             aria-label="Criar nova meta"
-            className="flex min-h-[88px] h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
+            className="flex min-h-[72px] sm:min-h-[88px] h-full w-full flex-col items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
             transition={{ ...spring.snappy }}
           >
             <motion.span
@@ -957,7 +957,7 @@ export function GoalsCard({
             >
               <Plus size={16} strokeWidth={2.5} />
             </motion.span>
-            <span className="text-xs font-medium">Criar nova meta</span>
+            <span className="text-xs sm:text-sm font-medium">Criar nova meta</span>
           </motion.button>
         </AnimatePresence>
       </div>

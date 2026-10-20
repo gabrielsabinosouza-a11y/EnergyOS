@@ -71,14 +71,14 @@ const SHARE_REWARD_COINS = 50;
  * carregar é usado e, se nenhum existir, o ícone line original entra como
  * fallback (sem quebrar nada).
  *
+ * - /recaps/*.png           → artes 3D já disponíveis no repositório
  * - /recap/icons/recap-*.png → nomes previstos para os novos assets
- * - /recaps/*.png           → artes já disponíveis no repositório
  */
 const RECAP_ART = {
-  foco: ["/recap/icons/recap-foco.png", "/recaps/clock.png"],
-  sequencia: ["/recap/icons/recap-sequencia.png", "/recaps/streak.png"],
-  jardim: ["/recap/icons/recap-jardim.png", "/recaps/energy.png"],
-  xp: ["/recap/icons/recap-xp.png", "/recaps/xp.png", "/xp/xp_double_thunder.png"],
+  foco: ["/recaps/clock.png", "/recap/icons/recap-foco.png"],
+  sequencia: ["/recaps/streak.png", "/recap/icons/recap-sequencia.png"],
+  jardim: ["/recaps/energy.png", "/recap/icons/recap-jardim.png"],
+  xp: ["/recaps/xp.png", "/recap/icons/recap-xp.png", "/xp/xp_double_thunder.png"],
 } as const;
 
 /** Cores de destaque por slide (as únicas cores novas do redesign). */

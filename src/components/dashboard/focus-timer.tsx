@@ -808,8 +808,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
         </div>
       </div>
 
-      {/* Today stats */}
-      <div className="grid grid-cols-2 gap-2 mt-6">
+      {/* Today stats - responsive grid */}
+      <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-6">
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
           <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{Math.floor(todayStats.minutesFocused / 60)}h{todayStats.minutesFocused % 60 > 0 ? ` ${todayStats.minutesFocused % 60}min` : ""}</div>
           <div className="text-[10px] text-[var(--text-faint)]">foco hoje</div>

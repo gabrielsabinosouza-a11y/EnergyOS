@@ -453,6 +453,9 @@ export default function PlanningPage() {
     }
     const sequence = (completionSequence.current.get(key) ?? 0) + 1;
     completionSequence.current.set(key, sequence);
+    // Invalida leituras em voo: uma resposta antiga (sem a conclusão) não pode
+    // sobrescrever a atualização otimista da ocorrência.
+    mutationVersion.current += 1;
     updateTasks((current) => current.map((item) => matches(item)
       ? { ...item, completedAt: completed ? new Date().toISOString() : null, skipped: false }
       : item));

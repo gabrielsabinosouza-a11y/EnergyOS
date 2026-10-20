@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -66,42 +66,31 @@ export function PlanDialog({
   onSave,
   showNotificationPermissionPrompt,
 }: PlanDialogProps) {
-  const [title, setTitle] = useState("");
-  const [categoryId, setCategoryId] = useState(() => String(categories[0]?.id ?? ""));
-  const [planDate, setPlanDate] = useState(todayIso());
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("10:00");
+  // O diálogo é remontado a cada abertura (key={editorSession} na página),
+  // então o estado inicial já nasce correto — sem efeito de "reset" que
+  // apagaria o que o usuário digitou (ex.: quando as categorias chegam).
+  const [title, setTitle] = useState(() => plan?.title ?? "");
+  const [categoryId, setCategoryId] = useState("");
+  const [planDate, setPlanDate] = useState(() => plan?.planDate ?? initialDate ?? todayIso());
+  const [startTime, setStartTime] = useState(() => plan?.startTime?.slice(0, 5) ?? initialStartTime ?? (plan ? "" : "09:00"));
+  const [endTime, setEndTime] = useState(() => initialEndTime ?? (plan ? "" : "10:00"));
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState("");
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
-  const [reminderOption, setReminderOption] = useState<ReminderOption>("sem-lembrete");
+  const [reminderOption, setReminderOption] = useState<ReminderOption>(() => {
+    const offset = plan?.reminderOffsetMin;
+    const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
+    return found?.value ?? "sem-lembrete";
+  });
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
 
-  // Reset all fields when modal opens - fixes leftover values from previous plans
-  useEffect(() => {
-    if (open) {
-      setTitle(plan?.title ?? "");
-      setCategoryId(String(plan?.categoryId ?? categories[0]?.id ?? ""));
-      setPlanDate(plan?.planDate ?? initialDate ?? todayIso());
-      setStartTime(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? (plan ? "" : "09:00"));
-      setEndTime(initialEndTime ?? (plan ? "" : "10:00"));
-      setRepeatWeekly(false);
-      setRepeatDays([]);
-      setRepeatDaysTouched(false);
-      setRepeatUntil("");
-      setHasRepeatEnd(false);
-      const offset = plan?.reminderOffsetMin;
-      const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
-      setReminderOption(found?.value ?? "sem-lembrete");
-      setError("");
-      setLoading(false);
-    }
-  }, [open, plan, initialDate, initialStartTime, initialEndTime, categories]);
+  /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
+  const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
 
   function handleDateChange(date: string) {
     setPlanDate(date);
@@ -134,8 +123,8 @@ export function PlanDialog({
       setError(`Use até ${PLAN_NAME_MAX} caracteres.`);
       return null;
     }
-    const parsedCategoryId = Number(categoryId);
-    if (!recurringOccurrence && categoryId && (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0)) {
+    const parsedCategoryId = Number(selectedCategoryId);
+    if (!recurringOccurrence && selectedCategoryId && (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0)) {
       setError("Escolha uma categoria.");
       return null;
     }
@@ -158,7 +147,9 @@ export function PlanDialog({
     return {
       planDate,
       title: trimmedTitle,
-      categoryId: recurringOccurrence ? plan!.categoryId : categoryId ? parsedCategoryId : undefined,
+      categoryId: recurringOccurrence
+        ? plan!.categoryId
+        : selectedCategoryId ? parsedCategoryId : undefined,
       startTime: startTime || null,
       endTime: recurringOccurrence ? null : endTime || null,
       repeatType: repeatWeekly ? "weekly" : "once",
@@ -251,14 +242,14 @@ export function PlanDialog({
             </label>
             <select
               id="planner-plan-category"
-              value={categoryId}
+              value={selectedCategoryId}
               onChange={(event) => setCategoryId(event.target.value)}
               className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
               disabled={Boolean(recurringOccurrence)}
             >
               {!recurringOccurrence ? <option value="">Padrão</option> : null}
-              {!categories.some((category) => String(category.id) === categoryId)
-                ? <option value={categoryId}>{plan?.category.name ?? "Categoria atual"}</option>
+              {!categories.some((category) => String(category.id) === selectedCategoryId)
+                ? <option value={selectedCategoryId}>{plan?.category.name ?? "Categoria atual"}</option>
                 : null}
               {categories.map((category) => (
                 <option key={category.id} value={String(category.id)}>{category.name}</option>
