@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { expandWeeklyPlanSeries } from "./db/weekly-plans-series";
+import { addDays, weekStart } from "./planning/dates";
+import { buildMonthGrid } from "./planning/month-grid";
 
 const baseSeries = {
   repeatType: "once" as const,
@@ -42,6 +44,33 @@ describe("expandWeeklyPlanSeries", () => {
   });
 
   describe("weekly", () => {
+    it("shows every Monday while navigating three future months", () => {
+      const series = {
+        ...baseSeries,
+        repeatType: "weekly" as const,
+        startDate: "2026-10-19",
+        repeatDays: [1],
+      };
+      const visitedMonths = ["2026-11-01", "2026-12-01", "2027-01-01"];
+      const visibleDates = new Set<string>();
+
+      for (const month of visitedMonths) {
+        const [year, monthNumber] = month.split("-").map(Number);
+        const weeks = new Set(buildMonthGrid(year!, monthNumber!).map(weekStart));
+        for (const start of weeks) {
+          for (const date of expandWeeklyPlanSeries(series, start)) {
+            if (date.slice(0, 7) === month.slice(0, 7)) visibleDates.add(date);
+          }
+        }
+      }
+
+      const mondays: string[] = [];
+      for (let date = "2026-11-01"; date <= "2027-01-31"; date = addDays(date, 1)) {
+        if (new Date(`${date}T00:00:00Z`).getUTCDay() === 1) mondays.push(date);
+      }
+      assert.deepStrictEqual([...visibleDates].sort(), mondays);
+    });
+
     it("shows on the selected weekday every week", () => {
       // Sunday = 0
       const series = { ...baseSeries, repeatType: "weekly" as const, repeatDays: [0] };

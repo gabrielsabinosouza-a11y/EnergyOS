@@ -32,6 +32,9 @@ type PlanFormValues = {
   categoryId?: number;
   startTime: string | null;
   endTime: string | null;
+  repeatType: "once" | "weekly";
+  repeatDays: number[];
+  repeatUntil: string | null;
 };
 
 function planKey(plan: WeeklyPlanItem): string {
@@ -258,17 +261,30 @@ export default function PlanningPage() {
     setSelectedDate(todayIso());
   }, []);
 
-  const savePlan = useCallback(async (plan: WeeklyPlanItem | null, values: PlanFormValues) => {
+  const savePlan = useCallback(async (
+    plan: WeeklyPlanItem | null,
+    values: PlanFormValues,
+    scope?: "occurrence" | "series",
+  ) => {
     if (plan?.seriesId !== null && plan?.seriesId !== undefined) {
-      await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
-        title: values.title,
-        startTime: values.startTime,
-      });
+      if (scope === "series") {
+        await api.updateWeeklyPlanSeries(plan.seriesId, {
+          title: values.title,
+          startTime: values.startTime,
+        });
+      } else {
+        await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
+          title: values.title,
+          startTime: values.startTime,
+        });
+      }
       mutationVersion.current += 1;
-      updateTasks((current) => current.map((item) => planKey(item) === planKey(plan)
+      updateTasks((current) => current.map((item) => (
+        item.seriesId === plan.seriesId && (scope === "series" || item.planDate === plan.planDate)
+      )
         ? { ...item, title: values.title, startTime: values.startTime }
         : item));
-      announce("Ocorrência atualizada.");
+      announce(scope === "series" ? "Série atualizada." : "Ocorrência atualizada.");
       return;
     }
 
@@ -288,6 +304,32 @@ export default function PlanningPage() {
       return;
     }
 
+    if (values.repeatType === "weekly") {
+      await api.createWeeklyPlanSeries({
+        title: values.title,
+        categoryId: values.categoryId,
+        repeatType: "weekly",
+        repeatDays: values.repeatDays,
+        startTime: values.startTime,
+        durationMinutes: values.startTime && values.endTime
+          ? Math.round((Date.parse(`1970-01-01T${values.endTime}:00Z`) - Date.parse(`1970-01-01T${values.startTime}:00Z`)) / 60_000)
+          : null,
+        startDate: values.planDate,
+        endType: values.repeatUntil ? "date" : "never",
+        endDate: values.repeatUntil,
+        timezone: "America/Sao_Paulo",
+      });
+      mutationVersion.current += 1;
+      const weeks = await Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)));
+      const incoming = weeks.flat().filter((item) => item.planDate >= dataRange.start && item.planDate <= dataRange.end);
+      updateTasks((current) => mergePlans(
+        current.filter((item) => item.planDate < dataRange.start || item.planDate > dataRange.end),
+        incoming,
+      ));
+      announce("Plano recorrente criado.");
+      return;
+    }
+
     const { plan: created } = await api.createWeeklyPlan({
       planDate: values.planDate,
       title: values.title,
@@ -298,7 +340,7 @@ export default function PlanningPage() {
     mutationVersion.current += 1;
     updateTasks((current) => mergePlans(current, [fromWeeklyPlan(created)]));
     announce("Plano criado.");
-  }, [announce, updateTasks]);
+  }, [announce, dataRange.end, dataRange.start, updateTasks, weekStarts]);
 
   const completionRequests = useRef(new Map<string, Promise<{ xpAwarded: number; coinsAwarded: number; balance?: number }>>());
   const completionSequence = useRef(new Map<string, number>());
@@ -377,21 +419,26 @@ export default function PlanningPage() {
     setDeleteError(null);
   }, []);
 
-  const confirmDelete = useCallback(async () => {
+  const confirmDelete = useCallback(async (scope?: "occurrence" | "series") => {
     if (!deleteTarget || deleteLoading) return;
     deleteLoadingRef.current = true;
     setDeleteLoading(true);
     setDeleteError(null);
     try {
       if (deleteTarget.seriesId !== null) {
-        await api.skipPlanOccurrence(deleteTarget.seriesId, deleteTarget.planDate);
+        if (scope === "series") await api.deleteWeeklyPlanSeries(deleteTarget.seriesId);
+        else await api.skipPlanOccurrence(deleteTarget.seriesId, deleteTarget.planDate);
       } else {
         await api.deleteWeeklyPlan(deleteTarget.id);
       }
       mutationVersion.current += 1;
-      updateTasks((current) => current.filter((plan) => planKey(plan) !== planKey(deleteTarget)));
+      updateTasks((current) => current.filter((plan) => (
+        deleteTarget.seriesId !== null && scope === "series"
+          ? plan.seriesId !== deleteTarget.seriesId
+          : planKey(plan) !== planKey(deleteTarget)
+      )));
       setDeleteTarget(null);
-      announce("Plano excluído.");
+      announce(scope === "series" ? "Série excluída." : "Plano excluído.");
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : "Não foi possível excluir o plano.");
     } finally {
@@ -541,8 +588,10 @@ export default function PlanningPage() {
         <Modal
           open={Boolean(deleteTarget)}
           onClose={closeDelete}
-          title="Excluir plano?"
-          description="Esta ação remove o plano do calendário."
+          title={deleteTarget?.seriesId !== null && deleteTarget?.seriesId !== undefined ? "Excluir plano recorrente?" : "Excluir plano?"}
+          description={deleteTarget?.seriesId !== null && deleteTarget?.seriesId !== undefined
+            ? "Escolha quais ocorrências deseja remover."
+            : "Esta ação remove o plano do calendário."}
           panelClassName="max-w-[420px]"
           footer={
             <>
@@ -555,17 +604,33 @@ export default function PlanningPage() {
               >
                 Cancelar
               </Button>
-              <Button type="button" variant="danger" loading={deleteLoading} disabled={deleteLoading} onClick={() => void confirmDelete()}>
-                Excluir plano
-              </Button>
+              {deleteTarget?.seriesId === null || deleteTarget?.seriesId === undefined ? (
+                <Button type="button" variant="danger" loading={deleteLoading} disabled={deleteLoading} onClick={() => void confirmDelete()}>
+                  Excluir plano
+                </Button>
+              ) : null}
             </>
           }
         >
-          <p className="text-sm text-[var(--text-secondary)]">
-            {deleteTarget?.seriesId !== null && deleteTarget?.seriesId !== undefined
-              ? "Somente esta ocorrência será removida; os demais dias da série permanecem."
-              : <>Tem certeza de que deseja excluir <strong className="text-[var(--text)]">{deleteTarget?.title || "este plano"}</strong>?</>}
-          </p>
+          {deleteTarget?.seriesId !== null && deleteTarget?.seriesId !== undefined ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--text-secondary)]">
+                Você pode remover somente a ocorrência deste dia ou arquivar a série inteira.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button type="button" variant="danger" loading={deleteLoading} disabled={deleteLoading} onClick={() => void confirmDelete("occurrence")}>
+                  Apenas este dia
+                </Button>
+                <Button type="button" variant="danger" loading={deleteLoading} disabled={deleteLoading} onClick={() => void confirmDelete("series")}>
+                  Todos os dias da série
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Tem certeza de que deseja excluir <strong className="text-[var(--text)]">{deleteTarget?.title || "este plano"}</strong>?
+            </p>
+          )}
           {deleteError ? <p className="mt-3 text-sm text-red-400" role="alert">{deleteError}</p> : null}
         </Modal>
       </div>

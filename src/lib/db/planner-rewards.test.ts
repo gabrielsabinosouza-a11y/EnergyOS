@@ -90,3 +90,18 @@ test("concurrent completion requests grant the reward only once", async () => {
   assert.equal(rewards.filter((reward) => reward.coinsAwarded > 0).length, 1);
   assert.deepEqual(totals(), { balance: 20, totalXp: 20, missionProgress: 1 });
 });
+
+test("each recurring occurrence has an independent one-time reward", async () => {
+  const { dependencies, totals } = createRewardDependencies();
+  const monday20 = "8:2026-10-20";
+  const monday27 = "8:2026-10-27";
+
+  const first = await grantPlannerCompletionReward("profile-1", "weekly_plan_occurrence", monday20, true, client, undefined, dependencies);
+  const second = await grantPlannerCompletionReward("profile-1", "weekly_plan_occurrence", monday27, true, client, undefined, dependencies);
+  const repeated = await grantPlannerCompletionReward("profile-1", "weekly_plan_occurrence", monday20, true, client, undefined, dependencies);
+
+  assert.equal(first.xpAwarded, 20);
+  assert.equal(second.xpAwarded, 20);
+  assert.deepEqual(repeated, { xpAwarded: 0, coinsAwarded: 0 });
+  assert.deepEqual(totals(), { balance: 40, totalXp: 40, missionProgress: 2 });
+});

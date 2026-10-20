@@ -1,12 +1,12 @@
 import pool from "../db";
 import type { WeeklyPlanSeries, WeeklyPlanItem, PlanRepeatType, PlanEndType, Category } from "@/types";
 import { NotFoundError } from "../errors";
-import { ValidationError, parseProfileId, parseTitle } from "./validation";
+import { ValidationError, parseDate, parseOptionalTime, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { WEEKLY_PLAN_SERIES_LIMIT, PLAN_NAME_MAX } from "../daily-limits";
-import { grantPlannerCompletionReward, updatePlannerLeagueXP } from "./planner-rewards";
+import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerRewardResult } from "./planner-rewards";
 import { ensureXpLedgerSourceCheck } from "./xp-ledger";
-import { addDays, parseIsoKey } from "@/lib/planning/dates";
+import { addDays, parseIsoKey, weekStart } from "@/lib/planning/dates";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ export async function ensureWeeklyPlanSeriesSchema() {
 const SERIES_SELECT = `
   select s.id, s.profile_id, s.title, s.category_id, s.icon_type, s.icon_value,
          s.color, s.note, s.repeat_type, s.repeat_days, s.repeat_interval,
-         s.start_time, s.duration_minutes, s.start_date, s.end_type, s.end_date,
+         s.start_time, s.duration_minutes, s.start_date::text as start_date, s.end_type, s.end_date::text as end_date,
          s.end_count, s.timezone, s.archived, s.created_at,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
@@ -167,6 +167,49 @@ export interface CreateWeeklyPlanSeriesInput {
   timezone?: string;
 }
 
+function validateSeriesRule(input: {
+  repeatType?: PlanRepeatType;
+  repeatDays?: number[] | null;
+  repeatInterval?: number | null;
+  startDate?: string;
+  endType?: PlanEndType;
+  endDate?: string | null;
+  endCount?: number | null;
+}) {
+  if (input.repeatType !== undefined && !["once", "weekly", "interval"].includes(input.repeatType)) {
+    throw new ValidationError("Tipo de repetição inválido.");
+  }
+  if (input.repeatDays !== undefined && input.repeatDays !== null) {
+    if (!Array.isArray(input.repeatDays) || input.repeatDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) {
+      throw new ValidationError("Selecione dias da semana válidos.");
+    }
+    input.repeatDays = [...new Set(input.repeatDays)];
+  }
+  if (input.repeatType !== undefined && input.repeatType !== "once" && (!input.repeatDays || input.repeatDays.length === 0)) {
+    throw new ValidationError("Selecione pelo menos um dia da semana.");
+  }
+  if (input.repeatType === "interval" && (
+    !Number.isInteger(input.repeatInterval) || (input.repeatInterval ?? 0) < 2 || (input.repeatInterval ?? 0) > 8
+  )) {
+    throw new ValidationError("O intervalo deve ser de 2 a 8 semanas.");
+  }
+  if (input.repeatType === "once" && input.repeatDays && input.repeatDays.length > 1) {
+    throw new ValidationError("Um plano de uma vez não pode ter múltiplos dias.");
+  }
+  if (input.endType !== undefined && !["never", "date", "count"].includes(input.endType)) {
+    throw new ValidationError("Tipo de encerramento inválido.");
+  }
+  if (input.endType === "date") {
+    const endDate = parseDate(input.endDate, "Data final da repetição");
+    if (input.startDate && endDate < input.startDate) {
+      throw new ValidationError("A data final da repetição deve ser igual ou posterior à data inicial.");
+    }
+  }
+  if (input.endType === "count" && (!Number.isInteger(input.endCount) || (input.endCount ?? 0) < 1)) {
+    throw new ValidationError("A quantidade de repetições deve ser maior que zero.");
+  }
+}
+
 export async function createWeeklyPlanSeries(
   profileId: string,
   input: CreateWeeklyPlanSeriesInput,
@@ -180,6 +223,7 @@ export async function createWeeklyPlanSeries(
   if (title.length > PLAN_NAME_MAX) {
     throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
   }
+  if (!input.repeatType) throw new ValidationError("Tipo de repetição inválido.");
 
   // Check limit
   const countResult = await pool.query<{ count: number }>(
@@ -190,18 +234,21 @@ export async function createWeeklyPlanSeries(
     throw new ValidationError(`Limite de ${WEEKLY_PLAN_SERIES_LIMIT} planos ativos atingido.`);
   }
 
-  // Validate repeat rule
-  if (input.repeatType !== "once" && (!input.repeatDays || input.repeatDays.length === 0)) {
-    throw new ValidationError("Selecione pelo menos um dia da semana.");
+  validateSeriesRule(input);
+  const startDate = parseDate(input.startDate, "Data do plano");
+  const startTime = parseOptionalTime(input.startTime, "Horário de início");
+  const endType = input.endType ?? "never";
+  const endDate = endType === "date" ? parseDate(input.endDate, "Data final da repetição") : null;
+  const durationMinutes = input.durationMinutes ?? null;
+  if (durationMinutes !== null && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440)) {
+    throw new ValidationError("Duração do plano inválida.");
   }
-  if (input.repeatType === "interval" && (!input.repeatInterval || input.repeatInterval < 2 || input.repeatInterval > 8)) {
-    throw new ValidationError("O intervalo deve ser de 2 a 8 semanas.");
+  const timezone = input.timezone ?? "America/Sao_Paulo";
+  try {
+    new Intl.DateTimeFormat("pt-BR", { timeZone: timezone });
+  } catch {
+    throw new ValidationError("Fuso horário inválido.");
   }
-  if (input.repeatType === "once" && input.repeatDays && input.repeatDays.length > 1) {
-    throw new ValidationError("Um plano de uma vez não pode ter múltiplos dias.");
-  }
-
-  const startDate = input.startDate;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
@@ -216,9 +263,9 @@ export async function createWeeklyPlanSeries(
       profileId, title, categoryId,
       input.iconType ?? "asset", input.iconValue ?? null, input.color ?? null, input.note ?? null,
       input.repeatType, input.repeatDays ?? null, input.repeatInterval ?? null,
-      input.startTime ?? null, input.durationMinutes ?? null, startDate,
-      input.endType ?? "never", input.endDate ?? null, input.endCount ?? null,
-      input.timezone ?? "America/Sao_Paulo",
+      startTime, durationMinutes, startDate,
+      endType, endDate, input.endCount ?? null,
+      timezone,
     ],
   );
   const result = await pool.query<SeriesRow>(`${SERIES_SELECT} where s.id = $1`, [inserted.rows[0].id]);
@@ -252,6 +299,7 @@ export async function updateWeeklyPlanSeries(
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
 
   const title = input.title !== undefined ? parseTitle(input.title) : undefined;
+  validateSeriesRule(input);
 
   // Plan names have a tighter soft limit than parseTitle's generic 200-char
   // maximum. Reject at PLAN_NAME_MAX (120) for consistency with the frontend.
@@ -260,6 +308,18 @@ export async function updateWeeklyPlanSeries(
   }
 
   const categoryId = input.categoryId !== undefined ? await assertCategoryForProfile(profileId, input.categoryId) : undefined;
+  const startDate = input.startDate !== undefined ? parseDate(input.startDate, "Data do plano") : undefined;
+  const endDate = input.endDate !== undefined && input.endDate !== null
+    ? parseDate(input.endDate, "Data final da repetição")
+    : input.endDate;
+  const startTime = input.startTime !== undefined ? parseOptionalTime(input.startTime, "Horário de início") : undefined;
+  if (input.durationMinutes !== undefined && input.durationMinutes !== null
+    && (!Number.isInteger(input.durationMinutes) || input.durationMinutes < 1 || input.durationMinutes > 1440)) {
+    throw new ValidationError("Duração do plano inválida.");
+  }
+  if (startDate && endDate && endDate < startDate) {
+    throw new ValidationError("A data final da repetição deve ser igual ou posterior à data inicial.");
+  }
 
   const sets: string[] = [];
   const colValues: unknown[] = [];
@@ -278,11 +338,11 @@ export async function updateWeeklyPlanSeries(
   if (input.repeatType !== undefined) push("repeat_type = $N", input.repeatType);
   if (input.repeatDays !== undefined) push("repeat_days = $N", input.repeatDays);
   if (input.repeatInterval !== undefined) push("repeat_interval = $N", input.repeatInterval);
-  if (input.startTime !== undefined) push("start_time = $N", input.startTime);
+  if (startTime !== undefined) push("start_time = $N", startTime);
   if (input.durationMinutes !== undefined) push("duration_minutes = $N", input.durationMinutes);
-  if (input.startDate !== undefined) push("start_date = $N::date", input.startDate);
+  if (startDate !== undefined) push("start_date = $N::date", startDate);
   if (input.endType !== undefined) push("end_type = $N", input.endType);
-  if (input.endDate !== undefined) push("end_date = $N::date", input.endDate);
+  if (endDate !== undefined) push("end_date = $N::date", endDate);
   if (input.endCount !== undefined) push("end_count = $N", input.endCount);
   if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
 
@@ -383,6 +443,44 @@ export function expandWeeklyPlanSeries(
   return occurrences;
 }
 
+interface SeriesRuleRow {
+  id: string | number;
+  start_date: string;
+  repeat_type: string;
+  repeat_days: number[] | null;
+  repeat_interval: number | null;
+  end_type: string;
+  end_date: string | null;
+  end_count: number | null;
+  timezone: string;
+}
+
+function assertOccurrenceIsValid(rule: SeriesRuleRow, occurrenceDate: string) {
+  const dates = expandWeeklyPlanSeries({
+    repeatType: rule.repeat_type as PlanRepeatType,
+    repeatDays: rule.repeat_days,
+    repeatInterval: rule.repeat_interval,
+    startDate: rule.start_date,
+    endType: rule.end_type as PlanEndType,
+    endDate: rule.end_date,
+    endCount: rule.end_count,
+    timezone: rule.timezone,
+  }, weekStart(occurrenceDate));
+  if (!dates.includes(occurrenceDate)) {
+    throw new ValidationError("Esta data não pertence à série do plano.");
+  }
+}
+
+async function getOccurrenceRule(profileId: string, seriesId: number): Promise<SeriesRuleRow> {
+  const result = await pool.query<SeriesRuleRow>(
+    `select id, start_date::text as start_date, repeat_type, repeat_days, repeat_interval, end_type, end_date::text as end_date, end_count, timezone
+     from weekly_plan_series where id = $1 and profile_id = $2 and archived = false`,
+    [seriesId, profileId],
+  );
+  if (!result.rows[0]) throw new NotFoundError("Plano não encontrado.");
+  return result.rows[0];
+}
+
 // ── Occurrence state ────────────────────────────────────────────────────────────
 
 export async function setOccurrenceCompleted(
@@ -390,16 +488,22 @@ export async function setOccurrenceCompleted(
   seriesId: number,
   occurrenceDate: string,
   completed: boolean,
-): Promise<{ xpAwarded: number; coinsAwarded: number }> {
+): Promise<PlannerRewardResult> {
   parseProfileId(profileId);
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
+  occurrenceDate = parseDate(occurrenceDate, "Data da ocorrência");
 
   const client = await pool.connect();
   let reward = { xpAwarded: 0, coinsAwarded: 0 };
   try {
     await client.query("begin");
-    const owner = await client.query(`select id from weekly_plan_series where id = $1 and profile_id = $2 and archived = false for update`, [seriesId, profileId]);
+    const owner = await client.query<SeriesRuleRow>(
+      `select id, start_date::text as start_date, repeat_type, repeat_days, repeat_interval, end_type, end_date::text as end_date, end_count, timezone
+       from weekly_plan_series where id = $1 and profile_id = $2 and archived = false for update`,
+      [seriesId, profileId],
+    );
     if (!owner.rows[0]) throw new NotFoundError("Plano não encontrado.");
+    assertOccurrenceIsValid(owner.rows[0], occurrenceDate);
     await client.query(
       `insert into weekly_plan_occurrences (series_id, occurrence_date, completed_at)
        values ($1, $2::date, $3)
@@ -429,13 +533,8 @@ export async function setOccurrenceCompleted(
 export async function skipOccurrence(profileId: string, seriesId: number, occurrenceDate: string): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
-
-  // Verify ownership first
-  const check = await pool.query(
-    `select 1 from weekly_plan_series where id = $1 and profile_id = $2 and archived = false`,
-    [seriesId, profileId],
-  );
-  if (!check.rows[0]) throw new NotFoundError("Plano não encontrado.");
+  occurrenceDate = parseDate(occurrenceDate, "Data da ocorrência");
+  assertOccurrenceIsValid(await getOccurrenceRule(profileId, seriesId), occurrenceDate);
 
   await pool.query(
     `insert into weekly_plan_occurrences (series_id, occurrence_date, skipped)
@@ -459,6 +558,8 @@ export async function updateOccurrenceOverride(
 ): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
+  occurrenceDate = parseDate(occurrenceDate, "Data da ocorrência");
+  assertOccurrenceIsValid(await getOccurrenceRule(profileId, seriesId), occurrenceDate);
 
   // Verify ownership first
   const check = await pool.query(
@@ -504,7 +605,7 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
 
   // 1. Legacy weekly_plans rows
   const legacyResult = await pool.query(
-    `select w.id, w.plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time,
+    `select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time,
             c.id as category_id, c.user_id as category_user_id, c.name as category_name,
             c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
             c.created_at as category_created_at

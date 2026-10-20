@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Check, MoreHorizontal, Pencil, Repeat, Trash2 } from "lucide-react";
 import type { WeeklyPlanItem } from "@/types";
 import { eventColor, shortTimeLabel } from "@/lib/planning/categories";
 
@@ -67,6 +67,9 @@ export function PlanRow({ plan, compact = false, onToggleCompleted, onEdit, onDe
         {completed ? <Check size={12} aria-hidden="true" /> : null}
       </button>
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+      {plan.isRecurring ? (
+        <Repeat size={11} className="shrink-0 text-[var(--text-faint)]" aria-label="Plano recorrente" />
+      ) : null}
       <button
         type="button"
         onClick={() => onEdit(plan)}

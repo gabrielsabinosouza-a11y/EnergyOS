@@ -500,6 +500,7 @@ export interface Habit {
 export interface UserSettings {
   profileId: string;
   notificationsEnabled: boolean;
+  plannerRemindersEnabled?: boolean;
   preferredTheme: "system" | "light" | "dark";
   sleepTime?: string;
   focusTime?: string;
@@ -570,6 +571,7 @@ export interface WeeklyPlan {
   startTime?: string;
   endTime?: string;
   allDay: boolean;
+  reminderOffsetMin: number | null;
 }
 
 // ── Recurring weekly plan series ─────────────────────────────────────────
@@ -591,6 +593,7 @@ export interface WeeklyPlanSeries {
   repeatDays: number[] | null;
   repeatInterval: number | null;
   startTime: string | null;
+  reminderOffsetMin: number | null;
   durationMinutes: number | null;
   startDate: string;
   endType: PlanEndType;
@@ -609,6 +612,7 @@ export interface WeeklyPlanOccurrence {
   skipped: boolean;
   overrideTitle: string | null;
   overrideStartTime: string | null;
+  reminderOffsetMin: number | null;
 }
 
 /** Unified type for the UI — combines old WeeklyPlan and new series occurrences. */
@@ -632,6 +636,7 @@ export interface WeeklyPlanItem {
   repeatType: PlanRepeatType | null;
   repeatDays: number[] | null;
   isRecurring: boolean;
+  reminderOffsetMin: number | null;
 }
 
 export interface FocusSession {

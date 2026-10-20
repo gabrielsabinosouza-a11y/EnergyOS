@@ -8,8 +8,8 @@ import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerReward
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
-  select w.id, w.profile_id, w.plan_date, w.title, w.task_id, w.completed_at, w.created_at,
-         w.start_time, w.end_time, w.all_day,
+  select w.id, w.profile_id, w.plan_date::text as plan_date, w.title, w.task_id, w.completed_at, w.created_at,
+         w.start_time, w.end_time, w.all_day, w.reminder_offset_min,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
          c.created_at as category_created_at
@@ -27,6 +27,7 @@ interface WeeklyPlanRow {
   start_time: string | null;
   end_time: string | null;
   all_day: boolean;
+  reminder_offset_min: number | null;
   category_id: string | number;
   category_user_id: string | null;
   category_name: string;
@@ -60,6 +61,7 @@ function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
     startTime: normalizeTime(row.start_time),
     endTime: normalizeTime(row.end_time),
     allDay: row.all_day ?? true,
+    reminderOffsetMin: row.reminder_offset_min,
   };
 }
 
@@ -93,6 +95,16 @@ export interface CreateWeeklyPlanInput {
   startTime?: string;
   endTime?: string;
   allDay?: boolean;
+  reminderOffsetMin?: number | null;
+}
+
+function parseReminderOffset(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (![0, 5, 10, 30, 60, 1440].includes(value as number)) {
+    throw new ValidationError("Lembrete inválido.");
+  }
+  return value as number;
 }
 
 function parsePlanTime(value: unknown, label: string): string | null | undefined {
@@ -121,15 +133,16 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
     throw new ValidationError("O horário de fim deve ser posterior ao início.");
   }
   const allDay = input.allDay ?? true;
+  const reminderOffsetMin = parseReminderOffset(input.reminderOffsetMin, "Lembrete") ?? null;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
 
   const inserted = await pool.query<{ id: string | number }>(
-    `insert into weekly_plans (profile_id, plan_date, title, category_id, task_id, start_time, end_time, all_day)
-     values ($1, $2::date, $3, $4, $5, $6, $7, $8)
+    `insert into weekly_plans (profile_id, plan_date, title, category_id, task_id, start_time, end_time, all_day, reminder_offset_min)
+     values ($1, $2::date, $3, $4, $5, $6, $7, $8, $9)
      returning id`,
-    [profileId, planDate, title, categoryId, input.taskId ?? null, startTime ?? null, endTime ?? null, allDay],
+    [profileId, planDate, title, categoryId, input.taskId ?? null, startTime ?? null, endTime ?? null, allDay, reminderOffsetMin],
   );
   const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [inserted.rows[0].id]);
   return mapPlan(result.rows[0]);
@@ -182,6 +195,7 @@ export interface UpdateWeeklyPlanInput {
   planDate?: string;
   startTime?: string | null;
   endTime?: string | null;
+  reminderOffsetMin?: number | null;
 }
 
 /** Edita os campos de um plano independente. */
@@ -200,6 +214,7 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
     : undefined;
   const startTime = parsePlanTime(input.startTime, "Horário de início");
   const endTime = parsePlanTime(input.endTime, "Horário de fim");
+  const reminderOffsetMin = parseReminderOffset(input.reminderOffsetMin);
   if (startTime && endTime && endTime <= startTime) {
     throw new ValidationError("O horário de fim deve ser posterior ao início.");
   }
@@ -217,6 +232,7 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   if (categoryId !== undefined) push("category_id = $N", categoryId);
   if (startTime !== undefined) push("start_time = $N::time", startTime);
   if (endTime !== undefined) push("end_time = $N::time", endTime);
+  if (reminderOffsetMin !== undefined) push("reminder_offset_min = $N", reminderOffsetMin);
   if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
 
   colValues.push(profileId, planId);

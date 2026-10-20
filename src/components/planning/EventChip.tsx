@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { Repeat } from "lucide-react";
 import { eventColor, shortTimeLabel } from "@/lib/planning/categories";
 import type { WeeklyPlanItem } from "@/types";
 
@@ -44,6 +45,7 @@ export const EventChip = memo(function EventChip({ plan, onClick, showTime = fal
       aria-label={completed ? `Concluído: ${title}` : title}
     >
       <span className="mv-chip__dot" style={{ backgroundColor: color }} aria-hidden="true" />
+      {plan.isRecurring ? <Repeat size={10} aria-label="Plano recorrente" /> : null}
       <span className="mv-chip__title">{title}</span>
       {showTime && timeLabel ? <span className="mv-chip__time">{timeLabel}</span> : null}
     </span>
