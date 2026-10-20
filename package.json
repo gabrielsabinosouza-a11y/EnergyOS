@@ -17,6 +17,7 @@
     "db:migrate-goal-logs": "node scripts/migrate-goal-logs.mjs",
     "db:migrate-terminology": "node scripts/migrate-terminology.mjs",
     "db:migrate-habit-daily-target": "node scripts/migrate-habit-daily-target.mjs",
+    "db:migrate-xp-boost-purchases": "node scripts/migrate-xp-boost-purchase-idempotency.mjs",
     "db:recompute-xp": "node scripts/recompute-user-xp.mjs",
     "db:restore-messages": "node scripts/restore-messages.mjs",
     "db:check": "node scripts/verify-schema.mjs",

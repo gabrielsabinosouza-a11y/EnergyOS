@@ -1,0 +1,15 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+page.on("console", (m) => console.log("CONSOLE:", m.type(), m.text().slice(0, 300)));
+page.on("pageerror", (e) => console.log("PAGEERROR:", e.message.slice(0, 300)));
+await page.goto("http://localhost:3000/login", { waitUntil: "domcontentloaded" });
+await page.locator('input[type="email"]').fill("e2e.planner@energyos.test");
+await page.locator('input[type="password"]').fill("Planner123!");
+await page.locator('button:has-text("Entrar")').click();
+await page.waitForTimeout(3000);
+await page.goto("http://localhost:3000/__recap-preview", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(8000);
+console.log("url:", page.url());
+console.log("body:", (await page.locator("body").innerText()).slice(0, 300));
+await browser.close();

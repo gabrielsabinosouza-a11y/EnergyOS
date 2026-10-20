@@ -1,0 +1,12 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"] });
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+const page = await ctx.newPage();
+page.on("console", (m) => console.log("CONSOLE:", m.type(), m.text().slice(0, 300)));
+page.on("pageerror", (e) => console.log("PAGEERROR:", e.message.slice(0, 300)));
+page.on("request", (r) => { if (r.url().includes("/api/")) console.log("REQ:", r.method(), r.url()); });
+await page.goto("http://localhost:3000/perfil", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(15000);
+console.log("Ver recap:", await page.locator('button:has-text("Ver recap de")').count());
+console.log("Gerar recap:", await page.locator('button:has-text("Gerar recap")').count());
+await browser.close();

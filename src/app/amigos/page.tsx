@@ -639,9 +639,19 @@ function ChatPanel({
     return () => { cancelled = true; };
   }, [friend.id, applyServerMessages]);
 
-  /* Poll */
+  /* Poll for new messages every 2 seconds */
+  const isPollingRef = useRef(true);
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      isPollingRef.current = !document.hidden;
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    handleVisibilityChange(); // Set initial state
+
     const interval = setInterval(async () => {
+      if (!isPollingRef.current) return;
+
       // Use incremental fetch: only get messages after the last known ID
       const afterId = lastIdRef.current;
       try {
@@ -650,8 +660,12 @@ function ChatPanel({
           applyServerMessages(msgs);
         }
       } catch { /* silent */ }
-    }, 3000); // Faster polling for near real-time feel
-    return () => clearInterval(interval);
+    }, 2000); // 2-second polling for near real-time feel
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
   }, [friend.id, applyServerMessages]);
 
   /* Optimistic helper: append a temp message immediately, return its id. */
