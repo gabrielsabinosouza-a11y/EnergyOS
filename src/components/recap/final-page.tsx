@@ -1,23 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { X, Download, Share2, ChevronLeft, Timer, Flame, Award, Zap } from "lucide-react";
+import {
+  X,
+  Download,
+  Share2,
+  ChevronLeft,
+  Timer,
+  Flame,
+  Award,
+  Zap,
+  TrendingUp,
+} from "lucide-react";
 import Image from "next/image";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
-import { NEW_TIER_META } from "@/lib/league-new-meta";
+import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 import { useRecapSound } from "@/lib/recap-sound";
+import { Recap3DIcon } from "./recap-fx";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────────
+
 const ACCENT = {
-  focus: "#5CC8FF",   // cyan - stopwatch
-  streak: "#FFB067",  // amber - flame
-  tier: "#71d4ff",    // default tier/blue
-  garden: "#3DDC84",  // green - energy bolt
-  xp: "#A98BFF",      // violet crystal
-};
+  focus: "#5CC8FF",
+  streak: "#FFB067",
+  garden: "#3DDC84",
+  xp: "#A98BFF",
+  tier: {
+    BRONZE: "#cd7f32",
+    PRATA: "#c0c0c0",
+    OURO: "#ffd700",
+    DIAMANTE: "#00bfff",
+    LENDAS: "#ff69b4",
+  },
+} as const;
+
+// 3D Art asset paths (fallback order)
+const RECAP_ART = {
+  foco: ["/recaps/clock.png", "/recap/icons/recap-foco.png"],
+  sequencia: ["/recaps/streak.png", "/recap/icons/recap-sequencia.png"],
+  jardim: ["/recaps/energy.png", "/recap/icons/recap-jardim.png"],
+  xp: ["/recaps/xp.png", "/recap/icons/recap-xp.png", "/xp/xp_double_thunder.png"],
+} as const;
+
+// Canvas export dimensions
+const EXPORT_W = 1080;
+const EXPORT_H = 1920;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────────
+
 function formatMinutes(total: number): string {
   if (total < 60) return `${total}min`;
   const h = Math.floor(total / 60);
@@ -29,9 +60,10 @@ function formatNumber(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
-// ─── Canvas Export ───────────────────────────────────────────────────────────────
-const EXPORT_W = 1080;
-const EXPORT_H = 1920;
+function formatMonth(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
 
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
@@ -51,25 +83,26 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// ─── Canvas Export ─────────────────────────────────────────────────────
+
 async function exportToPng(
   recap: MonthlyRecap,
   userName: string,
   userPhotoUrl?: string,
-  pillText?: string,
+  tier: NewLeagueTier | null = null,
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = EXPORT_W;
   canvas.height = EXPORT_H;
   const ctx = canvas.getContext("2d")!;
-
-  const tier = recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier] : NEW_TIER_META.BRONZE;
-  const tierColor = tier.color;
   const pad = 120;
 
-  // ── Background gradient ──
+  const tierColor = tier ? (ACCENT.tier[tier] ?? "#71d4ff") : ACCENT.focus;
+
+  // Background gradient
   const bg = ctx.createLinearGradient(0, 0, 0, EXPORT_H);
-  bg.addColorStop(0, "#0a0e1a");
-  bg.addColorStop(1, "#111827");
+  bg.addColorStop(0, "#050B16");
+  bg.addColorStop(1, "#0a101f");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
 
@@ -83,74 +116,30 @@ async function exportToPng(
   };
   drawGlow(EXPORT_W * 0.2, 200, 280, "rgba(113,212,255,.06)");
   drawGlow(EXPORT_W * 0.75, 400, 180, "rgba(182,156,255,.04)");
-  drawGlow(EXPORT_W * 0.4, EXPORT_H * 0.55, 220, "rgba(255,184,107,.05)");
-  drawGlow(EXPORT_W * 0.8, EXPORT_H * 0.75, 200, "rgba(74,222,128,.04)");
+  drawGlow(EXPORT_W * 0.3, EXPORT_H * 0.55, 220, "rgba(255,184,107,.05)");
+  drawGlow(EXPORT_W * 0.8, EXPORT_H * 0.8, 200, "rgba(74,222,128,.04)");
 
-  // Top accent line
-  const accentGrad = ctx.createLinearGradient(0, 0, EXPORT_W, 0);
-  accentGrad.addColorStop(0, "rgba(113,212,255,0)");
-  accentGrad.addColorStop(0.5, "rgba(113,212,255,.6)");
-  accentGrad.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, EXPORT_W, 4);
-
-  // ── Title ──
+  // Title
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(231,244,255,.42)";
   ctx.font = "500 28px 'Inter', -apple-system, sans-serif";
   ctx.fillText("Recap de", EXPORT_W / 2, 100);
 
-  // Month title with gradient
+  const monthLabel = formatMonth(recap.recapMonth);
   const titleGrad = ctx.createLinearGradient(EXPORT_W * 0.25, 0, EXPORT_W * 0.75, 0);
   titleGrad.addColorStop(0, "#71d4ff");
   titleGrad.addColorStop(0.5, "#b69cff");
   titleGrad.addColorStop(1, "#ffb86b");
   ctx.fillStyle = titleGrad;
   ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("Outubro de 2026", EXPORT_W / 2, 180);
-
-  // Pill for favorite category
-  if (pillText) {
-    const pillColor = pillText === "Foco" ? ACCENT.focus :
-                      pillText === "Sequência" ? ACCENT.streak :
-                      pillText === "Liga" ? tierColor :
-                      pillText === "Energias" ? ACCENT.garden : ACCENT.xp;
-
-    ctx.fillStyle = "rgba(255,255,255,.15)";
-    ctx.font = "500 18px 'Inter', -apple-system, sans-serif";
-    const pillW = ctx.measureText(pillText).width + 24;
-    const pillX = (EXPORT_W - pillW) / 2 - 2;
-    const pillY = EXPORT_H * 0.25 - 22;
-    // fillRect não aceita raio: usa roundRect (com fallback para navegadores antigos).
-    if (typeof ctx.roundRect === "function") {
-      ctx.fillStyle = "rgba(255,255,255,.15)";
-
-      const radius = 14;
-      ctx.beginPath();
-      ctx.moveTo(pillX + radius, pillY);
-      ctx.lineTo(pillX + pillW - radius, pillY);
-      ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + radius, radius);
-      ctx.lineTo(pillX + pillW, pillY + 28 - radius);
-      ctx.arcTo(pillX + pillW, pillY + 28, pillX + pillW - radius, pillY + 28, radius);
-      ctx.lineTo(pillX + radius, pillY + 28);
-      ctx.arcTo(pillX, pillY + 28, pillX, pillY + 28 - radius, radius);
-      ctx.lineTo(pillX, pillY + radius);
-      ctx.arcTo(pillX, pillY, pillX + radius, pillY, radius);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.fillRect(pillX, pillY, pillW, 28);
-    }
-    ctx.fillStyle = pillColor;
-    ctx.fillText(pillText, EXPORT_W / 2, EXPORT_H * 0.25 + 6);
-  }
+  ctx.fillText(monthLabel, EXPORT_W / 2, 180);
 
   // User info
   ctx.fillStyle = "rgba(231,244,255,.72)";
   ctx.font = "600 26px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(userName, EXPORT_W / 2, 370);
+  ctx.fillText(userName, EXPORT_W / 2, 340);
 
-  // ── Bento Grid ──
+  // Stats grid
   const gap = 28;
   const colW = (EXPORT_W - pad * 2 - gap) / 2;
   const cardH = 160;
@@ -159,36 +148,23 @@ async function exportToPng(
   const stats = [
     { label: "Foco", value: formatMinutes(recap.totalFocusMinutes), color: ACCENT.focus, wide: true },
     { label: "Sequência", value: `${recap.longestStreak} dias`, color: ACCENT.streak },
-    { label: "Liga", value: recap.leagueTier ?? "—", color: tierColor },
+    { label: "Liga", value: tier ?? "—", color: tierColor },
     { label: "Energias", value: formatNumber(recap.gardenCount ?? 0), color: ACCENT.garden },
     { label: "XP", value: formatNumber(recap.totalXp), color: ACCENT.xp, wide: true },
   ];
-
-  // Load icons
-  const iconPromises = [
-    loadImage("/recap/icons/recap-foco.png"),
-    loadImage("/recap/icons/recap-sequencia.png"),
-    tier.iconPath ? loadImage(tier.iconPath) : Promise.resolve(null),
-    loadImage("/recap/icons/recap-jardim.png"),
-    loadImage("/xp/xp_double_thunder.png"),
-  ];
-  const icons = await Promise.all(iconPromises.map(p => p.catch(() => null)));
 
   for (let i = 0; i < stats.length; i++) {
     const s = stats[i];
     const isWide = s.wide ?? false;
 
-    // Calculate grid position
     let gridRow: number;
     let colOffset: number;
     if (isWide) {
-      // Foco row 0, XP row 2
       gridRow = i === 0 ? 0 : 2;
       colOffset = 0;
     } else {
-      // Sequencia/Liga = row 1
       gridRow = 1;
-      colOffset = i === 2 ? 0 : 1; // Liga is at i=2
+      colOffset = i === 2 ? 0 : 1;
     }
 
     const x = pad + colOffset * (colW + gap);
@@ -226,9 +202,8 @@ async function exportToPng(
     ctx.fillText(s.label, x + w / 2, y + cardH - 20);
   }
 
-  // ── Footer ──
+  // Footer
   const footY = EXPORT_H - 150;
-
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(231,244,255,.52)";
   ctx.font = "800 36px 'Inter', -apple-system, sans-serif";
@@ -243,78 +218,8 @@ async function exportToPng(
   });
 }
 
-// ─── Stat Card Component ───────────────────────────────────────────────────────
-interface StatCardProps {
-  label: string;
-  value: string;
-  color: string;
-  iconSrc?: string | null;
-  fallbackIcon?: React.ReactNode;
-  className?: string;
-  onClick?: () => void;
-}
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, iconSrc, fallbackIcon, className, onClick }: StatCardProps) {
-  const [iconFailed, setIconFailed] = useState(false);
-  const showFallback = !iconSrc || iconFailed;
-
-  return (
-    <div
-      onClick={onClick}
-      className={`flex flex-col items-center justify-center rounded-2xl p-4 min-h-[112px] text-center transition-all duration-200 hover:shadow-lg ${className || ""}`}
-      style={{
-        background: `rgba(255,255,255,0.04)`,
-        border: `1px solid ${hexToRgba(color, 0.3)}`,
-        boxShadow: `0 8px 24px -8px rgba(0,0,0,0.4), 0 0 14px -4px ${color}`,
-      }}
-    >
-      {/* LED line at top */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 h-1 w-2/3 rounded-full"
-        style={{
-          background: `linear-gradient(90deg, ${color}66, ${color}00)`,
-          filter: "blur(2px)",
-        }}
-      />
-
-      <div
-        className="mb-2 flex h-10 w-10 items-center justify-center rounded-full"
-        style={{
-          background: `${color}22`,
-          boxShadow: `0 0 12px -4px ${color}`,
-        }}
-      >
-        {iconSrc && !showFallback ? (
-          <Image
-            src={iconSrc}
-            alt={label}
-            width={20}
-            height={20}
-            style={{ objectFit: "contain" }}
-            unoptimized
-            onError={() => setIconFailed(true)}
-          />
-        ) : (
-          fallbackIcon
-        )}
-      </div>
-
-      <span
-        className="font-display text-2xl font-bold tabular-nums"
-        style={{ color }}
-      >
-        {value}
-      </span>
-
-      <span className="mt-1 text-xs uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// ─── Category Pill ──────────────────────────────────────────────────────────────
 function CategoryPill({ category, color }: { category: string; color: string }) {
   return (
     <div
@@ -330,87 +235,150 @@ function CategoryPill({ category, color }: { category: string; color: string }) 
   );
 }
 
+interface StatCardProps {
+  label: string;
+  value: string;
+  color: string;
+  iconSrc?: string | readonly string[];
+  fallbackIcon: React.ReactNode;
+  isWide?: boolean;
+}
+
+function StatCard({ label, value, color, iconSrc, fallbackIcon, isWide = false }: StatCardProps) {
+  const [iconFailed, setIconFailed] = useState(false);
+  const showFallback = !iconSrc || iconFailed;
+  const displaySrc = Array.isArray(iconSrc)
+    ? iconSrc.find((s) => !iconFailed) ?? iconSrc[0]
+    : iconSrc;
+
+  return (
+    <motion.div
+      className={`flex items-center justify-center gap-3 rounded-xl p-3 transition-all duration-200 ${isWide ? "flex-row" : "flex-col"} ${isWide ? "text-left" : "text-center"}`}
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: `1px solid ${hexToRgba(color, 0.3)}`,
+        boxShadow: `0 8px 24px -8px rgba(0,0,0,0.4), 0 0 14px -4px ${color}`,
+        minWidth: isWide ? "180px" : "90px",
+      }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      {/* Icon */}
+      <div
+        className="flex items-center justify-center rounded-full"
+        style={{
+          background: `${color}22`,
+          boxShadow: `0 0 12px -4px ${color}`,
+        }}
+      >
+        {!showFallback && displaySrc ? (
+          <Image
+            src={displaySrc}
+            alt={label}
+            width={18}
+            height={18}
+            style={{ objectFit: "contain" }}
+            unoptimized
+            onError={() => setIconFailed(true)}
+          />
+        ) : (
+          fallbackIcon
+        )}
+      </div>
+
+      {/* Value and label */}
+      <div className="flex flex-col">
+        <span
+          className="font-display text-sm font-bold tabular-nums"
+          style={{ color }}
+        >
+          {value}
+        </span>
+        <span className="text-xs uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>
+          {label}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
+
 interface FinalPageProps {
   recap: MonthlyRecap;
   userName: string;
   userPhotoUrl?: string;
-  favoriteCategory?: string;
   onClose: () => void;
 }
 
-export function FinalPage({ recap, userName, userPhotoUrl, favoriteCategory, onClose }: FinalPageProps) {
+export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageProps) {
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const reduced = useReducedMotion();
   const { enabled: soundEnabled, play: playSound } = useRecapSound();
 
-  const tier = recap.leagueTier ? NEW_TIER_META[recap.leagueTier as NewLeagueTier] : NEW_TIER_META.BRONZE;
-  const tierColor = tier.color;
+  const currentTier = useMemo(() => {
+    return resolveNewTier(recap.leagueTier);
+  }, [recap.leagueTier]);
 
-  // Month info - always show "Outubro de 2026" as per task requirement
-  const monthLabel = "Outubro de 2026";
+  const tierMeta = currentTier ? NEW_TIER_META[currentTier] : NEW_TIER_META.BRONZE;
+  const tierColor = tierMeta ? tierMeta.color : ACCENT.tier.BRONZE;
 
-  // Determine which category name to show in the pill
-  const pillCategory = favoriteCategory ?? recap.topFocusCategory ?? "Foco";
-  const pillColor = pillCategory === "Foco" ? ACCENT.focus :
-                    pillCategory === "Sequência" ? ACCENT.streak :
-                    pillCategory === "Liga" ? tierColor :
-                    pillCategory === "Energias" ? ACCENT.garden : ACCENT.xp;
+  const monthLabel = useMemo(() => formatMonth(recap.recapMonth), [recap.recapMonth]);
 
-  // Play sparkle sound on entrance if sound is enabled (only once via effect)
-  useReducedMotion(); // We need to call this hook, but we'll use a ref to track if sound was played
+  // Play entrance sound once
+  useEffect(() => {
+    if (soundEnabled) {
+      playSound(350, 0.4);
+    }
+  }, [soundEnabled, playSound]);
 
-  // Handle download
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     setDownloading(true);
     try {
-      const blob = await exportToPng(recap, userName, userPhotoUrl, pillCategory);
+      const blob = await exportToPng(recap, userName, userPhotoUrl, currentTier);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "recap-energyos-2026-10.png";
+      a.download = `recap-energyos-${recap.recapMonth.slice(0, 7)}.png`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
       setDownloading(false);
     }
-  };
+  }, [recap, userName, userPhotoUrl, currentTier]);
 
-  // Handle share via Web Share API
-  const handleShare = async () => {
+  const handleShare = useCallback(async () => {
     setSharing(true);
     try {
-      const blob = await exportToPng(recap, userName, userPhotoUrl, pillCategory);
-      const file = new File([blob], "recap-energyos-2026-10.png", { type: "image/png" });
+      const blob = await exportToPng(recap, userName, userPhotoUrl, currentTier);
+      const file = new File([blob], `recap-energyos-${recap.recapMonth.slice(0, 7)}.png`, { type: "image/png" });
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "Meu recap de outubro de 2026 no energyOS",
-          text: "Meu recap de outubro de 2026 no energyOS",
+          title: `Meu recap de ${monthLabel} no EnergyOS`,
+          text: `Meu recap de ${monthLabel} no EnergyOS`,
         });
       } else {
-        // Fallback to download
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "recap-energyos-2026-10.png";
+        a.download = `recap-energyos-${recap.recapMonth.slice(0, 7)}.png`;
         a.click();
         URL.revokeObjectURL(url);
       }
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
-        // User cancelled share sheet - normal
         return;
       }
     } finally {
       setSharing(false);
     }
-  };
+  }, [recap, userName, userPhotoUrl, currentTier, monthLabel]);
 
-  // Button base styles
-  const buttonBase = "flex-1 flex items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-all duration-200";
+  // Calculate progression indicator
+  const hasProgression = recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier;
 
   return (
     <div className="relative z-[1000] w-full max-w-sm sm:max-w-md">
@@ -430,7 +398,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, favoriteCategory, onC
           <X size={20} />
         </button>
 
-        {/* Left arrow - safely placed outside card content area */}
+        {/* Back button */}
         <button
           onClick={onClose}
           className="absolute left-4 top-1/2 -translate-y-1/2 z-40 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)]"
@@ -439,56 +407,127 @@ export function FinalPage({ recap, userName, userPhotoUrl, favoriteCategory, onC
           <ChevronLeft size={16} />
         </button>
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 w-full flex flex-col items-center pt-4">
-          {/* Title Block */}
-          <div className="flex flex-col items-center gap-2">
-            <span className="text-xs uppercase tracking-wider" style={{ color: "rgba(231,244,255,.38)" }}>
-              Recap de
-            </span>
-            <h2
-              className="font-display text-2xl font-extrabold text-center"
-              style={{
-                background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}
-            >
-              {monthLabel}
-            </h2>
-            {/* Favorite category pill */}
-            <CategoryPill category={pillCategory} color={pillColor} />
+        {/* Hero Section */}
+        <motion.div
+          className="flex flex-col items-center gap-4 pt-2"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          {/* Year label */}
+          <span className="text-xs uppercase tracking-wider" style={{ color: "rgba(231,244,255,.38)" }}>
+            Recap de
+          </span>
+
+          {/* Month title */}
+          <h2
+            className="font-display text-2xl font-extrabold text-center"
+            style={{
+              background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            {monthLabel}
+          </h2>
+
+          {/* User identity */}
+          <div className="flex items-center gap-3">
+            {userPhotoUrl ? (
+              <Image
+                src={userPhotoUrl}
+                alt={userName}
+                width={48}
+                height={48}
+                className="rounded-full object-cover ring-2 ring-[rgba(255,255,255,.12)]"
+                unoptimized
+                draggable={false}
+              />
+            ) : (
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold"
+                style={{ background: `linear-gradient(135deg, ${tierColor}, ${ACCENT.xp})` }}
+              >
+                {userName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p className="font-display text-base font-semibold text-[var(--text)]">{userName}</p>
+              <p className="text-xs" style={{ color: "rgba(231,244,255,.52)" }}>energyOS</p>
+            </div>
           </div>
 
-          {/* Bento Grid */}
-          <div className="mt-5 grid w-full grid-cols-2 gap-3">
-            {/* Foco - wide (spans 2 columns) */}
-            <div className="col-span-2">
-              <StatCard
-                label="Foco"
-                value={formatMinutes(recap.totalFocusMinutes)}
-                color={ACCENT.focus}
-                iconSrc="/recap/icons/recap-foco.png"
-                fallbackIcon={<Timer size={20} color={ACCENT.focus} strokeWidth={1.8} />}
-              />
-            </div>
+          {/* Favorite category pill */}
+          <motion.div
+            className="mt-2"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.15, duration: 0.3 }}
+          >
+            <CategoryPill
+              category={recap.topFocusCategory ?? "Foco"}
+              color={recap.topFocusCategory === "Foco" ? ACCENT.focus :
+                     recap.topFocusCategory === "Sequência" ? ACCENT.streak :
+                     recap.topFocusCategory === "Liga" ? tierColor :
+                     ACCENT.garden}
+            />
+          </motion.div>
+        </motion.div>
+
+        {/* 3D Leaderboard Icon with glow */}
+        <motion.div
+          className="relative mb-2"
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 280, damping: 26 }}
+        >
+          <Recap3DIcon
+            src={tierMeta?.iconPath}
+            fallback={<Award size={48} color={tierColor} strokeWidth={2} />}
+            alt={tierMeta?.label ?? "Liga"}
+            accent={tierColor}
+            size={100}
+            artSize={64}
+          />
+          {/* Ambient glow */}
+          <div
+            className="absolute -inset-3 rounded-full pointer-events-none"
+            style={{
+              background: `radial-gradient(circle, ${tierColor}33, transparent 70%)`,
+              filter: "blur(16px)",
+            }}
+          />
+        </motion.div>
+
+        {/* Highlights Grid */}
+        <div className="w-full">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Foco - wide */}
+            <StatCard
+              label="Foco"
+              value={formatMinutes(recap.totalFocusMinutes)}
+              color={ACCENT.focus}
+              iconSrc={RECAP_ART.foco}
+              fallbackIcon={<Timer size={18} color={ACCENT.focus} strokeWidth={1.8} />}
+              isWide
+            />
 
             {/* Sequência */}
             <StatCard
               label="Sequência"
               value={`${recap.longestStreak} dias`}
               color={ACCENT.streak}
-              iconSrc="/recap/icons/recap-sequencia.png"
-              fallbackIcon={<Flame size={20} color={ACCENT.streak} strokeWidth={1.8} />}
+              iconSrc={RECAP_ART.sequencia}
+              fallbackIcon={<Flame size={18} color={ACCENT.streak} strokeWidth={1.8} />}
             />
 
             {/* Liga */}
             <StatCard
               label="Liga"
-              value={recap.leagueTier ?? "—"}
+              value={tierMeta?.label ?? "Bronze"}
               color={tierColor}
-              iconSrc={tier.iconPath}
-              fallbackIcon={<Award size={20} color={tierColor} strokeWidth={1.8} />}
+              iconSrc={tierMeta?.iconPath}
+              fallbackIcon={<Award size={18} color={tierColor} strokeWidth={1.8} />}
             />
 
             {/* Energias */}
@@ -496,57 +535,60 @@ export function FinalPage({ recap, userName, userPhotoUrl, favoriteCategory, onC
               label="Energias"
               value={formatNumber(recap.gardenCount ?? 0)}
               color={ACCENT.garden}
-              iconSrc="/recap/icons/recap-jardim.png"
-              fallbackIcon={<Zap size={20} color={ACCENT.garden} strokeWidth={1.8} />}
+              iconSrc={RECAP_ART.jardim}
+              fallbackIcon={<Zap size={18} color={ACCENT.garden} strokeWidth={1.8} />}
             />
 
-            {/* XP Total - wide */}
-            <div className="col-span-2">
-              <StatCard
-                label="XP"
-                value={formatNumber(recap.totalXp)}
-                color={ACCENT.xp}
-                iconSrc="/xp/xp_double_thunder.png"
-                fallbackIcon={<Zap size={20} color={ACCENT.xp} strokeWidth={1.8} />}
-              />
-            </div>
+            {/* XP - wide */}
+            <StatCard
+              label="XP"
+              value={formatNumber(recap.totalXp)}
+              color={ACCENT.xp}
+              iconSrc={RECAP_ART.xp}
+              fallbackIcon={<Zap size={18} color={ACCENT.xp} strokeWidth={1.8} />}
+              isWide
+            />
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="w-full">
-          <div className="mb-3 text-center text-sm text-[var(--text-muted)]">
-            <p className="font-bold text-[var(--text)]">ENERGYOS</p>
-            <p className="mt-1">Gerado em {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</p>
-          </div>
+        {/* Progression indicator */}
+        {hasProgression && (
+          <motion.div
+            className="flex items-center gap-2 rounded-full bg-green-500/20 px-3 py-1.5"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ border: "1px solid rgba(74,222,128,.4)" }}
+          >
+            <TrendingUp size={14} color="#4ade80" />
+            <span className="text-xs font-semibold text-green-400">Subiu de liga!</span>
+          </motion.div>
+        )}
 
-          {/* Action Buttons */}
+        {/* Footer actions */}
+        <div className="w-full pt-4">
+          {/* Action buttons */}
           <div className="flex gap-3">
-            <button
+            <motion.button
+              whileHover={!reduced ? { scale: 1.02 } : undefined}
+              whileTap={!reduced ? { scale: 0.97 } : undefined}
               onClick={handleDownload}
               disabled={downloading}
-              className={`${buttonBase} font-semibold`}
-              style={{
-                background: "linear-gradient(135deg, #71d4ff, #5CC8FF)",
-                color: "#07111f",
-                boxShadow: "0 8px 20px -8px rgba(113,212,255,.5)",
-              }}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-white font-semibold shadow-[0_4px_12px_rgba(113,212,255,0.3)] transition hover:shadow-[0_6px_18px_rgba(113,212,255,0.4)] disabled:opacity-50"
             >
               {downloading ? "Salvando..." : "Baixar"}
-            </button>
+              <Download size={16} />
+            </motion.button>
 
-            <button
+            <motion.button
+              whileHover={!reduced ? { scale: 1.02 } : undefined}
+              whileTap={!reduced ? { scale: 0.97 } : undefined}
               onClick={handleShare}
               disabled={downloading || sharing}
-              className={`${buttonBase} font-semibold`}
-              style={{
-                background: "rgba(255,255,255,.07)",
-                border: "1px solid rgba(113,212,255,.35)",
-                color: "#71d4ff",
-              }}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[var(--accent-border)] bg-[var(--bg-surface-hover)] px-4 py-2.5 text-[var(--accent)] font-semibold transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
             >
               {sharing ? "Compartilhando..." : "Compartilhar"}
-            </button>
+              <Share2 size={16} />
+            </motion.button>
           </div>
         </div>
       </motion.div>

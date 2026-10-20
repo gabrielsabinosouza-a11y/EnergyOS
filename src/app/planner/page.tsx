@@ -676,6 +676,7 @@ export default function PlanningPage() {
         <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
 
         <PlanDialog
+          key={editorSession}
           open={editorOpen}
           plan={editingPlan}
           initialDate={editorDate}

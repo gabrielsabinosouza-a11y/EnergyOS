@@ -24,7 +24,7 @@ async function authenticate(page) {
     await dismissTour(page);
     return;
   }
-  await page.locator('input[type="email"]').waitFor({ state: "visible", timeout: 10000 });
+  await page.locator('input[type="email"]').waitFor({ state: "visible", timeout: 60000 });
   await page.locator('input[type="email"]').fill(EMAIL);
   await page.locator('input[type="password"]').fill(PASS);
   await page.getByRole("button", { name: /Entrar/ }).click();

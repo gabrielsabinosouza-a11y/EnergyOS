@@ -617,7 +617,7 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
   ];
 
   return (
-    <SlideFrame className="justify-center gap-0">
+    <SlideFrame>
       <AmbientGlow accent={theme.accent} glow={theme.glow} />
 
       <motion.div

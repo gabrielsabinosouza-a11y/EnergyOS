@@ -153,7 +153,7 @@ export function PlannerDatePicker({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => open ? close() : openPicker()}
-        className="auth-input flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+        className="glass-field flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className={value ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
           {value ? formatLocalDate(value, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
@@ -166,7 +166,7 @@ export function PlannerDatePicker({
           ref={popoverRef}
           role="dialog"
           aria-label={`Calendário: ${label}`}
-          className="fixed z-[1100] max-h-[calc(100dvh-1rem)] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-3 shadow-2xl"
+          className="planner-glass-popover fixed z-[1100] max-h-[calc(100dvh-1rem)] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto p-3"
           style={{ top: position.top, left: position.left }}
         >
           <header className="mb-3 flex items-center justify-between gap-2">

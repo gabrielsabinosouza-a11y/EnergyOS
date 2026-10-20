@@ -1625,3 +1625,151 @@ body { overflow-wrap: break-word; }
   .mv-cell-wrap, .mv-cell, .mv-chip, .mv-pill, .mv-quick-add, .event-block { transition: none; }
   .mv-popover, .mv-sheet-backdrop { animation: none; backdrop-filter: none; }
 }
+
+/* ── Planejamento · modal 3D glass ─────────────────────────────────────────
+   Camadas translúcidas navy, luz ciano e profundidade 3D. Tudo escopado em
+   .planner-glass-modal para não afetar os demais formulários do app.        */
+.planner-glass-modal .glass-field {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--glass-border));
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .02));
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.35;
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .07),
+    inset 0 -10px 20px -16px rgba(0, 0, 0, .9);
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.planner-glass-modal .glass-field::placeholder { color: var(--text-muted); }
+.planner-glass-modal .glass-field:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--glass-border));
+  background: linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .028));
+}
+/* Foco independente do hover: anel ciano suave + luz interna. */
+.planner-glass-modal .glass-field:focus,
+.planner-glass-modal .glass-field:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .035));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
+    0 0 24px -6px color-mix(in srgb, var(--accent) 38%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .12);
+  outline: none;
+}
+.planner-glass-modal select.glass-field option { background: var(--bg-primary); color: var(--text); }
+
+/* Controles segmentados (Repetir) */
+.planner-glass-modal .glass-segment {
+  border: 1px solid var(--glass-border);
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .014));
+  color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+  transition: border-color .18s ease, color .18s ease, box-shadow .18s ease, background-color .18s ease, transform .18s ease;
+}
+.planner-glass-modal .glass-segment:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--glass-border));
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.planner-glass-modal .glass-segment:active { transform: translateY(0); }
+.planner-glass-modal .glass-segment[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, transparent), color-mix(in srgb, var(--accent) 9%, transparent));
+  color: var(--accent);
+  box-shadow:
+    0 0 20px -8px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+.planner-glass-modal .glass-segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Chips de dia da semana */
+.planner-glass-modal .glass-chip {
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .015));
+  color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+  transition: border-color .16s ease, color .16s ease, box-shadow .16s ease, background-color .16s ease, transform .16s ease;
+}
+.planner-glass-modal .glass-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--glass-border));
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.planner-glass-modal .glass-chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white), var(--accent));
+  color: var(--bg-primary);
+  box-shadow: 0 0 18px -6px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+.planner-glass-modal .glass-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Acción principal (Criar plano) */
+.planner-glass-modal .glass-cta {
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent) 52%, color-mix(in srgb, var(--accent) 72%, #0a1830));
+  color: var(--bg-primary);
+  box-shadow:
+    0 10px 26px -12px color-mix(in srgb, var(--accent) 60%, transparent),
+    0 0 24px -12px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, .45);
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.planner-glass-modal .glass-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow:
+    0 14px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 30px -10px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, .5);
+}
+.planner-glass-modal .glass-cta:active:not(:disabled) { transform: translateY(0); }
+.planner-glass-modal .glass-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Cartões de seção (Repetir / Lembrete) */
+.planner-glass-modal .glass-section {
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+/* Calendário (popover do seletor de data) */
+.planner-glass-popover {
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--glass-border));
+  border-radius: 18px;
+  background: linear-gradient(158deg, rgba(23, 44, 74, .92), rgba(9, 20, 36, .95));
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  box-shadow:
+    0 30px 70px -24px rgba(0, 0, 0, .8),
+    0 0 44px -22px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planner-glass-modal .glass-field,
+  .planner-glass-modal .glass-segment,
+  .planner-glass-modal .glass-chip,
+  .planner-glass-modal .glass-cta { transition: none; }
+  .planner-glass-modal .glass-segment:hover,
+  .planner-glass-modal .glass-chip:hover,
+  .planner-glass-modal .glass-cta:hover { transform: none; }
+}

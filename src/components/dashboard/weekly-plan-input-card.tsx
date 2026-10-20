@@ -170,6 +170,30 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
     onKeyDown?.(e);
   }
 
+  // ── Focus management ──────────────────────────────────────────────────
+  // Focus the input after the modal mounts. We use a ref callback to ensure
+  // we only focus once after initial mount, not on every re-render.
+  const [hasFocused, setHasFocused] = useState(false);
+  const focusInput = useCallback(() => {
+    if (autoFocus && !hasFocused && inputRef.current && document.activeElement !== inputRef.current) {
+      inputRef.current.focus();
+      setHasFocused(true);
+    }
+  }, [autoFocus, hasFocused]);
+
+  useEffect(() => {
+    // Focus after component mounts, but only once
+    if (autoFocus && !hasFocused) {
+      const timer = setTimeout(() => {
+        if (inputRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus();
+          setHasFocused(true);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, hasFocused]);
+
   // ── Dynamic classes ─────────────────────────────────────────────────────
   const counterClassName =
     counterState === "error"
@@ -210,7 +234,6 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
           autoCapitalize="sentences"
           spellCheck
           enterKeyHint="done"
-          autoFocus={autoFocus}
           maxLength={PLAN_NAME_MAX}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -224,6 +247,12 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
           className="weekly-plan-input-card-input"
           placeholder={placeholder}
           title={value || undefined}
+          ref={(node) => {
+            inputRef.current = node;
+            // Merge with forwarded ref if provided
+            if (typeof ref === "function") ref(node);
+            else if (ref) ref.current = node;
+          }}
         />
 
         {/* Clear button (fades in when text exists) */}

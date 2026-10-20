@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Repeat } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Bell, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 import { SHORT_WEEKDAYS, todayIso, weekdayOfIso } from "@/lib/planning/dates";
@@ -89,10 +89,6 @@ export function PlanDialog({
   const [error, setError] = useState("");
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
 
-  // Sincroniza o título quando abrimos para editar um plano diferente
-  useEffect(() => {
-    if (open && plan) setTitle(plan.title ?? "");
-  }, [open, plan?.id]);
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
   const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
@@ -202,30 +198,49 @@ export function PlanDialog({
     void save(values);
   }
 
+  // Callback estável para o Modal: evita que o efeito interno do diálogo
+  // (foco/teclado) seja reexecutado a cada tecla digitada.
+  const handleClose = useCallback(() => {
+    if (pendingScope) setPendingScope(null);
+    else onClose();
+  }, [onClose, pendingScope]);
+
+  const handleCancel = useCallback(() => {
+    if (pendingScope) setPendingScope(null);
+    else onClose();
+  }, [onClose, pendingScope]);
+
   return (
     <>
       <Modal
         open={open}
-        onClose={() => pendingScope ? setPendingScope(null) : onClose()}
+        onClose={handleClose}
         title={plan ? "Editar plano" : "Novo plano"}
         description={recurringOccurrence
           ? "Escolha se as alterações serão aplicadas a esta ocorrência ou à série."
           : "Defina título, categoria, data e horário do plano."}
         variant="center"
-        panelClassName="max-w-[480px]"
+        surface="glass"
+        panelClassName="planner-glass-modal max-w-[520px]"
         footer={
           <>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={loading} className="ml-auto">
+            <Button type="button" variant="ghost" onClick={handleCancel} disabled={loading} className="ml-auto">
               Cancelar
             </Button>
-            <Button type="submit" form="planner-plan-form" loading={loading} disabled={loading}>
+            <Button
+              type="submit"
+              form="planner-plan-form"
+              loading={loading}
+              disabled={loading}
+              className="glass-cta"
+            >
               {plan ? "Salvar alterações" : "Criar plano"}
             </Button>
           </>
         }
       >
-        <form id="planner-plan-form" onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+        <form id="planner-plan-form" onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1.5">
             <label htmlFor="planner-plan-title" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Título
             </label>
@@ -237,11 +252,11 @@ export function PlanDialog({
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Ex.: Ir à academia"
               maxLength={PLAN_NAME_MAX}
-              className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+              className="glass-field"
             />
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <label htmlFor="planner-plan-category" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Categoria
             </label>
@@ -249,7 +264,7 @@ export function PlanDialog({
               id="planner-plan-category"
               value={selectedCategoryId}
               onChange={(event) => setCategoryId(event.target.value)}
-              className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+              className="glass-field"
               disabled={Boolean(recurringOccurrence)}
             >
               {!recurringOccurrence ? <option value="">Padrão</option> : null}
@@ -262,7 +277,7 @@ export function PlanDialog({
             </select>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <label htmlFor="planner-plan-date" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Data
             </label>
@@ -276,7 +291,7 @@ export function PlanDialog({
           </div>
 
           <div className={`grid gap-3 ${recurringOccurrence ? "grid-cols-1" : "grid-cols-2"}`}>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label htmlFor="planner-plan-start-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                 Início
               </label>
@@ -290,11 +305,11 @@ export function PlanDialog({
                 onChange={(event) => setStartTime(formatTimeInput(event.target.value))}
                 placeholder="09:00"
                 aria-label="Horário de início, formato 24 horas"
-                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 tabular-nums"
+                className="glass-field tabular-nums"
               />
             </div>
             {!recurringOccurrence ? (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label htmlFor="planner-plan-end-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   Fim
                 </label>
@@ -308,28 +323,24 @@ export function PlanDialog({
                   onChange={(event) => setEndTime(formatTimeInput(event.target.value))}
                   placeholder="10:00"
                   aria-label="Horário de fim, formato 24 horas"
-                  className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 tabular-nums"
+                  className="glass-field tabular-nums"
                 />
               </div>
             ) : null}
           </div>
 
           {!plan ? (
-            <section className="space-y-3 border-t border-[var(--border-subtle)] pt-4" aria-labelledby="planner-repeat-label">
+            <section className="glass-section space-y-4 p-4" aria-labelledby="planner-repeat-label">
               <div>
                 <h3 id="planner-repeat-label" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   Repetir
                 </h3>
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     aria-pressed={!repeatWeekly}
                     onClick={() => handleRepeatChange(false)}
-                    className={`rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-                      !repeatWeekly
-                        ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]"
-                        : "border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
-                    }`}
+                    className="glass-segment px-3 py-2.5 text-sm font-medium"
                   >
                     Não repetir
                   </button>
@@ -337,11 +348,7 @@ export function PlanDialog({
                     type="button"
                     aria-pressed={repeatWeekly}
                     onClick={() => handleRepeatChange(true)}
-                    className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-                      repeatWeekly
-                        ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]"
-                        : "border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
-                    }`}
+                    className="glass-segment flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium"
                   >
                     <Repeat size={14} aria-hidden="true" />
                     Semanalmente
@@ -360,11 +367,7 @@ export function PlanDialog({
                           type="button"
                           aria-pressed={selected}
                           onClick={() => toggleRepeatDay(value)}
-                          className={`min-w-10 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-                            selected
-                              ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-primary)]"
-                              : "border-[var(--border-subtle)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
-                          }`}
+                          className="glass-chip min-w-10 px-2.5 py-1.5 text-xs font-semibold"
                         >
                           {label}
                         </button>
@@ -407,29 +410,33 @@ export function PlanDialog({
               ) : null}
 
               {!recurringOccurrence && (
-                <section className="space-y-3 border-t border-[var(--border-subtle)] pt-4" aria-labelledby="planner-reminder-label">
+                <section className="space-y-2.5 border-t border-[var(--glass-border)] pt-4" aria-labelledby="planner-reminder-label">
                   <div>
                     <h3 id="planner-reminder-label" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                       Lembrete
                     </h3>
-                    <div className="mt-2">
+                    <div className="mt-2.5">
                       <select
                         id="planner-plan-reminder"
                         value={reminderOption}
                         onChange={(event) => setReminderOption(event.target.value as ReminderOption)}
-                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                        className="glass-field"
                       >
                         {REMINDER_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     </div>
+                    <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
+                      <Bell size={12} aria-hidden="true" />
+                      Aviso local no dispositivo — não altera a recompensa do plano.
+                    </p>
                   </div>
                 </section>
               )}
             </section>
           ) : recurringOccurrence ? (
-            <p className="flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+            <p className="glass-section flex items-center gap-2 px-3.5 py-2.5 text-xs text-[var(--text-secondary)]">
               <Repeat size={14} className="shrink-0 text-[var(--accent)]" aria-hidden="true" />
               {plan?.repeatType === "weekly" ? "Plano semanal" : "Ocorrência de uma série"}
             </p>
@@ -448,7 +455,8 @@ export function PlanDialog({
         onClose={() => setPendingScope(null)}
         title="Aplicar alterações da série?"
         description="Escolha onde as alterações deste plano recorrente serão aplicadas."
-        panelClassName="max-w-[400px]"
+        surface="glass"
+        panelClassName="planner-glass-modal max-w-[420px]"
         zIndex={1010}
         footer={
           <Button type="button" variant="ghost" disabled={loading} onClick={() => setPendingScope(null)} className="ml-auto">
@@ -460,7 +468,7 @@ export function PlanDialog({
           <Button type="button" variant="secondary" loading={loading} disabled={loading} onClick={() => pendingScope && void save(pendingScope, "occurrence")}>
             Apenas este dia
           </Button>
-          <Button type="button" loading={loading} disabled={loading} onClick={() => pendingScope && void save(pendingScope, "series")}>
+          <Button type="button" loading={loading} disabled={loading} className="glass-cta" onClick={() => pendingScope && void save(pendingScope, "series")}>
             Todos os dias da série
           </Button>
           {error ? <p className="text-sm text-red-400" role="alert">{error}</p> : null}
