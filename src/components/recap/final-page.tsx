@@ -119,7 +119,28 @@ async function exportToPng(
     ctx.fillStyle = "rgba(255,255,255,.15)";
     ctx.font = "500 18px 'Inter', -apple-system, sans-serif";
     const pillW = ctx.measureText(pillText).width + 24;
-    ctx.fillRect((EXPORT_W - pillW) / 2 - 2, EXPORT_H * 0.25 - 22, pillW, 28, 14);
+    const pillX = (EXPORT_W - pillW) / 2 - 2;
+    const pillY = EXPORT_H * 0.25 - 22;
+    // fillRect não aceita raio: usa roundRect (com fallback para navegadores antigos).
+    if (typeof ctx.roundRect === "function") {
+      ctx.fillStyle = "rgba(255,255,255,.15)";
+
+      const radius = 14;
+      ctx.beginPath();
+      ctx.moveTo(pillX + radius, pillY);
+      ctx.lineTo(pillX + pillW - radius, pillY);
+      ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + radius, radius);
+      ctx.lineTo(pillX + pillW, pillY + 28 - radius);
+      ctx.arcTo(pillX + pillW, pillY + 28, pillX + pillW - radius, pillY + 28, radius);
+      ctx.lineTo(pillX + radius, pillY + 28);
+      ctx.arcTo(pillX, pillY + 28, pillX, pillY + 28 - radius, radius);
+      ctx.lineTo(pillX, pillY + radius);
+      ctx.arcTo(pillX, pillY, pillX + radius, pillY, radius);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(pillX, pillY, pillW, 28);
+    }
     ctx.fillStyle = pillColor;
     ctx.fillText(pillText, EXPORT_W / 2, EXPORT_H * 0.25 + 6);
   }

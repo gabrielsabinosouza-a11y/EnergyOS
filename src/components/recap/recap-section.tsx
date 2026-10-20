@@ -29,7 +29,7 @@ interface RecapSectionProps {
   favoriteCategory?: string;
 }
 
-export function RecapSection({ userName, userPhotoUrl }: RecapSectionProps) {
+export function RecapSection({ userName, userPhotoUrl, favoriteCategory }: RecapSectionProps) {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const [recaps, setRecaps] = useState<Record<string, MonthlyRecap>>({});
   const [loadingRecaps, setLoadingRecaps] = useState(true);

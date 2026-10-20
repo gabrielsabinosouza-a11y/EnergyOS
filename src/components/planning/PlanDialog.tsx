@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -66,9 +66,9 @@ export function PlanDialog({
   onSave,
   showNotificationPermissionPrompt,
 }: PlanDialogProps) {
-  // O diálogo é remontado a cada abertura (key={editorSession} na página),
-  // então o estado inicial já nasce correto — sem efeito de "reset" que
-  // apagaria o que o usuário digitou (ex.: quando as categorias chegam).
+  // Estado inicializado de forma preguiçosa para garantir valores padrão
+  // corretos quando o diálogo é aberto. Usa `key` no PlanDialog para
+  // forçar remount quando o plan muda de forma incompatível.
   const [title, setTitle] = useState(() => plan?.title ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [planDate, setPlanDate] = useState(() => plan?.planDate ?? initialDate ?? todayIso());
@@ -88,6 +88,11 @@ export function PlanDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
+
+  // Sincroniza o título quando abrimos para editar um plano diferente
+  useEffect(() => {
+    if (open && plan) setTitle(plan.title ?? "");
+  }, [open, plan?.id]);
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
   const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
