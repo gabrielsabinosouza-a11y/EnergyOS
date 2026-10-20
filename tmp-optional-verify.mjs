@@ -41,7 +41,8 @@ async function clearDate() {
 async function pickDate() {
   await page.locator("#planner-plan-date").click();
   await page.waitForTimeout(800);
-  await page.locator('div[role="dialog"] button').filter({ hasText: /^\d{1,2}$/ }).first().click();
+  // dia 20 = hoje (semana visível 19–25/10)
+  await page.locator('div[role="dialog"] button').filter({ hasText: /^20$/ }).first().click();
   await page.waitForTimeout(500);
 }
 async function submit(label) {

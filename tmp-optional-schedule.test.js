@@ -53,13 +53,13 @@ async function openModal(page) {
   await expect(page.locator("#planner-plan-title")).toBeVisible();
 }
 
-/** Escolhe o dia 15 no popover do calendário. */
-async function pickDay(page, day = "15") {
+/** Escolhe a data de hoje pelo atalho "Hoje" do popover (sempre na semana visível). */
+async function pickDay(page) {
   await page.locator("#planner-plan-date").click();
   await page.waitForTimeout(400);
   const popover = page.locator('[role="dialog"][aria-label^="Calendário"]');
   await expect(popover).toBeVisible();
-  await popover.locator("button").filter({ hasText: new RegExp(`^${day}$`) }).first().click();
+  await popover.getByRole("button", { name: "Hoje" }).click();
   await page.waitForTimeout(400);
 }
 
@@ -99,19 +99,19 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   ).toBeVisible({ timeout: 15000 });
 
   // ── 2. somente data ───────────────────────────────────────────────────────
-  await createPlan(page, TITLES.soData, { date: "15" });
+  await createPlan(page, TITLES.soData, { date: "hoje" });
   await expect(page.getByText(TITLES.soData).first()).toBeVisible({ timeout: 15000 });
   await expect(
     page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.soData),
   ).toHaveCount(0);
 
   // ── 3. data + início (sem fim) ────────────────────────────────────────────
-  await createPlan(page, TITLES.dataInicio, { date: "16", start: "09:00" });
+  await createPlan(page, TITLES.dataInicio, { date: "hoje", start: "09:00" });
   await expect(page.getByText(TITLES.dataInicio).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText("09:00").first()).toBeVisible();
 
   // ── 4. data + início + fim ────────────────────────────────────────────────
-  await createPlan(page, TITLES.completo, { date: "17", start: "10:00", end: "11:00" });
+  await createPlan(page, TITLES.completo, { date: "hoje", start: "10:00", end: "11:00" });
   await expect(page.getByText(TITLES.completo).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText("10:00 – 11:00").first()).toBeVisible();
 
@@ -146,7 +146,7 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   // ── 7. recorrente + ocorrências ───────────────────────────────────────────
   await openModal(page);
   await page.locator("#planner-plan-title").fill(TITLES.recurring);
-  await pickDay(page, "15");
+  await pickDay(page);
   await page.getByRole("button", { name: "Semanalmente" }).click();
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Criar plano" }).click();
