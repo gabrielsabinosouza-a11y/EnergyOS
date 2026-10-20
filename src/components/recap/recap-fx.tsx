@@ -114,6 +114,45 @@ export function GlassPanel({ accent, className = "", style, children }: GlassPan
   );
 }
 
+// ─── Card de vidro com inclinação 3D ──────────────────────────────────────────
+
+export interface TiltCardProps {
+  accent: string;
+  className?: string;
+  children?: React.ReactNode;
+}
+
+/**
+ * Card de vidro que inclina até 6° seguindo o ponteiro, com glare especular
+ * no mesmo ponto. Desligado com `prefers-reduced-motion`.
+ */
+export function TiltCard({ accent, className = "", children }: TiltCardProps) {
+  const tilt = useRecapTilt(6);
+  const glareBackground = useTransform(
+    [tilt.glareX, tilt.glareY],
+    ([x, y]) => `radial-gradient(circle at ${x} ${y}, rgba(255,255,255,.26), transparent 55%)`,
+  );
+
+  return (
+    <motion.div
+      className="relative h-full"
+      style={{ rotateX: tilt.rotateX, rotateY: tilt.rotateY, transformPerspective: 900 }}
+      onPointerMove={tilt.onPointerMove}
+      onPointerLeave={tilt.onPointerLeave}
+      onPointerDown={tilt.onPointerDown}
+    >
+      <GlassPanel accent={accent} className={`h-full ${className}`}>
+        {children}
+      </GlassPanel>
+      <motion.span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-2xl"
+        style={{ background: glareBackground, opacity: tilt.glareOpacity }}
+      />
+    </motion.div>
+  );
+}
+
 // ─── Partículas de ambiente ────────────────────────────────────────────────────
 
 /**

@@ -53,16 +53,21 @@ function planRows(page, title = TITLE) {
 }
 
 async function nextPeriod(page) {
+  const before = await page.locator("h2").first().textContent();
   await page.locator('button[aria-label^="Próximo período"]').first().click({ force: true });
-  await page.waitForTimeout(600);
+  await expect(page.locator("h2").first()).not.toHaveText(before ?? "", { timeout: 15000 });
+  await page.waitForTimeout(300);
 }
 
 async function prevPeriod(page) {
+  const before = await page.locator("h2").first().textContent();
   await page.locator('button[aria-label^="Período anterior"]').first().click({ force: true });
-  await page.waitForTimeout(600);
+  await expect(page.locator("h2").first()).not.toHaveText(before ?? "", { timeout: 15000 });
+  await page.waitForTimeout(300);
 }
 
 test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/excluir por escopo", async ({ page }) => {
+  test.setTimeout(240000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
 
@@ -99,7 +104,7 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
   await page.waitForTimeout(1200);
 
   // Aparece na semana atual (na segunda-feira)
-  await expect(planRows(page).first()).toBeVisible();
+  await expect(planRows(page).first()).toBeVisible({ timeout: 15000 });
 
   // Navega 3 meses (12 semanas) e confere que continua em toda segunda
   for (let i = 0; i < 12; i += 1) {
@@ -107,7 +112,7 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
     await expect(
       planRows(page).first(),
       `o plano deve aparecer na semana ${i + 1} à frente`,
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
   }
 
   // Volta 3 semanas: as três primeiras semanas têm o plano

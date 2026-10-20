@@ -21,7 +21,7 @@ import Image from "next/image";
 import { Modal } from "@/components/modal";
 import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
-import { GlassPanel, ParticleField, Recap3DIcon } from "@/components/recap/recap-fx";
+import { ParticleField, Recap3DIcon, TiltCard } from "@/components/recap/recap-fx";
 import { useRecapSound } from "@/lib/recap-sound";
 import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
@@ -68,12 +68,12 @@ const SHARE_REWARD_COINS = 50;
 
 /**
  * Artes 3D dos slides. Os arquivos são OPTIONAIS: enquanto o asset não existir
- * em /public/recap/icons, o componente usa o ícone line original como fallback.
+ * em /public/recaps, o componente usa o ícone line original como fallback.
  */
 const RECAP_ART = {
-  foco: "/recap/icons/recap-foco.png",
-  sequencia: "/recap/icons/recap-sequencia.png",
-  jardim: "/recap/icons/recap-jardim.png",
+  foco: "/recaps/clock.png",
+  sequencia: "/recaps/streak.png",
+  jardim: "/recaps/energy.png",
 } as const;
 
 /** Cores de destaque por slide (as únicas cores novas do redesign). */
@@ -655,9 +655,9 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
               animate={reduced ? undefined : { opacity: 1, y: 0, scale: 1 }}
               transition={reduced ? undefined : { delay: 0.12 + index * 0.07, type: "spring", stiffness: 260, damping: 20 }}
             >
-              <GlassPanel
+              <TiltCard
                 accent={stat.color}
-                className={`flex h-full items-center justify-center px-2 py-2.5 ${
+                className={`flex items-center justify-center px-2 py-2.5 ${
                   stat.wide ? "flex-row gap-3 text-left" : "flex-col gap-2 text-center"
                 }`}
               >
@@ -678,7 +678,7 @@ function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
                     {stat.label}
                   </span>
                 </span>
-              </GlassPanel>
+              </TiltCard>
             </motion.div>
           ))}
         </div>

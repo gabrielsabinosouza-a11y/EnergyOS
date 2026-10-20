@@ -195,7 +195,7 @@ async function captureCard(
 
   // ── Preload images ──
   const tierImg = tier && meta ? await loadImage(meta.iconPath).catch(() => null) : null;
-  const streakImg = await loadImage("/streak/streak_alive.png").catch(() => null);
+  const streakImg = await loadImage("/recaps/streak.png").catch(() => null);
 
   // ── Stats grid ──
   const tiles: TileSpec[] = [

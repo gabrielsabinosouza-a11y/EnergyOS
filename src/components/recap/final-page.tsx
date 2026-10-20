@@ -284,25 +284,61 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard 
-            icon={<div className="flex h-5 w-5 items-center justify-center text-[#71d4ff]">⏱️</div>}
+            icon={
+              <Image 
+                src="/recaps/clock.png" 
+                alt="Foco" 
+                width={16} 
+                height={16} 
+                className="object-contain"
+                unoptimized
+              />
+            }
             label="Foco" 
             value={formatMinutes(recap.totalFocusMinutes)} 
             color="#71d4ff" 
           />
           <StatCard 
-            icon={<div className="flex h-5 w-5 items-center justify-center text-[#ffb86b]">🔥</div>}
+            icon={
+              <Image 
+                src="/recaps/streak.png" 
+                alt="Sequência" 
+                width={16} 
+                height={16} 
+                className="object-contain"
+                unoptimized
+              />
+            }
             label="Sequência" 
             value={`${recap.longestStreak} dias`} 
             color="#ffb86b" 
           />
           <StatCard 
-            icon={<div className="flex h-5 w-5 items-center justify-center" style={{ color: tierColor }}>🏆</div>}
+            icon={
+              <Image 
+                src={tier.iconPath} 
+                alt={tier.label} 
+                width={16} 
+                height={16} 
+                className="object-contain"
+                unoptimized
+              />
+            }
             label="Liga" 
             value={recap.leagueTier ?? "—"} 
             color={tierColor}
           />
           <StatCard 
-            icon={<div className="flex h-5 w-5 items-center justify-center text-[#4ade80]">🧠</div>}
+            icon={
+              <Image 
+                src="/recaps/energy.png" 
+                alt="Energias" 
+                width={16} 
+                height={16} 
+                className="object-contain"
+                unoptimized
+              />
+            }
             label="Energias" 
             value={formatNumber(recap.gardenCount ?? 0)} 
             color="#4ade80" 
@@ -343,7 +379,7 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label:
   return (
     <div className="flex flex-col items-center gap-1 rounded-xl bg-[var(--bg-surface-hover)] p-3">
       <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full" style={{ background: `${color}22` }}>
-        <span style={{ color }}>{icon}</span>
+        {icon}
       </div>
       <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">{label}</span>
       <span className="font-display text-lg font-bold" style={{ color }}>{value}</span>

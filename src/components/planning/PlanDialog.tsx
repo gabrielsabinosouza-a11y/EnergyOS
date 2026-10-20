@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Repeat, Bell } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -66,26 +66,42 @@ export function PlanDialog({
   onSave,
   showNotificationPermissionPrompt,
 }: PlanDialogProps) {
-  const [title, setTitle] = useState(() => plan?.title ?? "");
-  const [categoryId, setCategoryId] = useState(() => String(plan?.categoryId ?? categories[0]?.id ?? ""));
-  const [planDate, setPlanDate] = useState(() => plan?.planDate ?? initialDate ?? todayIso());
-  const [startTime, setStartTime] = useState(() => plan?.startTime?.slice(0, 5) ?? initialStartTime ?? (plan ? "" : "09:00"));
-  const [endTime, setEndTime] = useState(() => initialEndTime ?? (plan ? "" : "10:00"));
+  const [title, setTitle] = useState("");
+  const [categoryId, setCategoryId] = useState(() => String(categories[0]?.id ?? ""));
+  const [planDate, setPlanDate] = useState(todayIso());
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState("");
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
-  const [reminderOption, setReminderOption] = useState<ReminderOption>(() => {
-    const offset = plan?.reminderOffsetMin;
-    if (offset === null || offset === undefined) return "sem-lembrete";
-    const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
-    return found?.value ?? "sem-lembrete";
-  });
+  const [reminderOption, setReminderOption] = useState<ReminderOption>("sem-lembrete");
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
+
+  // Reset all fields when modal opens - fixes leftover values from previous plans
+  useEffect(() => {
+    if (open) {
+      setTitle(plan?.title ?? "");
+      setCategoryId(String(plan?.categoryId ?? categories[0]?.id ?? ""));
+      setPlanDate(plan?.planDate ?? initialDate ?? todayIso());
+      setStartTime(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? (plan ? "" : "09:00"));
+      setEndTime(initialEndTime ?? (plan ? "" : "10:00"));
+      setRepeatWeekly(false);
+      setRepeatDays([]);
+      setRepeatDaysTouched(false);
+      setRepeatUntil("");
+      setHasRepeatEnd(false);
+      const offset = plan?.reminderOffsetMin;
+      const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
+      setReminderOption(found?.value ?? "sem-lembrete");
+      setError("");
+      setLoading(false);
+    }
+  }, [open, plan, initialDate, initialStartTime, initialEndTime, categories]);
 
   function handleDateChange(date: string) {
     setPlanDate(date);
@@ -225,7 +241,7 @@ export function PlanDialog({
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Ex.: Ir à academia"
               maxLength={PLAN_NAME_MAX}
-              className="auth-input"
+              className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
 
@@ -237,7 +253,7 @@ export function PlanDialog({
               id="planner-plan-category"
               value={categoryId}
               onChange={(event) => setCategoryId(event.target.value)}
-              className="auth-input"
+              className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
               disabled={Boolean(recurringOccurrence)}
             >
               {!recurringOccurrence ? <option value="">Padrão</option> : null}
@@ -278,7 +294,7 @@ export function PlanDialog({
                 onChange={(event) => setStartTime(formatTimeInput(event.target.value))}
                 placeholder="09:00"
                 aria-label="Horário de início, formato 24 horas"
-                className="auth-input tabular-nums"
+                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 tabular-nums"
               />
             </div>
             {!recurringOccurrence ? (
@@ -296,7 +312,7 @@ export function PlanDialog({
                   onChange={(event) => setEndTime(formatTimeInput(event.target.value))}
                   placeholder="10:00"
                   aria-label="Horário de fim, formato 24 horas"
-                  className="auth-input tabular-nums"
+                  className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 tabular-nums"
                 />
               </div>
             ) : null}
@@ -405,7 +421,7 @@ export function PlanDialog({
                         id="planner-plan-reminder"
                         value={reminderOption}
                         onChange={(event) => setReminderOption(event.target.value as ReminderOption)}
-                        className="auth-input"
+                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-base text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                       >
                         {REMINDER_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>

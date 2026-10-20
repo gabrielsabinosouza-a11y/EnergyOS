@@ -229,10 +229,14 @@ function FocusSlide({ recap }: { recap: MonthlyRecap }) {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "rgba(113,212,255,0.2)" }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#71d4ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M12 8v4l3 3"></path>
-        </svg>
+        <Image 
+          src="/recaps/clock.png" 
+          alt="Relógio" 
+          width={32} 
+          height={32} 
+          className="object-contain"
+          unoptimized
+        />
       </div>
       <div>
         <h3 className="font-display text-xl font-bold text-[var(--text)]">{formatMinutes(recap.totalFocusMinutes)}</h3>
@@ -246,13 +250,11 @@ function FocusSlide({ recap }: { recap: MonthlyRecap }) {
 }
 
 function StreakSlide({ recap }: { recap: MonthlyRecap }) {
-  const streakIcon = "/streak/streak_alive.png";
-  
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "rgba(255,140,66,0.2)" }}>
         <Image 
-          src={streakIcon} 
+          src="/recaps/streak.png" 
           alt="Sequência" 
           width={32} 
           height={32} 
@@ -278,7 +280,7 @@ function GardenSlide({ recap }: { recap: MonthlyRecap }) {
     <div className="flex flex-col items-center gap-4">
       <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "rgba(74,222,128,0.2)" }}>
         <Image 
-          src="/icons_8bits/brain.png" 
+          src="/recaps/energy.png" 
           alt="Energias" 
           width={32} 
           height={32} 
@@ -393,25 +395,61 @@ function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: Month
 
       <div className="grid grid-cols-2 gap-4">
         <StatCard 
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71d4ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>}
+          icon={
+            <Image 
+              src="/recaps/clock.png" 
+              alt="Foco" 
+              width={16} 
+              height={16} 
+              className="object-contain"
+              unoptimized
+            />
+          }
           label="Foco" 
           value={formatMinutes(recap.totalFocusMinutes)} 
           color="#71d4ff" 
         />
         <StatCard 
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb86b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v14l-4-4H4a8 8 0 0 1 16 0h-4l-4 4V2"></path></svg>} 
+          icon={
+            <Image 
+              src="/recaps/streak.png" 
+              alt="Sequência" 
+              width={16} 
+              height={16} 
+              className="object-contain"
+              unoptimized
+            />
+          }
           label="Sequência" 
           value={`${recap.longestStreak} dias`} 
           color="#ffb86b" 
         />
         <StatCard 
-          icon={<Image src={meta.iconPath} alt={meta.label} width={16} height={16} unoptimized />} 
+          icon={
+            <Image 
+              src={meta.iconPath} 
+              alt={meta.label} 
+              width={16} 
+              height={16} 
+              className="object-contain"
+              unoptimized
+            />
+          }
           label="Liga" 
           value={meta.label} 
           color={meta.color}
         />
         <StatCard 
-          icon={<Image src="/icons_8bits/brain.png" alt="Energias" width="16" height="16" unoptimized />} 
+          icon={
+            <Image 
+              src="/recaps/energy.png" 
+              alt="Energias" 
+              width={16} 
+              height={16} 
+              className="object-contain"
+              unoptimized
+            />
+          }
           label="Energias" 
           value={formatNumber(recap.gardenCount ?? 0)} 
           color="#4ade80" 
@@ -440,7 +478,7 @@ function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label:
   return (
     <div className="flex flex-col items-center gap-1 rounded-xl bg-[var(--bg-surface-hover)] p-3">
       <div className="mb-1 flex h-8 w-8 items-center justify-center rounded-full" style={{ background: `${color}22` }}>
-        <span style={{ color }}>{icon}</span>
+        {icon}
       </div>
       <span className="text-xs text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
       <span className="font-display text-sm font-bold" style={{ color }}>{value}</span>

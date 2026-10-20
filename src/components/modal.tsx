@@ -73,6 +73,13 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
+      // Skip processing if focus is in an input/textarea - fixes typing bugs
+      const active = document.activeElement;
+      if (active) {
+        const tagName = active.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea") return;
+      }
+
       if (event.key === "Escape") onClose();
       if (event.key === "Tab") {
         const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
