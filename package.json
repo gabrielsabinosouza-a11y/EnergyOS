@@ -13,6 +13,7 @@
     "db:reset-messages": "node scripts/reset-messages.mjs",
     "db:wipe-planner": "node scripts/wipe-planner-data.mjs",
     "db:migrate-planner-series": "node scripts/migrate-planner-series.mjs",
+    "db:migrate-planner-optional-schedule": "node scripts/migrate-planner-optional-schedule.mjs",
     "db:migrate-reminders": "node scripts/migrate-reminders.mjs",
     "db:migrate-goal-logs": "node scripts/migrate-goal-logs.mjs",
     "db:migrate-terminology": "node scripts/migrate-terminology.mjs",

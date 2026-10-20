@@ -30,20 +30,34 @@ async function dismissTour(p) {
 }
 
 console.log("→ login");
-await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 120000 });
-await page.waitForTimeout(1500);
+await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 300000 });
+await page.locator('input[type="email"]').waitFor({ state: "visible", timeout: 300000 });
+await page.waitForTimeout(800);
 if (page.url().includes("/login")) {
   await page.locator('input[type="email"]').fill(EMAIL);
   await page.locator('input[type="password"]').fill(PASS);
-  await page.locator('button:has-text("Entrar")').click();
-  await page.waitForTimeout(3000);
+  await page.locator('button[type="submit"]:has-text("Entrar")').click();
+  await page.waitForTimeout(8000);
+  const loginError = await page.locator("text=/E-mail ou senha incorretos/").count();
+  console.log("  login error visible:", loginError);
+  await page.screenshot({ path: `${OUT}/00-login-state.png` });
+  if (loginError) {
+    await page.screenshot({ path: `${OUT}/00-login-error.png` });
+  }
 }
 await dismissTour(page);
 console.log("  url after login:", page.url());
 
 console.log("→ profile");
-await page.goto(`${BASE}/perfil`, { waitUntil: "domcontentloaded", timeout: 180000 });
-await page.waitForTimeout(4000);
+await page.goto(`${BASE}/perfil`, { waitUntil: "domcontentloaded", timeout: 300000 });
+page.on("response", async (r) => {
+  if (r.url().includes("/api/recap")) {
+    let body = "";
+    try { body = (await r.text()).slice(0, 400); } catch { /* ignore */ }
+    console.log("  [api]", r.status(), r.url(), body);
+  }
+});
+await page.waitForTimeout(12000);
 await dismissTour(page);
 
 const trigger = page.locator('button:has-text("Ver recap de")');
@@ -52,12 +66,16 @@ console.log("  recap triggers:", count);
 if (count === 0) {
   await page.screenshot({ path: `${OUT}/00-no-recap.png`, fullPage: false });
   console.log("ERROR: no recap found");
-  console.log(errors.slice(0, 10).join("\n"));
+  console.log(errors.slice(0, 20).join("\n"));
+  const html = await page.evaluate(() => document.body.innerText.slice(0, 1500));
+  console.log("--- body text ---\n" + html);
   await browser.close();
   process.exit(1);
 }
 
 await trigger.first().click();
+await page.waitForTimeout(2000);
+await page.locator('[role="dialog"]').waitFor({ state: "visible", timeout: 60000 });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${OUT}/01-slide-intro.png` });
 

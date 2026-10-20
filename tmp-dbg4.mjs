@@ -1,0 +1,41 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE:", m.text().slice(0, 200)); });
+page.on("pageerror", (e) => console.log("PAGEERROR:", e.message.slice(0, 200)));
+page.on("request", (r) => { if (r.url().includes("/api/weekly-plans")) console.log("REQ:", r.method(), r.url(), r.postData() || ""); });
+page.on("response", async (r) => { if (r.url().includes("/api/weekly-plans") && r.request().method() !== "GET") { console.log("RES:", r.status(), (await r.text().catch(()=> "")).slice(0, 300)); } });
+await page.goto("http://localhost:3000/login", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(8000);
+await page.locator("#login-email").click();
+await page.locator("#login-email").type("e2e.planner@energyos.test", { delay: 15 });
+await page.locator("#login-password").click();
+await page.locator("#login-password").type("Planner123!", { delay: 15 });
+await page.locator('button:has-text("Entrar")').click();
+await page.waitForTimeout(6000);
+await page.goto("http://localhost:3000/planner", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(9000);
+
+const section = page.locator('section[aria-label="Tarefas sem data"]');
+console.log("seção visível:", await section.count());
+if (await section.count()) {
+  const row = section.locator('[data-testid^="plan-"]').first();
+  console.log("linhas:", await section.locator('[data-testid^="plan-"]').count());
+  await row.locator('button[aria-label*="Ações"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('button[role="menuitem"]:has-text("Editar")').click();
+  await page.waitForTimeout(1200);
+  console.log("data no modal:", (await page.locator("#planner-plan-date").textContent() || "").trim());
+  await page.locator("#planner-plan-date").click();
+  await page.waitForTimeout(700);
+  const dayBtn = page.locator('div[role="dialog"] button').filter({ hasText: /^\d{1,2}$/ }).first();
+  await dayBtn.click();
+  await page.waitForTimeout(600);
+  console.log("data escolhida:", (await page.locator("#planner-plan-date").textContent() || "").trim());
+  await page.locator('button:has-text("Salvar alterações")').click();
+  await page.waitForTimeout(3000);
+  console.log("seção ainda tem linhas:", await section.locator('[data-testid^="plan-"]').count());
+  console.log("body tail:", (await page.locator("body").innerText()).replace(/\n+/g, " | ").slice(-300));
+}
+await page.screenshot({ path: "/tmp/opencode/planner-edit-dbg.png" });
+await browser.close();

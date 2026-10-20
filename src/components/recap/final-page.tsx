@@ -329,7 +329,7 @@ export function FinalPage({ recap, userName, userPhotoUrl, onClose }: FinalPageP
   // Play entrance sound once
   useEffect(() => {
     if (soundEnabled) {
-      playSound(350, 0.4);
+      playSound("sparkle");
     }
   }, [soundEnabled, playSound]);
 

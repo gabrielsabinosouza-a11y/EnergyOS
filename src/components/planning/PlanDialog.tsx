@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -13,6 +13,7 @@ import { PlannerDatePicker } from "./PlannerDatePicker";
 type RepeatScope = "occurrence" | "series";
 type ReminderOption = "sem-lembrete" | "no-horario" | "5-min" | "10-min" | "30-min" | "1-hora";
 type PlanFormValues = {
+  /** `undefined` = sem data (tarefa não agendada). */
   planDate?: string;
   title: string;
   categoryId?: number;
@@ -36,7 +37,7 @@ const REMINDER_OPTIONS: { value: ReminderOption; label: string; offsetMin: numbe
 interface PlanDialogProps {
   open: boolean;
   plan?: WeeklyPlanItem | null;
-  initialDate?: string;
+  initialDate?: string | null;
   initialStartTime?: string;
   initialEndTime?: string;
   categories: Category[];
@@ -75,7 +76,7 @@ export function PlanDialog({
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
-  const [repeatUntil, setRepeatUntil] = useState("");
+  const [repeatUntil, setRepeatUntil] = useState<string | null>(null);
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
   const [reminderOption, setReminderOption] = useState<ReminderOption>("sem-lembrete");
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
@@ -83,8 +84,12 @@ export function PlanDialog({
   const [error, setError] = useState("");
 
   // Reset form state when modal opens or plan changes
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
+    // Só reseta na ABERTURA do diálogo. Se reexecutasse a cada mudança de
+    // `plan` (o objeto vem do estado e muda de identidade a cada refetch),
+    // o que o usuário já digitou seria apagado no meio da digitação.
+    if (open && !wasOpenRef.current) {
       setTitle(plan?.title ?? "");
       setCategoryId(plan?.categoryId?.toString() ?? "");
       setPlanDate(plan?.planDate ?? initialDate ?? null);
@@ -100,6 +105,7 @@ export function PlanDialog({
       setReminderOption(found?.value ?? "sem-lembrete");
       setError("");
     }
+    wasOpenRef.current = open;
   }, [open, plan, initialDate, initialStartTime, initialEndTime]);
 
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
@@ -167,7 +173,7 @@ export function PlanDialog({
       return null;
     }
     return {
-      planDate,
+      planDate: planDate ?? undefined,
       title: trimmedTitle,
       categoryId: recurringOccurrence
         ? plan!.categoryId

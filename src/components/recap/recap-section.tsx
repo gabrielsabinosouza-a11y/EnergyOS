@@ -297,7 +297,6 @@ export function RecapSection({ userName, userPhotoUrl, favoriteCategory }: Recap
             recap={openFinal}
             userName={userName}
             userPhotoUrl={userPhotoUrl}
-            favoriteCategory={favoriteCategory}
             onClose={() => setOpenFinal(null)}
           />
         )}

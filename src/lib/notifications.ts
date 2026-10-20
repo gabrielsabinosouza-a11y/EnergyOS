@@ -188,12 +188,13 @@ export async function getPushSubscription(profileId: string): Promise<any[]> {
 export function scheduleReminder(plan: WeeklyPlanItem): void {
   if (!plan.reminderOffsetMin || plan.reminderOffsetMin <= 0) return;
 
+  // Sem data ou sem horário não há reminder agendável (tarefa não agendada).
+  if (!plan.planDate || !plan.startTime) return;
+
   const now = new Date();
   const planDate = new Date(plan.planDate);
 
   // Calculate start time
-  if (!plan.startTime) return;
-
   const [hours, minutes] = plan.startTime.split(":").map(Number);
   planDate.setHours(hours, minutes, 0, 0);
 

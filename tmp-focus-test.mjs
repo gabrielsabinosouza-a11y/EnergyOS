@@ -13,6 +13,8 @@ const browser = await chromium.launch({
 });
 const context = await browser.newContext({ timezoneId: "America/Sao_Paulo" });
 const page = await context.newPage();
+page.setDefaultTimeout(90000);
+page.setDefaultNavigationTimeout(90000);
 
 const consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));

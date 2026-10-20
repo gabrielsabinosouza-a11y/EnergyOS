@@ -289,6 +289,9 @@ create table if not exists weekly_plans (
 
 create index if not exists weekly_plans_profile_date_idx on weekly_plans(profile_id, plan_date);
 
+-- Tarefas sem agendamento: `plan_date` é nulo (a coluna é anulável).
+create index if not exists weekly_plans_unscheduled_idx on weekly_plans(profile_id) where plan_date is null;
+
 -- ── Planejamento: séries recorrentes (regra) + estado por ocorrência ──────
 -- A repetição é guardada como REGRA (repeat_type/repeat_days/end_*), nunca como
 -- milhares de linhas copiadas. As ocorrências são geradas sob demanda para o

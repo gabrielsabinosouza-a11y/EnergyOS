@@ -888,6 +888,14 @@ export default function PerfilPage() {
                       achievementsUnlocked: recap.achievementsUnlocked,
                       topFocusCategory: recap.topFocusCategory,
                       hasBeenShared: recap.hasBeenShared,
+                      profileId: recap.profileId,
+                      streakStartDate: recap.streakStartDate,
+                      streakEndDate: recap.streakEndDate,
+                      streakIsAlive: recap.streakIsAlive,
+                      leagueAtStart: recap.leagueAtStart,
+                      xpSources: recap.xpSources,
+                      generatedAt: recap.generatedAt,
+                      finalizedAt: recap.finalizedAt,
                     }}
                     status={recap.status}
                     isLive={recap.recapMonth === currentRecapMonth}

@@ -17,7 +17,7 @@ interface WeeklyPlanProps {
   categories: Category[];
   onDelete: (id: number) => void;
   onCreate: (planDate: string, title: string, categoryId: number) => Promise<void>;
-  onUpdate: (id: number, title: string, categoryId: number, planDate: string) => Promise<void>;
+  onUpdate: (id: number, title: string, categoryId: number, planDate: string | undefined) => Promise<void>;
   onToggleCompleted: (id: number, completed: boolean) => Promise<void>;
   onCreateSeries?: (payload: CreateSeriesPayload) => Promise<void>;
   onUpdateSeries?: (seriesId: number, payload: CreateSeriesPayload) => Promise<void>;
@@ -128,8 +128,11 @@ export function WeeklyPlan({
     const newValue = nextCompleted ? new Date().toISOString() : null;
     setCompletionOverrides((current) => ({ ...current, [key]: newValue }));
     try {
-      if (plan.seriesId && onToggleOccurrence) await onToggleOccurrence(plan.seriesId, plan.planDate, nextCompleted);
-      else await onToggleCompleted(plan.id, nextCompleted);
+      if (plan.seriesId && plan.planDate && onToggleOccurrence) {
+        await onToggleOccurrence(plan.seriesId, plan.planDate, nextCompleted);
+      } else {
+        await onToggleCompleted(plan.id, nextCompleted);
+      }
     } catch {
       setCompletionOverrides((current) => ({ ...current, [key]: oldValue }));
     }
@@ -352,7 +355,7 @@ export function WeeklyPlan({
               onClose={closeEditingPlan}
               onSaveSeries={handleUpdateSeries}
               onSaveOccurrence={async ({ title, startTime }) => {
-                if (!editingPlan?.seriesId) return;
+                if (!editingPlan?.seriesId || !editingPlan.planDate) return;
                 await onUpdateOccurrenceOverride?.(editingPlan.seriesId, editingPlan.planDate, title, startTime);
                 closeEditingPlan();
               }}

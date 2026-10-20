@@ -21,33 +21,32 @@ import Image from "next/image";
 import { Modal } from "@/components/modal";
 import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
-import { ParticleField, Recap3DIcon, TiltCard } from "@/components/recap/recap-fx";
+import { ParticleField, Recap3DIcon, RecapProgressBar } from "@/components/recap/recap-fx";
 import { useRecapSound } from "@/lib/recap-sound";
-import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
+import { NEW_TIER_META } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
+import { FinalRecapSurface } from "./recap-final-surface";
+import {
+  ACCENT,
+  RECAP_ART,
+  RECAP_PALETTE,
+  focusCopy,
+  formatMinutes,
+  formatMonth,
+  gardenCopy,
+  leagueCopy,
+  plural,
+  streakCopy,
+  tierMeta,
+  xpCopy,
+  xpSegments,
+  type RecapData,
+} from "./recap-theme";
+
+export type { RecapData } from "./recap-theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface RecapData {
-  id: number;
-  recapMonth: string;
-  totalFocusMinutes: number;
-  longestStreak: number;
-  leagueTier?: string;
-  leaguePromoted?: boolean;
-  productivityTag?: string;
-  gardenCount?: number;
-  totalXp: number;
-  coinsGained?: number;
-  coinsSpent?: number;
-  missionsCompleted?: number;
-  goalsCompleted?: number;
-  achievementsUnlocked?: number;
-  topFocusCategory?: string;
-  hasBeenShared?: boolean;
-  status?: "live" | "final";
-}
 
 interface MonthlyRecapPremiumProps {
   recap: RecapData;
@@ -67,106 +66,14 @@ const SLIDE_COUNT = 7;
 const SHARE_REWARD_COINS = 50;
 
 /**
- * Artes 3D dos slides. Cada slide aceita VÁRIOS caminhos: o primeiro que
- * carregar é usado e, se nenhum existir, o ícone line original entra como
- * fallback (sem quebrar nada).
- *
- * - /recaps/*.png           → artes 3D já disponíveis no repositório
- * - /recap/icons/recap-*.png → nomes previstos para os novos assets
- */
-const RECAP_ART = {
-  foco: ["/recaps/clock.png", "/recap/icons/recap-foco.png"],
-  sequencia: ["/recaps/streak.png", "/recap/icons/recap-sequencia.png"],
-  jardim: ["/recaps/energy.png", "/recap/icons/recap-jardim.png"],
-  xp: ["/recaps/xp.png", "/recap/icons/recap-xp.png", "/xp/xp_double_thunder.png"],
-} as const;
-
-/** Cores de destaque por slide (as únicas cores novas do redesign). */
-const ACCENT = {
-  focus: "#5CC8FF",
-  streak: "#FFB067",
-  garden: "#3DDC84",
-  xp: "#B69CFF",
-} as const;
-
-/**
  * Largura do modal 9:16.
  * 56.25dvh - 3.9375rem = (100dvh - 7rem) * 9/16 → altura útil do card.
  * `min()` com 100vw-2rem mantém as margens em telas estreitas (320px+).
  */
 const MODAL_WIDTH = "min(420px, calc(56.25dvh - 3.9375rem), calc(100vw - 2rem))";
 
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function plural(n: number, singular: string, pluralForm: string): string {
-  return n === 1 ? singular : pluralForm;
-}
-
-function formatMinutes(total: number): string {
-  if (total < 60) return `${total}min`;
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
-}
-
-function formatMonth(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-}
-
-function tierMeta(tier?: string) {
-  const resolved = resolveNewTier(tier);
-  if (resolved) return { tier: resolved, meta: NEW_TIER_META[resolved] };
-  return { tier: null as NewLeagueTier | null, meta: null };
-}
-
-// Contextual copy lines — the "rarity framing" that makes stats feel earned
-function focusCopy(minutes: number): string {
-  if (minutes === 0) return "Cada minuto de foco conta. O próximo mês é seu.";
-  if (minutes < 120) return "Você plantou as primeiras sementes. Continue.";
-  if (minutes < 300) return "Mais de 2 horas de foco puro. Isso é consistência.";
-  if (minutes < 600) return "Você está entre os mais dedicados da plataforma.";
-  if (minutes < 1200) return "Nível de foco que menos de 20% dos usuários atingem.";
-  return "Foco de elite. Você está no topo da plataforma.";
-}
-
-function streakCopy(days: number): string {
-  if (days === 0) return "Amanhã é um novo começo. Construa sua sequência.";
-  if (days === 1) return "1 dia é o começo de tudo. Não pare agora.";
-  if (days < 7) return `${days} ${plural(days, "dia", "dias")} seguidos. A sequência está ganhando força.`;
-  if (days < 14) return "Uma semana inteira de consistência. Isso é raro.";
-  if (days < 30) return "Menos de 15% dos usuários chegam aqui. Você chegou.";
-  return "Sequência lendária. Você faz parte de um grupo seleto.";
-}
-
-function leagueCopy(tier: NewLeagueTier | null, promoted: boolean): string {
-  if (promoted) return "Você subiu de liga este mês. Trabalho duro recompensado.";
-  if (!tier) return "Participe da liga e compete com os melhores.";
-  const copies: Record<NewLeagueTier, string> = {
-    BRONZE:   "Você está construindo sua base. A ascensão começa aqui.",
-    PRATA:    "Consistência acima da média. A Prata é só o começo.",
-    OURO:     "Liga Ouro — você está entre os 30% mais focados.",
-    DIAMANTE: "Elite do foco. Menos de 10% chegam ao Diamante.",
-    LENDAS:   "Liga Lendas. Você está entre os melhores da plataforma.",
-  };
-  return copies[tier];
-}
-
-function gardenCopy(count: number): string {
-  if (count === 0) return "Seu jardim aguarda. Cada sessão planta uma energia.";
-  if (count === 1) return "1 energia plantada. Seu jardim está nascendo.";
-  if (count < 5) return `${count} energias cultivadas. O jardim está crescendo.`;
-  if (count < 15) return `${count} energias. Um jardim vibrante tomando forma.`;
-  return `${count} energias. Jardim exuberante — dedicação visível.`;
-}
-
-function xpCopy(xp: number): string {
-  if (xp === 0) return "Cada sessão de foco gera XP. Sua jornada começa aqui.";
-  if (xp < 1000) return `${xp.toLocaleString("pt-BR")} XP acumulados. Todo ponto conta na sua evolução.`;
-  if (xp < 5000) return "Mais de 1.000 XP! Você já está evoluindo de verdade.";
-  if (xp < 20000) return "Milhares de XP. Sua consistência está virando poder.";
-  return "XP de elite. Sua jornada impressiona até os veteranos.";
-}
 
 // ─── Primitive sub-components ─────────────────────────────────────────────────
 
@@ -182,33 +89,6 @@ function AmbientGlow({ accent, glow }: { accent: string; glow: string }) {
         style={{ width: "45%", height: "30%", background: `radial-gradient(circle, ${accent}18 0%, transparent 70%)`, filter: "blur(35px)" }}
       />
     </>
-  );
-}
-
-/** Barras de progresso segmentadas — o preenchimento acompanha a troca de slide. */
-function ProgressBar({ current, total, accent }: { current: number; total: number; accent: string }) {
-  const reduced = useReducedMotion();
-  return (
-    <div
-      className="flex flex-1 gap-1"
-      role="progressbar"
-      aria-label="Progresso do recap"
-      aria-valuemin={1}
-      aria-valuemax={total}
-      aria-valuenow={current + 1}
-    >
-      {Array.from({ length: total }).map((_, index) => (
-        <div key={index} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/15">
-          <motion.div
-            className="h-full w-full origin-left rounded-full"
-            style={{ background: `linear-gradient(90deg, ${accent}, rgba(255,255,255,.9))` }}
-            initial={false}
-            animate={{ scaleX: index <= current ? 1 : 0 }}
-            transition={{ duration: reduced ? 0 : 0.34, ease: "easeOut" }}
-          />
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -528,170 +408,6 @@ function LeagueSlide({ tier, meta, promoted, theme }: {
   );
 }
 
-// ─── Summary slide ────────────────────────────────────────────────────────────
-
-interface SummaryStat {
-  key: string;
-  label: string;
-  value: string;
-  color: string;
-  art?: readonly string[];
-  fallback: React.ReactNode;
-  wide?: boolean;
-}
-
-/** Ícone do card de estatística: arte 3D se existir, ícone line como fallback. */
-function SummaryStatIcon({ art, label, fallback }: { art?: readonly string[]; label: string; fallback: React.ReactNode }) {
-  const [failed, setFailed] = useState<string[]>([]);
-  const current = (art ?? []).find((candidate) => !failed.includes(candidate)) ?? null;
-
-  if (!current) {
-    return <span aria-hidden="true" className="grid place-items-center">{fallback}</span>;
-  }
-
-  return (
-    <Image
-      src={current}
-      alt={label}
-      width={16}
-      height={16}
-      style={{ objectFit: "contain" }}
-      unoptimized
-      draggable={false}
-      onError={() => setFailed((prev) => (prev.includes(current) ? prev : [...prev, current]))}
-    />
-  );
-}
-
-function SummarySlide({ recap, userName, userPhotoUrl, monthLabel, theme }: {
-  recap: RecapData; userName: string; userPhotoUrl?: string; monthLabel: string;
-  theme: { bg: string; accent: string; glow: string };
-}) {
-  const reduced = useReducedMotion();
-  const { meta } = tierMeta(recap.leagueTier);
-  const tierColor = meta ? meta.color : "#71d4ff";
-  const garden = recap.gardenCount ?? 0;
-
-  const stats: SummaryStat[] = [
-    {
-      key: "foco",
-      label: "Foco",
-      value: formatMinutes(recap.totalFocusMinutes),
-      color: ACCENT.focus,
-      art: RECAP_ART.foco,
-      fallback: <Timer size={16} color={ACCENT.focus} strokeWidth={1.8} />,
-    },
-    {
-      key: "sequencia",
-      label: plural(recap.longestStreak, "dia", "dias"),
-      value: String(recap.longestStreak),
-      color: ACCENT.streak,
-      art: RECAP_ART.sequencia,
-      fallback: <Flame size={16} color={ACCENT.streak} strokeWidth={1.8} />,
-    },
-    {
-      key: "liga",
-      label: "Liga",
-      value: meta ? meta.label : "—",
-      color: tierColor,
-      art: meta?.iconPath ? [meta.iconPath] : undefined,
-      fallback: <Award size={16} color={tierColor} strokeWidth={1.8} />,
-    },
-    {
-      key: "jardim",
-      label: plural(garden, "energia", "energias"),
-      value: String(garden),
-      color: ACCENT.garden,
-      art: RECAP_ART.jardim,
-      fallback: <Zap size={16} color={ACCENT.garden} strokeWidth={1.8} />,
-    },
-    {
-      key: "xp",
-      label: "XP total",
-      value: (recap.totalXp ?? 0).toLocaleString("pt-BR"),
-      color: ACCENT.xp,
-      art: RECAP_ART.xp,
-      fallback: <Zap size={16} color={ACCENT.xp} strokeWidth={1.8} />,
-      wide: true,
-    },
-  ];
-
-  return (
-    <SlideFrame>
-      <AmbientGlow accent={theme.accent} glow={theme.glow} />
-
-      <motion.div
-        className="relative z-10 flex w-full max-w-[320px] flex-col items-center"
-        initial={reduced ? undefined : { opacity: 0, y: 24 }}
-        animate={reduced ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.65, ease: "easeOut" }}
-      >
-        {/* Bloco de título centralizado (abaixo do cabeçalho) */}
-        <p className="text-[10px] font-medium tracking-[0.28em] uppercase" style={{ color: "rgba(231,244,255,.38)" }}>Recap de</p>
-        <h2
-          className="font-display mt-1 max-w-full text-center text-[clamp(1.35rem,5.5vw,1.9rem)] font-extrabold leading-tight break-words capitalize"
-          style={{ background: "linear-gradient(135deg, #71d4ff, #b69cff, #ffb86b)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
-        >
-          {monthLabel}
-        </h2>
-
-        {userPhotoUrl ? (
-          <div className="mt-2 flex items-center gap-2">
-            <Image
-              src={userPhotoUrl}
-              alt={userName}
-              width={28}
-              height={28}
-              className="h-7 w-7 rounded-full object-cover ring-1 ring-[rgba(255,255,255,.15)]"
-              unoptimized
-              draggable={false}
-            />
-            <span className="text-xs font-medium" style={{ color: "rgba(231,244,255,.7)" }}>{userName}</span>
-          </div>
-        ) : null}
-
-        {/* Bento 2 colunas — o 5º card ocupa as duas colunas, alturas iguais */}
-        <div className="mt-4 grid w-full grid-cols-2 gap-2.5" style={{ gridAutoRows: "1fr" }}>
-          {stats.map((stat, index) => (
-            <motion.div
-              key={stat.key}
-              className={stat.wide ? "col-span-2" : ""}
-              initial={reduced ? undefined : { opacity: 0, y: 16, scale: 0.94 }}
-              animate={reduced ? undefined : { opacity: 1, y: 0, scale: 1 }}
-              transition={reduced ? undefined : { delay: 0.12 + index * 0.07, type: "spring", stiffness: 260, damping: 20 }}
-            >
-              <TiltCard
-                accent={stat.color}
-                className={`flex items-center justify-center px-2 py-2.5 ${
-                  stat.wide ? "flex-row gap-3 text-left" : "flex-col gap-2 text-center"
-                }`}
-              >
-                <span
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
-                  style={{ background: `${stat.color}22`, boxShadow: `0 0 14px -4px ${stat.color}` }}
-                >
-                  <SummaryStatIcon art={stat.art} label={stat.label} fallback={stat.fallback} />
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span
-                    className="font-display max-w-full truncate text-[clamp(0.95rem,4.2vw,1.3rem)] font-extrabold leading-none tabular-nums"
-                    style={{ color: stat.color }}
-                  >
-                    {stat.value}
-                  </span>
-                  <span className="mt-1 max-w-full truncate text-[9px] uppercase tracking-wider" style={{ color: "rgba(231,244,255,.45)" }}>
-                    {stat.label}
-                  </span>
-                </span>
-              </TiltCard>
-            </motion.div>
-          ))}
-        </div>
-      </motion.div>
-    </SlideFrame>
-  );
-}
-
 // ─── Canvas export — 9:16 story format ───────────────────────────────────────
 
 const CARD_W = 1080;
@@ -733,12 +449,112 @@ function drawGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 }
 
+/** Carrega a primeira arte que existir na lista de caminhos. */
+async function loadFirstImage(sources: readonly string[]): Promise<HTMLImageElement | null> {
+  for (const src of sources) {
+    const img = await loadImage(src).catch(() => null);
+    if (img) return img;
+  }
+  return null;
+}
+
+/**
+ * Superfície de vidro no canvas: preenchimento translúcido, borda com a cor da
+ * métrica, spotlight interno e sombra suave (o `backdrop-filter` do DOM não
+ * existe no canvas, então vira cor sólida equivalente).
+ */
+function drawGlassPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  accent: string,
+  radius = 28,
+) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.55)";
+  ctx.shadowBlur = 30;
+  ctx.shadowOffsetY = 14;
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.fillStyle = "rgba(11,22,39,.74)";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  roundRect(ctx, x, y, w, h, radius);
+  const g = ctx.createLinearGradient(x, y, x + w * 0.6, y + h);
+  g.addColorStop(0, hexToRgba(accent, 0.17));
+  g.addColorStop(0.55, "rgba(255,255,255,.02)");
+  g.addColorStop(1, hexToRgba(accent, 0.07));
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(accent, 0.34);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.clip();
+  const inner = ctx.createRadialGradient(x + w * 0.12, y, 0, x + w * 0.12, y, w * 0.78);
+  inner.addColorStop(0, hexToRgba(accent, 0.18));
+  inner.addColorStop(1, "transparent");
+  ctx.fillStyle = inner;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+/** Texto com quebra de linha (e reticências quando passa do limite). */
+function drawWrappedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines = 2,
+): number {
+  const words = text.split(" ");
+  let line = "";
+  let lineY = y;
+  let lines = 0;
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      if (lines === maxLines - 1) {
+        let clipped = line;
+        while (clipped.length > 0 && ctx.measureText(`${clipped}…`).width > maxWidth) {
+          clipped = clipped.slice(0, -1);
+        }
+        ctx.fillText(`${clipped}…`, x, lineY);
+        return lineY + lineHeight;
+      }
+      ctx.fillText(line, x, lineY);
+      line = word;
+      lineY += lineHeight;
+      lines += 1;
+    } else {
+      line = test;
+    }
+  }
+  if (line && lines < maxLines) {
+    ctx.fillText(line, x, lineY);
+    lineY += lineHeight;
+  }
+  return lineY;
+}
+
 /**
  * Exporta o recap como imagem 1080×1920 (9:16).
  *
  * O desenho é feito à mão no canvas (sem html2canvas/dom-to-image): por isso
  * `backdrop-filter`/blur do redesign NUNCA é rasterizado — cada superfície de
- * vidro vira uma cor sólida equivalente, guaranteeing um PNG correto.
+ * vidro vira uma cor sólida equivalente, garantindo um PNG correto.
+ *
+ * A composição espelha a tela final: herói com a arte central, painel
+ * dominante de foco, faixa secundária (sequência + liga) e faixa terciária
+ * (jardim + XP), fechando com o detalhamento do mês.
  */
 export async function captureRecapCard(
   recap: RecapData,
@@ -749,67 +565,74 @@ export async function captureRecapCard(
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext("2d")!;
-  const pad = 80;
+  const pad = 72;
   const CX = CARD_W / 2;
 
   const { meta } = tierMeta(recap.leagueTier);
-  const tierColor = meta ? meta.color : "#71d4ff";
+  const tierColor = meta ? meta.color : RECAP_PALETTE.cyan;
   const monthLabel = formatMonth(recap.recapMonth);
   const garden = recap.gardenCount ?? 0;
+  const xp = recap.totalXp ?? 0;
+  const focusHours = Math.floor((recap.totalFocusMinutes ?? 0) / 60);
+  const focusMins = (recap.totalFocusMinutes ?? 0) % 60;
+  const focusValue = focusHours > 0 ? String(focusHours) : String(recap.totalFocusMinutes ?? 0);
+  const focusUnit = focusHours > 0 ? (focusMins > 0 ? `horas · ${focusMins} min` : "horas") : "minutos";
 
   // ── Background ──
   const bg = ctx.createLinearGradient(0, 0, 0, CARD_H);
-  bg.addColorStop(0, "#07111f");
-  bg.addColorStop(1, "#0d1b2d");
+  bg.addColorStop(0, "#050B16");
+  bg.addColorStop(0.55, "#071021");
+  bg.addColorStop(1, "#04080f");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
   // Grid noise
-  ctx.strokeStyle = "rgba(113,212,255,.03)";
+  ctx.strokeStyle = "rgba(113,212,255,.028)";
   ctx.lineWidth = 1;
-  for (let y = 0; y < CARD_H; y += 48) {
+  for (let y = 0; y < CARD_H; y += 56) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CARD_W, y); ctx.stroke();
   }
-  for (let x = 0; x < CARD_W; x += 48) {
+  for (let x = 0; x < CARD_W; x += 56) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CARD_H); ctx.stroke();
   }
 
-  // Ambient glows
-  drawGlow(ctx, CARD_W * 0.8, 200, 320, "rgba(113,212,255,.06)");
-  drawGlow(ctx, CARD_W * 0.15, CARD_H * 0.42, 280, "rgba(182,156,255,.04)");
-  drawGlow(ctx, CARD_W * 0.85, CARD_H * 0.72, 260, "rgba(255,184,107,.04)");
-  drawGlow(ctx, CARD_W * 0.2, CARD_H * 0.88, 240, "rgba(74,222,128,.04)");
+  // Atmosfera
+  drawGlow(ctx, CARD_W * 0.12, 140, 460, "rgba(92,200,255,.12)");
+  drawGlow(ctx, CARD_W * 0.92, 120, 420, "rgba(169,139,255,.11)");
+  drawGlow(ctx, CARD_W * 0.1, CARD_H * 0.78, 420, "rgba(255,176,103,.06)");
+  drawGlow(ctx, CARD_W * 0.9, CARD_H * 0.86, 380, "rgba(61,220,132,.06)");
 
   // Top accent line
   const accentLine = ctx.createLinearGradient(0, 0, CARD_W, 0);
-  accentLine.addColorStop(0, "rgba(113,212,255,0)");
-  accentLine.addColorStop(0.5, "rgba(113,212,255,.7)");
-  accentLine.addColorStop(1, "rgba(113,212,255,0)");
+  accentLine.addColorStop(0, "rgba(92,200,255,0)");
+  accentLine.addColorStop(0.5, "rgba(169,139,255,.75)");
+  accentLine.addColorStop(1, "rgba(92,200,255,0)");
   ctx.fillStyle = accentLine;
   ctx.fillRect(0, 0, CARD_W, 4);
 
   // ── Header ──
-  let y = 150;
+  let y = 116;
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.38)";
-  ctx.font = "500 32px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("RECAP DE", CX, y);
-  y += 86;
+  ctx.fillStyle = "rgba(231,244,255,.36)";
+  ctx.font = "700 26px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("ENERGYOS  ·  RECAP DE", CX, y);
 
-  const titleGrad = ctx.createLinearGradient(CARD_W * 0.2, 0, CARD_W * 0.8, 0);
-  titleGrad.addColorStop(0, "#71d4ff");
-  titleGrad.addColorStop(0.5, "#b69cff");
-  titleGrad.addColorStop(1, "#ffb86b");
+  y += 92;
+  const titleGrad = ctx.createLinearGradient(pad, 0, CARD_W - pad, 0);
+  titleGrad.addColorStop(0, "#5CC8FF");
+  titleGrad.addColorStop(0.5, "#A98BFF");
+  titleGrad.addColorStop(1, "#FFB067");
   ctx.fillStyle = titleGrad;
-  ctx.font = "800 78px 'Inter', -apple-system, sans-serif";
+  ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
   ctx.fillText(monthLabel.toUpperCase(), CX, y);
-  y += 76;
 
   // User avatar + name
+  y += 46;
   if (userPhotoUrl) {
     try {
       const img = await loadImage(userPhotoUrl);
       const avatarR = 26;
+      ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
       const nameW = ctx.measureText(userName).width;
       const totalW = avatarR * 2 + 14 + nameW;
       const avatarX = CX - totalW / 2 + avatarR;
@@ -819,164 +642,249 @@ export async function captureRecapCard(
       ctx.clip();
       ctx.drawImage(img, avatarX - avatarR, y + 4 - avatarR, avatarR * 2, avatarR * 2);
       ctx.restore();
-      ctx.fillStyle = "rgba(231,244,255,.72)";
-      ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
+      ctx.fillStyle = "rgba(231,244,255,.74)";
       ctx.textAlign = "left";
-      ctx.fillText(userName, avatarX + avatarR + 14, y + 12);
+      ctx.fillText(userName, avatarX + avatarR + 14, y + 14);
       ctx.textAlign = "center";
     } catch {
-      ctx.fillStyle = "rgba(231,244,255,.72)";
+      ctx.fillStyle = "rgba(231,244,255,.74)";
       ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
-      ctx.fillText(userName, CX, y + 12);
+      ctx.fillText(userName, CX, y + 14);
     }
   } else {
-    ctx.fillStyle = "rgba(231,244,255,.72)";
+    ctx.fillStyle = "rgba(231,244,255,.74)";
     ctx.font = "600 30px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(userName, CX, y + 12);
+    ctx.fillText(userName, CX, y + 14);
   }
-  y += 90;
 
-  // ── Bento grid: 2 colunas, o 5º card ocupa as duas ──
-  const stats = [
-    { key: "foco", label: "Foco", value: formatMinutes(recap.totalFocusMinutes), color: ACCENT.focus, art: RECAP_ART.foco },
-    { key: "sequencia", label: plural(recap.longestStreak, "dia", "dias"), value: String(recap.longestStreak), color: ACCENT.streak, art: RECAP_ART.sequencia },
-    { key: "liga", label: "Liga", value: meta ? meta.label : "—", color: tierColor, art: meta?.iconPath ? [meta.iconPath] : [] },
-    { key: "jardim", label: plural(garden, "energia", "energias"), value: String(garden), color: ACCENT.garden, art: RECAP_ART.jardim },
-    { key: "xp", label: "XP total", value: (recap.totalXp ?? 0).toLocaleString("pt-BR"), color: ACCENT.xp, art: RECAP_ART.xp },
-  ];
-
-  const gap = 28;
-  const colW = (CARD_W - pad * 2 - gap) / 2;
-  const rowH = 270;
-  const gridTop = y;
-  const arts = await Promise.all(
-    stats.map(async (stat) => {
-      for (const candidate of stat.art) {
-        const img = await loadImage(candidate).catch(() => null);
-        if (img) return img;
-      }
-      return null;
-    }),
-  );
-
-  stats.forEach((stat, index) => {
-    const wide = index === stats.length - 1;
-    const col = wide ? 0 : index % 2;
-    const row = wide ? 2 : Math.floor(index / 2);
-    const x = pad + col * (colW + gap);
-    const yTop = gridTop + row * (rowH + gap);
-    const w = wide ? CARD_W - pad * 2 : colW;
-    const h = rowH;
-
-    // Vidro → cor sólida (o canvas não rasteriza backdrop-filter)
+  // ── Herói: arte central com luz radial ──
+  const heroSize = 360;
+  const heroCx = CX;
+  const heroCy = 470;
+  drawGlow(ctx, heroCx, heroCy, 300, "rgba(169,139,255,.22)");
+  drawGlow(ctx, heroCx, heroCy + 150, 190, "rgba(92,200,255,.10)");
+  const heroArt = await loadFirstImage(RECAP_ART.heroi);
+  if (heroArt) {
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.45)";
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 12;
-    roundRect(ctx, x, yTop, w, h, 30);
-    ctx.fillStyle = "rgba(12,22,38,.72)";
-    ctx.fill();
+    ctx.shadowColor = "rgba(169,139,255,.45)";
+    ctx.shadowBlur = 46;
+    ctx.drawImage(heroArt, heroCx - heroSize / 2, heroCy - heroSize / 2, heroSize, heroSize);
     ctx.restore();
+  }
 
+  // ── Painel dominante: FOCO ──
+  const focusY = 690;
+  const focusH = 296;
+  drawGlassPanel(ctx, pad, focusY, CARD_W - pad * 2, focusH, ACCENT.focus);
+
+  const clockArt = await loadFirstImage(RECAP_ART.foco);
+  if (clockArt) {
     ctx.save();
-    roundRect(ctx, x, yTop, w, h, 30);
-    ctx.fillStyle = hexToRgba(stat.color, 0.07);
-    ctx.fill();
-    ctx.strokeStyle = hexToRgba(stat.color, 0.42);
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.shadowColor = hexToRgba(ACCENT.focus, 0.55);
+    ctx.shadowBlur = 40;
+    ctx.drawImage(clockArt, CARD_W - pad - 190, focusY + 42, 190, 190);
     ctx.restore();
+  }
 
-    // Brilho interno no topo-esquerda
-    const inner = ctx.createRadialGradient(x + w * 0.2, yTop, 0, x + w * 0.2, yTop, w * 0.6);
-    inner.addColorStop(0, hexToRgba(stat.color, 0.16));
-    inner.addColorStop(1, "transparent");
-    ctx.fillStyle = inner;
-    ctx.fillRect(x, yTop, w, h);
+  const focusTextX = pad + 44;
+  ctx.textAlign = "left";
+  ctx.fillStyle = hexToRgba(ACCENT.focus, 0.85);
+  ctx.font = "700 24px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("FOCO TOTAL DO MÊS", focusTextX, focusY + 58);
 
-    // Arte 3D (opcional) — no card largo fica à esquerda, nos demais no topo-direita.
-    // Sem o arquivo, entra um marcador circular para o layout não ficar torto.
-    const art = arts[index];
-    const artSize = wide ? 84 : 72;
-    const artX = wide ? x + 44 : x + w - artSize - 30;
-    const artY = wide ? yTop + (h - artSize) / 2 : yTop + 26;
-    if (art) {
-      ctx.drawImage(art, artX, artY, artSize, artSize);
-    } else {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(artX + artSize / 2, artY + artSize / 2, artSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = hexToRgba(stat.color, 0.16);
+  ctx.fillStyle = ACCENT.focus;
+  ctx.font = "800 104px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(focusValue, focusTextX, focusY + 158);
+
+  const focusValueW = ctx.measureText(focusValue).width;
+  ctx.fillStyle = "rgba(231,244,255,.66)";
+  ctx.font = "600 28px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(focusUnit, focusTextX + focusValueW + 18, focusY + 158);
+
+  // Barra luminosa
+  const focusBar = ctx.createLinearGradient(focusTextX, 0, focusTextX + 220, 0);
+  focusBar.addColorStop(0, hexToRgba(ACCENT.focus, 0.9));
+  focusBar.addColorStop(1, "transparent");
+  ctx.fillStyle = focusBar;
+  roundRect(ctx, focusTextX, focusY + 186, 220, 4, 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(231,244,255,.6)";
+  ctx.font = "400 26px 'Inter', -apple-system, sans-serif";
+  drawWrappedText(ctx, focusCopy(recap.totalFocusMinutes ?? 0), focusTextX, focusY + 224, 560, 34, 2);
+
+  // ── Faixa secundária: SEQUÊNCIA + LIGA ──
+  const row2Y = focusY + focusH + 26;
+  const row2H = 236;
+  const colW = (CARD_W - pad * 2 - 24) / 2;
+
+  // Sequência
+  drawGlassPanel(ctx, pad, row2Y, colW, row2H, ACCENT.streak);
+  const flameArt = await loadFirstImage(RECAP_ART.sequencia);
+  if (flameArt) {
+    ctx.save();
+    ctx.shadowColor = hexToRgba(ACCENT.streak, 0.5);
+    ctx.shadowBlur = 30;
+    ctx.drawImage(flameArt, pad + colW - 118, row2Y + 34, 92, 92);
+    ctx.restore();
+  }
+  ctx.textAlign = "left";
+  ctx.fillStyle = hexToRgba(ACCENT.streak, 0.85);
+  ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("MELHOR SEQUÊNCIA", pad + 36, row2Y + 56);
+  ctx.fillStyle = ACCENT.streak;
+  ctx.font = "800 82px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(String(recap.longestStreak ?? 0), pad + 36, row2Y + 136);
+  const daysW = ctx.measureText(String(recap.longestStreak ?? 0)).width;
+  ctx.fillStyle = "rgba(231,244,255,.66)";
+  ctx.font = "600 26px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(plural(recap.longestStreak ?? 0, "dia", "dias"), pad + 36 + daysW + 14, row2Y + 136);
+  ctx.fillStyle = "rgba(231,244,255,.5)";
+  ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
+  drawWrappedText(ctx, streakCopy(recap.longestStreak ?? 0), pad + 36, row2Y + 180, colW - 150, 30, 2);
+
+  // Liga
+  const leagueX = pad + colW + 24;
+  drawGlassPanel(ctx, leagueX, row2Y, colW, row2H, tierColor);
+  const leagueArt = meta ? await loadFirstImage([meta.iconPath]) : null;
+  if (leagueArt) {
+    ctx.save();
+    ctx.shadowColor = hexToRgba(tierColor, 0.5);
+    ctx.shadowBlur = 30;
+    ctx.drawImage(leagueArt, leagueX + 36, row2Y + 52, 104, 104);
+    ctx.restore();
+  }
+  ctx.fillStyle = hexToRgba(tierColor, 0.85);
+  ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("LIGA DO MÊS", leagueX + 160, row2Y + 76);
+  ctx.fillStyle = tierColor;
+  ctx.font = "800 62px 'Inter', -apple-system, sans-serif";
+  ctx.fillText((meta?.label ?? "—").toUpperCase(), leagueX + 160, row2Y + 138);
+  ctx.fillStyle = "rgba(231,244,255,.55)";
+  ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(meta?.description ?? "Participe da liga.", leagueX + 36, row2Y + 196);
+
+  // ── Faixa terciária: JARDIM + XP ──
+  const row3Y = row2Y + row2H + 24;
+  const row3H = 214;
+
+  // Jardim
+  drawGlassPanel(ctx, pad, row3Y, colW, row3H, ACCENT.garden);
+  const gardenArt = await loadFirstImage(RECAP_ART.jardim);
+  if (gardenArt) {
+    ctx.save();
+    ctx.shadowColor = hexToRgba(ACCENT.garden, 0.5);
+    ctx.shadowBlur = 28;
+    ctx.drawImage(gardenArt, pad + colW - 112, row3Y + 30, 86, 86);
+    ctx.restore();
+  }
+  ctx.fillStyle = hexToRgba(ACCENT.garden, 0.85);
+  ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("ENERGIAS DO MÊS", pad + 36, row3Y + 54);
+  ctx.fillStyle = ACCENT.garden;
+  ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(String(garden), pad + 36, row3Y + 126);
+  const gardenW = ctx.measureText(String(garden)).width;
+  ctx.fillStyle = "rgba(231,244,255,.66)";
+  ctx.font = "600 24px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(plural(garden, "energia", "energias"), pad + 36 + gardenW + 12, row3Y + 126);
+  ctx.fillStyle = "rgba(231,244,255,.5)";
+  ctx.font = "400 22px 'Inter', -apple-system, sans-serif";
+  drawWrappedText(ctx, gardenCopy(garden), pad + 36, row3Y + 166, colW - 130, 28, 2);
+
+  // XP
+  const xpX = pad + colW + 24;
+  drawGlassPanel(ctx, xpX, row3Y, colW, row3H, ACCENT.xp);
+  const xpArt = await loadFirstImage(RECAP_ART.xpProgressao);
+  if (xpArt) {
+    ctx.save();
+    ctx.shadowColor = hexToRgba(ACCENT.xp, 0.5);
+    ctx.shadowBlur = 26;
+    ctx.drawImage(xpArt, xpX + colW - 104, row3Y + 26, 78, 78);
+    ctx.restore();
+  }
+  ctx.fillStyle = hexToRgba(ACCENT.xp, 0.85);
+  ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("XP DO MÊS", xpX + 36, row3Y + 54);
+  ctx.fillStyle = ACCENT.xp;
+  ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(xp.toLocaleString("pt-BR"), xpX + 36, row3Y + 126);
+
+  // Barra de fontes do XP (dados reais)
+  const segments = xpSegments(recap);
+  const segmentTotal = segments.reduce((sum, segment) => sum + segment.value, 0);
+  if (segmentTotal > 0) {
+    const barX = xpX + 36;
+    const barW = colW - 72;
+    const barY = row3Y + 150;
+    let cursor = barX;
+    segments.forEach((segment) => {
+      const w = (segment.value / segmentTotal) * barW;
+      ctx.fillStyle = segment.color;
+      roundRect(ctx, cursor, barY, Math.max(6, w - 4), 8, 4);
       ctx.fill();
-      ctx.strokeStyle = hexToRgba(stat.color, 0.5);
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    const textX = wide && art ? x + 152 : x + 34;
-    const valueY = wide ? yTop + 148 : yTop + 168;
-    const labelY = valueY + 46;
-    const barY = labelY + 18;
-
-    // Valor
-    ctx.fillStyle = stat.color;
-    ctx.font = "800 76px 'Inter', -apple-system, sans-serif";
+      cursor += w;
+    });
     ctx.textAlign = "left";
-    ctx.fillText(stat.value, textX, valueY);
+    ctx.fillStyle = "rgba(231,244,255,.45)";
+    ctx.font = "400 18px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(
+      segments.map((segment) => `${segment.label} ${segment.value.toLocaleString("pt-BR")}`).join("  ·  "),
+      barX,
+      barY + 34,
+    );
+  }
 
-    // Label
-    ctx.fillStyle = hexToRgba(stat.color, 0.78);
-    ctx.font = "700 26px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(stat.label.toUpperCase(), textX, labelY);
+  // ── Detalhamento do mês ──
+  const detailY = row3Y + row3H + 24;
+  const detailH = 132;
+  ctx.save();
+  roundRect(ctx, pad, detailY, CARD_W - pad * 2, detailH, 24);
+  ctx.fillStyle = "rgba(255,255,255,.03)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.09)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
 
-    // Barra luminosa
-    ctx.fillStyle = hexToRgba(stat.color, 0.55);
-    roundRect(ctx, textX, barY, 120, 4, 2);
-    ctx.fill();
+  const details: Array<[string, string]> = [
+    ["METAS", String(recap.goalsCompleted ?? 0)],
+    ["MISSÕES", String(recap.missionsCompleted ?? 0)],
+    ["CONQUISTAS", String(recap.achievementsUnlocked ?? 0)],
+    ["MOEDAS +", (recap.coinsGained ?? 0).toLocaleString("pt-BR")],
+  ];
+  const cellW = (CARD_W - pad * 2) / details.length;
+  details.forEach(([label, value], index) => {
+    const cx = pad + cellW * index + cellW / 2;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(231,244,255,.35)";
+    ctx.font = "600 18px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(label, cx, detailY + 52);
+    ctx.fillStyle = "rgba(231,244,255,.85)";
+    ctx.font = "700 40px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(value, cx, detailY + 98);
   });
 
-  // ── Destaque do mês ──
-  const highlightY = gridTop + 3 * (rowH + gap) + 90;
-  const div = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
-  div.addColorStop(0, "rgba(113,212,255,0)");
-  div.addColorStop(0.5, "rgba(113,212,255,.28)");
-  div.addColorStop(1, "rgba(113,212,255,0)");
-  ctx.fillStyle = div;
-  ctx.fillRect(CARD_W * 0.25, highlightY, CARD_W * 0.5, 2);
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.5)";
-  ctx.font = "400 34px 'Inter', -apple-system, sans-serif";
-  const highlight = focusCopy(recap.totalFocusMinutes);
-  const words = highlight.split(" ");
-  let line = "";
-  let lineY = highlightY + 76;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > CARD_W - pad * 2 - 60 && line) {
-      ctx.fillText(line, CX, lineY);
-      line = word;
-      lineY += 44;
-    } else {
-      line = test;
-    }
-  }
-  if (line) ctx.fillText(line, CX, lineY);
-
   // ── Footer ──
-  const footY = CARD_H - 150;
+  const footY = CARD_H - 132;
   const footDiv = ctx.createLinearGradient(CARD_W * 0.25, 0, CARD_W * 0.75, 0);
   footDiv.addColorStop(0, "rgba(113,212,255,0)");
-  footDiv.addColorStop(0.5, "rgba(113,212,255,.18)");
+  footDiv.addColorStop(0.5, "rgba(113,212,255,.2)");
   footDiv.addColorStop(1, "rgba(113,212,255,0)");
   ctx.fillStyle = footDiv;
   ctx.fillRect(CARD_W * 0.25, footY, CARD_W * 0.5, 1);
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(231,244,255,.2)";
-  ctx.font = "800 38px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("ENERGYOS", CX, footY + 74);
+  ctx.fillStyle = "rgba(231,244,255,.22)";
+  ctx.font = "800 36px 'Inter', -apple-system, sans-serif";
+  ctx.fillText("ENERGYOS", CX, footY + 66);
+  ctx.fillStyle = "rgba(231,244,255,.26)";
+  ctx.font = "400 20px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(
+    `Gerado em ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`,
+    CX,
+    footY + 100,
+  );
 
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"));
 }
@@ -1172,19 +1080,84 @@ export function MonthlyRecapPremium({
           />
         );
       case 6:
-        return (
-          <SummarySlide
-            recap={recap}
-            userName={userName}
-            userPhotoUrl={userPhotoUrl}
-            monthLabel={monthLabel}
-            theme={THEMES.summary}
-          />
-        );
+        // O slide final NÃO usa o cartão 9:16 — ele vira a superfície editorial
+        // larga (FinalRecapSurface) renderizada pelo modal.
+        return null;
       default:
         return null;
     }
   }
+
+  // Cabeçalho da tela final — progresso, som (o fechar fica no próprio modal).
+  const finalHeader = (
+    <div className="flex items-center gap-3">
+      <span className="hidden shrink-0 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--text-faint)] sm:block">
+        Recap · {currentSlide + 1}/{SLIDE_COUNT}
+      </span>
+      <RecapProgressBar current={currentSlide} total={SLIDE_COUNT} accent={theme.accent} />
+      <button
+        type="button"
+        onClick={toggleSound}
+        aria-label={soundEnabled ? "Desativar sons do recap" : "Ativar sons do recap"}
+        aria-pressed={soundEnabled}
+        className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-full bg-white/[.07] text-white/75 transition hover:bg-white/[.13] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+      >
+        {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+      </button>
+    </div>
+  );
+
+  // Rodapé da tela final — navegação, download e compartilhamento.
+  const finalFooter = (
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
+      <motion.button
+        type="button"
+        whileHover={reduced ? undefined : { y: -2 }}
+        whileTap={reduced ? undefined : { scale: 0.97 }}
+        onClick={goPrev}
+        className="order-last col-span-2 flex h-11 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/10 bg-white/[.04] px-4 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-white/[.09] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 sm:order-first sm:col-span-1 sm:w-auto"
+      >
+        <ChevronLeft size={14} />
+        Voltar
+      </motion.button>
+
+      <motion.button
+        type="button"
+        whileHover={reduced ? undefined : { y: -2 }}
+        whileTap={reduced ? undefined : { scale: 0.97 }}
+        onClick={handleDownload}
+        disabled={isDownloading}
+        className="flex h-11 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
+        style={{
+          background: "linear-gradient(135deg, #71d4ff, #5CC8FF)",
+          color: "#07111f",
+          boxShadow: "0 10px 26px -12px rgba(113,212,255,.85)",
+        }}
+      >
+        {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+        Baixar PNG
+      </motion.button>
+
+      <motion.button
+        type="button"
+        whileHover={reduced ? undefined : { y: -2 }}
+        whileTap={reduced ? undefined : { scale: 0.97 }}
+        onClick={handleShare}
+        disabled={isSharing}
+        className="flex h-11 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
+        style={{
+          background: "rgba(255,255,255,.07)",
+          border: "1px solid rgba(113,212,255,.35)",
+          color: "#71d4ff",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+        }}
+      >
+        {isSharing ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+        Compartilhar
+      </motion.button>
+    </div>
+  );
 
   return (
     <>
@@ -1238,8 +1211,25 @@ export function MonthlyRecapPremium({
       {/* Modal */}
       <AnimatePresence>
         {open && (
-          <Modal onClose={() => setOpen(false)}>
-            <div className="mx-auto flex flex-col items-center gap-2.5 pb-2 sm:pb-0" style={{ width: MODAL_WIDTH }}>
+          <Modal
+            onClose={() => setOpen(false)}
+            title={isSummary ? finalHeader : undefined}
+            footer={isSummary ? finalFooter : undefined}
+            panelClassName={
+              isSummary
+                ? "lg:max-h-[min(94dvh,940px)] lg:max-w-[1180px] bg-[radial-gradient(1200px_620px_at_12%_-12%,rgba(92,200,255,.14),transparent_60%),radial-gradient(980px_520px_at_88%_-6%,rgba(169,139,255,.13),transparent_62%),radial-gradient(900px_620px_at_60%_112%,rgba(255,176,103,.07),transparent_62%)]"
+                : ""
+            }
+          >
+            {isSummary ? (
+              <FinalRecapSurface
+                recap={recap}
+                userName={userName}
+                userPhotoUrl={userPhotoUrl}
+                monthLabel={monthLabel}
+              />
+            ) : (
+              <div className="mx-auto flex flex-col items-center gap-2.5 pb-2 sm:pb-0" style={{ width: MODAL_WIDTH }}>
               {/* Cartão 9:16 — header / content / footer */}
               <div
                 className="relative flex flex-col overflow-hidden rounded-2xl"
@@ -1292,7 +1282,7 @@ export function MonthlyRecapPremium({
 
                 {/* Cabeçalho — progresso, som e fechar */}
                 <div className="absolute inset-x-0 top-0 z-30 flex items-center gap-2 px-3 pt-3">
-                  <ProgressBar current={currentSlide} total={SLIDE_COUNT} accent={theme.accent} />
+                  <RecapProgressBar current={currentSlide} total={SLIDE_COUNT} accent={theme.accent} />
 
                   <button
                     type="button"
@@ -1335,49 +1325,6 @@ export function MonthlyRecapPremium({
                 </button>
 
                 {/* Rodapé — ações do slide final (fora do conteúdo, sem sobreposição) */}
-                {isSummary ? (
-                  <div className="relative z-20 shrink-0 px-5 pt-1 pb-4">
-                    <p className="mb-2 text-center text-[9px] font-bold uppercase tracking-[0.4em]" style={{ color: "rgba(231,244,255,.2)" }}>
-                      energyOS
-                    </p>
-                    <div className="flex items-center gap-2.5">
-                      <motion.button
-                        type="button"
-                        whileHover={reduced ? undefined : { y: -2 }}
-                        whileTap={reduced ? undefined : { scale: 0.97 }}
-                        onClick={handleDownload}
-                        disabled={isDownloading}
-                        className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
-                        style={{
-                          background: "linear-gradient(135deg, #71d4ff, #5CC8FF)",
-                          color: "#07111f",
-                          boxShadow: "0 10px 26px -12px rgba(113,212,255,.85)",
-                        }}
-                      >
-                        {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                        Baixar
-                      </motion.button>
-                      <motion.button
-                        type="button"
-                        whileHover={reduced ? undefined : { y: -2 }}
-                        whileTap={reduced ? undefined : { scale: 0.97 }}
-                        onClick={handleShare}
-                        disabled={isSharing}
-                        className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:opacity-60"
-                        style={{
-                          background: "rgba(255,255,255,.07)",
-                          border: "1px solid rgba(113,212,255,.35)",
-                          color: "#71d4ff",
-                          backdropFilter: "blur(10px)",
-                          WebkitBackdropFilter: "blur(10px)",
-                        }}
-                      >
-                        {isSharing ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
-                        Compartilhar
-                      </motion.button>
-                    </div>
-                  </div>
-                ) : null}
               </div>
 
               {/* Dica fora e abaixo do cartão */}
@@ -1391,6 +1338,7 @@ export function MonthlyRecapPremium({
                 Toque nos lados ou use as setas para navegar
               </motion.p>
             </div>
+            )}
 
             <RewardToast toast={rewardToast} onDone={() => setRewardToast(null)} />
           </Modal>

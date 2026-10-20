@@ -207,6 +207,88 @@ export function ParticleField({ accent, count = 20 }: { accent: string; count?: 
   );
 }
 
+// ─── Arte 3D com fallback em cascata ─────────────────────────────────────────
+
+export interface RecapArtProps {
+  /** Lista de caminhos em ordem de preferência. */
+  sources: readonly string[];
+  alt: string;
+  /** Largura/altura renderizadas (px). */
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+  priority?: boolean;
+}
+
+/**
+ * Arte 3D (PNG) com fallback em cascata: tenta o primeiro caminho e, se o
+ * arquivo não carregar, avança para o próximo. Nunca quebra a composição.
+ */
+export function RecapArt({
+  sources,
+  alt,
+  size = 96,
+  className = "",
+  style,
+  priority = false,
+}: RecapArtProps) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const current = sources.find((candidate) => !failed.includes(candidate)) ?? null;
+
+  if (!current) return null;
+
+  return (
+    <Image
+      src={current}
+      alt={alt}
+      width={size}
+      height={size}
+      className={className}
+      style={style}
+      unoptimized
+      priority={priority}
+      draggable={false}
+      onError={() => setFailed((prev) => (prev.includes(current) ? prev : [...prev, current]))}
+    />
+  );
+}
+
+// ─── Barra de progresso segmentada ───────────────────────────────────────────
+
+export interface RecapProgressBarProps {
+  current: number;
+  total: number;
+  accent: string;
+  className?: string;
+}
+
+/** Barras de progresso segmentadas — o preenchimento acompanha a troca de slide. */
+export function RecapProgressBar({ current, total, accent, className = "" }: RecapProgressBarProps) {
+  const reduced = useReducedMotion();
+  return (
+    <div
+      className={`flex flex-1 gap-1 ${className}`}
+      role="progressbar"
+      aria-label="Progresso do recap"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={current + 1}
+    >
+      {Array.from({ length: total }).map((_, index) => (
+        <div key={index} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/15">
+          <motion.div
+            className="h-full w-full origin-left rounded-full"
+            style={{ background: `linear-gradient(90deg, ${accent}, rgba(255,255,255,.9))` }}
+            initial={false}
+            animate={{ scaleX: index <= current ? 1 : 0 }}
+            transition={{ duration: reduced ? 0 : 0.34, ease: "easeOut" }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Ícone 3D ──────────────────────────────────────────────────────────────────
 
 export interface Recap3DIconProps {

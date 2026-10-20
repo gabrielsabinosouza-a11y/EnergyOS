@@ -1309,61 +1309,107 @@ body { overflow-wrap: break-word; }
 
 .weekly-plan-modal-overlay {
   background: rgba(2, 8, 22, 0.72);
-  backdrop-filter: blur(14px) saturate(135%);
-  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 
+/* Premium 3D glass panel */
 .weekly-plan-modal-panel {
   background:
     radial-gradient(
       ellipse at 0% 0%,
-      color-mix(in srgb, var(--accent) 12%, transparent),
-      transparent 48%
+      color-mix(in srgb, var(--accent) 14%, transparent),
+      transparent 50%
     ),
-    color-mix(in srgb, var(--bg-primary) 92%, #07182e);
+    color-mix(in srgb, var(--bg-primary) 94%, #07182e);
 
-  border-color: color-mix(
-    in srgb,
-    var(--accent) 25%,
-    var(--glass-border)
-  );
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--glass-border));
+  border-radius: 20px;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 
   box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.025),
-    0 0 35px color-mix(in srgb, var(--accent) 7%, transparent),
-    inset 0 1px 0 var(--glass-highlight);
+    0 32px 100px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 0 45px color-mix(in srgb, var(--accent) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 2px 0 rgba(255, 255, 255, 0.02);
+
+  position: relative;
+  overflow: hidden;
 }
 
-/* Inputs: smooth glass surface */
-.weekly-plan-modal-panel .auth-input {
-  border-color: var(--glass-border);
+/* Inner highlight glint on top edge */
+.weekly-plan-modal-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12) 40%, transparent);
+  pointer-events: none;
+}
+
+/* Subtle outer glow that pulses gently on focus */
+.weekly-plan-modal-panel:focus-within {
+  box-shadow:
+    0 32px 100px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 0 60px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 80px color-mix(in srgb, var(--accent) 8%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 2px 0 rgba(255, 255, 255, 0.02);
+}
+
+/* Header section */
+.weekly-plan-modal-panel .flex.shrink-0.items-start.gap-3.border-b {
+  background: color-mix(in srgb, var(--bg-primary) 96%, transparent);
+}
+
+/* Modal inputs: enhanced glass surface */
+.weekly-plan-modal-panel .auth-input,
+.weekly-plan-input-card {
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 12%, var(--glass-border));
   border-radius: 12px;
-
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
   transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease;
+    border-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.weekly-plan-modal-panel .auth-input:focus {
-  border-color: var(--accent);
-
+.weekly-plan-modal-panel .auth-input:focus,
+.weekly-plan-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent),
-    0 0 18px color-mix(in srgb, var(--accent) 8%, transparent);
-
-  outline: none;
+    0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 0 20px color-mix(in srgb, var(--accent) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Modal heading */
-.weekly-plan-modal-panel #modal-title {
-  letter-spacing: -0.035em;
+/* Modal title */
+#modal-title {
+  background: linear-gradient(to right, color-mix(in srgb, var(--text) 90%, white), color-mix(in srgb, var(--accent) 20%, white));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Button styles within modal */
+.weekly-plan-modal-panel button {
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .weekly-plan-modal-panel .auth-input {
+  .weekly-plan-modal-panel .auth-input,
+  .weekly-plan-input-card {
     transition: none;
   }
 }

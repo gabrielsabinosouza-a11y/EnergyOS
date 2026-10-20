@@ -1,0 +1,12 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+page.on("console", (m) => console.log("CONSOLE:", m.type(), m.text().slice(0, 200)));
+page.on("pageerror", (e) => console.log("PAGEERROR:", e.message.slice(0, 200)));
+await page.goto("http://localhost:3000/login", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(9000);
+console.log("url:", page.url());
+console.log("inputs:", await page.locator("input").count());
+console.log("body:", (await page.locator("body").innerText()).replace(/\n+/g, " | ").slice(0, 300));
+await page.screenshot({ path: "/tmp/opencode/login-dbg.png" });
+await browser.close();

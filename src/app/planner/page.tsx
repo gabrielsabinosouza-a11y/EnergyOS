@@ -378,7 +378,7 @@ export default function PlanningPage() {
         });
       } else {
         if (!plan.planDate) {
-          setError("Plano recorrente precisa de uma data para esta ocorrência.");
+          announce("Esta ocorrência recorrente não tem data definida.", true);
           return;
         }
         await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
@@ -395,7 +395,7 @@ export default function PlanningPage() {
             ? {
                 ...item,
                 title: values.title,
-                startTime: values.startTime,
+                startTime: values.startTime ?? null,
                 reminderOffsetMin: values.reminderOffsetMin,
               }
             : item
@@ -422,10 +422,10 @@ export default function PlanningPage() {
       return;
     }
 
-    // Weekly recurrence requires a date
+    // Weekly recurrence requires an anchor date (the rule generates occurrences from it)
     if (values.repeatType === "weekly") {
       if (!values.planDate) {
-        setError("Plano recorrente precisa de uma data inicial.");
+        announce("Escolha uma data para a repetição semanal.", true);
         return;
       }
       await api.createWeeklyPlanSeries({
@@ -492,7 +492,7 @@ export default function PlanningPage() {
     const request = previous.catch(() => ({ xpAwarded: 0, coinsAwarded: 0 })).then(async () => {
       try {
         let result: { xpAwarded: number; coinsAwarded: number; balance?: number };
-        if (plan.seriesId !== null) {
+        if (plan.seriesId !== null && plan.planDate) {
           result = await api.setPlanOccurrenceCompleted(plan.seriesId, plan.planDate, completed);
         } else {
           result = await api.setWeeklyPlanCompleted(plan.id, completed);
@@ -557,7 +557,9 @@ export default function PlanningPage() {
     try {
       if (deleteTarget.seriesId !== null) {
         if (scope === "series") await api.deleteWeeklyPlanSeries(deleteTarget.seriesId);
-        else await api.skipPlanOccurrence(deleteTarget.seriesId, deleteTarget.planDate);
+        else if (deleteTarget.planDate) {
+          await api.skipPlanOccurrence(deleteTarget.seriesId, deleteTarget.planDate);
+        }
       } else {
         await api.deleteWeeklyPlan(deleteTarget.id);
       }

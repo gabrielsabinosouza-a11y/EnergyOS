@@ -58,16 +58,6 @@ export function PlannerDatePicker({
     setOpen(true);
   };
 
-  const selectDate = (date: string) => {
-    if (value === date) {
-      // Toggle: clicking the same date clears it
-      onChange(null);
-    } else {
-      onChange(date);
-    }
-    close(true);
-  };
-
   const clearDate = () => {
     onChange(null);
     close(true);
