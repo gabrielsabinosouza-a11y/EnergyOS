@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -16,8 +16,8 @@ import { buildMonthGrid } from "@/lib/planning/month-grid";
 
 interface PlannerDatePickerProps {
   id?: string;
-  value: string;
-  onChange: (date: string) => void;
+  value?: string | null;
+  onChange: (date: string | null) => void;
   label: string;
   placeholder?: string;
   disabled?: boolean;
@@ -43,6 +43,7 @@ export function PlannerDatePicker({
   const dayRefs = useRef(new Map<string, HTMLButtonElement>());
   const { year, month: monthNumber } = parseIsoKey(month);
   const monthDates = buildMonthGrid(year, monthNumber);
+  const hasDate = Boolean(value);
 
   const close = useCallback((restoreFocus = false) => {
     setOpen(false);
@@ -56,6 +57,29 @@ export function PlannerDatePicker({
     setActiveDate(date);
     setOpen(true);
   };
+
+  const selectDate = (date: string) => {
+    if (value === date) {
+      // Toggle: clicking the same date clears it
+      onChange(null);
+    } else {
+      onChange(date);
+    }
+    close(true);
+  };
+
+  const clearDate = () => {
+    onChange(null);
+    close(true);
+  };
+
+  // When value changes externally (e.g., editing an existing plan)
+  useEffect(() => {
+    if (!open) return;
+    const newDate = value || today;
+    setMonth(newDate);
+    setActiveDate(newDate);
+  }, [value, open, today]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,7 +136,12 @@ export function PlannerDatePicker({
   }, [activeDate, month, open]);
 
   const selectDate = (date: string) => {
-    onChange(date);
+    if (value === date) {
+      // Toggle: clicking the same date clears it
+      onChange(null);
+    } else {
+      onChange(date);
+    }
     close(true);
   };
 
@@ -155,9 +184,18 @@ export function PlannerDatePicker({
         onClick={() => open ? close() : openPicker()}
         className="glass-field flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className={value ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
-          {value ? formatLocalDate(value, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
+        <span className={hasDate ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
+          {hasDate ? formatLocalDate(value!, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
         </span>
+        {hasDate && !disabled && (
+          <span
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); clearDate(); }}
+            className="text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer"
+            aria-label="Limpar data"
+          >
+            ×
+          </span>
+        )}
         <CalendarDays size={16} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
       </button>
 
@@ -248,7 +286,7 @@ export function PlannerDatePicker({
           </div>
           <footer className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-3">
             <span className="text-[11px] text-[var(--text-faint)]">
-              {value ? formatLocalDate(value, { day: "numeric", month: "short", year: "numeric" }) : placeholder}
+              {hasDate ? formatLocalDate(value!, { day: "numeric", month: "short", year: "numeric" }) : placeholder}
             </span>
             <button
               type="button"

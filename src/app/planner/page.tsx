@@ -19,8 +19,10 @@ import { MonthView } from "@/components/planning/MonthView";
 import { WeekView } from "@/components/planning/WeekView";
 import { DayView } from "@/components/planning/DayView";
 import { PlanDialog } from "@/components/planning/PlanDialog";
+import { PlanRow } from "@/components/planning/PlanRow";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
+import { CalendarDays } from "lucide-react";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { PLANNER_TASK_REWARD } from "@/lib/daily-limits";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -28,11 +30,11 @@ import { scheduleReminder, createPermissionPromptHandler } from "@/lib/notificat
 
 type View = "month" | "week" | "day";
 type PlanFormValues = {
-  planDate: string;
+  planDate?: string | null;
   title: string;
   categoryId?: number;
-  startTime: string | null;
-  endTime: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
   repeatType: "once" | "weekly";
   repeatDays: number[];
   repeatUntil: string | null;
@@ -51,9 +53,11 @@ declare global {
 }
 
 function planKey(plan: WeeklyPlanItem): string {
-  return plan.seriesId !== null
-    ? `series:${plan.seriesId}:${plan.planDate}`
-    : `plan:${plan.id}`;
+  if (plan.seriesId !== null) {
+    const dateStr = plan.planDate ?? "unscheduled";
+    return `series:${plan.seriesId}:${dateStr}`;
+  }
+  return `plan:${plan.id}`;
 }
 
 function mergePlans(existing: WeeklyPlanItem[], incoming: WeeklyPlanItem[]): WeeklyPlanItem[] {
@@ -110,7 +114,7 @@ export default function PlanningPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorSession, setEditorSession] = useState(0);
   const [editingPlan, setEditingPlan] = useState<WeeklyPlanItem | null>(null);
-  const [editorDate, setEditorDate] = useState<string | undefined>();
+  const [editorDate, setEditorDate] = useState<string | null>(null);
   const [editorStartTime, setEditorStartTime] = useState<string | undefined>();
   const [editorEndTime, setEditorEndTime] = useState<string | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<WeeklyPlanItem | null>(null);
@@ -151,13 +155,23 @@ export default function PlanningPage() {
     if (!user) return;
     let current = true;
     const requestVersion = mutationVersion.current;
-    Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)))
-      .then((weeks) => {
+    Promise.all([
+      Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart))),
+      // Tarefas sem data não pertencem a nenhuma semana: vêm em uma lista própria.
+      api.getUnscheduledWeeklyPlans(),
+    ])
+      .then(([weeks, unscheduled]) => {
         if (!current || requestVersion !== mutationVersion.current) return;
         setPlansError(null);
-        const incoming = weeks.flat().filter((plan) => plan.planDate >= dataRange.start && plan.planDate <= dataRange.end);
+        // Planos agendados do período + tarefas sem data (que não têm semana).
+        const incoming = [
+          ...weeks.flat().filter((plan) =>
+            !plan.planDate || (plan.planDate >= dataRange.start && plan.planDate <= dataRange.end)
+          ),
+          ...unscheduled,
+        ];
         updateTasks((existing) => mergePlans(
-          existing.filter((plan) => plan.planDate < dataRange.start || plan.planDate > dataRange.end),
+          existing.filter((plan) => plan.planDate && (plan.planDate < dataRange.start || plan.planDate > dataRange.end)),
           incoming,
         ));
       })
@@ -205,9 +219,9 @@ export default function PlanningPage() {
     const now = new Date();
 
     tasks.forEach((plan) => {
-      // Skip if already completed, has no reminder, or no start time
+      // Skip if already completed, has no reminder, no start time, or no date
       if (plan.completedAt || plan.skipped || !plan.reminderOffsetMin || plan.reminderOffsetMin <= 0) return;
-      if (!plan.startTime) return;
+      if (!plan.startTime || !plan.planDate) return;
 
       // Calculate plan start time in America/Sao_Paulo timezone
       const [hours, minutes] = plan.startTime.split(":").map(Number);
@@ -266,10 +280,10 @@ export default function PlanningPage() {
     };
   }, [tasks, user]);
 
-  const openCreate = useCallback((date: string, minutes?: number) => {
+  const openCreate = useCallback((date?: string | null, minutes?: number) => {
     setEditorSession((session) => session + 1);
     setEditingPlan(null);
-    setEditorDate(date);
+    setEditorDate(date ?? null);
     if (minutes !== undefined) {
       setEditorStartTime(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
       const end = Math.min(minutes + 60, 23 * 60 + 59);
@@ -284,8 +298,8 @@ export default function PlanningPage() {
   const openEdit = useCallback((plan: WeeklyPlanItem) => {
     setEditorSession((session) => session + 1);
     setEditingPlan(plan);
-    setSelectedDate(plan.planDate);
-    setEditorDate(undefined);
+    setSelectedDate(plan.planDate ?? todayIso());
+    setEditorDate(plan.planDate ?? null);
     setEditorStartTime(undefined);
     setEditorEndTime(undefined);
     setEditorOpen(true);
@@ -313,13 +327,16 @@ export default function PlanningPage() {
   }, [openCreate, selectedDate, view]);
 
   const inRange = (start: string, end: string) => (plan: WeeklyPlanItem) =>
-    plan.planDate >= start && plan.planDate <= end;
+    plan.planDate && plan.planDate >= start && plan.planDate <= end;
   const weekTasks = useMemo(() => tasks.filter(inRange(week.start, week.end)), [tasks, week.end, week.start]);
   const monthGridTasks = useMemo(
     () => tasks.filter(inRange(monthRangeVisible.start, monthRangeVisible.end)),
     [monthRangeVisible.end, monthRangeVisible.start, tasks],
   );
   const dayTasks = useMemo(() => tasks.filter((plan) => plan.planDate === selectedDate), [selectedDate, tasks]);
+
+  // Unscheduled tasks (tasks without a date)
+  const unscheduledTasks = useMemo(() => tasks.filter((plan) => !plan.planDate), [tasks]);
   const importantDays = useMemo(() => {
     const result = new Map<string, string[]>();
     for (const goal of goalDeadlines) {
@@ -360,6 +377,10 @@ export default function PlanningPage() {
           reminderOffsetMin: values.reminderOffsetMin,
         });
       } else {
+        if (!plan.planDate) {
+          setError("Plano recorrente precisa de uma data para esta ocorrência.");
+          return;
+        }
         await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
           title: values.title,
           startTime: values.startTime,
@@ -382,13 +403,13 @@ export default function PlanningPage() {
       );
       announce(scope === "series" ? "Série atualizada." : "Ocorrência atualizada.");
       return;
-         }
+    }
 
     if (plan) {
       const { plan: updated } = await api.updateWeeklyPlan(plan.id, {
         title: values.title,
         categoryId: values.categoryId ?? plan.categoryId,
-        planDate: values.planDate,
+        planDate: values.planDate as string | null | undefined,
         startTime: values.startTime,
         endTime: values.endTime,
         reminderOffsetMin: values.reminderOffsetMin,
@@ -401,7 +422,12 @@ export default function PlanningPage() {
       return;
     }
 
+    // Weekly recurrence requires a date
     if (values.repeatType === "weekly") {
+      if (!values.planDate) {
+        setError("Plano recorrente precisa de uma data inicial.");
+        return;
+      }
       await api.createWeeklyPlanSeries({
         title: values.title,
         categoryId: values.categoryId,
@@ -419,9 +445,11 @@ export default function PlanningPage() {
       });
       mutationVersion.current += 1;
       const weeks = await Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)));
-      const incoming = weeks.flat().filter((item) => item.planDate >= dataRange.start && item.planDate <= dataRange.end);
+      const incoming = weeks.flat().filter((item) =>
+        !item.planDate || (item.planDate >= dataRange.start && item.planDate <= dataRange.end)
+      );
       updateTasks((current) => mergePlans(
-        current.filter((item) => item.planDate < dataRange.start || item.planDate > dataRange.end),
+        current.filter((item) => item.planDate && (item.planDate < dataRange.start || item.planDate > dataRange.end)),
         incoming,
       ));
       announce("Plano recorrente criado.");
@@ -651,6 +679,40 @@ export default function PlanningPage() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Tarefas sem data — ficam fora do calendário, mas continuam acessíveis. */}
+          {unscheduledTasks.length > 0 ? (
+            <section
+              aria-label="Tarefas sem data"
+              className="shrink-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-3 py-2.5"
+            >
+              <div className="mb-1.5 flex items-center gap-2">
+                <CalendarDays size={13} className="shrink-0 text-[var(--text-faint)]" aria-hidden="true" />
+                <h2 className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
+                  Sem data
+                </h2>
+                <span className="rounded-full bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--text-muted)]">
+                  {unscheduledTasks.length}
+                </span>
+                <span className="ml-auto hidden text-[10px] text-[var(--text-faint)] sm:inline">
+                  Tarefas sem data não aparecem no calendário.
+                </span>
+              </div>
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+                {unscheduledTasks.map((plan) => (
+                  <div key={planKey(plan)} className="w-60 shrink-0">
+                    <PlanRow
+                      plan={plan}
+                      compact
+                      onToggleCompleted={handleToggleCompleted}
+                      onEdit={openEdit}
+                      onDelete={requestDelete}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
 
         <AnimatePresence>

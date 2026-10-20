@@ -278,13 +278,15 @@ export const api = {
     const params = weekStart ? `?weekStart=${weekStart}` : "";
     return request<WeeklyPlanItem[]>(`/api/weekly-plans${params}`);
   },
-  createWeeklyPlan: (input: { planDate: string; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean; reminderOffsetMin?: number | null }) =>
+  /** Tarefas sem data (não agendadas) — ficam fora do calendário. */
+  getUnscheduledWeeklyPlans: () => request<WeeklyPlanItem[]>("/api/weekly-plans?unscheduled=1"),
+  createWeeklyPlan: (input: { planDate?: string | null; title: string; categoryId?: number; taskId?: number; startTime?: string | null; endTime?: string | null; allDay?: boolean; reminderOffsetMin?: number | null }) =>
     request<{ plan: WeeklyPlan }>("/api/weekly-plans", { method: "POST", body: JSON.stringify(input) }),
   completeWeeklyPlan: (id: number) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH" }),
   setWeeklyPlanCompleted: (id: number, completed: boolean) =>
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
-  updateWeeklyPlan: (id: number, input: { title: string; categoryId: number; planDate: string; startTime?: string | null; endTime?: string | null; reminderOffsetMin?: number | null }) =>
+  updateWeeklyPlan: (id: number, input: { title: string; categoryId?: number; planDate?: string | null; startTime?: string | null; endTime?: string | null; reminderOffsetMin?: number | null }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 

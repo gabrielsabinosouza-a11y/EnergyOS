@@ -1,14 +1,14 @@
 import pool from "../db";
 import type { WeeklyPlan } from "@/types";
 import { NotFoundError } from "../errors";
-import { ValidationError, parseDate, parseProfileId, parseTitle } from "./validation";
+import { ValidationError, parseDate, parseOptionalDate, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { PLAN_NAME_MAX } from "../daily-limits";
 import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerRewardResult } from "./planner-rewards";
 
 /** Colunas de weekly_plan + categoria resolvida (join com categories). */
 const PLAN_SELECT = `
-  select w.id, w.profile_id, w.plan_date::text as plan_date, w.title, w.task_id, w.completed_at, w.created_at,
+  select w.id, w.profile_id, w.plan_date::text, w.title, w.task_id, w.completed_at, w.created_at,
          w.start_time, w.end_time, w.all_day, w.reminder_offset_min,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
@@ -19,7 +19,7 @@ const PLAN_SELECT = `
 interface WeeklyPlanRow {
   id: string | number;
   profile_id: string;
-  plan_date: Date | string;
+  plan_date: Date | string | null;
   title: string;
   task_id: string | number | null;
   completed_at: Date | string | null;
@@ -39,10 +39,14 @@ interface WeeklyPlanRow {
 
 function mapPlan(row: WeeklyPlanRow): WeeklyPlan {
   const normalizeTime = (time: string | null) => time ? time.slice(0, 5) : undefined;
+  const normalizeDate = (date: Date | string | null) => {
+    if (!date || date === "null" || date === null) return undefined;
+    return typeof date === "string" ? date : date.toISOString().slice(0, 10);
+  };
   return {
     id: Number(row.id),
     profileId: row.profile_id,
-    planDate: typeof row.plan_date === "string" ? row.plan_date : row.plan_date.toISOString().slice(0, 10),
+    planDate: normalizeDate(row.plan_date as Date | string | null),
     title: row.title,
     categoryId: Number(row.category_id),
     category: {
@@ -72,6 +76,7 @@ export async function listWeeklyPlans(profileId: string, weekStart?: string): Pr
     const result = await pool.query<WeeklyPlanRow>(
       `${PLAN_SELECT}
        where w.profile_id = $1 and w.plan_date >= $2::date and w.plan_date < ($2::date + interval '7 days')
+       and w.plan_date is not null
        order by w.plan_date, w.id`,
       [profileId, start],
     );
@@ -80,6 +85,7 @@ export async function listWeeklyPlans(profileId: string, weekStart?: string): Pr
   const result = await pool.query<WeeklyPlanRow>(
     `${PLAN_SELECT}
      where w.profile_id = $1
+     and w.plan_date is not null
      order by w.plan_date desc, w.id
      limit 50`,
     [profileId],
@@ -88,12 +94,12 @@ export async function listWeeklyPlans(profileId: string, weekStart?: string): Pr
 }
 
 export interface CreateWeeklyPlanInput {
-  planDate: string;
+  planDate?: string | null;
   title: string;
   categoryId?: number;
   taskId?: number;
-  startTime?: string;
-  endTime?: string;
+  startTime?: string | null;
+  endTime?: string | null;
   allDay?: boolean;
   reminderOffsetMin?: number | null;
 }
@@ -126,7 +132,7 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
     throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
   }
 
-  const planDate = parseDate(input.planDate, "Data do plano");
+  const planDate = parseOptionalDate(input.planDate, "Data do plano");
   const startTime = parsePlanTime(input.startTime, "Horário de início");
   const endTime = parsePlanTime(input.endTime, "Horário de fim");
   if (startTime && endTime && endTime <= startTime) {
@@ -138,11 +144,12 @@ export async function createWeeklyPlan(profileId: string, input: CreateWeeklyPla
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
 
+  // planDate can be null for unscheduled tasks (no calendar date)
   const inserted = await pool.query<{ id: string | number }>(
     `insert into weekly_plans (profile_id, plan_date, title, category_id, task_id, start_time, end_time, all_day, reminder_offset_min)
-     values ($1, $2::date, $3, $4, $5, $6, $7, $8, $9)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      returning id`,
-    [profileId, planDate, title, categoryId, input.taskId ?? null, startTime ?? null, endTime ?? null, allDay, reminderOffsetMin],
+    [profileId, planDate ?? null, title, categoryId, input.taskId ?? null, startTime ?? null, endTime ?? null, allDay, reminderOffsetMin],
   );
   const result = await pool.query<WeeklyPlanRow>(`${PLAN_SELECT} where w.id = $1`, [inserted.rows[0].id]);
   return mapPlan(result.rows[0]);
@@ -192,7 +199,7 @@ export async function setWeeklyPlanCompleted(
 export interface UpdateWeeklyPlanInput {
   title?: string;
   categoryId?: number;
-  planDate?: string;
+  planDate?: string | null | undefined;  // undefined = no change, null = clear date, string = set date
   startTime?: string | null;
   endTime?: string | null;
   reminderOffsetMin?: number | null;
@@ -208,7 +215,9 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   if (title !== undefined && title.length > PLAN_NAME_MAX) {
     throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
   }
-  const planDate = input.planDate !== undefined ? parseDate(input.planDate, "Data do plano") : undefined;
+  const planDate = input.planDate !== undefined
+    ? parseOptionalDate(input.planDate, "Data do plano")
+    : undefined;
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : undefined;
@@ -228,7 +237,14 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
     colValues.push(val);
   };
   if (title !== undefined) push("title = $N", title);
-  if (planDate !== undefined) push("plan_date = $N::date", planDate);
+  if (planDate !== undefined) {
+    // Handle null to clear the date (no cast), otherwise cast string to date
+    if (planDate === null) {
+      push("plan_date = $N", null);
+    } else {
+      push("plan_date = $N::date", planDate);
+    }
+  }
   if (categoryId !== undefined) push("category_id = $N", categoryId);
   if (startTime !== undefined) push("start_time = $N::time", startTime);
   if (endTime !== undefined) push("end_time = $N::time", endTime);
@@ -252,4 +268,17 @@ export async function deleteWeeklyPlan(profileId: string, planId: number): Promi
   if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
   const result = await pool.query(`delete from weekly_plans where profile_id = $1 and id = $2`, [profileId, planId]);
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Plano não encontrado.");
+}
+
+/** Lista planos sem data (tarefas na "inbox" ou sem data específica). */
+export async function listUnscheduledWeeklyPlans(profileId: string): Promise<WeeklyPlan[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<WeeklyPlanRow>(
+    `${PLAN_SELECT}
+     where w.profile_id = $1
+     and w.plan_date is null
+     order by w.id`,
+    [profileId],
+  );
+  return result.rows.map(mapPlan);
 }

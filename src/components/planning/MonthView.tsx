@@ -100,6 +100,8 @@ export function MonthView({
   const plansByDate = useMemo(() => {
     const grouped = new Map<string, WeeklyPlanItem[]>();
     for (const plan of plans) {
+      // Tarefas sem data não pertencem ao calendário (ficam em "Sem data").
+      if (!plan.planDate) continue;
       const list = grouped.get(plan.planDate) ?? [];
       list.push(plan);
       grouped.set(plan.planDate, list);

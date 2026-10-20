@@ -279,9 +279,9 @@ create index if not exists league_group_members_week_idx on league_group_members
 create table if not exists weekly_plans (
   id bigserial primary key,
   profile_id text not null references profiles(id) on delete cascade,
-  plan_date date not null,
+  plan_date date,
   title text not null,
-  category_id bigint not null references categories(id),
+  category_id bigint references categories(id),
   task_id bigint references tasks(id) on delete set null,
   completed_at timestamptz,
   created_at timestamptz not null default now()

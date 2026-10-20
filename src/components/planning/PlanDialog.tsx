@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bell, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
@@ -13,7 +13,7 @@ import { PlannerDatePicker } from "./PlannerDatePicker";
 type RepeatScope = "occurrence" | "series";
 type ReminderOption = "sem-lembrete" | "no-horario" | "5-min" | "10-min" | "30-min" | "1-hora";
 type PlanFormValues = {
-  planDate: string;
+  planDate?: string;
   title: string;
   categoryId?: number;
   startTime: string | null;
@@ -66,41 +66,58 @@ export function PlanDialog({
   onSave,
   showNotificationPermissionPrompt,
 }: PlanDialogProps) {
-  // Estado inicializado de forma preguiçosa para garantir valores padrão
-  // corretos quando o diálogo é aberto. Usa `key` no PlanDialog para
-  // forçar remount quando o plan muda de forma incompatível.
-  const [title, setTitle] = useState(() => plan?.title ?? "");
+  // State for form fields
+  const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [planDate, setPlanDate] = useState(() => plan?.planDate ?? initialDate ?? todayIso());
-  const [startTime, setStartTime] = useState(() => plan?.startTime?.slice(0, 5) ?? initialStartTime ?? (plan ? "" : "09:00"));
-  const [endTime, setEndTime] = useState(() => initialEndTime ?? (plan ? "" : "10:00"));
+  const [planDate, setPlanDate] = useState<string | null>(null);
+  const [startTime, setStartTime] = useState<string | null>(null);
+  const [endTime, setEndTime] = useState<string | null>(null);
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState("");
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
-  const [reminderOption, setReminderOption] = useState<ReminderOption>(() => {
-    const offset = plan?.reminderOffsetMin;
-    const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
-    return found?.value ?? "sem-lembrete";
-  });
+  const [reminderOption, setReminderOption] = useState<ReminderOption>("sem-lembrete");
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Reset form state when modal opens or plan changes
+  useEffect(() => {
+    if (open) {
+      setTitle(plan?.title ?? "");
+      setCategoryId(plan?.categoryId?.toString() ?? "");
+      setPlanDate(plan?.planDate ?? initialDate ?? null);
+      setStartTime(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? null);
+      setEndTime(initialEndTime ?? (plan ? plan.endTime?.slice(0, 5) ?? null : null));
+      setRepeatWeekly(false);
+      setRepeatDays([]);
+      setRepeatDaysTouched(false);
+      setRepeatUntil("");
+      setHasRepeatEnd(false);
+      const offset = plan?.reminderOffsetMin;
+      const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
+      setReminderOption(found?.value ?? "sem-lembrete");
+      setError("");
+    }
+  }, [open, plan, initialDate, initialStartTime, initialEndTime]);
+
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
 
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
   const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
 
-  function handleDateChange(date: string) {
+  function handleDateChange(date: string | null) {
     setPlanDate(date);
-    if (!repeatDaysTouched && date) setRepeatDays([weekdayOfIso(date)]);
+    if (date && !repeatDaysTouched) setRepeatDays([weekdayOfIso(date)]);
   }
 
   function handleRepeatChange(weekly: boolean) {
     setRepeatWeekly(weekly);
-    if (weekly && repeatDays.length === 0) setRepeatDays([weekdayOfIso(planDate)]);
+    // A repetição semanal usa a data como âncora: só pré-seleciona o dia
+    // da semana quando já existe uma data escolhida.
+    if (weekly && repeatDays.length === 0 && planDate) setRepeatDays([weekdayOfIso(planDate)]);
     setError("");
   }
 
@@ -141,7 +158,11 @@ export function PlanDialog({
       setError("Selecione pelo menos um dia da semana.");
       return null;
     }
-    if (repeatWeekly && hasRepeatEnd && (!repeatUntil || repeatUntil < planDate)) {
+    if (repeatWeekly && !planDate) {
+      setError("Selecione uma data inicial para a repetição semanal.");
+      return null;
+    }
+    if (repeatWeekly && hasRepeatEnd && repeatUntil && planDate && repeatUntil < planDate) {
       setError("A data final deve ser igual ou posterior à data inicial.");
       return null;
     }
@@ -218,7 +239,7 @@ export function PlanDialog({
         title={plan ? "Editar plano" : "Novo plano"}
         description={recurringOccurrence
           ? "Escolha se as alterações serão aplicadas a esta ocorrência ou à série."
-          : "Defina título, categoria, data e horário do plano."}
+          : "Defina título e categoria. Data e horário são opcionais."}
         variant="center"
         surface="glass"
         panelClassName="planner-glass-modal max-w-[520px]"
@@ -281,13 +302,16 @@ export function PlanDialog({
             <label htmlFor="planner-plan-date" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Data
             </label>
-            <PlannerDatePicker
-              id="planner-plan-date"
-              label="Data do plano"
-              value={planDate}
-              onChange={handleDateChange}
-              disabled={Boolean(recurringOccurrence)}
-            />
+            <div className="relative">
+              <PlannerDatePicker
+                id="planner-plan-date"
+                label="Data do plano"
+                value={planDate}
+                onChange={handleDateChange}
+                placeholder="Sem data"
+                disabled={Boolean(recurringOccurrence)}
+              />
+            </div>
           </div>
 
           <div className={`grid gap-3 ${recurringOccurrence ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -301,9 +325,9 @@ export function PlanDialog({
                 inputMode="numeric"
                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                 maxLength={5}
-                value={startTime}
-                onChange={(event) => setStartTime(formatTimeInput(event.target.value))}
-                placeholder="09:00"
+                value={startTime ?? ""}
+                onChange={(event) => setStartTime(formatTimeInput(event.target.value) || null)}
+                placeholder="Sem horário"
                 aria-label="Horário de início, formato 24 horas"
                 className="glass-field tabular-nums"
               />
@@ -319,9 +343,9 @@ export function PlanDialog({
                   inputMode="numeric"
                   pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                   maxLength={5}
-                  value={endTime}
-                  onChange={(event) => setEndTime(formatTimeInput(event.target.value))}
-                  placeholder="10:00"
+                  value={endTime ?? ""}
+                  onChange={(event) => setEndTime(formatTimeInput(event.target.value) || null)}
+                  placeholder="Sem horário"
                   aria-label="Horário de fim, formato 24 horas"
                   className="glass-field tabular-nums"
                 />

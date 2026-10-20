@@ -134,6 +134,20 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
     }
   }, [value, remaining]);
 
+  // ── Focus on mount (only once) ───────────────────────────────────────────
+  const [hasFocused, setHasFocused] = useState(false);
+  useEffect(() => {
+    if (autoFocus && !hasFocused && inputRef.current && document.activeElement !== inputRef.current) {
+      const timer = setTimeout(() => {
+        if (inputRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus();
+          setHasFocused(true);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus, hasFocused]);
+
   // ── Paste: sanitize line breaks, no truncation ──────────────────────────
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData("text/plain");
@@ -170,31 +184,7 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
     onKeyDown?.(e);
   }
 
-  // ── Focus management ──────────────────────────────────────────────────
-  // Focus the input after the modal mounts. We use a ref callback to ensure
-  // we only focus once after initial mount, not on every re-render.
-  const [hasFocused, setHasFocused] = useState(false);
-  const focusInput = useCallback(() => {
-    if (autoFocus && !hasFocused && inputRef.current && document.activeElement !== inputRef.current) {
-      inputRef.current.focus();
-      setHasFocused(true);
-    }
-  }, [autoFocus, hasFocused]);
-
-  useEffect(() => {
-    // Focus after component mounts, but only once
-    if (autoFocus && !hasFocused) {
-      const timer = setTimeout(() => {
-        if (inputRef.current && document.activeElement !== inputRef.current) {
-          inputRef.current.focus();
-          setHasFocused(true);
-        }
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [autoFocus, hasFocused]);
-
-  // ── Dynamic classes ─────────────────────────────────────────────────────
+  // ── Dynamic classes ───────────────────────────────────────────────────────
   const counterClassName =
     counterState === "error"
       ? "text-[var(--red)]"
@@ -226,7 +216,6 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
 
         <input
           {...rest}
-          ref={inputRef}
           id={inputId}
           type="text"
           inputMode="text"
@@ -249,7 +238,7 @@ export const WeeklyPlanInputCard = forwardRef<HTMLInputElement, WeeklyPlanInputC
           title={value || undefined}
           ref={(node) => {
             inputRef.current = node;
-            // Merge with forwarded ref if provided
+            // Expose to parent via forwarded ref
             if (typeof ref === "function") ref(node);
             else if (ref) ref.current = node;
           }}

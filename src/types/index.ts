@@ -562,14 +562,14 @@ export interface KanbanTask {
 export interface WeeklyPlan {
   id: number;
   profileId: string;
-  planDate: string;
+  planDate?: string;
   title: string;
   categoryId: number;
   category: Category;
   taskId?: number;
   completedAt?: string | null;
-  startTime?: string;
-  endTime?: string;
+  startTime?: string | null;
+  endTime?: string | null;
   allDay: boolean;
   reminderOffsetMin: number | null;
 }
@@ -619,7 +619,7 @@ export interface WeeklyPlanOccurrence {
 export interface WeeklyPlanItem {
   id: number; // occurrence id or old plan id
   seriesId: number | null; // null for old one-time plans
-  planDate: string;
+  planDate?: string;
   title: string;
   categoryId: number;
   category: Category;

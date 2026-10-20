@@ -601,6 +601,86 @@ export async function updateOccurrenceOverride(
 
 // ── Unified list ────────────────────────────────────────────────────────────────
 
+interface LegacyPlanRow {
+  id: string | number;
+  plan_date: Date | string | null;
+  title: string;
+  category_id: string | number;
+  completed_at: Date | string | null;
+  start_time: string | null;
+  end_time: string | null;
+  reminder_offset_min: number | null;
+  category_user_id: string | null;
+  category_name: string;
+  category_color: string;
+  category_icon: string | null;
+  category_is_custom: boolean;
+  category_created_at: Date | string;
+}
+
+/** Converte uma linha de `weekly_plans` (plano avulso) em item da UI. */
+function mapLegacyPlanRow(row: LegacyPlanRow): WeeklyPlanItem {
+  return {
+    id: Number(row.id),
+    seriesId: null,
+    planDate: row.plan_date
+      ? (typeof row.plan_date === "string" ? row.plan_date : row.plan_date.toISOString().slice(0, 10))
+      : undefined,
+    title: row.title,
+    categoryId: Number(row.category_id),
+    category: {
+      id: Number(row.category_id),
+      userId: row.category_user_id,
+      name: row.category_name,
+      color: row.category_color,
+      icon: row.category_icon,
+      isCustom: row.category_is_custom,
+      createdAt: typeof row.category_created_at === "string"
+        ? row.category_created_at
+        : row.category_created_at.toISOString(),
+    },
+    iconType: null,
+    iconValue: null,
+    color: null,
+    note: null,
+    completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : null,
+    skipped: false,
+    startTime: row.start_time?.slice(0, 5) ?? null,
+    endTime: row.end_time?.slice(0, 5) ?? null,
+    durationMinutes: null,
+    repeatType: null,
+    repeatDays: null,
+    isRecurring: false,
+    reminderOffsetMin: row.reminder_offset_min,
+  };
+}
+
+const LEGACY_PLAN_SELECT = `
+  select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time, w.reminder_offset_min,
+         c.id as category_id, c.user_id as category_user_id, c.name as category_name,
+         c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
+         c.created_at as category_created_at
+  from weekly_plans w
+  join categories c on c.id = w.category_id
+`;
+
+/**
+ * Planos avulsos SEM data (tarefas não agendadas).
+ *
+ * Eles não pertencem a nenhuma semana do calendário: por isso vivem em uma
+ * lista própria, acessível na seção "Sem data" do Planejamento.
+ */
+export async function listUnscheduledPlanItems(profileId: string): Promise<WeeklyPlanItem[]> {
+  parseProfileId(profileId);
+  const result = await pool.query<LegacyPlanRow>(
+    `${LEGACY_PLAN_SELECT}
+     where w.profile_id = $1 and w.plan_date is null
+     order by w.id`,
+    [profileId],
+  );
+  return result.rows.map(mapLegacyPlanRow);
+}
+
 /**
  * Returns all plan items for a given week, combining:
  * 1. Old one-time weekly_plans rows (legacy)
@@ -613,50 +693,15 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
   const items: WeeklyPlanItem[] = [];
 
   // 1. Legacy weekly_plans rows
-  const legacyResult = await pool.query(
-    `select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time, w.reminder_offset_min,
-            c.id as category_id, c.user_id as category_user_id, c.name as category_name,
-            c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
-            c.created_at as category_created_at
-     from weekly_plans w
-     join categories c on c.id = w.category_id
+  const legacyResult = await pool.query<LegacyPlanRow>(
+    `${LEGACY_PLAN_SELECT}
      where w.profile_id = $1 and w.plan_date >= $2::date and w.plan_date <= $3::date
      order by w.plan_date, w.id`,
     [profileId, weekStart, weekEndStr],
   );
 
   for (const row of legacyResult.rows) {
-    items.push({
-      id: Number(row.id),
-      seriesId: null,
-      planDate: typeof row.plan_date === "string" ? row.plan_date : row.plan_date.toISOString().slice(0, 10),
-      title: row.title,
-      categoryId: Number(row.category_id),
-      category: {
-        id: Number(row.category_id),
-        userId: row.category_user_id,
-        name: row.category_name,
-        color: row.category_color,
-        icon: row.category_icon,
-        isCustom: row.category_is_custom,
-        createdAt: typeof row.category_created_at === "string"
-          ? row.category_created_at
-          : row.category_created_at.toISOString(),
-      },
-      iconType: null,
-      iconValue: null,
-      color: null,
-      note: null,
-      completedAt: row.completed_at ? (typeof row.completed_at === "string" ? row.completed_at : row.completed_at.toISOString()) : null,
-      skipped: false,
-      startTime: row.start_time?.slice(0, 5) ?? null,
-      endTime: row.end_time?.slice(0, 5) ?? null,
-      durationMinutes: null,
-      repeatType: null,
-      repeatDays: null,
-      isRecurring: false,
-      reminderOffsetMin: row.reminder_offset_min,
-    });
+    items.push(mapLegacyPlanRow(row));
   }
 
   // 2. Recurring series
@@ -705,7 +750,9 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
 
   // Sort by date, then start time, then id
   items.sort((a, b) => {
-    if (a.planDate !== b.planDate) return a.planDate.localeCompare(b.planDate);
+    const dateA = a.planDate ?? "";
+    const dateB = b.planDate ?? "";
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
     if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
     if (a.startTime) return -1;
     if (b.startTime) return 1;

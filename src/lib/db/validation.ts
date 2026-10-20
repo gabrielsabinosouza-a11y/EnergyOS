@@ -26,6 +26,12 @@ export function parseDate(value: unknown, field: string, fallback?: string): str
   return value;
 }
 
+export function parseOptionalDate(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (!isValidDateString(value)) throw new ValidationError(`${field} deve ser uma data YYYY-MM-DD válida.`);
+  return value;
+}
+
 export function parseOptionalTime(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !TIME_PATTERN.test(value)) throw new ValidationError(`${field} deve estar no formato HH:mm.`);
