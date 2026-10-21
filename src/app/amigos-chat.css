@@ -1,0 +1,368 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Amigos Chat — Premium messaging interface for DM conversations
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Date separator for chat messages - fixed layout with centered label */
+.amigos-date-divider {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 1rem 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg);
+  backdrop-filter: blur(8px);
+}
+
+.amigos-date-divider::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+  opacity: 0.8;
+}
+
+.amigos-date-divider .date-label {
+  flex-shrink: 0;
+  padding: 0.25rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.amigos-date-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+  opacity: 0.8;
+}
+
+/* Message container - proper alignment for incoming/outgoing */
+.amigos-message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.amigos-message-container.incoming {
+  align-items: flex-start;
+}
+
+.amigos-message-container.outgoing {
+  align-items: flex-end;
+}
+
+/* Message bubble styling */
+.amigos-message-bubble {
+  max-width: 75%;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.amigos-message-bubble.incoming {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.amigos-message-bubble.outgoing {
+  background: var(--accent);
+  border-radius: 18px;
+  padding: 0.75rem 1rem;
+  color: var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Message bubble grouping - tighter corners when messages are consecutive */
+.amigos-message-bubble.incoming:first-child {
+  border-radius: 18px 18px 4px 18px;
+}
+
+.amigos-message-bubble.incoming:last-child {
+  border-radius: 18px 18px 18px 4px;
+}
+
+.amigos-message-bubble.incoming:only-child {
+  border-radius: 18px;
+}
+
+.amigos-message-bubble.outgoing:first-child {
+  border-radius: 18px 18px 18px 4px;
+}
+
+.amigos-message-bubble.outgoing:last-child {
+  border-radius: 4px 18px 18px 18px;
+}
+
+.amigos-message-bubble.outgoing:only-child {
+  border-radius: 18px;
+}
+
+/* Avatar positioning for message groups */
+.amigos-message-container.incoming .sender-avatar {
+  margin-top: 0.25rem;
+}
+
+/* Sender name styling */
+.amigos-sender-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+/* Timestamp and read receipt area */
+.amigos-message-status {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  justify-content: flex-end;
+  font-size: 0.625rem;
+  color: var(--text-faint);
+  margin-top: 0.25rem;
+}
+
+.amigos-message-status.sent {
+  justify-content: flex-end;
+}
+
+.amigos-message-status.received {
+  justify-content: flex-start;
+}
+
+/* Read receipt icon styling */
+.amigos-read-receipt {
+  color: var(--accent);
+}
+
+.amigos-draft-indicator {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Reactions container */
+.amigos-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.amigos-reaction {
+  font-size: 0.875rem;
+  border-radius: 9999px;
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+
+.amigos-reaction.my-reaction {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Conversation header styling */
+.amigos-conversation-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.amigos-conversation-header .friend-name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0;
+}
+
+.amigos-conversation-header .friend-username {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.amigos-conversation-header .friend-status {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* Online indicator */
+.amigos-online-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid var(--bg);
+}
+
+/* Message composer styling */
+.amigos-composer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0.75rem 1rem;
+}
+
+.amigos-composer-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: box-shadow 0.2s ease;
+}
+
+.amigos-composer-controls:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.amigos-composer-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+}
+
+.amigos-composer-button:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.amigos-composer-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.amigos-composer-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  height: 36px;
+  min-height: 36px;
+  max-height: 120px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.4;
+  outline: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.amigos-composer-input::placeholder {
+  color: var(--text-muted);
+}
+
+.amigos-composer-input:focus {
+  color: var(--text);
+}
+
+.amigos-composer-send {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.amigos-composer-send:hover:not(:disabled) {
+  transform: scale(1.05);
+  background: var(--accent);
+}
+
+.amigos-composer-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Empty state styling */
+.amigos-empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.amigos-empty-state .empty-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  opacity: 0.7;
+}
+
+/* Mobile adjustments for the Amigos chat */
+@media (max-width: 640px) {
+  .amigos-message-bubble {
+    max-width: 95%;
+  }
+  
+  .amigos-composer-controls {
+    padding: 0.75rem;
+    gap: 0.375rem;
+  }
+  
+  .amigos-composer-input {
+    height: 40px;
+    min-height: 40px;
+    padding: 0.625rem 1rem;
+  }
+  
+  .amigos-conversation-header .friend-name {
+    font-size: 1.125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .amigos-conversation-header {
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .amigos-conversation-header .friend-name {
+    font-size: 0.875rem;
+  }
+  
+  .amigos-message-bubble {
+    padding: 0.625rem 0.875rem;
+  }
+}

@@ -1,5 +1,7 @@
 "use client";
 
+import "@/app/amigos-chat.css";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -717,6 +719,10 @@ function ChatPanel({
     });
   }, []);
 
+  /* Input state for composer */
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+
   async function handleSend(body: string) {
     const tempId = nextTempId();
     addOptimisticMessage({
@@ -728,13 +734,18 @@ function ChatPanel({
       createdAt: new Date().toISOString(),
       pending: true,
     });
+    setInput("");
+    setSending(true);
     try {
       const { message } = await api.sendMessage(friend.id, body);
       confirmMessage(tempId, message);
     } catch (err) {
       pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setInput(body);
       throw err;
+    } finally {
+      setSending(false);
     }
   }
 
@@ -894,7 +905,7 @@ function ChatPanel({
             <MessageCircle size={14} className="shrink-0 text-[var(--accent)]" />
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-medium text-[var(--accent)]">
-                Respondendo {replyingTo.senderName ?? "mensagem"}
+                Respondendo {dmToChatMessage(replyingTo).senderName ?? "mensagem"}
               </p>
               <p className="truncate text-xs text-[var(--text-muted)]">
                 {replyingTo.body ?? "mídia"}
@@ -911,58 +922,11 @@ function ChatPanel({
         )}
 
         {/* Composer - Premium Design */}
-        <div className="border-t border-[var(--border-subtle)] px-4 py-3 backdrop-blur-xl sm:px-6">
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 px-3 py-2 shadow-sm transition-all duration-200 hover:shadow-md">
-            <input
-              type="file"
-              accept="image/*,video/mp4,.mp4"
-              ref={(el) => { /* file ref for attachment */ }}
-              className="hidden"
-              onChange={() => {}}
-            />
-            <button
-              type="button"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-              aria-label="Anexar arquivo"
-            >
-              <Paperclip size={18} />
-            </button>
-            <button
-              type="button"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
-              aria-label="Anexar imagem"
-            >
-              <ImageIcon size={18} />
-            </button>
-            <textarea
-              rows={1}
-              placeholder="Mensagem..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend(input);
-                }
-              }}
-              className="flex-1 resize-none overflow-y-auto rounded-lg bg-[var(--bg)]/30 px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none disabled:cursor-not-allowed"
-              disabled={sending}
-            />
-            <button
-              type="button"
-              onClick={() => handleSend(input)}
-              disabled={!input.trim() || sending}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30"
-              aria-label="Enviar mensagem"
-            >
-              {sending ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Send size={16} />
-              )}
-            </button>
-          </div>
-        </div>
+        <ChatComposer
+          replying={!!replyingTo}
+          onSendText={(body) => handleSend(body)}
+          onSendMedia={handleSendMedia}
+        />
       </div>
     </Modal>
   );

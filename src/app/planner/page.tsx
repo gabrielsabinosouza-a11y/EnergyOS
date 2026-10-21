@@ -1,5 +1,5 @@
 "use client";
-
+import { MonthlyWeeksOverview } from "@/components/planning/MonthlyWeeksOverview";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WeeklyPlan, WeeklyPlanItem, Category } from "@/types";
 import { api } from "@/lib/api-client";
@@ -138,7 +138,7 @@ export default function PlanningPage() {
   const month = useMemo(() => monthRange(selectedDate), [selectedDate]);
   const week = useMemo(() => weekRange(selectedDate), [selectedDate]);
   const monthRangeVisible = useMemo(() => monthGridRange(month), [month]);
-  const dataRange = view === "month" ? monthRangeVisible : week;
+  const dataRange = view === "day" ? week : monthRangeVisible;
   const weekStarts = useMemo(() => {
     const starts: string[] = [];
     for (let date = dataRange.start; date <= dataRange.end; date = addDays(date, 7)) starts.push(date);
@@ -661,6 +661,17 @@ export default function PlanningPage() {
                   onEditPlan={openEdit}
                   onDeletePlan={requestDelete}
                 />
+                <MonthlyWeeksOverview
+                  monthStart={month.start}
+                  monthEnd={month.end}
+                  plans={monthGridTasks}
+                  selectedDate={selectedDate}
+                  onDateSelect={(date) => {
+                    setSelectedDate(date);
+                    setView("day");
+                  }}
+                  onPlanCreate={openCreate}
+                />                  
               </motion.div>
             )}
             {view === "day" && (
