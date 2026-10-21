@@ -171,7 +171,7 @@ export async function registerPushSubscription(): Promise<{
 /**
  * Gets existing push subscription from server.
  */
-export async function getPushSubscription(profileId: string): Promise<any[]> {
+export async function getPushSubscription(profileId: string): Promise<unknown[]> {
   try {
     const response = await fetch(`/api/push-subscriptions?profileId=${profileId}`);
     if (!response.ok) return [];

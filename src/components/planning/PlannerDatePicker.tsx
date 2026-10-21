@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -35,12 +35,14 @@ export function PlannerDatePicker({
 }: PlannerDatePickerProps) {
   const today = todayIso();
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(value || today);
-  const [activeDate, setActiveDate] = useState(value || today);
+  // `null` = o calendário segue a data selecionada; um valor = mês navegado.
+  const [monthOverride, setMonthOverride] = useState<string | null>(null);
+  const [activeDate, setActiveDate] = useState(value ?? today);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef(new Map<string, HTMLButtonElement>());
+  const month = monthOverride ?? value ?? today;
   const { year, month: monthNumber } = parseIsoKey(month);
   const monthDates = buildMonthGrid(year, monthNumber);
   const hasDate = Boolean(value);
@@ -48,12 +50,13 @@ export function PlannerDatePicker({
   const close = useCallback((restoreFocus = false) => {
     setOpen(false);
     setPosition(null);
+    setMonthOverride(null);
     if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
 
   const openPicker = () => {
     const date = value || today;
-    setMonth(date);
+    setMonthOverride(null);
     setActiveDate(date);
     setOpen(true);
   };
@@ -63,13 +66,9 @@ export function PlannerDatePicker({
     close(true);
   };
 
-  // When value changes externally (e.g., editing an existing plan)
-  useEffect(() => {
-    if (!open) return;
-    const newDate = value || today;
-    setMonth(newDate);
-    setActiveDate(newDate);
-  }, [value, open, today]);
+  // When value changes externally (e.g., editing an existing plan) o mês
+  // exibido acompanha a data — sem efeito, o estado do mês é sobreposto
+  // apenas quando o usuário navega.
 
   useEffect(() => {
     if (!open) return;
@@ -137,7 +136,7 @@ export function PlannerDatePicker({
 
   const moveActiveDate = (nextDate: string) => {
     setActiveDate(nextDate);
-    setMonth(nextDate);
+    setMonthOverride(nextDate);
   };
 
   const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -181,7 +180,8 @@ export function PlannerDatePicker({
           <span
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); clearDate(); }}
             className="text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer"
-            aria-label="Limpar data"
+            title="Limpar data"
+            aria-hidden="true"
           >
             ×
           </span>
@@ -203,7 +203,7 @@ export function PlannerDatePicker({
               aria-label="Mês anterior"
               onClick={() => {
                 const previous = addMonths(month, -1);
-                setMonth(previous);
+                setMonthOverride(previous);
                 setActiveDate(previous);
               }}
               className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
@@ -218,7 +218,7 @@ export function PlannerDatePicker({
               aria-label="Próximo mês"
               onClick={() => {
                 const next = addMonths(month, 1);
-                setMonth(next);
+                setMonthOverride(next);
                 setActiveDate(next);
               }}
               className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
@@ -274,17 +274,28 @@ export function PlannerDatePicker({
               );
             })}
           </div>
-          <footer className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-3">
+          <footer className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3">
             <span className="text-[11px] text-[var(--text-faint)]">
               {hasDate ? formatLocalDate(value!, { day: "numeric", month: "short", year: "numeric" }) : placeholder}
             </span>
-            <button
-              type="button"
-              onClick={() => selectDate(today)}
-              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-            >
-              Hoje
-            </button>
+            <div className="flex items-center gap-1">
+              {hasDate ? (
+                <button
+                  type="button"
+                  onClick={clearDate}
+                  className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                >
+                  Limpar
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => selectDate(today)}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+              >
+                Hoje
+              </button>
+            </div>
           </footer>
         </div>,
         document.body,

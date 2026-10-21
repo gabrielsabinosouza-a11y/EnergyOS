@@ -35,6 +35,7 @@ import {
   formatMinutes,
   formatMonth,
   gardenCopy,
+  gardenScopeLabel,
   leagueCopy,
   plural,
   streakCopy,
@@ -658,11 +659,11 @@ export async function captureRecapCard(
   }
 
   // ── Herói: arte central com luz radial ──
-  const heroSize = 360;
+  const heroSize = 390;
   const heroCx = CX;
-  const heroCy = 470;
-  drawGlow(ctx, heroCx, heroCy, 300, "rgba(169,139,255,.22)");
-  drawGlow(ctx, heroCx, heroCy + 150, 190, "rgba(92,200,255,.10)");
+  const heroCy = 486;
+  drawGlow(ctx, heroCx, heroCy, 320, "rgba(169,139,255,.22)");
+  drawGlow(ctx, heroCx, heroCy + 160, 200, "rgba(92,200,255,.10)");
   const heroArt = await loadFirstImage(RECAP_ART.heroi);
   if (heroArt) {
     ctx.save();
@@ -673,8 +674,8 @@ export async function captureRecapCard(
   }
 
   // ── Painel dominante: FOCO ──
-  const focusY = 690;
-  const focusH = 296;
+  const focusY = 700;
+  const focusH = 320;
   drawGlassPanel(ctx, pad, focusY, CARD_W - pad * 2, focusH, ACCENT.focus);
 
   const clockArt = await loadFirstImage(RECAP_ART.foco);
@@ -682,7 +683,7 @@ export async function captureRecapCard(
     ctx.save();
     ctx.shadowColor = hexToRgba(ACCENT.focus, 0.55);
     ctx.shadowBlur = 40;
-    ctx.drawImage(clockArt, CARD_W - pad - 190, focusY + 42, 190, 190);
+    ctx.drawImage(clockArt, CARD_W - pad - 200, focusY + 56, 200, 200);
     ctx.restore();
   }
 
@@ -690,32 +691,32 @@ export async function captureRecapCard(
   ctx.textAlign = "left";
   ctx.fillStyle = hexToRgba(ACCENT.focus, 0.85);
   ctx.font = "700 24px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("FOCO TOTAL DO MÊS", focusTextX, focusY + 58);
+  ctx.fillText("FOCO TOTAL DO MÊS", focusTextX, focusY + 62);
 
   ctx.fillStyle = ACCENT.focus;
   ctx.font = "800 104px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(focusValue, focusTextX, focusY + 158);
+  ctx.fillText(focusValue, focusTextX, focusY + 168);
 
   const focusValueW = ctx.measureText(focusValue).width;
   ctx.fillStyle = "rgba(231,244,255,.66)";
   ctx.font = "600 28px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(focusUnit, focusTextX + focusValueW + 18, focusY + 158);
+  ctx.fillText(focusUnit, focusTextX + focusValueW + 18, focusY + 168);
 
   // Barra luminosa
   const focusBar = ctx.createLinearGradient(focusTextX, 0, focusTextX + 220, 0);
   focusBar.addColorStop(0, hexToRgba(ACCENT.focus, 0.9));
   focusBar.addColorStop(1, "transparent");
   ctx.fillStyle = focusBar;
-  roundRect(ctx, focusTextX, focusY + 186, 220, 4, 2);
+  roundRect(ctx, focusTextX, focusY + 198, 220, 4, 2);
   ctx.fill();
 
   ctx.fillStyle = "rgba(231,244,255,.6)";
   ctx.font = "400 26px 'Inter', -apple-system, sans-serif";
-  drawWrappedText(ctx, focusCopy(recap.totalFocusMinutes ?? 0), focusTextX, focusY + 224, 560, 34, 2);
+  drawWrappedText(ctx, focusCopy(recap.totalFocusMinutes ?? 0), focusTextX, focusY + 240, 600, 36, 2);
 
   // ── Faixa secundária: SEQUÊNCIA + LIGA ──
-  const row2Y = focusY + focusH + 26;
-  const row2H = 236;
+  const row2Y = focusY + focusH + 24;
+  const row2H = 260;
   const colW = (CARD_W - pad * 2 - 24) / 2;
 
   // Sequência
@@ -725,23 +726,23 @@ export async function captureRecapCard(
     ctx.save();
     ctx.shadowColor = hexToRgba(ACCENT.streak, 0.5);
     ctx.shadowBlur = 30;
-    ctx.drawImage(flameArt, pad + colW - 118, row2Y + 34, 92, 92);
+    ctx.drawImage(flameArt, pad + colW - 124, row2Y + 38, 100, 100);
     ctx.restore();
   }
   ctx.textAlign = "left";
   ctx.fillStyle = hexToRgba(ACCENT.streak, 0.85);
   ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("MELHOR SEQUÊNCIA", pad + 36, row2Y + 56);
+  ctx.fillText("MELHOR SEQUÊNCIA", pad + 36, row2Y + 62);
   ctx.fillStyle = ACCENT.streak;
   ctx.font = "800 82px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(String(recap.longestStreak ?? 0), pad + 36, row2Y + 136);
+  ctx.fillText(String(recap.longestStreak ?? 0), pad + 36, row2Y + 142);
   const daysW = ctx.measureText(String(recap.longestStreak ?? 0)).width;
   ctx.fillStyle = "rgba(231,244,255,.66)";
   ctx.font = "600 26px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(plural(recap.longestStreak ?? 0, "dia", "dias"), pad + 36 + daysW + 14, row2Y + 136);
+  ctx.fillText(plural(recap.longestStreak ?? 0, "dia", "dias"), pad + 36 + daysW + 14, row2Y + 142);
   ctx.fillStyle = "rgba(231,244,255,.5)";
-  ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
-  drawWrappedText(ctx, streakCopy(recap.longestStreak ?? 0), pad + 36, row2Y + 180, colW - 150, 30, 2);
+  ctx.font = "400 23px 'Inter', -apple-system, sans-serif";
+  drawWrappedText(ctx, streakCopy(recap.longestStreak ?? 0), pad + 36, row2Y + 190, colW - 72, 32, 2);
 
   // Liga
   const leagueX = pad + colW + 24;
@@ -751,22 +752,27 @@ export async function captureRecapCard(
     ctx.save();
     ctx.shadowColor = hexToRgba(tierColor, 0.5);
     ctx.shadowBlur = 30;
-    ctx.drawImage(leagueArt, leagueX + 36, row2Y + 52, 104, 104);
+    ctx.drawImage(leagueArt, leagueX + 36, row2Y + 50, 110, 110);
     ctx.restore();
   }
   ctx.fillStyle = hexToRgba(tierColor, 0.85);
   ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("LIGA DO MÊS", leagueX + 160, row2Y + 76);
+  ctx.fillText("LIGA DO MÊS", leagueX + 170, row2Y + 80);
   ctx.fillStyle = tierColor;
   ctx.font = "800 62px 'Inter', -apple-system, sans-serif";
-  ctx.fillText((meta?.label ?? "—").toUpperCase(), leagueX + 160, row2Y + 138);
+  ctx.fillText((meta?.label ?? "—").toUpperCase(), leagueX + 170, row2Y + 144);
   ctx.fillStyle = "rgba(231,244,255,.55)";
   ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(meta?.description ?? "Participe da liga.", leagueX + 36, row2Y + 196);
+  ctx.fillText(meta?.description ?? "Participe da liga.", leagueX + 36, row2Y + 202);
+  if (recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier) {
+    ctx.fillStyle = "#3DDC84";
+    ctx.font = "600 22px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(`${recap.leagueAtStart} → ${recap.leagueTier}`, leagueX + 36, row2Y + 236);
+  }
 
   // ── Faixa terciária: JARDIM + XP ──
   const row3Y = row2Y + row2H + 24;
-  const row3H = 214;
+  const row3H = 240;
 
   // Jardim
   drawGlassPanel(ctx, pad, row3Y, colW, row3H, ACCENT.garden);
@@ -775,22 +781,25 @@ export async function captureRecapCard(
     ctx.save();
     ctx.shadowColor = hexToRgba(ACCENT.garden, 0.5);
     ctx.shadowBlur = 28;
-    ctx.drawImage(gardenArt, pad + colW - 112, row3Y + 30, 86, 86);
+    ctx.drawImage(gardenArt, pad + colW - 118, row3Y + 34, 92, 92);
     ctx.restore();
   }
   ctx.fillStyle = hexToRgba(ACCENT.garden, 0.85);
   ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("ENERGIAS DO MÊS", pad + 36, row3Y + 54);
+  ctx.fillText("ENERGIAS DO ANO", pad + 36, row3Y + 58);
   ctx.fillStyle = ACCENT.garden;
   ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(String(garden), pad + 36, row3Y + 126);
+  ctx.fillText(String(garden), pad + 36, row3Y + 134);
   const gardenW = ctx.measureText(String(garden)).width;
   ctx.fillStyle = "rgba(231,244,255,.66)";
   ctx.font = "600 24px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(plural(garden, "energia", "energias"), pad + 36 + gardenW + 12, row3Y + 126);
+  ctx.fillText(plural(garden, "energia", "energias"), pad + 36 + gardenW + 12, row3Y + 134);
+  ctx.fillStyle = "rgba(231,244,255,.38)";
+  ctx.font = "500 18px 'Inter', -apple-system, sans-serif";
+  ctx.fillText(gardenScopeLabel(recap.recapMonth).toUpperCase(), pad + 36, row3Y + 162);
   ctx.fillStyle = "rgba(231,244,255,.5)";
   ctx.font = "400 22px 'Inter', -apple-system, sans-serif";
-  drawWrappedText(ctx, gardenCopy(garden), pad + 36, row3Y + 166, colW - 130, 28, 2);
+  drawWrappedText(ctx, gardenCopy(garden), pad + 36, row3Y + 194, colW - 72, 28, 2);
 
   // XP
   const xpX = pad + colW + 24;
@@ -800,15 +809,15 @@ export async function captureRecapCard(
     ctx.save();
     ctx.shadowColor = hexToRgba(ACCENT.xp, 0.5);
     ctx.shadowBlur = 26;
-    ctx.drawImage(xpArt, xpX + colW - 104, row3Y + 26, 78, 78);
+    ctx.drawImage(xpArt, xpX + colW - 108, row3Y + 30, 82, 82);
     ctx.restore();
   }
   ctx.fillStyle = hexToRgba(ACCENT.xp, 0.85);
   ctx.font = "700 22px 'Inter', -apple-system, sans-serif";
-  ctx.fillText("XP DO MÊS", xpX + 36, row3Y + 54);
+  ctx.fillText("XP DO MÊS", xpX + 36, row3Y + 60);
   ctx.fillStyle = ACCENT.xp;
   ctx.font = "800 72px 'Inter', -apple-system, sans-serif";
-  ctx.fillText(xp.toLocaleString("pt-BR"), xpX + 36, row3Y + 126);
+  ctx.fillText(xp.toLocaleString("pt-BR"), xpX + 36, row3Y + 136);
 
   // Barra de fontes do XP (dados reais)
   const segments = xpSegments(recap);
@@ -816,7 +825,7 @@ export async function captureRecapCard(
   if (segmentTotal > 0) {
     const barX = xpX + 36;
     const barW = colW - 72;
-    const barY = row3Y + 150;
+    const barY = row3Y + 162;
     let cursor = barX;
     segments.forEach((segment) => {
       const w = (segment.value / segmentTotal) * barW;
@@ -837,7 +846,7 @@ export async function captureRecapCard(
 
   // ── Detalhamento do mês ──
   const detailY = row3Y + row3H + 24;
-  const detailH = 132;
+  const detailH = 150;
   ctx.save();
   roundRect(ctx, pad, detailY, CARD_W - pad * 2, detailH, 24);
   ctx.fillStyle = "rgba(255,255,255,.03)";
@@ -852,6 +861,7 @@ export async function captureRecapCard(
     ["MISSÕES", String(recap.missionsCompleted ?? 0)],
     ["CONQUISTAS", String(recap.achievementsUnlocked ?? 0)],
     ["MOEDAS +", (recap.coinsGained ?? 0).toLocaleString("pt-BR")],
+    ["MOEDAS −", (recap.coinsSpent ?? 0).toLocaleString("pt-BR")],
   ];
   const cellW = (CARD_W - pad * 2) / details.length;
   details.forEach(([label, value], index) => {
@@ -859,11 +869,18 @@ export async function captureRecapCard(
     ctx.textAlign = "center";
     ctx.fillStyle = "rgba(231,244,255,.35)";
     ctx.font = "600 18px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(label, cx, detailY + 52);
+    ctx.fillText(label, cx, detailY + 58);
     ctx.fillStyle = "rgba(231,244,255,.85)";
-    ctx.font = "700 40px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(value, cx, detailY + 98);
+    ctx.font = "700 42px 'Inter', -apple-system, sans-serif";
+    ctx.fillText(value, cx, detailY + 108);
   });
+
+  // ── Frase-resumo do mês (fecha a composição antes do rodapé) ──
+  const summary = `${formatMinutes(recap.totalFocusMinutes ?? 0)} de foco  ·  ${recap.longestStreak ?? 0} ${plural(recap.longestStreak ?? 0, "dia", "dias")} de sequência  ·  ${xp.toLocaleString("pt-BR")} XP`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(231,244,255,.62)";
+  ctx.font = "500 22px 'Inter', -apple-system, sans-serif";
+  drawWrappedText(ctx, summary, CX, detailY + detailH + 56, CARD_W - pad * 2, 30, 1);
 
   // ── Footer ──
   const footY = CARD_H - 132;
@@ -1072,7 +1089,7 @@ export function MonthlyRecapPremium({
           <HeroStatSlide
             numericValue={recap.totalXp ?? 0}
             valueSuffix="XP"
-            label="XP total"
+            label="XP do mês"
             copy={xpCopy(recap.totalXp ?? 0)}
             theme={THEMES.xp}
             iconSrc={RECAP_ART.xp}
@@ -1222,12 +1239,18 @@ export function MonthlyRecapPremium({
             }
           >
             {isSummary ? (
-              <FinalRecapSurface
-                recap={recap}
-                userName={userName}
-                userPhotoUrl={userPhotoUrl}
-                monthLabel={monthLabel}
-              />
+              <motion.div
+                initial={reduced ? undefined : { opacity: 0, y: 20, scale: 0.99 }}
+                animate={reduced ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                transition={reduced ? undefined : { duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <FinalRecapSurface
+                  recap={recap}
+                  userName={userName}
+                  userPhotoUrl={userPhotoUrl}
+                  monthLabel={monthLabel}
+                />
+              </motion.div>
             ) : (
               <div className="mx-auto flex flex-col items-center gap-2.5 pb-2 sm:pb-0" style={{ width: MODAL_WIDTH }}>
               {/* Cartão 9:16 — header / content / footer */}
@@ -1254,7 +1277,15 @@ export function MonthlyRecapPremium({
 
                 {/* Conteúdo */}
                 <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-                  <AnimatePresence mode="wait" initial={false}>
+                  {/*
+                    Cross-fade (modo sincronizado): o slide que entra aparece
+                    IMEDIATAMENTE. Com `mode="wait"` o AnimatePresence esperava
+                    a saída do slide anterior — que nunca terminava, porque os
+                    slides têm animações infinitas (bloom, flutuação, partículas)
+                    — e o usuário ficava olhando um slide em branco por mais de
+                    um segundo a cada avanço.
+                  */}
+                  <AnimatePresence initial={false}>
                     <motion.div
                       key={currentSlide}
                       className="absolute inset-0"

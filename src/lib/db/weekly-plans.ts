@@ -1,7 +1,7 @@
 import pool from "../db";
 import type { WeeklyPlan } from "@/types";
 import { NotFoundError } from "../errors";
-import { ValidationError, parseDate, parseOptionalDate, parseProfileId, parseTitle } from "./validation";
+import { ValidationError, parseOptionalDate, parseProfileId, parseTitle } from "./validation";
 import { assertCategoryForProfile, resolveDefaultCategoryId } from "./categories";
 import { PLAN_NAME_MAX } from "../daily-limits";
 import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerRewardResult } from "./planner-rewards";
@@ -215,9 +215,10 @@ export async function updateWeeklyPlan(profileId: string, planId: number, input:
   if (title !== undefined && title.length > PLAN_NAME_MAX) {
     throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
   }
-  const planDate = input.planDate !== undefined
-    ? parseOptionalDate(input.planDate, "Data do plano")
-    : undefined;
+  // planDate: undefined = não alterar · null = LIMPAR a data · string = definir.
+  const planDate = input.planDate === undefined
+    ? undefined
+    : (parseOptionalDate(input.planDate, "Data do plano") ?? null);
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : undefined;

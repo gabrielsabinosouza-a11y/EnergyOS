@@ -93,6 +93,21 @@ export function formatMonth(iso: string): string {
   return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
+/** Sobe apenas a primeira letra (títulos em pt-BR — "outubro de 2026" → "Outubro de 2026"). */
+export function capitalizeFirst(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+/**
+ * O contador de energias do recap (`garden_count`) soma as energias plantadas
+ * no ANO CALENDÁRIO do mês (é o recorte do banco), não apenas naquele mês.
+ * O rótulo deixa isso explícito para não confundir acumulado com mensal.
+ */
+export function gardenScopeLabel(iso: string): string {
+  const year = /^\d{4}/.test(iso) ? iso.slice(0, 4) : "";
+  return year ? `acumuladas em ${year}` : "acumuladas no ano";
+}
+
 /** "12 out" — data curta em pt-BR, ou null quando a data não existe. */
 export function formatShortDate(iso?: string): string | null {
   if (!iso) return null;
@@ -149,10 +164,10 @@ export function gardenCopy(count: number): string {
 
 export function xpCopy(xp: number): string {
   if (xp === 0) return "Cada sessão de foco gera XP. Sua jornada começa aqui.";
-  if (xp < 1000) return `${xp.toLocaleString("pt-BR")} XP acumulados. Todo ponto conta na sua evolução.`;
-  if (xp < 5000) return "Mais de 1.000 XP! Você já está evoluindo de verdade.";
-  if (xp < 20000) return "Milhares de XP. Sua consistência está virando poder.";
-  return "XP de elite. Sua jornada impressiona até os veteranos.";
+  if (xp < 1000) return `${xp.toLocaleString("pt-BR")} XP ganhos no mês. Todo ponto conta na sua evolução.`;
+  if (xp < 5000) return "Mais de 1.000 XP só neste mês! Você já está evoluindo de verdade.";
+  if (xp < 20000) return "Milhares de XP em um mês. Sua consistência está virando poder.";
+  return "XP de elite em um único mês. Sua jornada impressiona até os veteranos.";
 }
 
 /**

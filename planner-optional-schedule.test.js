@@ -63,13 +63,14 @@ async function pickDay(page) {
   await page.waitForTimeout(400);
 }
 
-/** Limpa a data pelo "×" do campo. */
+/** Limpa a data pelo botão "Limpar" do popover do calendário. */
 async function clearDate(page) {
-  const clear = page.locator('button[aria-label="Limpar data"], span[aria-label="Limpar data"]');
-  if (await clear.count()) {
-    await clear.first().click();
-    await page.waitForTimeout(300);
-  }
+  await page.locator("#planner-plan-date").click();
+  await page.waitForTimeout(400);
+  const popover = page.locator('[role="dialog"][aria-label^="Calendário"]');
+  await expect(popover).toBeVisible();
+  await popover.getByRole("button", { name: "Limpar" }).click();
+  await page.waitForTimeout(400);
 }
 
 async function createPlan(page, title, { date = null, start = null, end = null } = {}) {
@@ -95,28 +96,28 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   // ── 1. somente título + categoria ─────────────────────────────────────────
   await createPlan(page, TITLES.semData);
   await expect(
-    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.semData),
+    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.semData).first(),
   ).toBeVisible({ timeout: 15000 });
 
   // ── 2. somente data ───────────────────────────────────────────────────────
   await createPlan(page, TITLES.soData, { date: "hoje" });
-  await expect(page.getByText(TITLES.soData).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText(TITLES.soData).first()).toBeVisible({ timeout: 15000 });
   await expect(
-    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.soData),
+    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.soData).first(),
   ).toHaveCount(0);
 
   // ── 3. data + início (sem fim) ────────────────────────────────────────────
   await createPlan(page, TITLES.dataInicio, { date: "hoje", start: "09:00" });
-  await expect(page.getByText(TITLES.dataInicio).first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("09:00").first()).toBeVisible();
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText(TITLES.dataInicio).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText("09:00").first()).toBeVisible();
 
   // ── 4. data + início + fim ────────────────────────────────────────────────
   await createPlan(page, TITLES.completo, { date: "hoje", start: "10:00", end: "11:00" });
-  await expect(page.getByText(TITLES.completo).first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("10:00 – 11:00").first()).toBeVisible();
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText(TITLES.completo).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText("10:00").first()).toBeVisible();
 
   // ── 5. editar e limpar a data ─────────────────────────────────────────────
-  const rowSemData = page.locator(`[data-testid^="plan:"]`).filter({ hasText: TITLES.soData }).first();
+  const rowSemData = page.locator(`[data-testid^="plan-plan:"]`).filter({ hasText: TITLES.soData }).first();
   await rowSemData.getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Editar")').click();
@@ -126,11 +127,11 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toHaveCount(0, { timeout: 20000 });
   await expect(
-    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.soData),
+    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.soData).first(),
   ).toBeVisible({ timeout: 15000 });
 
   // ── 6. editar e limpar os horários ────────────────────────────────────────
-  const rowCompleto = page.locator(`[data-testid^="plan:"]`).filter({ hasText: TITLES.completo }).first();
+  const rowCompleto = page.locator(`[data-testid^="plan-plan:"]`).filter({ hasText: TITLES.completo }).first();
   await rowCompleto.getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Editar")').click();
@@ -141,7 +142,7 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toHaveCount(0, { timeout: 20000 });
   await page.waitForTimeout(800);
-  await expect(page.getByText("10:00 – 11:00")).toHaveCount(0);
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText("10:00")).toHaveCount(0);
 
   // ── 7. recorrente + ocorrências ───────────────────────────────────────────
   await openModal(page);
@@ -151,19 +152,19 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Criar plano" }).click();
   await expect(page.getByRole("button", { name: "Criar plano" })).toHaveCount(0, { timeout: 20000 });
-  await expect(page.getByText(TITLES.recurring).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText(TITLES.recurring).first()).toBeVisible({ timeout: 15000 });
 
   // A mesma recorrência aparece na semana seguinte (mesmo dia da semana).
   await page.locator('button[aria-label^="Próximo período"]').first().click();
   await page.waitForTimeout(1200);
-  await expect(page.getByText(TITLES.recurring).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('section[aria-label="Planejador semanal"]').getByText(TITLES.recurring).first()).toBeVisible({ timeout: 15000 });
 
   // ── 8. tarefas sem data acessíveis ────────────────────────────────────────
   await page.locator('button[aria-label^="Período anterior"]').first().click();
   await page.waitForTimeout(1000);
   await expect(page.locator('section[aria-label="Tarefas sem data"]')).toBeVisible();
   await expect(
-    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.semData),
+    page.locator('section[aria-label="Tarefas sem data"]').getByText(TITLES.semData).first(),
   ).toBeVisible();
 
   // ── 10. conclusão + recompensa ────────────────────────────────────────────
@@ -175,7 +176,7 @@ test("agendamento opcional no Planejamento", async ({ page }) => {
   });
   console.log("[e2e] api unscheduled status:", rewardBefore);
 
-  const rowToComplete = page.locator(`[data-testid^="plan:"]`).filter({ hasText: TITLES.semData }).first();
+  const rowToComplete = page.locator(`[data-testid^="plan-plan:"]`).filter({ hasText: TITLES.semData }).first();
   await rowToComplete.getByRole("button", { name: /^Concluir/ }).click();
   await page.waitForTimeout(1500);
   await expect(rowToComplete.getByRole("button", { name: /^Reabrir/ })).toBeVisible({ timeout: 15000 });

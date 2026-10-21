@@ -9,10 +9,12 @@ import {
   RECAP_ART,
   RECAP_PALETTE,
   type RecapData,
+  capitalizeFirst,
   focusCopy,
   formatMinutes,
   formatShortDate,
   gardenCopy,
+  gardenScopeLabel,
   leagueCopy,
   plural,
   streakCopy,
@@ -124,8 +126,13 @@ function XpSourcesBar({ recap, reduced }: { recap: RecapData; reduced: boolean }
         {segments.map((segment, index) => (
           <motion.span
             key={segment.key}
-            className="h-full rounded-full"
-            style={{ background: segment.color, boxShadow: `0 0 12px -2px ${segment.color}` }}
+            className="h-full min-w-[6px] rounded-full"
+            style={{
+              flexGrow: segment.value,
+              flexBasis: 0,
+              background: segment.color,
+              boxShadow: `0 0 12px -2px ${segment.color}`,
+            }}
             initial={reduced ? undefined : { scaleX: 0 }}
             animate={reduced ? undefined : { scaleX: 1 }}
             transition={reduced ? undefined : { delay: 0.35 + index * 0.08, duration: 0.5, ease: "easeOut" }}
@@ -164,6 +171,9 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
 
   const streakRange = streakRangeLabel(recap.streakStartDate, recap.streakEndDate);
 
+  // "outubro de 2026" no texto corrido; "Outubro de 2026" no título.
+  const monthTitle = capitalizeFirst(monthLabel);
+
   const headlineParts = [
     `${formatMinutes(recap.totalFocusMinutes ?? 0)} de foco`,
     recap.longestStreak > 0
@@ -184,10 +194,10 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
   return (
     <div className="mx-auto w-full max-w-[1080px]">
       {/* ─── A. Herói ─────────────────────────────────────────────── */}
-      <section className="relative flex flex-col gap-5 pb-2 lg:grid lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-10 lg:gap-y-1 lg:pb-4">
+      <section className="relative flex flex-col gap-5 pb-2 sm:mx-auto sm:max-w-[560px] md:mx-0 md:grid md:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] md:grid-rows-[auto_1fr] md:items-start md:max-w-none md:gap-x-8 md:gap-y-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-x-10 lg:pb-4">
         {/* Arte central — peça 3D dominante do mês */}
         <motion.div
-          className="order-2 mx-auto w-full max-w-[150px] min-[380px]:max-w-[190px] sm:max-w-[240px] lg:order-1 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:mx-0 lg:max-w-[300px] lg:self-center"
+          className="order-2 mx-auto w-full max-w-[150px] min-[380px]:max-w-[190px] sm:max-w-[280px] md:order-1 md:col-start-1 md:row-start-1 md:row-span-2 md:mx-0 md:max-w-[280px] md:self-center lg:max-w-[300px]"
           initial={reduced ? undefined : { opacity: 0, scale: 0.86 }}
           animate={reduced ? undefined : { opacity: 1, scale: 1 }}
           transition={reduced ? undefined : { duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
@@ -195,7 +205,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
           <div className="relative">
             <span
               aria-hidden="true"
-              className="absolute inset-[-18%] rounded-full"
+              className="absolute inset-[-8%] rounded-full"
               style={{
                 background: `radial-gradient(circle at 50% 45%, ${ACCENT.xp}59, ${ACCENT.xp}1a 42%, transparent 68%)`,
                 filter: "blur(34px)",
@@ -227,7 +237,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
 
         {/* Título do mês + identidade */}
         <motion.div
-          className="order-1 min-w-0 lg:order-2 lg:col-start-2 lg:row-start-1"
+          className="order-1 min-w-0 md:order-2 md:col-start-2 md:row-start-1"
           initial={reduced ? undefined : { opacity: 0, y: 18 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
           transition={reduced ? undefined : { delay: 0.08, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -253,14 +263,14 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
           </div>
 
           <h2
-            className="font-display mt-2 text-[clamp(1.95rem,8.5vw,3.1rem)] font-extrabold leading-[0.98] tracking-[-0.03em] break-words capitalize lg:text-[clamp(2.6rem,4.2vw,4.1rem)]"
+            className="font-display mt-2 text-[clamp(1.95rem,8.5vw,3.1rem)] font-extrabold leading-[0.98] tracking-[-0.03em] break-words md:text-[clamp(2rem,5.4vw,2.7rem)] lg:text-[clamp(2.6rem,4.2vw,4.1rem)]"
             style={{
               background: "linear-gradient(120deg, #E7F4FF 0%, #5CC8FF 42%, #A98BFF 78%, #FFB067 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
             }}
           >
-            {monthLabel}
+            {monthTitle}
           </h2>
 
           <div className="mt-4 flex items-center gap-3">
@@ -293,7 +303,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
 
         {/* Frase-resumo */}
         <motion.div
-          className="order-3 min-w-0 lg:col-start-2 lg:row-start-2"
+          className="order-3 min-w-0 md:col-start-2 md:row-start-2"
           initial={reduced ? undefined : { opacity: 0, y: 18 }}
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
           transition={reduced ? undefined : { delay: 0.16, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
@@ -338,7 +348,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
       </section>
 
       {/* ─── B. Dashboard de conquistas ───────────────────────────── */}
-      <section className="mt-4 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:mt-6 lg:grid-cols-12 lg:gap-3.5">
+      <section className="mt-4 grid grid-cols-1 gap-3 min-[460px]:grid-cols-2 lg:mt-6 lg:grid-cols-12 lg:gap-3.5">
         {/* Foco — painel dominante (~58% da largura) */}
         <RecapPanel accent={ACCENT.focus} delay={0.2} reduced={reduced} className="col-span-full lg:col-span-7">
           <div className="relative flex h-full flex-col justify-between gap-5">
@@ -454,7 +464,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
               )}
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
               <div
                 className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl sm:h-20 sm:w-20"
                 style={{
@@ -470,7 +480,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
               </div>
               <div className="min-w-0">
                 <p
-                  className="font-display truncate text-[clamp(1.35rem,5.5vw,1.8rem)] font-extrabold uppercase leading-none tracking-[-0.02em]"
+                  className="font-display break-words text-[clamp(1.3rem,5.5vw,1.8rem)] font-extrabold uppercase leading-none tracking-[-0.02em]"
                   style={{ color: tierColor }}
                 >
                   {tierMetaData?.label ?? "—"}
@@ -487,11 +497,10 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
                   <TrendingUp size={13} />
                   {startTier.meta.label} → {tierMetaData.label}
                 </p>
-              ) : (
-                <p className="text-[12px] leading-snug text-[var(--text-muted)]">
-                  {leagueCopy(tier, promoted)}
-                </p>
-              )}
+              ) : null}
+              <p className="mt-2 text-[12px] leading-snug text-[var(--text-muted)]">
+                {leagueCopy(tier, promoted)}
+              </p>
             </div>
           </div>
         </RecapPanel>
@@ -499,11 +508,16 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
         {/* Jardim / energias */}
         <RecapPanel accent={ACCENT.garden} delay={0.38} reduced={reduced} className="lg:col-span-4">
           <div className="flex h-full flex-col justify-between gap-4">
-            <MetricLabel accent={ACCENT.garden}>Energias do mês</MetricLabel>
+            <div className="flex items-start justify-between gap-2">
+              <MetricLabel accent={ACCENT.garden}>Energias do ano</MetricLabel>
+              <span className="text-right text-[10px] font-medium leading-tight text-[var(--text-faint)]">
+                {gardenScopeLabel(recap.recapMonth)}
+              </span>
+            </div>
 
             <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
+              <div className="min-w-0 flex-1 pr-2">
+                <div className="flex flex-wrap items-baseline gap-x-2">
                   <AnimatedNumber
                     value={garden}
                     className="font-display text-[clamp(2rem,7.5vw,2.6rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums"
@@ -517,7 +531,7 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
               </div>
               <div
                 aria-hidden="true"
-                className="pointer-events-none w-12 shrink-0 sm:w-14"
+                className="pointer-events-none w-10 shrink-0 sm:w-14"
                 style={{ filter: `drop-shadow(0 0 22px ${ACCENT.garden}66)` }}
               >
                 <RecapArt sources={RECAP_ART.jardim} alt="Arte de energia" size={64} className="h-auto w-full" />
@@ -572,12 +586,12 @@ export function FinalRecapSurface({ recap, userName, userPhotoUrl, monthLabel }:
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
               {details.map((item) => (
-                <div key={item.label} className="min-w-0">
-                  <dt className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-faint)]">
+                <div key={item.label} className="flex min-w-0 flex-col justify-end gap-1">
+                  <dt className="text-[10px] font-medium uppercase leading-tight tracking-[0.06em] text-[var(--text-faint)] sm:tracking-[0.12em]">
                     {item.label}
                   </dt>
                   <dd
-                    className="font-display mt-1 truncate text-[15px] font-semibold"
+                    className="font-display break-words text-[15px] font-semibold"
                     style={{ color: item.accent ?? "var(--text)" }}
                   >
                     {item.value}

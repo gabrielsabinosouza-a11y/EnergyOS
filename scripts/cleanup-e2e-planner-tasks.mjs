@@ -1,6 +1,10 @@
 /**
  * Limpa as tarefas de teste do Planejamento (prefixo "E2E ").
  * Usado pelo teste e2e de agendamento opcional.
+ *
+ * O login e2e do Playwright resolve para o perfil CAFÉ (uid Firebase), então a
+ * limpeza é feita por título em todos os perfis — o prefixo "E2E " é exclusivo
+ * dos testes.
  */
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -32,22 +36,10 @@ if (!url) {
 const pool = new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 const client = await pool.connect();
 
-const profiles = await client.query(`select id from profiles where email = 'e2e.planner@energyos.test'`);
-const profileId = profiles.rows[0]?.id ?? "bf4489eb-03eb-43a2-ac95-2f9d6b3c0ef3";
-
-const plans = await client.query(
-  `select id from weekly_plans where profile_id = $1 and title like 'E2E %'`,
-  [profileId],
-);
-for (const row of plans.rows) {
-  await client.query("delete from weekly_plans where id = $1", [row.id]);
-}
+const plans = await client.query(`delete from weekly_plans where title like 'E2E %' returning id`);
 console.log(`removidos ${plans.rowCount} plano(s) de teste`);
 
-const series = await client.query(
-  `select id from weekly_plan_series where profile_id = $1 and title like 'E2E %'`,
-  [profileId],
-);
+const series = await client.query(`select id from weekly_plan_series where title like 'E2E %'`);
 for (const row of series.rows) {
   await client.query("delete from weekly_plan_occurrences where series_id = $1", [row.id]);
   await client.query("delete from weekly_plan_series where id = $1", [row.id]);

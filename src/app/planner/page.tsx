@@ -171,7 +171,8 @@ export default function PlanningPage() {
           ...unscheduled,
         ];
         updateTasks((existing) => mergePlans(
-          existing.filter((plan) => plan.planDate && (plan.planDate < dataRange.start || plan.planDate > dataRange.end)),
+          // Mantém as tarefas sem data (não têm semana) e o que está fora do período.
+          existing.filter((plan) => !plan.planDate || plan.planDate < dataRange.start || plan.planDate > dataRange.end),
           incoming,
         ));
       })
@@ -449,7 +450,8 @@ export default function PlanningPage() {
         !item.planDate || (item.planDate >= dataRange.start && item.planDate <= dataRange.end)
       );
       updateTasks((current) => mergePlans(
-        current.filter((item) => item.planDate && (item.planDate < dataRange.start || item.planDate > dataRange.end)),
+        // Mantém as tarefas sem data (não têm semana) e o que está fora do período.
+        current.filter((item) => !item.planDate || item.planDate < dataRange.start || item.planDate > dataRange.end),
         incoming,
       ));
       announce("Plano recorrente criado.");

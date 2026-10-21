@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
-import { SHORT_WEEKDAYS, todayIso, weekdayOfIso } from "@/lib/planning/dates";
+import { SHORT_WEEKDAYS, weekdayOfIso } from "@/lib/planning/dates";
 import { formatTimeInput, isValidTime24 } from "@/lib/planning/time";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
@@ -13,8 +13,12 @@ import { PlannerDatePicker } from "./PlannerDatePicker";
 type RepeatScope = "occurrence" | "series";
 type ReminderOption = "sem-lembrete" | "no-horario" | "5-min" | "10-min" | "30-min" | "1-hora";
 type PlanFormValues = {
-  /** `undefined` = sem data (tarefa não agendada). */
-  planDate?: string;
+  /**
+   * Data do plano.
+   * `null` = sem data (tarefa não agendada) / limpar a data.
+   * `undefined` = não mexer na data.
+   */
+  planDate?: string | null;
   title: string;
   categoryId?: number;
   startTime: string | null;
@@ -160,12 +164,12 @@ export function PlanDialog({
       setError("O horário de fim deve ser posterior ao início.");
       return null;
     }
-    if (repeatWeekly && repeatDays.length === 0) {
-      setError("Selecione pelo menos um dia da semana.");
+    if (repeatWeekly && !planDate) {
+      setError("Escolha uma data inicial para a repetição semanal.");
       return null;
     }
-    if (repeatWeekly && !planDate) {
-      setError("Selecione uma data inicial para a repetição semanal.");
+    if (repeatWeekly && repeatDays.length === 0) {
+      setError("Selecione pelo menos um dia da semana.");
       return null;
     }
     if (repeatWeekly && hasRepeatEnd && repeatUntil && planDate && repeatUntil < planDate) {
@@ -173,7 +177,9 @@ export function PlanDialog({
       return null;
     }
     return {
-      planDate: planDate ?? undefined,
+      // null = sem data (tarefa não agendada). O corpo da API trata
+      // "null" como limpar a data e "undefined" como "não mexer".
+      planDate: planDate ?? null,
       title: trimmedTitle,
       categoryId: recurringOccurrence
         ? plan!.categoryId
@@ -305,8 +311,11 @@ export function PlanDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="planner-plan-date" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <label htmlFor="planner-plan-date" className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Data
+              <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">
+                opcional
+              </span>
             </label>
             <div className="relative">
               <PlannerDatePicker
@@ -322,8 +331,11 @@ export function PlanDialog({
 
           <div className={`grid gap-3 ${recurringOccurrence ? "grid-cols-1" : "grid-cols-2"}`}>
             <div className="space-y-1.5">
-              <label htmlFor="planner-plan-start-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <label htmlFor="planner-plan-start-time" className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                 Início
+                <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">
+                  opcional
+                </span>
               </label>
               <input
                 id="planner-plan-start-time"
@@ -340,8 +352,11 @@ export function PlanDialog({
             </div>
             {!recurringOccurrence ? (
               <div className="space-y-1.5">
-                <label htmlFor="planner-plan-end-time" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                <label htmlFor="planner-plan-end-time" className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   Fim
+                  <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">
+                    opcional
+                  </span>
                 </label>
                 <input
                   id="planner-plan-end-time"
@@ -384,6 +399,11 @@ export function PlanDialog({
                     Semanalmente
                   </button>
                 </div>
+                {repeatWeekly && !planDate ? (
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">
+                    A repetição semanal usa a data como ponto de partida. Escolha uma data para escolher os dias da semana.
+                  </p>
+                ) : null}
               </div>
 
               {repeatWeekly ? (

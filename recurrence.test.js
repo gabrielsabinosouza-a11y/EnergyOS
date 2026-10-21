@@ -122,23 +122,23 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
   for (let i = 0; i < 3; i += 1) await prevPeriod(page);
 
   // Conclui UMA ocorrência (a da segunda-feira desta semana)
-  const planRow = page.locator(`[data-testid^="plan-series:"]`).first();
+  const planRow = planRows(page).first();
   await expect(planRow).toBeVisible();
   await planRow.getByRole("button", { name: /^Concluir/ }).click();
   await page.waitForTimeout(1200);
 
-  const rows = page.locator(`[data-testid^="plan-series:"]`);
+  const rows = planRows(page);
   await expect(rows).toHaveCount(1);
   await expect(rows.first().getByRole("button", { name: /^Reabrir/ })).toBeVisible();
 
   // A semana seguinte continua pendente
   await nextPeriod(page);
   await expect(
-    page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /^Concluir/ }),
+    planRows(page).first().getByRole("button", { name: /^Concluir/ }),
   ).toBeVisible();
 
   // "Todos os dias da série" (edição) — o modal pede o escopo ao salvar
-  await page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /Ações para/ }).click();
+  await planRows(page).first().getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Editar")').click();
   await page.waitForTimeout(500);
@@ -157,7 +157,7 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
   await expect(planRows(page).first()).toBeVisible();
 
   // Exclusão com escopo
-  await page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /Ações para/ }).click();
+  await planRows(page).first().getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Excluir")').click();
   await page.waitForTimeout(500);
@@ -174,7 +174,7 @@ test("plano recorrente: criar, repetir toda segunda, concluir uma e editar/exclu
   await expect(planRows(page).first()).toBeVisible();
 
   // "Todos os dias da série" remove tudo
-  await page.locator(`[data-testid^="plan-series:"]`).first().getByRole("button", { name: /Ações para/ }).click();
+  await planRows(page).first().getByRole("button", { name: /Ações para/ }).click();
   await page.waitForTimeout(300);
   await page.locator('[role="menu"] button:has-text("Excluir")').click();
   await page.waitForTimeout(500);
