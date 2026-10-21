@@ -50,11 +50,8 @@ function formatPinExpiry(iso: string): string {
 function differentDays(a: string, b: string): boolean {
   const da = new Date(a);
   const db = new Date(b);
-  return (
-    da.getFullYear() !== db.getFullYear() ||
-    da.getMonth() !== db.getMonth() ||
-    da.getDate() !== db.getDate()
-  );
+  // Use locale-aware date strings for proper timezone comparison
+  return da.toLocaleDateString() !== db.toLocaleDateString();
 }
 
 function sameMessageSequence(a: ChatMessage | null | undefined, b: ChatMessage | null | undefined): boolean {
@@ -118,20 +115,38 @@ function MentionText({
   );
 }
 
-/** Format a date for the divider label, e.g. "8 de setembro" */
+/** Format a date for the divider label in the user's local timezone.
+ *  Displays "Hoje", "Ontem", or "9 de setembro de 2025" for other dates.
+ */
 const MONTH_NAMES_PT = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 function formatDateDivider(iso: string): string {
-  const d = new Date(iso);
+  // Use locale-aware formatting for proper timezone handling
+  const msgDate = new Date(iso);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
 
-  if (d.toDateString() === today.toDateString()) return "Hoje";
-  if (d.toDateString() === yesterday.toDateString()) return "Ontem";
-  return `${d.getDate()} de ${MONTH_NAMES_PT[d.getMonth()]}`;
+  // Compare only the date part (year, month, day) in local timezone
+  const msgLocalDate = msgDate.toLocaleDateString('pt-BR');
+  const todayLocalDate = today.toLocaleDateString('pt-BR');
+  const yesterdayLocalDate = yesterday.toLocaleDateString('pt-BR');
+
+  if (msgLocalDate === todayLocalDate) return "Hoje";
+  if (msgLocalDate === yesterdayLocalDate) return "Ontem";
+  
+  // Include year for dates other than today/yesterday
+  const day = msgDate.getDate();
+  const month = MONTH_NAMES_PT[msgDate.getMonth()];
+  const year = msgDate.getFullYear();
+  
+  // If the year is the current year, don't show it
+  if (year === today.getFullYear()) {
+    return `${day} de ${month}`;
+  }
+  return `${day} de ${month} de ${year}`;
 }
 
 /* ─── UserAvatar (inline) ─────────────────────────────────────────── */
@@ -385,9 +400,9 @@ function ReplyPreview({
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-[var(--bg)]/80 to-transparent py-3">
+    <div className="sticky top-0 z-40 flex items-center gap-3 bg-[var(--bg)]/95 py-3 px-4">
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-      <span className="shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-lg">
+      <span className="shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-sm">
         {label}
       </span>
       <div className="h-px flex-1 bg-[var(--border-subtle)]" />
@@ -482,10 +497,10 @@ function MessageBubble({
   return (
     <motion.div
       initial={reduced || !animateEntrance ? false : isMe
-        ? { opacity: 0, y: 12, scale: 0.6, rotateX: 10 }
-        : { opacity: 0, x: -12, scale: 0.96 }}
+        ? { opacity: 0, y: 8, rotateX: 8, scale: 0.9 }
+        : { opacity: 0, x: -12, y: 8, rotateX: 8, scale: 0.95 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1, rotateX: 0 }}
-      transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
     >
       {showAvatar && !isMe && (
@@ -620,7 +635,7 @@ function MessageBubble({
         </div>
 
         {reactions.length > 0 && (
-          <div className={`flex flex-wrap gap-1 ${isMe ? "justify-end" : ""}`}>
+          <div className={`flex flex-wrap gap-1 justify-end ${isMe ? "" : ""}`}>
             {reactions.map((reaction) => (
               <button
                 type="button"
@@ -641,15 +656,15 @@ function MessageBubble({
 
         {/* Timestamp + status */}
         <div
-          className={`mt-0.5 flex items-center gap-1 ${
-            isMe ? "flex-row-reverse" : ""
+          className={`mt-1 flex items-center gap-1 text-xs ${
+            isMe ? "justify-end" : "justify-start"
           }`}
         >
-          <p className={`text-xs ${isMe ? "text-black/75" : "text-[var(--text-muted)]"}`}>
+          <p className={`${isMe ? "text-black/75" : "text-[var(--text-muted)]"}`}>
             {formatClock(msg.createdAt)}
             {msg.editedAt && Math.abs(new Date(msg.editedAt).getTime() - new Date(msg.createdAt).getTime()) > 1000 && " (editada)"}
           </p>
-          {msg.pending && <span className="text-[9px] italic text-[var(--text-faint)]">enviando…</span>}
+          {msg.pending && <span className="italic text-[var(--text-faint)]">enviando…</span>}
           {isMe && !msg.pending && <CheckMark read={read} />}
         </div>
       </div>
@@ -1143,7 +1158,7 @@ export function ChatThread({
         onScroll={handleScroll}
         className="h-full scroll-pt-4 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
       >
-        <div ref={contentRef} className="space-y-3">
+        <div ref={contentRef} className="flex flex-col gap-3">
         {messages.length === 0 && (
           <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
             Nenhuma mensagem ainda
@@ -1269,7 +1284,7 @@ export function ChatThread({
               exit={{ opacity: 0, scale: 0.8 }}
               onClick={() => scrollToBottom(true)}
               aria-label="Ir para as mensagens mais recentes"
-              className="absolute bottom-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text)] shadow-lg transition hover:brightness-125"
+              className="absolute bottom-3 right-3 z-25 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text)] shadow-lg transition hover:brightness-125"
             >
               <ArrowDown size={16} />
             </motion.button>

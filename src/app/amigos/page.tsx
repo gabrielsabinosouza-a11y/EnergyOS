@@ -606,9 +606,16 @@ function ChatPanel({
   const applyServerMessages = useCallback((msgs: DirectMessage[]) => {
     const serverIds = new Set(msgs.map((m) => m.id));
     const stillPending = pendingRef.current.filter((p) => !serverIds.has(p.id));
-    const merged = [...msgs, ...stillPending];
+    // Merge and sort by timestamp ascending (oldest first) to ensure
+    // optimistic messages are placed in the correct chronological position
+    const merged = [...msgs, ...stillPending].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
     setMessages(merged);
-    if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
+    // Update lastIdRef to the newest server message (highest ID in merged array)
+    if (msgs.length > 0) {
+      lastIdRef.current = merged[merged.length - 1].id;
+    }
     return merged;
   }, []);
 
@@ -616,9 +623,13 @@ function ChatPanel({
     pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
     setMessages((prev) => {
       const hasTemp = prev.some((m) => m.id === tempId);
-      return hasTemp
+      const updated = hasTemp
         ? prev.map((m) => (m.id === tempId ? message : m))
         : [...prev, message];
+      // Sort by timestamp ascending to ensure correct order after confirmation
+      return updated.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
     });
   }, []);
 
@@ -695,7 +706,13 @@ function ChatPanel({
   /* Optimistic helper: append a temp message immediately, return its id. */
   const addOptimisticMessage = useCallback((message: DirectMessage) => {
     pendingRef.current = [...pendingRef.current, message];
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      const withNew = [...prev, message];
+      // Sort by timestamp ascending to ensure correct position
+      return withNew.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
   }, []);
 
   async function handleSend(body: string) {
@@ -770,7 +787,12 @@ function ChatPanel({
 
   async function handleEditMessage(messageId: number, newBody: string) {
     const { message } = await api.editDmMessage(messageId, newBody);
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
+    setMessages((prev) => {
+      const updated = prev.map((m) => (m.id === messageId ? message : m));
+      return updated.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
   }
 
   async function handleDeleteMessage(messageId: number) {
@@ -780,7 +802,12 @@ function ChatPanel({
 
   async function handleReactMessage(messageId: number, emoji: string) {
     const { message } = await api.reactToDmMessage(messageId, emoji);
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? message : m)));
+    setMessages((prev) => {
+      const updated = prev.map((m) => (m.id === messageId ? message : m));
+      return updated.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
   }
 
   async function handleTogglePin(messageId: number) {
