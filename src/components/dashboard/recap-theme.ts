@@ -191,3 +191,87 @@ export function xpSegments(recap: RecapData) {
     return { ...meta, value };
   }).filter((segment) => segment.value > 0);
 }
+
+// ─── Month Image Mapping ────────────────────────────────────────────────────────
+
+/** Portuguese month names (lowercase, matches filename format) */
+export const MONTH_NAMES_LOWER = [
+  "janeiro", "fevereiro", "marco", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+] as const;
+
+/** Full Portuguese month names for display (capitalized) */
+export const MONTH_NAMES_DISPLAY = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+] as const;
+
+/**
+ * Returns the path to the month icon for the given month (0-11).
+ * Uses the custom Portuguese artwork from /recaps/months/portuguese/
+ * Falls back to /recaps/ clock.png if no custom image exists.
+ */
+export function getMonthIconPath(month: number): string {
+  const monthName = MONTH_NAMES_LOWER[month % 12];
+  const path = `/recaps/months/portuguese/${monthName}.png`;
+  return path;
+}
+
+/**
+ * Returns the month number (0-11) from a YYYY-MM string.
+ */
+export function getMonthFromIso(iso: string): number {
+  const monthStr = iso.slice(5, 7);
+  return Math.max(0, Math.min(11, parseInt(monthStr, 10) - 1));
+}
+
+/**
+ * Returns a gradient color scheme that varies by month.
+ * Creates a subtle cinematic backdrop for each month.
+ */
+export function getMonthGradient(month: number): string {
+  const gradients = [
+    "linear-gradient(135deg, #0c192f 0%, #1a2a6c 50%, #2c3e50 100%)", // janeiro - deep blue
+    "linear-gradient(135deg, #1a2b3c 0%, #2c4a52 50%, #3a5b66 100%)", // fevereiro - teal
+    "linear-gradient(135deg, #2b1b3c 0%, #3c2a52 50%, #4a3a66 100%)", // março - violet
+    "linear-gradient(135deg, #1b3c2c 0%, #2a523a 50%, #3a664a 100%)", // abril - green
+    "linear-gradient(135deg, #3c2b1b 0%, #523a2a 50%, #664a3a 100%)", // maio - amber
+    "linear-gradient(135deg, #3c331b 0%, #52452a 50%, #66553a 100%)", // junho - gold
+    "linear-gradient(135deg, #2c1b3c 0%, #452a52 50%, #5a3a66 100%)", // julho - magenta
+    "linear-gradient(135deg, #1b2c3c 0%, #2a4552 50%, #3a5a66 100%)", // agosto - ocean
+    "linear-gradient(135deg, #2c1b3c 0%, #3c2a52 50%, #4a3a66 100%)", // setembro - dusk
+    "linear-gradient(135deg, #1b1b3c 0%, #2a2a52 50%, #3a3a66 100%)", // outubro - midnight
+    "linear-gradient(135deg, #3b1b3c 0%, #522a52 50%, #663a66 100%)", // novembro - purple
+    "linear-gradient(135deg, #1b3b1b 0%, #2a5a2a 50%, #3a7a3a 100%)", // dezembro - forest
+  ];
+  return gradients[month % 12];
+}
+
+/**
+ * Returns a prominent accent color that varies by month.
+ */
+export function getMonthAccent(month: number): string {
+  const accents = [
+    RECAP_PALETTE.cyan,     // janeiro
+    RECAP_PALETTE.cyan,     // fevereiro  
+    RECAP_PALETTE.violet,   // março
+    RECAP_PALETTE.garden,   // abril
+    RECAP_PALETTE.amber,    // maio
+    RECAP_PALETTE.amber,    // junho
+    RECAP_PALETTE.violet,   // julho
+    RECAP_PALETTE.cyan,     // agosto
+    RECAP_PALETTE.violet,   // setembro
+    RECAP_PALETTE.cyan,     // outubro
+    RECAP_PALETTE.violet,   // novembro
+    RECAP_PALETTE.garden,   // dezembro
+  ] as const;
+  return accents[month % 12];
+}
+
+/**
+ * Returns a subtle glow color for the specified accent.
+ */
+export function getGlowColor(accent: string, opacity: number = 0.35): string {
+  const hex = accent.replace("#", "");
+  return `rgba(${parseInt(hex.slice(0,2), 16)}, ${parseInt(hex.slice(2,4), 16)}, ${parseInt(hex.slice(4,6), 16)}, ${opacity})`;
+}

@@ -400,12 +400,12 @@ function ReplyPreview({
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="sticky top-0 z-40 flex items-center gap-3 bg-[var(--bg)]/95 py-3 px-4">
-      <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-      <span className="shrink-0 rounded-full border border-white/10 bg-[var(--bg)]/90 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] shadow-sm backdrop-blur-sm">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+    <div className="my-6 flex items-center justify-center px-4">
+      <div className="flex items-center gap-3 rounded-full bg-[var(--bg-surface)]/60 px-4 py-1.5 text-xs font-medium text-[var(--text-muted)] shadow-sm backdrop-blur-sm">
+        <div className="h-px w-8 bg-[var(--border-subtle)]" />
+        <span>{label}</span>
+        <div className="h-px w-8 bg-[var(--border-subtle)]" />
+      </div>
     </div>
   );
 }
@@ -437,6 +437,26 @@ function NewMessagesPill({ count, onClick }: { count: number; onClick: () => voi
 /* ─── Message bubble ───────────────────────────────────────────────── */
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
+
+/** Helper to determine bubble shape based on position in message group */
+function getBubbleClasses(isMe: boolean, groupPosition: string): string {
+  if (isMe) {
+    const radii = {
+      single: "rounded-2xl",
+      first: "rounded-2xl rounded-r-md",
+      middle: "rounded-l-md rounded-r-md",
+      last: "rounded-tr-md rounded-br-md",
+    };
+    return `bg-[var(--accent)] ${radii[groupPosition as keyof typeof radii] || radii.single}`;
+  }
+  const radii = {
+    single: "rounded-2xl",
+    first: "rounded-2xl rounded-l-md",
+    middle: "rounded-l-md rounded-r-md",
+    last: "rounded-tl-md rounded-bl-md",
+  };
+  return `glass-card ${radii[groupPosition as keyof typeof radii] || radii.single}`;
+}
 
 function MessageBubble({
   msg,
@@ -494,6 +514,10 @@ function MessageBubble({
     if (longPressRef.current) clearTimeout(longPressRef.current);
   }, []);
 
+  // Determine alignment based on whether it's my message
+  const alignItems = isMe ? "end" : "start";
+  const justifyContent = isMe ? "flex-end" : "flex-start";
+
   return (
     <motion.div
       initial={reduced || !animateEntrance ? false : isMe
@@ -501,132 +525,123 @@ function MessageBubble({
         : { opacity: 0, x: -12, y: 8, rotateX: 8, scale: 0.95 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1, rotateX: 0 }}
       transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className={`flex gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+      className="flex items-end gap-3"
     >
+      {/* Avatar (only for incoming messages when showAvatar is true) */}
       {showAvatar && !isMe && (
-        <div className="flex shrink-0 items-end pb-[18px]">
+        <div className="flex shrink-0 items-end">
           <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} />
         </div>
       )}
-      <div
-        className={`max-w-[75%] ${showAvatar && !isMe ? "" : isMe ? "ml-[42px]" : "mr-[42px]"} ${
-          isMe ? "items-end" : "items-start"
-        } flex flex-col`}
-      >
+
+      {/* Message content container */}
+      <div className="flex flex-col items-start max-w-full flex-1">
+        {/* Sender name (only for first in group) */}
         {showSenderName && !isMe && (
           <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">
             {msg.senderName}
           </p>
         )}
 
-        {/* Bubble — wrapped in a shrink-to-fit relative container so the ⋯
-            trigger anchors to the bubble's own edge (never the row edge). */}
+        {/* Text content container */}
         <div className="relative">
+          {/* Bubble */}
           <div
             onContextMenu={handleContextMenu}
-            className={`chat-message-bubble group relative cursor-pointer overflow-hidden transition ${
-              isMe
-                ? `rounded-2xl bg-[var(--accent)] ${groupPosition === "middle" ? "rounded-r-md" : groupPosition === "last" ? "rounded-tr-md" : "rounded-br-md"}`
-                : `glass-card rounded-2xl ${groupPosition === "middle" ? "rounded-l-md" : groupPosition === "last" ? "rounded-tl-md" : "rounded-bl-md"}`
-            }`}
+            className={`chat-message-bubble relative cursor-pointer overflow-hidden transition ${getBubbleClasses(isMe, groupPosition)}`}
             onTouchStart={startLongPress}
             onTouchEnd={cancelLongPress}
             onTouchMove={cancelLongPress}
           >
-          {/* Compact reply quote (WhatsApp style, contained inside this bubble) */}
-          {msg.replyToBody && (
-            <button
-              type="button"
-              onClick={() => msg.replyToId && onQuoteClick(msg.replyToId)}
-              className={`mx-2 mt-2 flex max-w-[88%] items-center gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left transition ${
-                isMe
-                  ? "border-white/50 bg-black/10 hover:bg-black/20"
-                  : "border-[var(--accent)]/60 bg-[var(--accent-bg)] hover:bg-[var(--accent-bg)]/70"
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`truncate text-[11px] font-semibold ${
-                    isMe ? "text-black/70" : "text-[var(--accent)]"
-                  }`}
-                >
-                  {msg.replyToSenderName ?? "mensagem"}
-                </p>
-                <p
-                  className={`truncate text-[11px] ${
-                    isMe ? "text-black/60" : "text-[var(--text-muted)]"
-                  }`}
-                >
-                  {msg.replyToBody}
-                </p>
+            {/* Compact reply quote */}
+            {msg.replyToBody && (
+              <button
+                type="button"
+                onClick={() => msg.replyToId && onQuoteClick(msg.replyToId)}
+                className={`mx-2 mt-2 flex max-w-[88%] items-center gap-1.5 rounded-md border-l-[3px] px-2 py-1 text-left transition ${
+                  isMe
+                    ? "border-white/50 bg-black/10 hover:bg-black/20"
+                    : "border-[var(--accent)]/60 bg-[var(--accent-bg)] hover:bg-[var(--accent-bg)]/70"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-[11px] font-semibold ${
+                      isMe ? "text-black/70" : "text-[var(--accent)]"
+                    }`}
+                  >
+                    {msg.replyToSenderName ?? "mensagem"}
+                  </p>
+                  <p
+                    className={`truncate text-[11px] ${
+                      isMe ? "text-black/60" : "text-[var(--text-muted)]"
+                    }`}
+                  >
+                    {msg.replyToBody}
+                  </p>
+                </div>
+              </button>
+            )}
+
+            {/* Media content */}
+            {msg.messageType === "IMAGE" && msg.mediaUrl && (
+              <button type="button" onClick={() => setLightboxOpen(true)} className="block">
+                <img
+                  src={msg.mediaUrl}
+                  alt="imagem"
+                  className="max-h-72 w-full object-cover"
+                />
+              </button>
+            )}
+            {msg.messageType === "VIDEO" && msg.mediaUrl && (
+              <video
+                src={msg.mediaUrl}
+                controls
+                className="max-h-72 w-full object-cover"
+              />
+            )}
+            {msg.messageType === "AUDIO" && msg.mediaUrl && (
+              <AudioMessagePlayer message={msg} />
+            )}
+            {msg.messageType === "DOCUMENT" && msg.mediaUrl && (
+              <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 px-3 py-3 text-sm ${isMe ? "text-black" : "text-[var(--text)]"}`}>
+                <span className="rounded bg-black/10 px-2 py-1 text-xs">DOC</span>
+                <span className="max-w-56 truncate">{msg.mediaFileName ?? "Documento"}</span>
+              </a>
+            )}
+            {lightboxOpen && msg.mediaUrl && (
+              <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-6" onClick={() => setLightboxOpen(false)}>
+                <img src={msg.mediaUrl} alt="imagem ampliada" className="max-h-full max-w-full object-contain" />
               </div>
-            </button>
-          )}
+            )}
+            {msg.messageType === "STICKER" && (
+              <div className="px-3 py-2 text-5xl leading-none">
+                {msg.body || msg.mediaUrl}
+              </div>
+            )}
 
-          {/* Media content */}
-          {msg.messageType === "IMAGE" && msg.mediaUrl && (
-            <button type="button" onClick={() => setLightboxOpen(true)} className="block">
-            <img
-              src={msg.mediaUrl}
-              alt="imagem"
-              className="max-h-72 w-full object-cover"
-            />
-            </button>
-          )}
-          {msg.messageType === "VIDEO" && msg.mediaUrl && (
-            <video
-              src={msg.mediaUrl}
-              controls
-              className="max-h-72 w-full object-cover"
-            />
-          )}
-          {msg.messageType === "AUDIO" && msg.mediaUrl && (
-            <AudioMessagePlayer message={msg} />
-          )}
-          {msg.messageType === "DOCUMENT" && msg.mediaUrl && (
-            <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 px-3 py-3 text-sm ${isMe ? "text-black" : "text-[var(--text)]"}`}>
-              <span className="rounded bg-black/10 px-2 py-1 text-xs">DOC</span>
-              <span className="max-w-56 truncate">{msg.mediaFileName ?? "Documento"}</span>
-            </a>
-          )}
-          {lightboxOpen && msg.mediaUrl && (
-            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-6" onClick={() => setLightboxOpen(false)}>
-              <img src={msg.mediaUrl} alt="imagem ampliada" className="max-h-full max-w-full object-contain" />
-            </div>
-          )}
-          {msg.messageType === "STICKER" && (
-            <div className="px-3 py-2 text-5xl leading-none">
-              {msg.body || msg.mediaUrl}
-            </div>
-          )}
-
-          {/* Text body */}
-          {(msg.body && msg.messageType !== "STICKER") ||
-          !msg.messageType ||
-          msg.messageType === "TEXT" ? (
-            <div
-              className={`px-4 py-2.5 text-sm leading-relaxed ${
-                isMe ? "text-black" : "text-[var(--text)]"
-              }`}
-            >
-              {mentionMembers?.length
-                ? <MentionText text={msg.body ?? ""} members={mentionMembers} isMe={isMe} />
-                : msg.body}
-            </div>
-          ) : null}
+            {/* Text body */}
+            {(msg.body && msg.messageType !== "STICKER") ||
+            !msg.messageType ||
+            msg.messageType === "TEXT" ? (
+              <div
+                className={`px-4 py-2.5 text-sm leading-relaxed ${(isMe ? "text-black" : "text-[var(--text)]")}`}
+              >
+                {mentionMembers?.length
+                  ? <MentionText text={msg.body ?? ""} members={mentionMembers} isMe={isMe} />
+                  : msg.body}
+              </div>
+            ) : null}
           </div>
 
-          {/* Floating action trigger: anchored to THIS bubble's outer edge —
-              left of own (right-aligned) bubbles, right of others' bubbles —
-              shown on hover of the row (desktop). Rendered as a sibling of
-              the bubble (not inside it) so overflow-hidden can't clip it. */}
+          {/* Action trigger button - positioned outside the bubble */}
           {showActionTrigger && (
             <button
               type="button"
               onClick={onActionTrigger}
               aria-label="Ações da mensagem"
               className={`absolute top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/10 text-current backdrop-blur-sm transition hover:bg-black/20 sm:flex ${
-                isMe ? "right-full mr-1" : "left-full ml-1"
+                isMe ? "right-0 mr-1" : "left-0 -ml-1"
               }`}
             >
               <span className="text-[10px]">⋯</span>
@@ -634,8 +649,9 @@ function MessageBubble({
           )}
         </div>
 
+        {/* Reactions */}
         {reactions.length > 0 && (
-          <div className={`flex flex-wrap gap-1 justify-end ${isMe ? "" : ""}`}>
+          <div className="flex flex-wrap gap-1 justify-end">
             {reactions.map((reaction) => (
               <button
                 type="button"
@@ -654,7 +670,7 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Timestamp + status */}
+        {/* Timestamp and status */}
         <div
           className={`mt-1 flex items-center gap-1 text-xs ${
             isMe ? "justify-end" : "justify-start"
@@ -1158,14 +1174,14 @@ export function ChatThread({
         onScroll={handleScroll}
         className="h-full scroll-pt-4 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
       >
-        <div ref={contentRef} className="flex flex-col gap-3">
+        <div ref={contentRef} className="flex flex-col">
         {messages.length === 0 && (
           <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
             Nenhuma mensagem ainda
           </p>
         )}
 
-        {messagesWithDividers.map((item) => {
+        {messagesWithDividers.map((item, index) => {
           if (item.type === "divider") {
             return <DateDivider key={item.key} label={item.label} />;
           }
@@ -1178,6 +1194,10 @@ export function ChatThread({
           const hasPrevious = sameMessageSequence(prevMsg, msg);
           const hasNext = sameMessageSequence(msg, item.nextMsg);
           const groupPosition = !hasPrevious && !hasNext ? "single" : !hasPrevious ? "first" : hasNext ? "middle" : "last";
+
+          // Calculate gap before this message (for visual separation)
+          const showGap = index > 0 && item.type === "message" && !sameMessageSequence(prevMsg, msg);
+          const isFromDifferentSender = prevMsg && prevMsg.senderId !== msg.senderId;
 
           // If we're editing this message inline
           if (editingId === msg.id) {
@@ -1237,7 +1257,7 @@ export function ChatThread({
               ref={(node) => { messageRefs.current[msg.id] = node; }}
               onMouseEnter={() => setHoveredId(msg.id)}
               onMouseLeave={() => setHoveredId(null)}
-              className="group/message relative"
+              className={`group/message relative ${showGap && isFromDifferentSender ? "mt-3" : "mt-2"}`}
             >
             <MessageBubble
               msg={msg}
@@ -1264,7 +1284,7 @@ export function ChatThread({
             />
             </div>
           );
-})}
+        })}
       </div>
       </div>
 

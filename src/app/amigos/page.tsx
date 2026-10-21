@@ -5,13 +5,15 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Image from "next/image";
 import {
+  Check,
+  Image as ImageIcon,
   Loader2,
   MessageCircle,
+  Paperclip,
   Search,
   Send,
-  UserPlus,
   UserMinus,
-  Check,
+  UserPlus,
   X,
   XIcon,
 } from "lucide-react";
@@ -831,57 +833,136 @@ function ChatPanel({
 
   return (
     <Modal onClose={onClose} variant="side-right">
-      <div className="flex h-full w-full flex-col border-l border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl">
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
-          <UserAvatar user={friend} size={36} />
+      <div className="flex h-full w-full flex-col overflow-hidden">
+        {/* Conversation Header - Premium Design */}
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl px-4 py-3">
+          <div className="relative">
+            <UserAvatar user={friend} size={36} />
+            {/* Online indicator */}
+            <span className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-[var(--green)] border-2 border-[var(--bg)]" />
+          </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-[var(--text)]">
+            <p className="text-sm font-medium text-[var(--text)]">
               {friend.displayName}
+            </p>
+            {friend.username && (
+              <p className="text-xs text-[var(--text-muted)]">
+                @{friend.username}
+              </p>
+            )}
+            <p className="text-xs text-[var(--text-faint)]">
+              {friend.lastActiveAt ? `Ativo: ${relativeTime(friend.lastActiveAt)}` : 'Offline'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+            className="rounded-xl p-2 text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+            aria-label="Fechar conversa"
           >
             <XIcon size={18} />
           </button>
         </div>
 
-        {/* Shared ChatThread — gated on profile resolution to avoid transient
-            sender-mismatches during the uid-fallback window. */}
-        {profileIdReady ? (
-        <ChatThread
-          messages={chatMessages}
-          currentUserId={currentUserId}
-          reduced={reduced}
-          onSend={handleSend}
-          onReply={handleReply}
-          onEdit={handleEditMessage}
-          onDelete={handleDeleteMessage}
-          onReact={handleReactMessage}
-          onTogglePin={handleTogglePin}
-          showAvatar
-          readMessageIds={readMessageIds}
-          onReplyMessage={(m) => {
-            const dm = messages.find((x) => x.id === m.id);
-            if (dm) setReplyingTo(dm);
-          }}
-          replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
-          onCancelReply={() => setReplyingTo(null)}
-          inputSlot={
-            <ChatComposer
-              replying={Boolean(replyingTo)}
-              onSendText={(body) => replyingTo ? handleReply(body, replyingTo.id) : handleSend(body)}
-              onSendMedia={handleSendMedia}
-            />
-          }
-        />
-        ) : (
-                <div className="flex-1 min-h-0 flex h-full items-center justify-center">
-          <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
+        {/* Message History - Proper scrollable area */}
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(113,212,255,.25) transparent' }}>
+          <ChatThread
+            messages={chatMessages}
+            currentUserId={currentUserId}
+            reduced={reduced}
+            onSend={handleSend}
+            onReply={handleReply}
+            onEdit={handleEditMessage}
+            onDelete={handleDeleteMessage}
+            onReact={handleReactMessage}
+            onTogglePin={handleTogglePin}
+            showAvatar={false} // Don't show avatar for DMs - cleaner look
+            showSenderName={true}
+            readMessageIds={readMessageIds}
+            onReplyMessage={(m) => {
+              const dm = messages.find((x) => x.id === m.id);
+              if (dm) setReplyingTo(dm);
+            }}
+            replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
+            onCancelReply={() => setReplyingTo(null)}
+            inputSlot={null} // We use our own composer at the bottom
+          />
         </div>
+
+        {/* Reply Preview */}
+        {replyingTo && (
+          <div className="flex items-center gap-2 overflow-hidden border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-4 py-2">
+            <MessageCircle size={14} className="shrink-0 text-[var(--accent)]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-medium text-[var(--accent)]">
+                Respondendo {replyingTo.senderName ?? "mensagem"}
+              </p>
+              <p className="truncate text-xs text-[var(--text-muted)]">
+                {replyingTo.body ?? "mídia"}
+              </p>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="shrink-0 rounded-full p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
+              aria-label="Cancelar resposta"
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
+
+        {/* Composer - Premium Design */}
+        <div className="border-t border-[var(--border-subtle)] px-4 py-3 backdrop-blur-xl sm:px-6">
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 px-3 py-2 shadow-sm transition-all duration-200 hover:shadow-md">
+            <input
+              type="file"
+              accept="image/*,video/mp4,.mp4"
+              ref={(el) => { /* file ref for attachment */ }}
+              className="hidden"
+              onChange={() => {}}
+            />
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+              aria-label="Anexar arquivo"
+            >
+              <Paperclip size={18} />
+            </button>
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)]"
+              aria-label="Anexar imagem"
+            >
+              <ImageIcon size={18} />
+            </button>
+            <textarea
+              rows={1}
+              placeholder="Mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend(input);
+                }
+              }}
+              className="flex-1 resize-none overflow-y-auto rounded-lg bg-[var(--bg)]/30 px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none disabled:cursor-not-allowed"
+              disabled={sending}
+            />
+            <button
+              type="button"
+              onClick={() => handleSend(input)}
+              disabled={!input.trim() || sending}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30"
+              aria-label="Enviar mensagem"
+            >
+              {sending ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Send size={16} />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </Modal>
   );

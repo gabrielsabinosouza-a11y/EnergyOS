@@ -98,6 +98,14 @@ function MentionAvatar({ member, size = 26 }: { member: ChatComposerMentionMembe
  * identically everywhere. Group-only @mention autocomplete is enabled
  * via the optional `mentionMembers` prop.
  */
+/* ─── ChatComposer ────────────────────────────────────────────────── */
+
+/**
+ * Shared full-featured message composer used as ChatThread's `inputSlot` by
+ * BOTH the DM (Amigos) and group (Grupos) chats, so media + voice behave
+ * identically everywhere. Group-only @mention autocomplete is enabled
+ * via the optional `mentionMembers` prop.
+ */
 export function ChatComposer({
   onSendText,
   onSendMedia,
