@@ -32,8 +32,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       dueDate: body.dueDate as string | null | undefined,
       priority: body.priority as "low" | "medium" | "high" | undefined,
       assigneeId: body.assigneeId as string | null | undefined,
-      imageUrl: body.imageUrl as string | null | undefined,
-      imagePath: body.imagePath as string | null | undefined,
+      imageUrl: body.imageUrl !== null ? body.imageUrl as string | undefined : undefined,
+      imagePath: body.imagePath !== null ? body.imagePath as string | undefined : undefined,
     });
     
     const { xpAwarded, coinsAwarded } =

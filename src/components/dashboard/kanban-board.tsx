@@ -623,8 +623,8 @@ function TaskDetailModal({ task, labels, categories, onClose, onSave, onDelete, 
           labels: editedTask.labels,
           dueDate: editedTask.dueDate || undefined,
           priority: editedTask.priority,
-          imageUrl: editedTask.imageUrl || null,
-          imagePath: editedTask.imagePath || null,
+          imageUrl: editedTask.imageUrl || undefined,
+          imagePath: editedTask.imagePath || undefined,
         });
         onClose();
       } finally {

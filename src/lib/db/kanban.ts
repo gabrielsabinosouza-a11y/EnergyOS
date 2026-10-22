@@ -168,8 +168,8 @@ export interface UpdateKanbanPatch {
   dueDate?: string | null;
   priority?: KanbanPriority;
   assigneeId?: string | null;
-  imageUrl?: string | null;
-  imagePath?: string | null;
+  imageUrl?: string;
+  imagePath?: string;
 }
 
 export async function updateKanbanTask(profileId: string, taskId: number, patch: UpdateKanbanPatch): Promise<KanbanTask> {
@@ -179,7 +179,10 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
     if (patch.imageUrl === undefined || patch.imagePath === undefined) {
       throw new ValidationError("A URL e o caminho da imagem devem ser atualizados juntos.");
     }
-    validateReferenceImage(patch.imageUrl, patch.imagePath);
+    // Allow clearing image by passing empty strings
+    if (patch.imageUrl || patch.imagePath) {
+      validateReferenceImage(patch.imageUrl, patch.imagePath);
+    }
   }
 
   const statusUpdate = patch.status !== undefined
