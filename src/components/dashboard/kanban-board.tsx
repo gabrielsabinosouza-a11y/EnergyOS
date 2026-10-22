@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DndContext,
@@ -28,11 +28,14 @@ import {
   Edit2,
   Clock,
   ChevronDown,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
+import { MAX_IMAGE_SIZE, ALLOWED_IMAGE_TYPES, type ImageUploadResult } from "@/lib/kanban-image-upload";
+import Image from "next/image";
 
 const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
   { status: "todo", label: "A Fazer", color: "#71d4ff" },
@@ -141,6 +144,24 @@ function SortableCard({
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {task.imageUrl && (
+            <div className="flex items-center gap-1">
+              <div className="relative">
+                <Image
+                  src={task.imageUrl}
+                  alt="Referência"
+                  width={16}
+                  height={16}
+                  className="rounded-sm object-cover"
+                  unoptimized
+                />
+                <ImageIcon
+                  size={12}
+                  className="absolute -bottom-1 -right-1 rounded-full bg-[var(--accent)] text-white"
+                />
+              </div>
+            </div>
+          )}
           {taskLabelObjects.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {taskLabelObjects.slice(0, 2).map((label) => (
@@ -352,12 +373,91 @@ function TaskDetailModal({ task, labels, categories, onClose, onSave, onDelete, 
     labels: [...task.labels],
     dueDate: task.dueDate || "",
     priority: task.priority,
+    imageUrl: task.imageUrl || "",
   });
   const [saving, setSaving] = useState(false);
   const [showLabelSelector, setShowLabelSelector] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(task.imageUrl || null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setUploadError("Formato de imagem não suportado. Use PNG, JPG ou WebP.");
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_IMAGE_SIZE) {
+      setUploadError("A imagem é muito grande. Máximo de 5MB.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadError(null);
+
+    try {
+      // Create preview immediately
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+
+      // Upload to Cloudinary
+      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+      if (!cloudName || !uploadPreset) {
+        throw new Error("Cloudinary não está configurado");
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || "Falha no upload");
+      }
+
+      const data = await res.json();
+      setEditedTask((prev) => ({ ...prev, imageUrl: data.secure_url }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido";
+      setUploadError(message);
+      setImagePreview(null);
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    if (imagePreview && !imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setEditedTask((prev) => ({ ...prev, imageUrl: "" }));
+    setImagePreview(null);
+  };
+
+  const handleViewImage = () => {
+    if (editedTask.imageUrl) {
+      window.open(editedTask.imageUrl, '_blank');
+    }
+  };
 
   const toggleLabel = useCallback((labelName: string) => {
     setEditedTask((prev) => ({
@@ -395,6 +495,8 @@ await onSave({
           labels: editedTask.labels,
           dueDate: editedTask.dueDate || undefined,
           priority: editedTask.priority,
+          // Map image fields - stored as imageUrl in the type
+          imageUrl: editedTask.imageUrl || undefined,
         });
         onClose();
       } finally {
@@ -604,6 +706,83 @@ await onSave({
               className="bg-transparent text-sm text-[var(--text)] border-none outline-none"
             />
           </div>
+
+          {/* Image Upload Section */}
+          <div>
+            <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
+              Imagem de Referência
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={handleImageUpload}
+                ref={fileInputRef}
+                className="hidden"
+                disabled={uploadingImage}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-2.5 py-1.5 text-xs text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+              >
+                {uploadingImage ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ImageIcon size={12} />
+                )}
+                {editedTask.imageUrl || "Adicionar"}
+              </button>
+              {editedTask.imageUrl && (
+                <button
+                  type="button"
+                  onClick={handleViewImage}
+                  className="text-xs text-[var(--accent)] hover:underline"
+                >
+                  Ver imagem
+                </button>
+              )}
+            </div>
+            {imagePreview && (
+              <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-2">
+                <div className="relative aspect-video max-w-full overflow-hidden rounded-md">
+                  <Image
+                    src={imagePreview}
+                    alt="Preview da imagem"
+                    fill
+                    sizes="(max-width: 768px) 100%, 400px"
+                    className="object-contain"
+                    unoptimized={imagePreview.startsWith('blob:') || !imagePreview}
+                  />
+                </div>
+                <div className="mt-1.5 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
+                  >
+                    Remover
+                  </button>
+                  {imagePreview.startsWith('http') && (
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(imagePreview)}
+                      className="text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
+                    >
+                      Copiar link
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {uploadError && (
+              <p className="mt-1 text-xs text-red-400">{uploadError}</p>
+            )}
+            <p className="mt-1 text-xs text-[var(--text-faint)]">
+              JPEG, PNG ou WebP • Até 5MB
+            </p>
+          </div>
         </div>
 
         <div className="mt-6 flex gap-2 justify-end">
@@ -666,8 +845,78 @@ function KanbanCreateModal({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [newImageUrl, setNewImageUrl] = useState<string>("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedCategoryId = newCategoryId || firstCategoryId;
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setUploadError("Formato de imagem não suportado. Use PNG, JPG ou WebP.");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setUploadError("A imagem é muito grande. Máximo de 5MB.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadError(null);
+
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+
+      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+      if (!cloudName || !uploadPreset) {
+        throw new Error("Cloudinary não está configurado");
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || "Falha no upload");
+      }
+
+      const data = await res.json();
+      setNewImageUrl(data.secure_url);
+      setUploadError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido";
+      setUploadError(message);
+      setImagePreview(null);
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setNewImageUrl("");
+    setImagePreview(null);
+  };
 
   const handleCreate = useCallback(
     async () => {
@@ -684,13 +933,14 @@ function KanbanCreateModal({
           priority: newPriority,
           assigneeId: undefined,
           position: positionInColumn,
+          imageUrl: newImageUrl || undefined,
         });
         onClose();
       } finally {
         setSaving(false);
       }
     },
-    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, positionInColumn, saving, onCreate, onClose]
+    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, positionInColumn, saving, onCreate, onClose, newImageUrl]
   );
 
   const handleCreateLabel = useCallback(
@@ -894,6 +1144,63 @@ function KanbanCreateModal({
               onChange={(e) => setNewDueDate(e.target.value)}
               className="bg-transparent text-sm text-[var(--text)] border-none outline-none"
             />
+          </div>
+
+          {/* Image Upload Section */}
+          <div>
+            <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
+              Imagem de Referência
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={handleImageUpload}
+                ref={fileInputRef}
+                className="hidden"
+                disabled={uploadingImage}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-2.5 py-1.5 text-xs text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
+              >
+                {uploadingImage ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ImageIcon size={12} />
+                )}
+                {newImageUrl ? "Alterar imagem" : "Adicionar"}
+              </button>
+            </div>
+            {imagePreview && (
+              <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-2">
+                <div className="relative aspect-video max-w-full overflow-hidden rounded-md">
+                  <Image
+                    src={imagePreview}
+                    alt="Preview da imagem"
+                    fill
+                    sizes="(max-width: 768px) 100%, 400px"
+                    className="object-contain"
+                    unoptimized={imagePreview.startsWith('blob:') || !imagePreview}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="mt-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
+                >
+                  Remover
+                </button>
+              </div>
+            )}
+            {uploadError && (
+              <p className="mt-1 text-xs text-red-400">{uploadError}</p>
+            )}
+            <p className="mt-1 text-xs text-[var(--text-faint)]">
+              JPEG, PNG ou WebP • Até 5MB
+            </p>
           </div>
 
           <div className="flex items-center gap-2 pt-1">
