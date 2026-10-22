@@ -132,11 +132,16 @@ create table if not exists kanban_tasks (
   due_date date,
   priority text default 'medium' check (priority in ('low','medium','high')),
   assignee_id text references profiles(id) on delete set null,
+  image_url text,
+  image_path text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists kanban_tasks_profile_idx on kanban_tasks(profile_id, status, position);
+create index if not exists kanban_tasks_image_idx on kanban_tasks(profile_id) where image_url is not null;
+alter table kanban_tasks add column if not exists image_url text;
+alter table kanban_tasks add column if not exists image_path text;
 
 create table if not exists kanban_labels (
   id bigserial primary key,

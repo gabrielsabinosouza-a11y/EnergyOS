@@ -29,12 +29,15 @@ import {
   Clock,
   ChevronDown,
   Image as ImageIcon,
+  Upload,
+  ExternalLink,
 } from "lucide-react";
 import type { Category, KanbanTask, KanbanStatus, KanbanLabel, KanbanPriority } from "@/types";
 import { categoryIcon, sortCategoriesForPicker } from "@/lib/categories";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
-import { MAX_IMAGE_SIZE, ALLOWED_IMAGE_TYPES, type ImageUploadResult } from "@/lib/kanban-image-upload";
+import { optimizeTaskImage, validateTaskImage } from "@/lib/kanban-image-upload";
+import { api } from "@/lib/api-client";
 import Image from "next/image";
 
 const COLUMNS: { status: KanbanStatus; label: string; color: string }[] = [
@@ -59,6 +62,96 @@ const LABEL_COLORS = [
   "#ffd471",
   "#71ffb8",
 ];
+
+function ReferenceImageField({
+  imageUrl,
+  onChange,
+  onUploadingChange,
+}: {
+  imageUrl: string;
+  onChange: (imageUrl: string | null, imagePath: string | null) => void;
+  onUploadingChange?: (uploading: boolean) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+
+  const uploadFile = useCallback(async (file?: File) => {
+    if (!file || uploading) return;
+    const validationError = validateTaskImage(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    onUploadingChange?.(true);
+    try {
+      const optimized = await optimizeTaskImage(file);
+      const uploaded = await api.uploadKanbanReferenceImage(optimized);
+      onChange(uploaded.imageUrl, uploaded.imagePath);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível enviar a imagem.");
+    } finally {
+      setUploading(false);
+      onUploadingChange?.(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }, [onChange, onUploadingChange, uploading]);
+
+  return (
+    <>
+      <section
+        aria-label="Imagem de referência"
+        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
+        onDrop={(event) => { event.preventDefault(); setDragging(false); void uploadFile(event.dataTransfer.files[0]); }}
+        className={`rounded-2xl border bg-white/[.025] p-3 transition-all duration-200 ${dragging ? "border-cyan-300/70 bg-cyan-300/[.08] shadow-[0_0_28px_rgba(34,211,238,.18)]" : "border-white/[.08] hover:border-white/[.13]"}`}
+      >
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div><p className="text-xs font-semibold text-[var(--text)]">Imagem de referência</p><p className="mt-0.5 text-[10px] text-[var(--text-faint)]">Uma imagem para suas ideias · até 5 MB</p></div>
+          {imageUrl && <span className="rounded-full border border-cyan-200/10 bg-cyan-200/[.06] px-2 py-1 text-[9px] font-medium text-cyan-100/80">Anexada</span>}
+        </div>
+        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void uploadFile(event.target.files?.[0])} className="sr-only" aria-label="Escolher imagem de referência" />
+
+        {imageUrl ? (
+          <div className="flex items-center gap-3 rounded-xl border border-white/[.06] bg-black/10 p-2.5">
+          <motion.button type="button" onClick={() => setViewOpen(true)} aria-label="Ver imagem de referência em tamanho grande" whileHover={{ scale: 1.025 }} className="group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#071225] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200">
+              <Image src={imageUrl} alt="Prévia da imagem de referência" fill sizes="80px" loading="lazy" unoptimized className="object-cover transition-transform duration-300 group-hover:scale-110" />
+              <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100"><ExternalLink size={15} /></span>
+            </motion.button>
+            <div className="min-w-0 flex-1"><p className="text-xs font-medium text-slate-200">Referência visual anexada</p><p className="mt-1 text-[10px] text-slate-500">Não aparece como miniatura no quadro.</p></div>
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-[10px] text-slate-300 transition hover:border-cyan-200/25 hover:bg-cyan-200/[.06] hover:text-cyan-100 disabled:opacity-50">{uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Trocar</button>
+              <button type="button" onClick={() => { onChange(null, null); setError(null); }} disabled={uploading} className="rounded-lg px-2 py-1 text-[10px] text-slate-500 transition hover:bg-red-400/[.07] hover:text-red-300 disabled:opacity-50">Remover</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="flex min-h-[106px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/[.13] bg-[#071225]/35 px-4 py-4 text-center transition hover:border-cyan-200/35 hover:bg-cyan-200/[.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:cursor-wait">
+            {uploading ? <Loader2 size={18} className="animate-spin text-cyan-200" /> : <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/10 bg-cyan-200/[.06] text-cyan-100"><ImageIcon size={16} /></span>}
+            <span className="text-xs font-medium text-slate-300">{uploading ? "Preparando imagem…" : dragging ? "Solte para anexar" : "Arraste uma imagem ou clique para escolher"}</span>
+            {!uploading && <span className="text-[10px] text-slate-500">PNG · JPG · WEBP</span>}
+          </motion.button>
+        )}
+        {uploading && imageUrl && <p className="mt-2 flex items-center gap-1.5 text-[10px] text-cyan-100/80"><Loader2 size={11} className="animate-spin" /> Enviando substituição…</p>}
+        {error && <p className="mt-2 text-xs text-red-300" role="alert">{error}</p>}
+      </section>
+
+      <AnimatePresence>
+        {viewOpen && imageUrl && (
+          <Modal onClose={() => setViewOpen(false)} surface="glass" zIndex={1100} panelClassName="w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-[#06101f]/95 p-3 shadow-2xl backdrop-blur-2xl">
+            <motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .97 }} className="relative h-[min(78dvh,760px)] w-full">
+              <Image src={imageUrl} alt="Imagem de referência em tamanho completo" fill sizes="(max-width: 1024px) 96vw, 1200px" priority unoptimized className="object-contain" />
+            </motion.div>
+            <button type="button" onClick={() => setViewOpen(false)} className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-black/50 text-white backdrop-blur hover:bg-black/75" aria-label="Fechar visualização"><X size={17} /></button>
+          </Modal>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
 
 interface KanbanBoardProps {
   tasks: KanbanTask[];
@@ -146,20 +239,11 @@ function SortableCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {task.imageUrl && (
             <div className="flex items-center gap-1">
-              <div className="relative">
-                <Image
-                  src={task.imageUrl}
-                  alt="Referência"
-                  width={16}
-                  height={16}
-                  className="rounded-sm object-cover"
-                  unoptimized
-                />
-                <ImageIcon
-                  size={12}
-                  className="absolute -bottom-1 -right-1 rounded-full bg-[var(--accent)] text-white"
-                />
-              </div>
+              <ImageIcon
+                size={12}
+                className="text-[var(--accent)]"
+                style={{ opacity: 0.7 }}
+              />
             </div>
           )}
           {taskLabelObjects.length > 0 && (
@@ -374,90 +458,16 @@ function TaskDetailModal({ task, labels, categories, onClose, onSave, onDelete, 
     dueDate: task.dueDate || "",
     priority: task.priority,
     imageUrl: task.imageUrl || "",
+    imagePath: task.imagePath || "",
   });
   const [saving, setSaving] = useState(false);
   const [showLabelSelector, setShowLabelSelector] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(task.imageUrl || null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      setUploadError("Formato de imagem não suportado. Use PNG, JPG ou WebP.");
-      return;
-    }
-
-    // Validate file size
-    if (file.size > MAX_IMAGE_SIZE) {
-      setUploadError("A imagem é muito grande. Máximo de 5MB.");
-      return;
-    }
-
-    setUploadingImage(true);
-    setUploadError(null);
-
-    try {
-      // Create preview immediately
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
-
-      // Upload to Cloudinary
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
-      if (!cloudName || !uploadPreset) {
-        throw new Error("Cloudinary não está configurado");
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || "Falha no upload");
-      }
-
-      const data = await res.json();
-      setEditedTask((prev) => ({ ...prev, imageUrl: data.secure_url }));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro desconhecido";
-      setUploadError(message);
-      setImagePreview(null);
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
-  const handleRemoveImage = () => {
-    if (imagePreview && !imagePreview.startsWith('blob:')) {
-      URL.revokeObjectURL(imagePreview);
-    }
-    setEditedTask((prev) => ({ ...prev, imageUrl: "" }));
-    setImagePreview(null);
-  };
-
-  const handleViewImage = () => {
-    if (editedTask.imageUrl) {
-      window.open(editedTask.imageUrl, '_blank');
-    }
-  };
+  const setReferenceImage = useCallback((imageUrl: string | null, imagePath: string | null) => {
+    setEditedTask((prev) => ({ ...prev, imageUrl: imageUrl ?? "", imagePath: imagePath ?? "" }));
+  }, []);
 
   const toggleLabel = useCallback((labelName: string) => {
     setEditedTask((prev) => ({
@@ -488,15 +498,15 @@ function TaskDetailModal({ task, labels, categories, onClose, onSave, onDelete, 
     async () => {
       setSaving(true);
       try {
-await onSave({
+        await onSave({
           title: editedTask.title,
           description: editedTask.description || undefined,
           categoryId: editedTask.categoryId,
           labels: editedTask.labels,
           dueDate: editedTask.dueDate || undefined,
           priority: editedTask.priority,
-          // Map image fields - stored as imageUrl in the type
-          imageUrl: editedTask.imageUrl || undefined,
+          imageUrl: editedTask.imageUrl || null,
+          imagePath: editedTask.imagePath || null,
         });
         onClose();
       } finally {
@@ -707,82 +717,7 @@ await onSave({
             />
           </div>
 
-          {/* Image Upload Section */}
-          <div>
-            <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
-              Imagem de Referência
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
-                onChange={handleImageUpload}
-                ref={fileInputRef}
-                className="hidden"
-                disabled={uploadingImage}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-2.5 py-1.5 text-xs text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
-              >
-                {uploadingImage ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <ImageIcon size={12} />
-                )}
-                {editedTask.imageUrl || "Adicionar"}
-              </button>
-              {editedTask.imageUrl && (
-                <button
-                  type="button"
-                  onClick={handleViewImage}
-                  className="text-xs text-[var(--accent)] hover:underline"
-                >
-                  Ver imagem
-                </button>
-              )}
-            </div>
-            {imagePreview && (
-              <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-2">
-                <div className="relative aspect-video max-w-full overflow-hidden rounded-md">
-                  <Image
-                    src={imagePreview}
-                    alt="Preview da imagem"
-                    fill
-                    sizes="(max-width: 768px) 100%, 400px"
-                    className="object-contain"
-                    unoptimized={imagePreview.startsWith('blob:') || !imagePreview}
-                  />
-                </div>
-                <div className="mt-1.5 flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
-                  >
-                    Remover
-                  </button>
-                  {imagePreview.startsWith('http') && (
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard.writeText(imagePreview)}
-                      className="text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
-                    >
-                      Copiar link
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-            {uploadError && (
-              <p className="mt-1 text-xs text-red-400">{uploadError}</p>
-            )}
-            <p className="mt-1 text-xs text-[var(--text-faint)]">
-              JPEG, PNG ou WebP • Até 5MB
-            </p>
-          </div>
+          <ReferenceImageField imageUrl={editedTask.imageUrl} onChange={setReferenceImage} />
         </div>
 
         <div className="mt-6 flex gap-2 justify-end">
@@ -845,78 +780,15 @@ function KanbanCreateModal({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#71d4ff");
   const [creatingLabel, setCreatingLabel] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState<string>("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [newImagePath, setNewImagePath] = useState<string>("");
 
   const selectedCategoryId = newCategoryId || firstCategoryId;
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      setUploadError("Formato de imagem não suportado. Use PNG, JPG ou WebP.");
-      return;
-    }
-
-    if (file.size > MAX_IMAGE_SIZE) {
-      setUploadError("A imagem é muito grande. Máximo de 5MB.");
-      return;
-    }
-
-    setUploadingImage(true);
-    setUploadError(null);
-
-    try {
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
-
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
-      if (!cloudName || !uploadPreset) {
-        throw new Error("Cloudinary não está configurado");
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || "Falha no upload");
-      }
-
-      const data = await res.json();
-      setNewImageUrl(data.secure_url);
-      setUploadError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro desconhecido";
-      setUploadError(message);
-      setImagePreview(null);
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
-  const handleRemoveImage = () => {
-    if (imagePreview && imagePreview.startsWith('blob:')) {
-      URL.revokeObjectURL(imagePreview);
-    }
-    setNewImageUrl("");
-    setImagePreview(null);
-  };
+  const setReferenceImage = useCallback((imageUrl: string | null, imagePath: string | null) => {
+    setNewImageUrl(imageUrl ?? "");
+    setNewImagePath(imagePath ?? "");
+  }, []);
 
   const handleCreate = useCallback(
     async () => {
@@ -934,13 +806,14 @@ function KanbanCreateModal({
           assigneeId: undefined,
           position: positionInColumn,
           imageUrl: newImageUrl || undefined,
+          imagePath: newImagePath || undefined,
         });
         onClose();
       } finally {
         setSaving(false);
       }
     },
-    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, positionInColumn, saving, onCreate, onClose, newImageUrl]
+    [newTitle, newDescription, selectedCategoryId, newLabels, newDueDate, newPriority, status, positionInColumn, saving, onCreate, onClose, newImageUrl, newImagePath]
   );
 
   const handleCreateLabel = useCallback(
@@ -1146,62 +1019,7 @@ function KanbanCreateModal({
             />
           </div>
 
-          {/* Image Upload Section */}
-          <div>
-            <label className="text-[10px] text-[var(--text-faint)] mb-1 block">
-              Imagem de Referência
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
-                onChange={handleImageUpload}
-                ref={fileInputRef}
-                className="hidden"
-                disabled={uploadingImage}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-2.5 py-1.5 text-xs text-[var(--text-muted)] transition hover:bg-[var(--bg-surface)] disabled:opacity-50"
-              >
-                {uploadingImage ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <ImageIcon size={12} />
-                )}
-                {newImageUrl ? "Alterar imagem" : "Adicionar"}
-              </button>
-            </div>
-            {imagePreview && (
-              <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] p-2">
-                <div className="relative aspect-video max-w-full overflow-hidden rounded-md">
-                  <Image
-                    src={imagePreview}
-                    alt="Preview da imagem"
-                    fill
-                    sizes="(max-width: 768px) 100%, 400px"
-                    className="object-contain"
-                    unoptimized={imagePreview.startsWith('blob:') || !imagePreview}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="mt-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)]"
-                >
-                  Remover
-                </button>
-              </div>
-            )}
-            {uploadError && (
-              <p className="mt-1 text-xs text-red-400">{uploadError}</p>
-            )}
-            <p className="mt-1 text-xs text-[var(--text-faint)]">
-              JPEG, PNG ou WebP • Até 5MB
-            </p>
-          </div>
+          <ReferenceImageField imageUrl={newImageUrl} onChange={setReferenceImage} />
 
           <div className="flex items-center gap-2 pt-1">
             <button

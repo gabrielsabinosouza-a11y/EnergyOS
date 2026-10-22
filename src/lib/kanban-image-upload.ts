@@ -1,105 +1,42 @@
-import { useCallback, useState, useRef } from "react";
+export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 
-/** Image upload validation constants */
-export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-
-/** Upload result from Cloudinary */
 export interface ImageUploadResult {
   url: string;
-  path?: string;
-  error?: string;
+  path: string;
 }
 
-/** Hook for uploading task reference images via Cloudinary */
-export function useTaskImageUpload() {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const ALLOWED_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
 
-  const uploadImage = useCallback(async (file: File): Promise<ImageUploadResult> => {
-    // Validate file type
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      const result: ImageUploadResult = { url: "", error: "Formato de imagem não suportado. Use PNG, JPG ou WebP." };
-      setError(result.error);
-      return result;
-    }
-
-    // Validate file size
-    if (file.size > MAX_IMAGE_SIZE) {
-      const result: ImageUploadResult = { url: "", error: "A imagem é muito grande. Máximo de 5MB." };
-      setError(result.error);
-      return result;
-    }
-
-    setUploading(true);
-    setError(null);
-
-    try {
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
-      if (!cloudName || !uploadPreset) {
-        throw new Error("Cloudinary não está configurado");
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || "Falha no upload");
-      }
-
-      const data = await res.json();
-      const result: ImageUploadResult = {
-        url: data.secure_url,
-        path: data.secure_url, // Store the same URL for simplicity
-      };
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro desconhecido";
-      setError(message);
-      const result: ImageUploadResult = { url: "", error: message };
-      return result;
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  }, []);
-
-  const triggerUpload = useCallback((input: HTMLInputElement) => {
-    input.click();
-  }, []);
-
-  return {
-    uploading,
-    error,
-    fileInputRef,
-    uploadImage,
-    triggerUpload,
-    setError: (e: string | null) => setError(e),
-  };
+export function validateTaskImage(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const supportedType = ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])
+    || (file.type === "image/jpg" && ALLOWED_EXTENSIONS.has(extension));
+  if (!supportedType || !ALLOWED_EXTENSIONS.has(extension)) return "Formato não suportado. Envie PNG, JPG ou WebP.";
+  if (!file.size) return "O arquivo está vazio.";
+  if (file.size > MAX_IMAGE_SIZE) return "A imagem deve ter no máximo 5 MB.";
+  return null;
 }
 
-/** Get file extension from filename */
-export function getFileExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? '';
-}
+/** Resize large references and encode them as WebP when the browser can do so. */
+export async function optimizeTaskImage(file: File): Promise<File> {
+  if (typeof createImageBitmap !== "function") return file;
 
-/** Format file size for display */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))}${sizes[i]}`;
+  const bitmap = await createImageBitmap(file);
+  try {
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.84));
+    if (!blob || (scale === 1 && blob.size >= file.size)) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });
+  } finally {
+    bitmap.close();
+  }
 }

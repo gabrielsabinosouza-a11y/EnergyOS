@@ -257,9 +257,24 @@ export const api = {
 
   // Kanban
   getKanban: () => request<{ tasks: KanbanTask[]; labels: KanbanLabel[] }>("/api/kanban"),
-  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; categoryId?: number; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string }) =>
+  uploadKanbanReferenceImage: async (file: File): Promise<{ imageUrl: string; imagePath: string }> => {
+    const token = await authToken();
+    const body = new FormData();
+    body.append("file", file);
+    const response = await fetch("/api/kanban/task-image", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    const result = await response.json().catch(() => ({})) as { imageUrl?: string; imagePath?: string; error?: string };
+    if (!response.ok || !result.imageUrl || !result.imagePath) {
+      throw new ApiRequestError(result.error ?? "Não foi possível enviar a imagem.", response.status);
+    }
+    return { imageUrl: result.imageUrl, imagePath: result.imagePath };
+  },
+  createKanbanTask: (input: { title: string; description?: string; status?: "todo" | "doing" | "done"; categoryId?: number; labels?: string[]; dueDate?: string; priority?: "low" | "medium" | "high"; assigneeId?: string; imageUrl?: string; imagePath?: string }) =>
     request<{ task: KanbanTask }>("/api/kanban", { method: "POST", body: JSON.stringify(input) }),
-  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; categoryId?: number; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null }) =>
+  updateKanbanTask: (id: number, patch: { title?: string; description?: string | null; status?: "todo" | "doing" | "done"; categoryId?: number; position?: number; labels?: string[]; dueDate?: string | null; priority?: "low" | "medium" | "high"; assigneeId?: string | null; imageUrl?: string | null; imagePath?: string | null }) =>
     request<{ task: KanbanTask; xpAwarded: number; coinsAwarded: number }>(`/api/kanban/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteKanbanTask: (id: number) => request<{ ok: true }>(`/api/kanban/${id}`, { method: "DELETE" }),
   moveKanbanTask: (taskId: number, newStatus: "todo" | "doing" | "done", newPosition: number) =>

@@ -12,6 +12,19 @@ import { KANBAN_DONE_XP, KANBAN_DONE_COINS } from "../daily-limits";
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
 
+function validateReferenceImage(imageUrl: string | null | undefined, imagePath: string | null | undefined) {
+  if (!imageUrl && !imagePath) return;
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  let url: URL;
+  try { url = new URL(imageUrl ?? ""); } catch { throw new ValidationError("URL da imagem de referência inválida."); }
+  if (!cloudName || url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || !url.pathname.startsWith(`/${cloudName}/image/upload/`)) {
+    throw new ValidationError("A imagem de referência deve estar hospedada na conta Cloudinary do EnergyOS.");
+  }
+  if (!imagePath || imagePath.length > 255 || /[\u0000-\u001f]/.test(imagePath)) {
+    throw new ValidationError("Caminho da imagem de referência inválido.");
+  }
+}
+
 /** Colunas de kanban_task + categoria resolvida (join com categories) + image fields. */
 const KANBAN_SELECT = `
   select k.id, k.profile_id, k.title, k.description, k.status, k.position, k.labels,
@@ -115,12 +128,13 @@ export interface CreateKanbanInput {
   dueDate?: string;
   priority?: KanbanPriority;
   assigneeId?: string;
-  image_url?: string;
-  image_path?: string;
+  imageUrl?: string;
+  imagePath?: string;
 }
 
 export async function createKanbanTask(profileId: string, input: CreateKanbanInput): Promise<KanbanTask> {
   parseProfileId(profileId);
+  validateReferenceImage(input.imageUrl, input.imagePath);
   const title = parseTitle(input.title);
   const status = parseEnum(input.status ?? "todo", KANBAN_STATUSES, "Status");
   const priority = parseEnum(input.priority ?? "low", KANBAN_PRIORITIES, "Prioridade");
@@ -138,7 +152,7 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
     `insert into kanban_tasks (profile_id, title, description, status, position, category_id, labels, due_date, priority, assignee_id, image_url, image_path)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      returning id`,
-    [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null, input.image_url ?? null, input.image_path ?? null],
+    [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null, input.imageUrl ?? null, input.imagePath ?? null],
   );
   const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [inserted.rows[0].id]);
   return mapKanban(result.rows[0]);
@@ -154,13 +168,19 @@ export interface UpdateKanbanPatch {
   dueDate?: string | null;
   priority?: KanbanPriority;
   assigneeId?: string | null;
-  image_url?: string | null;
-  image_path?: string | null;
+  imageUrl?: string | null;
+  imagePath?: string | null;
 }
 
 export async function updateKanbanTask(profileId: string, taskId: number, patch: UpdateKanbanPatch): Promise<KanbanTask> {
   parseProfileId(profileId);
   if (!Number.isInteger(taskId) || taskId <= 0) throw new ValidationError("Tarefa inválida.");
+  if (patch.imageUrl !== undefined || patch.imagePath !== undefined) {
+    if (patch.imageUrl === undefined || patch.imagePath === undefined) {
+      throw new ValidationError("A URL e o caminho da imagem devem ser atualizados juntos.");
+    }
+    validateReferenceImage(patch.imageUrl, patch.imagePath);
+  }
 
   const statusUpdate = patch.status !== undefined
     ? parseEnum(patch.status, KANBAN_STATUSES, "Status")
@@ -206,12 +226,12 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
     values.push(patch.assigneeId);
     updates.push(`assignee_id = $${values.length}`);
   }
-  if (patch.image_url !== undefined) {
-    values.push(patch.image_url);
+  if (patch.imageUrl !== undefined) {
+    values.push(patch.imageUrl);
     updates.push(`image_url = $${values.length}`);
   }
-  if (patch.image_path !== undefined) {
-    values.push(patch.image_path);
+  if (patch.imagePath !== undefined) {
+    values.push(patch.imagePath);
     updates.push(`image_path = $${values.length}`);
   }
 

@@ -28,6 +28,8 @@ export async function POST(request: NextRequest) {
       dueDate: body.dueDate as string | undefined,
       priority: body.priority as "low" | "medium" | "high" | undefined,
       assigneeId: body.assigneeId as string | undefined,
+      imageUrl: body.imageUrl as string | undefined,
+      imagePath: body.imagePath as string | undefined,
     });
     return jsonOk({ task }, 201);
   });
