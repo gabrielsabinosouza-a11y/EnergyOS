@@ -22,6 +22,7 @@ import { Modal } from "@/components/modal";
 import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
 import { ParticleField, Recap3DIcon, RecapProgressBar } from "@/components/recap/recap-fx";
+import { RecapIntroSlide } from "@/components/recap/recap-intro-slide";
 import { useRecapSound } from "@/lib/recap-sound";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
@@ -29,6 +30,7 @@ import { useAuthRedirect } from "@/lib/auth-context";
 import { FinalRecapSurface } from "./recap-final-surface";
 import {
   ACCENT,
+  capitalizeFirst,
   RECAP_ART,
   RECAP_PALETTE,
   focusCopy,
@@ -143,82 +145,6 @@ function leagueTheme(tier: NewLeagueTier | null) {
 }
 
 // ─── Intro slide ──────────────────────────────────────────────────────────────
-
-function IntroSlide({ monthLabel, userName, userPhotoUrl, theme }: {
-  monthLabel: string; userName: string; userPhotoUrl?: string;
-  theme: { bg: string; accent: string; glow: string };
-}) {
-  const reduced = useReducedMotion();
-  return (
-    <SlideFrame>
-      <AmbientGlow accent={theme.accent} glow={theme.glow} />
-      <ParticleField accent={theme.accent} count={16} />
-
-      <motion.div
-        className="relative z-10 flex flex-col items-center gap-3"
-        initial={reduced ? undefined : { opacity: 0, y: 28 }}
-        animate={reduced ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
-      >
-        {/* Logo mark */}
-        <motion.div
-          className="mb-1 grid h-14 w-14 place-items-center rounded-2xl"
-          style={{ background: theme.accent, boxShadow: `0 0 32px ${theme.glow}` }}
-          animate={reduced ? undefined : { y: [0, -6, 0] }}
-          transition={reduced ? undefined : { duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <Zap size={28} color="#07111f" strokeWidth={2.5} />
-        </motion.div>
-
-        <p className="text-xs font-medium tracking-[0.28em] uppercase" style={{ color: "rgba(231,244,255,.4)" }}>
-          Recap de
-        </p>
-
-        <motion.h2
-          className="font-display max-w-full text-[clamp(1.4rem,6vw,2.25rem)] font-extrabold leading-none break-words capitalize"
-          style={{ background: "linear-gradient(135deg, #71d4ff 0%, #b69cff 50%, #ffb86b 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
-          initial={reduced ? undefined : { opacity: 0, scale: 0.82 }}
-          animate={reduced ? undefined : { opacity: 1, scale: 1 }}
-          transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
-        >
-          {monthLabel}
-        </motion.h2>
-
-        <motion.div
-          className="mt-1 flex items-center gap-2.5"
-          initial={reduced ? undefined : { opacity: 0, y: 14 }}
-          animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ delay: 0.35, duration: 0.5 }}
-        >
-          {userPhotoUrl ? (
-            <Image
-              src={userPhotoUrl}
-              alt={userName}
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-full object-cover ring-2 ring-[rgba(255,255,255,.18)]"
-              unoptimized
-              draggable={false}
-            />
-          ) : (
-            <div className="h-9 w-9 rounded-full" style={{ background: `linear-gradient(135deg, ${theme.accent}, #b69cff)` }} />
-          )}
-          <span className="text-base font-semibold" style={{ color: "rgba(231,244,255,.82)" }}>{userName}</span>
-        </motion.div>
-
-        <motion.p
-          className="mt-3 text-[10px] tracking-[0.2em] uppercase"
-          style={{ color: "rgba(231,244,255,.3)" }}
-          initial={reduced ? undefined : { opacity: 0 }}
-          animate={reduced ? undefined : { opacity: 1 }}
-          transition={{ delay: 0.6 }}
-        >
-          Toque para começar
-        </motion.p>
-      </motion.div>
-    </SlideFrame>
-  );
-}
 
 // ─── Hero stat slide ──────────────────────────────────────────────────────────
 
@@ -571,7 +497,7 @@ export async function captureRecapCard(
 
   const { meta } = tierMeta(recap.leagueTier);
   const tierColor = meta ? meta.color : RECAP_PALETTE.cyan;
-  const monthLabel = formatMonth(recap.recapMonth);
+  const monthLabel = capitalizeFirst(formatMonth(recap.recapMonth));
   const garden = recap.gardenCount ?? 0;
   const xp = recap.totalXp ?? 0;
   const focusHours = Math.floor((recap.totalFocusMinutes ?? 0) / 60);
@@ -1038,7 +964,7 @@ export function MonthlyRecapPremium({
   function renderSlide() {
     switch (currentSlide) {
       case 0:
-        return <IntroSlide monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} theme={THEMES.intro} />;
+        return <RecapIntroSlide recapMonth={recap.recapMonth} monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} accent={THEMES.intro.accent} glow={THEMES.intro.glow} />;
       case 1:
         return (
           <HeroStatSlide
