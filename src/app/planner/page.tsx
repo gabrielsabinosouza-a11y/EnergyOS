@@ -646,7 +646,7 @@ export default function PlanningPage() {
                 animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                 exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
                 transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
-                className="flex min-h-0 flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col gap-3"
               >
                 <WeekView
                   weekRange={week}
