@@ -8,12 +8,9 @@ import type { Variants } from "framer-motion";
 import Image from "next/image";
 import {
   Check,
-  Image as ImageIcon,
   Loader2,
   MessageCircle,
-  Paperclip,
   Search,
-  Send,
   UserMinus,
   UserPlus,
   X,
@@ -156,7 +153,7 @@ export default function AmigosPage() {
     let cancelled = false;
     Promise.resolve().then(loadData).then(() => { if (cancelled) return; });
     return () => { cancelled = true; };
-  }, [authLoading, user?.uid, loadData]);
+  }, [authLoading, user, loadData]);
 
   useEffect(() => {
     if (!user) return;
@@ -868,7 +865,7 @@ function ChatPanel({
 
         {/* Message History - Proper scrollable area */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(113,212,255,.25) transparent' }}>
-          <ChatThread
+          {profileIdReady ? <ChatThread
             messages={chatMessages}
             currentUserId={currentUserId}
             reduced={reduced}
@@ -898,7 +895,11 @@ function ChatPanel({
                 onSendMedia={handleSendMedia}
               />
             }
-          />
+          /> : (
+            <div className="flex min-h-0 flex-1 items-center justify-center" aria-label="Carregando conversa" aria-busy="true">
+              <Loader2 size={18} className="animate-spin text-[var(--accent)]" />
+            </div>
+          )}
         </div>
       </div>
     </Modal>

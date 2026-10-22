@@ -699,9 +699,12 @@ export default function GruposPage() {
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
-    Promise.all([loadGroups(), loadInvites()]).then(() => { if (cancelled) return; });
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      return Promise.all([loadGroups(), loadInvites()]);
+    });
     return () => { cancelled = true; };
-  }, [authLoading, user?.uid, loadGroups, loadInvites]);
+  }, [authLoading, user, loadGroups, loadInvites]);
 
   // Live-refresh pending group invites so new invites appear in the Caixa de
   // Entrada without the invitee having to reload the page.
@@ -709,7 +712,7 @@ export default function GruposPage() {
     if (authLoading || !user) return;
     const id = setInterval(() => { loadInvites(); }, 8000);
     return () => clearInterval(id);
-  }, [authLoading, user?.uid, loadInvites]);
+  }, [authLoading, user, loadInvites]);
 
   async function respondToInvite(invite: GroupInvite, response: "accepted" | "rejected") {
     if (respondingInvite) return;
