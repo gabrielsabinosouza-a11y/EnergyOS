@@ -601,24 +601,50 @@ function ChatPanel({
   // never "lose" a message that hasn't been confirmed yet.
   const pendingRef = useRef<DirectMessage[]>([]);
   const tempIdRef = useRef(0);
+  const incrementalMergeLoggedRef = useRef(false);
 
   const nextTempId = useCallback(() => -(++tempIdRef.current), []);
 
-  const applyServerMessages = useCallback((msgs: DirectMessage[]) => {
-    const serverIds = new Set(msgs.map((m) => m.id));
-    const stillPending = pendingRef.current.filter((p) => !serverIds.has(p.id));
-    // Merge and sort by timestamp ascending (oldest first) to ensure
-    // optimistic messages are placed in the correct chronological position
-    const merged = [...msgs, ...stillPending].sort((a, b) => 
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-    setMessages(merged);
-    // Update lastIdRef to the newest server message (highest ID in merged array)
-    if (msgs.length > 0) {
-      lastIdRef.current = merged[merged.length - 1].id;
-    }
-    return merged;
-  }, []);
+  const applyServerMessages = useCallback((msgs: DirectMessage[], source: "initial" | "poll" | "refresh" = "refresh") => {
+    setMessages((previous) => {
+      // Polling is incremental: its response contains only IDs newer than the
+      // cursor. Keep the conversation history and replace matching rows so
+      // server-side edits/reactions still refresh existing messages.
+      const byId = new Map(previous.map((message) => [message.id, message]));
+      for (const message of msgs) byId.set(message.id, message);
+
+      for (const pending of pendingRef.current) {
+        if (!byId.has(pending.id)) byId.set(pending.id, pending);
+      }
+
+      const merged = [...byId.values()].sort((a, b) => {
+        const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return byTime || a.id - b.id;
+      });
+
+      if (process.env.NODE_ENV === "development" && source === "poll" && msgs.length > 0) {
+        const returnedIds = new Set(msgs.map((message) => message.id));
+        const retainedCount = previous.filter((message) => !returnedIds.has(message.id)).length;
+        if (retainedCount > 0 && !incrementalMergeLoggedRef.current) {
+          incrementalMergeLoggedRef.current = true;
+          console.debug("[dm-chat] merged incremental poll without dropping history", {
+            conversationId: friend.id,
+            previousCount: previous.length,
+            receivedCount: msgs.length,
+            retainedCount,
+            mergedCount: merged.length,
+          });
+        }
+      }
+
+      return merged;
+    });
+
+    // The poll cursor must be the largest persisted ID. Using the final
+    // timestamp-sorted entry can accidentally select a negative optimistic ID.
+    const newestServerId = msgs.reduce((max, message) => Math.max(max, message.id), lastIdRef.current ?? 0);
+    if (newestServerId > 0) lastIdRef.current = newestServerId;
+  }, [friend.id]);
 
   const confirmMessage = useCallback((tempId: number, message: DirectMessage) => {
     pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
@@ -648,7 +674,7 @@ function ChatPanel({
     let cancelled = false;
     api.getMessages(friend.id).then(({ messages: msgs }) => {
       if (cancelled) return;
-      applyServerMessages(msgs);
+      applyServerMessages(msgs, "initial");
     });
     return () => { cancelled = true; };
   }, [friend.id, applyServerMessages]);
@@ -671,7 +697,7 @@ function ChatPanel({
       try {
         const { messages: msgs } = await api.getMessages(friend.id, afterId);
         if (msgs.length > 0) {
-          applyServerMessages(msgs);
+          applyServerMessages(msgs, "poll");
         }
       } catch { /* silent */ }
     }, 2000); // 2-second polling for near real-time feel
@@ -815,7 +841,7 @@ function ChatPanel({
   async function handleTogglePin(messageId: number) {
     await api.pinDmMessage(messageId);
     const { messages: msgs } = await api.getMessages(friend.id);
-    applyServerMessages(msgs);
+    applyServerMessages(msgs, "refresh");
   }
 
   /* Convert to unified type */
