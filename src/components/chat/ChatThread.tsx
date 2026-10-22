@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
@@ -385,12 +385,12 @@ function ReplyPreview({
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="sticky top-1 z-10 my-4 flex items-center justify-center px-4">
-      <div className="flex items-center gap-3 rounded-full border border-white/10 bg-[#081421]/90 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur-xl">
-        <div className="h-px w-8 bg-[var(--border-subtle)]" />
+    <div className="my-4 flex items-center justify-center gap-3 px-4" aria-label={label}>
+      <div className="h-px min-w-4 flex-1 bg-white/[.07]" />
+      <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-[#081421]/90 px-3.5 py-1 text-[11px] font-medium text-slate-300 shadow-sm backdrop-blur-xl">
         <span>{label}</span>
-        <div className="h-px w-8 bg-[var(--border-subtle)]" />
       </div>
+      <div className="h-px min-w-4 flex-1 bg-white/[.07]" />
     </div>
   );
 }
@@ -427,20 +427,20 @@ const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as co
 function getBubbleClasses(isMe: boolean, groupPosition: string): string {
   if (isMe) {
     const radii = {
-      single: "rounded-2xl",
-      first: "rounded-2xl rounded-r-md",
-      middle: "rounded-l-md rounded-r-md",
-      last: "rounded-tr-md rounded-br-md",
+      single: "rounded-[18px]",
+      first: "rounded-[18px] rounded-br-[6px]",
+      middle: "rounded-l-[18px] rounded-tr-[6px] rounded-br-[6px]",
+      last: "rounded-[18px] rounded-tr-[6px]",
     };
-    return `bg-gradient-to-br from-cyan-300 to-sky-400 text-slate-950 shadow-[0_8px_26px_-12px_rgba(34,211,238,.65)] ${radii[groupPosition as keyof typeof radii] || radii.single}`;
+    return `chat-message-bubble--outgoing border border-white/25 bg-gradient-to-br from-cyan-300 to-sky-400 text-slate-950 ${radii[groupPosition as keyof typeof radii] || radii.single}`;
   }
   const radii = {
-    single: "rounded-2xl",
-    first: "rounded-2xl rounded-l-md",
-    middle: "rounded-l-md rounded-r-md",
-    last: "rounded-tl-md rounded-bl-md",
+    single: "rounded-[18px]",
+    first: "rounded-[18px] rounded-bl-[6px]",
+    middle: "rounded-r-[18px] rounded-tl-[6px] rounded-bl-[6px]",
+    last: "rounded-[18px] rounded-tl-[6px]",
   };
-  return `glass-card ${radii[groupPosition as keyof typeof radii] || radii.single}`;
+  return `chat-message-bubble--incoming border border-white/10 bg-[#14263a]/90 text-[var(--text)] backdrop-blur-sm ${radii[groupPosition as keyof typeof radii] || radii.single}`;
 }
 
 function MessageBubble({
@@ -507,17 +507,19 @@ function MessageBubble({
         : { opacity: 0, x: -16, scale: 0.96 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1, rotateX: 0 }}
       transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className={`flex w-full items-end gap-2.5 ${isMe ? "justify-end" : "justify-start"}`}
+      className={`flex w-full items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
     >
       {/* Avatar (only for incoming messages when showAvatar is true) */}
       {showAvatar && !isMe && (
-        <div className="flex shrink-0 items-end">
-          <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} />
+        <div className="flex h-8 w-8 shrink-0 items-end">
+          {groupPosition === "single" || groupPosition === "first" ? (
+            <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} />
+          ) : null}
         </div>
       )}
 
       {/* Message content container */}
-      <div className={`flex min-w-0 max-w-[85%] flex-col sm:max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
+      <div className={`flex min-w-0 max-w-[88%] flex-col sm:max-w-[76%] ${isMe ? "items-end" : "items-start"}`}>
         {/* Sender name (only for first in group) */}
         {showSenderName && !isMe && (
           <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">
@@ -530,7 +532,7 @@ function MessageBubble({
           {/* Bubble */}
           <div
             onContextMenu={handleContextMenu}
-            className={`chat-message-bubble relative cursor-pointer overflow-hidden transition ${getBubbleClasses(isMe, groupPosition)}`}
+            className={`chat-message-bubble relative w-fit min-w-[3rem] max-w-full cursor-pointer overflow-hidden transition ${getBubbleClasses(isMe, groupPosition)}`}
             onTouchStart={startLongPress}
             onTouchEnd={cancelLongPress}
             onTouchMove={cancelLongPress}
@@ -673,6 +675,8 @@ export interface ChatThreadProps {
   messages: ChatMessage[];
   currentUserId: string;
   reduced: boolean;
+  /** Stable conversation identity used to isolate scroll state. */
+  conversationId?: string;
   showAvatar?: boolean;
   showSenderName?: boolean;
 
@@ -720,6 +724,7 @@ export function ChatThread({
   messages,
   currentUserId,
   reduced,
+  conversationId = "default",
   showAvatar = false,
   showSenderName = false,
   onSend,
@@ -746,7 +751,6 @@ export function ChatThread({
   const nearBottomRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const prevCountRef = useRef(messages.length);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -763,12 +767,14 @@ export function ChatThread({
   const [pinsOpen, setPinsOpen] = useState(false);
   const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDoneRef = useRef(false);
+  const previousConversationRef = useRef(conversationId);
+  const previousMessageIdsRef = useRef<number[]>([]);
+  const previousScrollHeightRef = useRef(0);
   const onReachBottomRef = useRef(onReachBottom);
-  onReachBottomRef.current = onReachBottom;
   const wasNearBottomRef = useRef(true);
-  // Set true the moment the user deliberately scrolls away from the bottom
-  // (reading history); the initial force-pin stops while it's true.
-  const userScrolledUpRef = useRef(false);
+  useLayoutEffect(() => {
+    onReachBottomRef.current = onReachBottom;
+  }, [onReachBottom]);
   // Banner pins: prefer the authoritative server list (covers messages older
   // than the fetched window); fall back to in-list flags for DM chats.
   const pinnedList = useMemo(
@@ -778,8 +784,7 @@ export function ChatThread({
 
   /* ─── Scroll management ────────────────────────────────────────── */
 
-  // Detect if near bottom on scroll. Sets userScrolledUpRef so the initial
-  // force-pin stops the moment the user starts reading history.
+  // Keep scroll state in refs so scroll events don't rerender the message list.
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -792,9 +797,6 @@ export function ChatThread({
       if (!wasNearBottomRef.current) onReachBottomRef.current?.();
     }
     wasNearBottomRef.current = near;
-    // "instant" scrolls never fire a scroll event with a big enough delta, so
-    // use a small dead-zone to tell deliberate scrolls apart.
-    userScrolledUpRef.current = !near && el.scrollTop > 0;
     setShowScrollBtn((prev) => {
       const next = distFromBottom > SCROLL_BTN_THRESHOLD;
       return prev === next ? prev : next;
@@ -818,90 +820,73 @@ export function ChatThread({
     requestAnimationFrame(() => requestAnimationFrame(doScroll));
   }, []);
 
-  // Pin the viewport to the newest message when the chat opens. The list loads
-  // asynchronously and late-rendering media changes the scroll height, so keep
-  // force-pinning until the container stops growing — up to ~3.6s after the
-  // conversation opens. The latch resets whenever a *different* conversation is
-  // opened (signalled by a change in the first message id), so switching
-  // friends/groups always drops the user straight to the newest messages
-  // instead of leaving them stranded on the old ones.
-  const firstMsgId = messages.length > 0 ? messages[0].id : undefined;
-  const prevFirstIdRef = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (messages.length === 0) return;
-    if (firstMsgId !== prevFirstIdRef.current) {
-      prevFirstIdRef.current = firstMsgId;
-      initialScrollDoneRef.current = false;
-      // A different conversation just loaded: drop any stale "user scrolled up"
-      // state from the previous chat so opening a new one always lands at the
-      // newest messages instead of being stranded mid-history.
-      userScrolledUpRef.current = false;
-    }
-    if (initialScrollDoneRef.current) return;
-
+  // Start at the latest message once the selected conversation has loaded.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    let retries = 30;
-    let lastHeight = -1;
-    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    const pin = () => {
-      if (!el || retries-- <= 0 || userScrolledUpRef.current) {
-        initialScrollDoneRef.current = true;
-        return;
-      }
+    const conversationChanged = previousConversationRef.current !== conversationId;
+    if (conversationChanged) {
+      previousConversationRef.current = conversationId;
+      previousMessageIdsRef.current = [];
+      previousScrollHeightRef.current = 0;
+      initialScrollDoneRef.current = false;
+      nearBottomRef.current = true;
+      wasNearBottomRef.current = true;
+      setPendingCount(0);
+    }
+
+    const currentIds = messages.map((message) => message.id);
+    const previousIds = previousMessageIdsRef.current;
+
+    if (messages.length > 0 && !initialScrollDoneRef.current) {
       el.scrollTop = el.scrollHeight;
-      // Keep pinning while the content height is still settling (media loads).
-      if (el.scrollHeight !== lastHeight) {
-        lastHeight = el.scrollHeight;
-        timer = setTimeout(pin, 120);
-      } else {
-        initialScrollDoneRef.current = true;
-      }
-    };
-    pin();
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [firstMsgId, messages.length]);
+      nearBottomRef.current = true;
+      wasNearBottomRef.current = true;
+      initialScrollDoneRef.current = true;
+    } else if (previousIds.length > 0 && currentIds.length > 0) {
+      const previousFirstIndex = currentIds.indexOf(previousIds[0]);
+      const previousLastIndex = currentIds.indexOf(previousIds[previousIds.length - 1]);
+      const olderMessagesPrepended = !conversationChanged && previousFirstIndex > 0 && previousLastIndex >= previousFirstIndex;
 
-  // Auto-follow the newest message while the user hasn't deliberately scrolled
-  // up. The scroller's box is a fixed `h-full`, so content growth (late-loading
-  // media, taller bubbles, mobile keyboard/viewport resizes) is only visible
-  // through the content wrapper's size — without this the chat can render
-  // "stuck" above the newest messages after opening an image-heavy chat.
+      if (olderMessagesPrepended) {
+        el.scrollTop += el.scrollHeight - previousScrollHeightRef.current;
+      } else {
+        const previousSet = new Set(previousIds);
+        const added = messages.filter((message) => !previousSet.has(message.id));
+        const appended = added.length > 0 && previousLastIndex >= 0 && previousLastIndex < currentIds.length - 1;
+        if (appended) {
+          const ownMessageAdded = added.some((message) => message.senderId === currentUserId);
+          if (ownMessageAdded || nearBottomRef.current) {
+            el.scrollTop = el.scrollHeight;
+            nearBottomRef.current = true;
+            wasNearBottomRef.current = true;
+            setPendingCount(0);
+          } else {
+            setPendingCount((count) => count + added.length);
+          }
+        }
+      }
+    }
+
+    previousMessageIdsRef.current = currentIds;
+    previousScrollHeightRef.current = el.scrollHeight;
+  }, [conversationId, currentUserId, messages]);
+
+  // Follow late media/layout changes only while the reader is already at the end.
   const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
     const content = contentRef.current;
     if (!el || !content) return;
     const observer = new ResizeObserver(() => {
-      if (userScrolledUpRef.current) return;
+      if (!nearBottomRef.current) return;
       el.scrollTop = el.scrollHeight;
     });
     observer.observe(content);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-
-  // Track new messages
-  useEffect(() => {
-    const delta = messages.length - prevCountRef.current;
-    prevCountRef.current = messages.length;
-
-    if (delta > 0) {
-      const last = messages[messages.length - 1];
-      // Always jump when *I* sent the message; otherwise follow only if the
-      // user is already near the bottom — never yank a reader of old history.
-      if (last && last.senderId === currentUserId) {
-        scrollToBottom(true);
-      } else if (nearBottomRef.current) {
-        scrollToBottom(true);
-      } else {
-        setPendingCount((c) => c + delta);
-      }
-    }
-  }, [messages, scrollToBottom, currentUserId]);
 
   // Clicking pill scrolls down
   const handlePillClick = useCallback(() => {
@@ -1166,7 +1151,7 @@ export function ChatThread({
         aria-label="Mensagens da conversa"
         className="h-full scroll-pt-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-8 lg:px-12"
       >
-        <div ref={contentRef} className="flex min-h-full flex-col">
+        <div ref={contentRef} className="flex min-h-full flex-col justify-end">
         {messages.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
             <span className="mb-4 grid h-14 w-14 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-300/[.08] text-cyan-200 shadow-[0_0_40px_-18px_rgba(34,211,238,.55)]">
@@ -1180,7 +1165,7 @@ export function ChatThread({
           </div>
         )}
 
-        {messagesWithDividers.map((item, index) => {
+        {messagesWithDividers.map((item) => {
           if (item.type === "divider") {
             return <DateDivider key={item.key} label={item.label} />;
           }
@@ -1194,9 +1179,8 @@ export function ChatThread({
           const hasNext = sameMessageSequence(msg, item.nextMsg);
           const groupPosition = !hasPrevious && !hasNext ? "single" : !hasPrevious ? "first" : hasNext ? "middle" : "last";
 
-          // Calculate gap before this message (for visual separation)
-          const showGap = index > 0 && item.type === "message" && !sameMessageSequence(prevMsg, msg);
-          const isFromDifferentSender = prevMsg && prevMsg.senderId !== msg.senderId;
+          // Keep related messages close, with more air between message groups.
+          const messageSpacing = hasPrevious ? "mt-1" : prevMsg ? "mt-3" : "mt-0";
 
           // If we're editing this message inline
           if (editingId === msg.id) {
@@ -1256,7 +1240,7 @@ export function ChatThread({
               ref={(node) => { messageRefs.current[msg.id] = node; }}
               onMouseEnter={() => setHoveredId(msg.id)}
               onMouseLeave={() => setHoveredId(null)}
-              className={`group/message relative ${showGap && isFromDifferentSender ? "mt-3" : "mt-2"}`}
+              className={`group/message relative ${messageSpacing}`}
             >
             <MessageBubble
               msg={msg}

@@ -1517,6 +1517,7 @@ function GroupDetailPanel({
           messages={chatMessages}
           currentUserId={currentUserId}
           reduced={reduced}
+          conversationId={`group:${group.id}`}
           showAvatar
           showSenderName
           deleteSenderRoles={isOwner

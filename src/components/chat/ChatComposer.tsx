@@ -396,11 +396,6 @@ export function ChatComposer({
   const lastSpaceIdx = input.lastIndexOf(" ");
   const activeWord = input.slice(lastSpaceIdx + 1);
 
-  useEffect(() => {
-    const word = input.slice(input.lastIndexOf(" ") + 1);
-    setMentionOpen(Boolean(mentionEnabled && word.startsWith("@")));
-  }, [input, mentionEnabled]);
-
   const mentionQuery = mentionEnabled && activeWord.startsWith("@") ? activeWord.slice(1) : null;
 
   const mentionResults = useMemo(() => {
@@ -428,10 +423,6 @@ export function ChatComposer({
           .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName))
           .slice(0, 8);
   }, [mentionQuery, mentionMembers, currentUserId]);
-
-  useEffect(() => {
-    setMentionIndex(0);
-  }, [mentionQuery]);
 
   function insertMention(m: ChatComposerMentionMember) {
     const handle = m.username ?? m.displayName;
@@ -482,7 +473,7 @@ export function ChatComposer({
   }, [input]);
 
   return (
-    <div className="flex-none border-t border-[var(--border-subtle)] bg-[var(--bg)]/80 px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur-lg sm:px-8 lg:px-12">
+    <div className="chat-composer-shell flex-none border-t border-white/[.06] bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/95 to-[var(--bg)]/75 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur-xl sm:px-8 lg:px-12">
       {shownError && <p className="mb-2 text-[11px] text-[var(--red)]">{shownError}</p>}
 
       {/* @mention popover (groups only) */}
@@ -514,7 +505,7 @@ export function ChatComposer({
         </motion.div>
       )}
 
-      <div className="chat-led-border glass-card flex items-center gap-1.5 px-2 py-2 transition-transform focus-within:-translate-y-px focus-within:shadow-lg">
+      <div className="chat-led-border chat-composer-surface flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#0c1b2b]/90 px-1.5 py-1.5 shadow-[0_12px_28px_-18px_rgba(0,0,0,.9),inset_0_1px_rgba(255,255,255,.06)] transition-[border-color,box-shadow] focus-within:border-cyan-300/35 focus-within:shadow-[0_0_0_3px_rgba(34,211,238,.06),0_12px_28px_-18px_rgba(0,0,0,.9)]">
         <input
           ref={fileRef}
           type="file"
@@ -556,7 +547,13 @@ export function ChatComposer({
             rows={1}
             placeholder={replying ? "Responder..." : "Mensagem..."}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              const word = value.slice(value.lastIndexOf(" ") + 1);
+              setInput(value);
+              setMentionIndex(0);
+              setMentionOpen(Boolean(mentionEnabled && word.startsWith("@")));
+            }}
             onBlur={() => setMentionOpen(false)}
             onKeyDown={handleKeyDown}
             className="min-h-6 max-h-20 w-full resize-none overflow-y-hidden bg-transparent text-sm leading-5 text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"

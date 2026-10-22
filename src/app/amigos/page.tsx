@@ -720,9 +720,6 @@ function ChatPanel({
   }, []);
 
   /* Input state for composer */
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-
   async function handleSend(body: string) {
     const tempId = nextTempId();
     addOptimisticMessage({
@@ -734,18 +731,13 @@ function ChatPanel({
       createdAt: new Date().toISOString(),
       pending: true,
     });
-    setInput("");
-    setSending(true);
     try {
       const { message } = await api.sendMessage(friend.id, body);
       confirmMessage(tempId, message);
     } catch (err) {
       pendingRef.current = pendingRef.current.filter((p) => p.id !== tempId);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setInput(body);
       throw err;
-    } finally {
-      setSending(false);
     }
   }
 
@@ -880,6 +872,7 @@ function ChatPanel({
             messages={chatMessages}
             currentUserId={currentUserId}
             reduced={reduced}
+            conversationId={`dm:${friend.id}`}
             onSend={handleSend}
             onReply={handleReply}
             onEdit={handleEditMessage}
