@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState, useId } from "react";
 import {
   FOCUS_DURATION_IDLE_LABEL,
   FOCUS_DURATION_MAX_MINUTES,
@@ -49,6 +49,7 @@ export function CircularDurationPicker({
   onCommit,
 }: CircularDurationPickerProps) {
   const effectiveMaxMinutes = Math.min(maxDurationMinutes, FOCUS_DURATION_MAX_MINUTES);
+  const filterId = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
@@ -179,14 +180,15 @@ export function CircularDurationPicker({
   const displayText = `${minutes}`;
 
   return (
-    <div className="circular-duration-picker" style={{ position: "relative", width: size, height: size, maxWidth: "100%" }}>
+    <div className="circular-duration-picker" style={{ position: "relative", width: size, maxWidth: "100%", aspectRatio: "1 / 1" }}>
       <svg
         ref={svgRef}
         width={size}
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         className="circular-duration-svg"
-        style={{ touchAction: "none", cursor: disabled ? "default" : "grab", maxWidth: "100%", height: "auto", display: "block" }}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ touchAction: "none", cursor: disabled ? "default" : "grab", width: "100%", height: "100%", maxWidth: "100%", aspectRatio: "1 / 1", display: "block" }}
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label="Duração do foco em minutos"
@@ -198,14 +200,14 @@ export function CircularDurationPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <defs>
-          <filter id="duration-glow">
+          <filter id={`${filterId}-duration-glow`}>
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <filter id="handle-shadow">
+          <filter id={`${filterId}-handle-shadow`}>
             <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor={accentColor} floodOpacity="0.5" />
           </filter>
         </defs>
@@ -219,6 +221,18 @@ export function CircularDurationPicker({
           stroke={trackColor}
           strokeWidth={strokeWidth}
           opacity={0.5}
+        />
+
+        {/* Soft secondary track gives the glass instrument depth without
+            changing the pointer geometry or the duration-to-angle mapping. */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={radius - 7}
+          fill="none"
+          stroke="rgba(255,255,255,.035)"
+          strokeWidth={1}
+          pointerEvents="none"
         />
 
         {/* Tick marks at snap intervals (min-aware positions) */}
@@ -258,7 +272,7 @@ export function CircularDurationPicker({
           strokeDasharray={`${arcLength} ${circumference - arcLength}`}
           transform={`rotate(-90 ${cx} ${cy})`}
           style={{
-            filter: "url(#duration-glow)",
+            filter: `url(#${filterId}-duration-glow)`,
             transition: dragging ? "none" : "stroke-dasharray 0.15s ease-out, stroke 0.4s ease",
           }}
         />
@@ -268,11 +282,21 @@ export function CircularDurationPicker({
           <circle
             cx={handleX}
             cy={handleY}
+            r={dragging ? handleRadius + 9 : handleRadius + 6}
+            fill={accentColor}
+            opacity={dragging ? 0.2 : 0.12}
+            pointerEvents="none"
+          />
+        )}
+        {!disabled && (
+          <circle
+            cx={handleX}
+            cy={handleY}
             r={dragging ? handleRadius + 3 : handleRadius}
             fill={accentColor}
             stroke="var(--bg-primary)"
             strokeWidth={3}
-            filter="url(#handle-shadow)"
+            filter={`url(#${filterId}-handle-shadow)`}
             style={{
               cursor: "grab",
               transition: dragging ? "none" : "r 0.15s ease-out, fill 0.4s ease, stroke 0.4s ease",

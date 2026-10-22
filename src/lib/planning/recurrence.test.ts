@@ -105,6 +105,17 @@ describe("geração de ocorrências", () => {
       ["2026-11-09", "2026-11-11", "2026-11-13"],
     );
   });
+
+  it("changing the selected weekday changes generated future dates", () => {
+    const thursday = { ...mondaySeries, repeatDays: [4] };
+    assert.deepStrictEqual(expandWeeklyPlanSeries(thursday, weekStart("2026-11-09")), ["2026-11-12"]);
+  });
+
+  it("converting a weekly series to once keeps only its anchor occurrence", () => {
+    const once = { ...mondaySeries, repeatType: "once" as const, startDate: "2026-11-12", repeatDays: [] };
+    assert.deepStrictEqual(expandWeeklyPlanSeries(once, weekStart("2026-11-09")), ["2026-11-12"]);
+    assert.deepStrictEqual(expandWeeklyPlanSeries(once, weekStart("2026-11-16")), []);
+  });
 });
 
 describe("chave da ocorrência (plano + data)", () => {

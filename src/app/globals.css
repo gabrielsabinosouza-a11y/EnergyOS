@@ -1468,8 +1468,14 @@ body { overflow-wrap: break-word; }
   flex-direction: column;
   min-height: 0;
 }
+.planner-root.planner-week-root {
+  height: auto;
+  min-height: calc(100dvh - 126px - env(safe-area-inset-bottom, 0px));
+  overflow: visible;
+}
 @media (min-width: 1024px) {
   .planner-root { height: 100dvh; }
+  .planner-root.planner-week-root { min-height: calc(100dvh - 16px); }
 }
 
 /* ── Tokens de raio/espacing do planner ─────────────────────────────────── */

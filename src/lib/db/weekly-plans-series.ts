@@ -7,6 +7,7 @@ import { WEEKLY_PLAN_SERIES_LIMIT, PLAN_NAME_MAX } from "../daily-limits";
 import { grantPlannerCompletionReward, updatePlannerLeagueXP, type PlannerRewardResult } from "./planner-rewards";
 import { ensureXpLedgerSourceCheck } from "./xp-ledger";
 import { addDays, parseIsoKey, weekStart } from "@/lib/planning/dates";
+import { mergeCompletedOccurrenceDates } from "@/lib/planning/recurrence-form";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
@@ -275,6 +276,144 @@ export async function createWeeklyPlanSeries(
   );
   const result = await pool.query<SeriesRow>(`${SERIES_SELECT} where s.id = $1`, [inserted.rows[0].id]);
   return mapSeries(result.rows[0]);
+}
+
+export interface ConvertWeeklyPlanToSeriesInput extends Omit<CreateWeeklyPlanSeriesInput, "repeatType"> {
+  repeatDays: number[];
+}
+
+/** Atomically replaces a legacy one-off plan with a recurring series. */
+export async function convertWeeklyPlanToSeries(
+  profileId: string,
+  planId: number,
+  input: ConvertWeeklyPlanToSeriesInput,
+): Promise<{ series: WeeklyPlanSeries; preservedPlanId: number | null }> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(planId) || planId <= 0) throw new ValidationError("Plano inválido.");
+  const title = parseTitle(input.title);
+  if (title.length > PLAN_NAME_MAX) throw new ValidationError(`Use até ${PLAN_NAME_MAX} caracteres. Coloque os detalhes na nota.`);
+  const startDate = parseDate(input.startDate, "Data inicial");
+  const startTime = parseOptionalTime(input.startTime, "Horário de início");
+  if (!Array.isArray(input.repeatDays)) throw new ValidationError("Selecione pelo menos um dia da semana.");
+  const repeatDays = [...new Set(input.repeatDays)];
+  const rule = {
+    repeatType: "weekly" as const,
+    repeatDays,
+    startDate,
+    endType: input.endType ?? "never",
+    endDate: input.endDate,
+    endCount: input.endCount,
+  };
+  validateSeriesRule(rule);
+  const endType = rule.endType;
+  const endDate = endType === "date" ? parseDate(input.endDate, "Data final da repetição") : null;
+  const endCount = endType === "count" ? input.endCount ?? null : null;
+  const durationMinutes = input.durationMinutes ?? null;
+  if (durationMinutes !== null && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440)) {
+    throw new ValidationError("Duração do plano inválida.");
+  }
+  const reminderOffsetMin = input.reminderOffsetMin;
+  if (reminderOffsetMin !== undefined && reminderOffsetMin !== null && ![0, 5, 10, 30, 60, 1440].includes(reminderOffsetMin)) {
+    throw new ValidationError("Lembrete inválido.");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const sourceResult = await client.query<{
+      id: string | number;
+      plan_date: string | null;
+      title: string;
+      category_id: string | number;
+      completed_at: Date | string | null;
+      start_time: string | null;
+      end_time: string | null;
+      reminder_offset_min: number | null;
+    }>(
+      `select id, plan_date::text as plan_date, title, category_id, completed_at,
+              start_time::text as start_time, end_time::text as end_time, reminder_offset_min
+       from weekly_plans where profile_id = $1 and id = $2 for update`,
+      [profileId, planId],
+    );
+    const source = sourceResult.rows[0];
+    if (!source) throw new NotFoundError("Plano não encontrado.");
+
+    const activeSeries = await client.query<{ count: number }>(
+      `select count(*)::int from weekly_plan_series where profile_id = $1 and archived = false`,
+      [profileId],
+    );
+    if (Number(activeSeries.rows[0]?.count ?? 0) >= WEEKLY_PLAN_SERIES_LIMIT) {
+      throw new ValidationError(`Limite de ${WEEKLY_PLAN_SERIES_LIMIT} planos ativos atingido.`);
+    }
+
+    const categoryId = input.categoryId !== undefined
+      ? await assertCategoryForProfile(profileId, input.categoryId)
+      : Number(source.category_id);
+    const duration = input.durationMinutes !== undefined ? durationMinutes : (source.start_time && source.end_time
+      ? Math.round((Date.parse(`1970-01-01T${source.end_time.slice(0, 5)}:00Z`) - Date.parse(`1970-01-01T${source.start_time.slice(0, 5)}:00Z`)) / 60_000)
+      : null);
+    const inserted = await client.query<{ id: string | number }>(
+      `insert into weekly_plan_series (profile_id, title, category_id, repeat_type, repeat_days,
+         repeat_interval, start_time, duration_minutes, reminder_offset_min, start_date,
+         end_type, end_date, end_count, timezone)
+       values ($1, $2, $3, 'weekly', $4, 1, $5, $6, $7, $8::date, $9, $10::date, $11, 'America/Sao_Paulo')
+       returning id`,
+      [profileId, title, categoryId, repeatDays, input.startTime === undefined ? source.start_time?.slice(0, 5) ?? null : startTime,
+        duration, reminderOffsetMin === undefined ? source.reminder_offset_min : reminderOffsetMin,
+        startDate, endType, endDate, endCount],
+    );
+    const seriesId = Number(inserted.rows[0].id);
+
+    let preservedPlanId: number | null = null;
+    if (source.completed_at && !source.plan_date) {
+      preservedPlanId = Number(source.id);
+    } else if (source.completed_at && source.plan_date) {
+      const sourceIsSeriesOccurrence = expandWeeklyPlanSeries({
+        repeatType: "weekly",
+        repeatDays,
+        repeatInterval: 1,
+        startDate,
+        endType,
+        endDate,
+        endCount,
+        timezone: "America/Sao_Paulo",
+      }, weekStart(source.plan_date)).includes(source.plan_date);
+      if (sourceIsSeriesOccurrence) {
+        await client.query(
+          `insert into weekly_plan_occurrences (series_id, occurrence_date, completed_at, override_title, override_start_time, reminder_offset_min)
+           values ($1, $2::date, $3, $4, $5, $6)`,
+          [seriesId, source.plan_date, source.completed_at, source.title === title ? null : source.title,
+            source.start_time?.slice(0, 5) ?? null, source.reminder_offset_min],
+        );
+        await client.query(
+          `update xp_ledger old_reward
+              set source = 'weekly_plan_occurrence', source_id = $3
+            where old_reward.profile_id = $1 and old_reward.source = 'weekly_plan' and old_reward.source_id = $2
+              and not exists (
+                select 1 from xp_ledger occurrence_reward
+                 where occurrence_reward.profile_id = $1
+                   and occurrence_reward.source = 'weekly_plan_occurrence'
+                   and occurrence_reward.source_id = $3
+              )`,
+          [profileId, String(source.id), `${seriesId}:${source.plan_date}`],
+        );
+      } else {
+        preservedPlanId = Number(source.id);
+      }
+    }
+    if (preservedPlanId === null) {
+      await client.query("delete from weekly_plans where profile_id = $1 and id = $2", [profileId, planId]);
+    }
+
+    const result = await client.query<SeriesRow>(`${SERIES_SELECT} where s.id = $1`, [seriesId]);
+    await client.query("commit");
+    return { series: mapSeries(result.rows[0]), preservedPlanId };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export interface UpdateWeeklyPlanSeriesInput {
@@ -712,7 +851,17 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
 
   for (const row of seriesResult.rows) {
     const series = mapSeries(row);
-    const dates = expandWeeklyPlanSeries(series, weekStart);
+    const generatedDates = expandWeeklyPlanSeries(series, weekStart);
+    // Rule edits must not hide completed history whose dates no longer match
+    // the active weekday/end rule. Unique occurrence dates prevent duplicates.
+    const completedHistory = await pool.query<{ occurrence_date: string }>(
+      `select occurrence_date::text as occurrence_date
+         from weekly_plan_occurrences
+        where series_id = $1 and occurrence_date between $2::date and $3::date
+          and completed_at is not null and skipped = false`,
+      [series.id, weekStart, weekEndStr],
+    );
+    const dates = mergeCompletedOccurrenceDates(generatedDates, completedHistory.rows.map((occurrence) => occurrence.occurrence_date));
 
     for (const date of dates) {
       // Check if there's an occurrence record with state
@@ -743,7 +892,12 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
         repeatType: series.repeatType,
         repeatDays: series.repeatDays,
         isRecurring: series.repeatType !== "once",
-        reminderOffsetMin: occ?.remider_offset_min ?? series.reminderOffsetMin,
+        seriesStartDate: series.startDate,
+        repeatInterval: series.repeatInterval,
+        repeatEndType: series.endType,
+        repeatEndDate: series.endDate,
+        repeatEndCount: series.endCount,
+        reminderOffsetMin: occ?.reminder_offset_min ?? series.reminderOffsetMin,
       });
     }
   }

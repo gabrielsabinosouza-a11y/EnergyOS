@@ -1,6 +1,6 @@
 import { addDays, formatLocalDate, weekdayOfIso } from "./dates";
 
-export type RecurrenceFormErrors = Partial<Record<"planDate" | "repeatDays" | "repeatUntil", string>>;
+export type RecurrenceFormErrors = Partial<Record<"planDate" | "repeatDays" | "repeatUntil" | "repeatCount", string>>;
 
 /** Pick an explicit planner date, otherwise the selected day, otherwise today. */
 export function recurrenceInitialDate(explicitDate: string | null | undefined, selectedDate: string | null | undefined, today: string): string {
@@ -22,11 +22,18 @@ export function firstWeeklyOccurrence(startDate: string, days: number[]): string
   return null;
 }
 
+/** Keep completed historical occurrences visible after a series rule changes. */
+export function mergeCompletedOccurrenceDates(generated: string[], completedHistory: string[]): string[] {
+  return [...new Set([...generated, ...completedHistory])].sort();
+}
+
 export function validateWeeklyRecurrence(input: {
   startDate: string | null;
   days: number[];
   hasEndDate: boolean;
   endDate: string | null;
+  hasEndCount?: boolean;
+  endCount?: string | number | null;
 }): RecurrenceFormErrors {
   const errors: RecurrenceFormErrors = {};
   if (!input.startDate) errors.planDate = "Selecione a data inicial.";
@@ -35,6 +42,12 @@ export function validateWeeklyRecurrence(input: {
     if (!input.endDate) errors.repeatUntil = "Selecione a data final.";
     else if (input.startDate && input.endDate < input.startDate) {
       errors.repeatUntil = "A data final deve ser igual ou posterior à data inicial.";
+    }
+  }
+  if (input.hasEndCount) {
+    const count = Number(input.endCount);
+    if (!Number.isInteger(count) || count < 1 || count > 10_000) {
+      errors.repeatCount = "Informe uma quantidade entre 1 e 10.000 ocorrências.";
     }
   }
   return errors;

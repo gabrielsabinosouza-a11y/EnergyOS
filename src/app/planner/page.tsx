@@ -1,7 +1,7 @@
 "use client";
 import { MonthlyWeeksOverview } from "@/components/planning/MonthlyWeeksOverview";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WeeklyPlan, WeeklyPlanItem, Category } from "@/types";
+import type { WeeklyPlan, WeeklyPlanItem, Category, PlanRepeatType } from "@/types";
 import { api } from "@/lib/api-client";
 import {
   addDays,
@@ -20,7 +20,6 @@ import { WeekView } from "@/components/planning/WeekView";
 import { DayView } from "@/components/planning/DayView";
 import { PlanDialog } from "@/components/planning/PlanDialog";
 import { PlanRow } from "@/components/planning/PlanRow";
-import { WeekHub } from "@/components/planning/week-hub/WeekHub";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
 import { CalendarDays } from "lucide-react";
@@ -36,8 +35,10 @@ type PlanFormValues = {
   categoryId?: number;
   startTime?: string | null;
   endTime?: string | null;
-  repeatType: "once" | "weekly";
+  repeatType: PlanRepeatType;
   repeatDays: number[];
+  repeatEndType: "never" | "date" | "count";
+  repeatEndCount: number | null;
   repeatUntil: string | null;
   reminderOffsetMin: number | null;
 };
@@ -112,8 +113,6 @@ export default function PlanningPage() {
   const [goalDeadlines, setGoalDeadlines] = useState<Array<{ date: string; title: string }>>([]);
   const [goalDeadlinesError, setGoalDeadlinesError] = useState<string | null>(null);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [plansLoading, setPlansLoading] = useState(true);
-  const [plansRetry, setPlansRetry] = useState(0);
   const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; baseXp: number; balance?: number } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -159,7 +158,6 @@ export default function PlanningPage() {
   useEffect(() => {
     if (!user || !dateReady) return;
     let current = true;
-    const loadingTimer = window.setTimeout(() => setPlansLoading(true), 0);
     const requestVersion = mutationVersion.current;
     Promise.all([
       Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart))),
@@ -168,13 +166,8 @@ export default function PlanningPage() {
     ])
       .then(([weeks, unscheduled]) => {
         if (!current) return;
-        window.clearTimeout(loadingTimer);
-        if (requestVersion !== mutationVersion.current) {
-          setPlansLoading(false);
-          return;
-        }
+        if (requestVersion !== mutationVersion.current) return;
         setPlansError(null);
-        setPlansLoading(false);
         // Planos agendados do período + tarefas sem data (que não têm semana).
         const incoming = [
           ...weeks.flat().filter((plan) =>
@@ -190,13 +183,11 @@ export default function PlanningPage() {
       })
       .catch(() => {
         if (current) {
-          window.clearTimeout(loadingTimer);
           setPlansError("Não foi possível carregar os planos deste período.");
-          setPlansLoading(false);
         }
       });
-    return () => { current = false; window.clearTimeout(loadingTimer); };
-  }, [dataRange.end, dataRange.start, dateReady, plansRetry, updateTasks, user, weekStarts]);
+    return () => { current = false; };
+  }, [dataRange.end, dataRange.start, dateReady, updateTasks, user, weekStarts]);
 
   useEffect(() => {
     if (selectedDate !== null) return;
@@ -395,6 +386,16 @@ export default function PlanningPage() {
           title: values.title,
           startTime: values.startTime,
           reminderOffsetMin: values.reminderOffsetMin,
+          repeatType: values.repeatType,
+          repeatDays: values.repeatType === "weekly" ? values.repeatDays : values.repeatType === "interval" ? plan.repeatDays ?? [] : [],
+          repeatInterval: values.repeatType === "interval" ? plan.repeatInterval : 1,
+          startDate: values.repeatType !== "once"
+            ? plan.seriesStartDate ?? plan.planDate ?? values.planDate ?? todayIso()
+            : plan.planDate ?? plan.seriesStartDate ?? values.planDate ?? todayIso(),
+          endType: values.repeatType !== "once" ? values.repeatEndType : "never",
+          endDate: values.repeatType !== "once" ? values.repeatUntil : null,
+          endCount: values.repeatType !== "once" ? values.repeatEndCount : null,
+          durationMinutes: plan.durationMinutes,
         });
       } else {
         if (!plan.planDate) {
@@ -408,24 +409,58 @@ export default function PlanningPage() {
         });
       }
       mutationVersion.current += 1;
-      updateTasks((current) =>
-        current.map((item) =>
-          item.seriesId === plan.seriesId &&
-          (scope === "series" || item.planDate === plan.planDate)
-            ? {
-                ...item,
-                title: values.title,
-                startTime: values.startTime ?? null,
-                reminderOffsetMin: values.reminderOffsetMin,
-              }
+      if (scope === "series") {
+        const weeks = await Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)));
+        const incoming = weeks.flat().filter((item) =>
+          !item.planDate || (item.planDate >= dataRange.start && item.planDate <= dataRange.end)
+        );
+        updateTasks((current) => mergePlans(
+          current.filter((item) => !item.planDate || item.planDate < dataRange.start || item.planDate > dataRange.end),
+          incoming,
+        ));
+      } else {
+        updateTasks((current) => current.map((item) =>
+          item.seriesId === plan.seriesId && item.planDate === plan.planDate
+            ? { ...item, title: values.title, startTime: values.startTime ?? null, reminderOffsetMin: values.reminderOffsetMin }
             : item
-        )
-      );
+        ));
+      }
       announce(scope === "series" ? "Série atualizada." : "Ocorrência atualizada.");
       return;
     }
 
     if (plan) {
+      if (values.repeatType === "weekly") {
+        if (!values.planDate) {
+          announce("Escolha uma data para a repetição semanal.", true);
+          return;
+        }
+        await api.convertWeeklyPlanToSeries(plan.id, {
+          title: values.title,
+          categoryId: values.categoryId ?? plan.categoryId,
+          repeatDays: values.repeatDays,
+          startTime: values.startTime,
+          durationMinutes: values.startTime && values.endTime
+            ? Math.round((Date.parse(`1970-01-01T${values.endTime}:00Z`) - Date.parse(`1970-01-01T${values.startTime}:00Z`)) / 60_000)
+            : null,
+          startDate: values.planDate,
+          endType: values.repeatEndType,
+          endDate: values.repeatUntil,
+          endCount: values.repeatEndCount,
+          reminderOffsetMin: values.reminderOffsetMin,
+        });
+        mutationVersion.current += 1;
+        const weeks = await Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart)));
+        const incoming = weeks.flat().filter((item) =>
+          !item.planDate || (item.planDate >= dataRange.start && item.planDate <= dataRange.end)
+        );
+        updateTasks((current) => mergePlans(
+          current.filter((item) => !item.planDate || item.planDate < dataRange.start || item.planDate > dataRange.end),
+          incoming,
+        ));
+        announce("Plano convertido em série semanal.");
+        return;
+      }
       const { plan: updated } = await api.updateWeeklyPlan(plan.id, {
         title: values.title,
         categoryId: values.categoryId ?? plan.categoryId,
@@ -458,8 +493,9 @@ export default function PlanningPage() {
           ? Math.round((Date.parse(`1970-01-01T${values.endTime}:00Z`) - Date.parse(`1970-01-01T${values.startTime}:00Z`)) / 60_000)
           : null,
         startDate: values.planDate,
-        endType: values.repeatUntil ? "date" : "never",
+        endType: values.repeatEndType,
         endDate: values.repeatUntil,
+        endCount: values.repeatEndCount,
         timezone: "America/Sao_Paulo",
         reminderOffsetMin: values.reminderOffsetMin,
       });
@@ -559,33 +595,6 @@ export default function PlanningPage() {
     }
   }, [announce, togglePlan]);
 
-  const quickAddPlan = useCallback(async (date: string, title: string, startTime: string | null, categoryId?: number) => {
-    try {
-      const { plan } = await api.createWeeklyPlan({ planDate: date, title, startTime, categoryId });
-      const created = fromWeeklyPlan(plan);
-      mutationVersion.current += 1;
-      updateTasks((current) => mergePlans(current, [created]));
-      announce("Plano criado.");
-      return created;
-    } catch (error) {
-      announce(error instanceof Error ? error.message : "Não foi possível criar o plano. Tente novamente.", true);
-      throw error;
-    }
-  }, [announce, updateTasks]);
-
-  const undoQuickAdd = useCallback(async (plan: WeeklyPlanItem) => {
-    try {
-      await api.deleteWeeklyPlan(plan.id);
-      mutationVersion.current += 1;
-      updateTasks((current) => current.filter((item) => item.id !== plan.id || item.seriesId !== null));
-      announce("Plano removido.");
-    } catch {
-      announce("Não foi possível desfazer a criação do plano.", true);
-    }
-  }, [announce, updateTasks]);
-
-  const retryPlans = useCallback(() => setPlansRetry((attempt) => attempt + 1), []);
-
   const requestDelete = useCallback((plan: WeeklyPlanItem) => {
     setDeleteTarget(plan);
     setDeleteError(null);
@@ -641,7 +650,7 @@ export default function PlanningPage() {
 
   return (
     <AppShell>
-      <div className="planner-root flex h-full min-h-0 flex-col">
+      <div className={`planner-root flex h-full min-h-0 flex-col ${view === "week" ? "planner-week-root" : ""}`}>
         <div className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-6">
           <PlanningToolbar
             view={view}
@@ -654,7 +663,7 @@ export default function PlanningPage() {
           />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 sm:px-6">
+        <div className={`flex flex-col px-4 pt-3 sm:px-6 ${view === "week" ? "flex-none gap-4" : "min-h-0 flex-1 gap-3"}`}>
           {plansError && view !== "week" ? (
             <p className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-400" role="alert">
               {plansError}
@@ -696,7 +705,7 @@ export default function PlanningPage() {
                 animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                 exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
                 transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
-                className="min-h-0 flex flex-1 flex-col gap-6 overflow-y-auto overscroll-contain pb-6"
+                className="flex flex-none flex-col gap-4 pb-4"
               >
                 <WeekView
                   weekRange={week}
@@ -710,22 +719,6 @@ export default function PlanningPage() {
                   onEditPlan={openEdit}
                   onDeletePlan={requestDelete}
                 />
-                <WeekHub
-                  weekStart={week.start}
-                  plans={weekTasks}
-                  selectedDate={planningDate}
-                  categories={categories}
-                  isLoading={plansLoading}
-                  error={plansError}
-                  onRetry={retryPlans}
-                  onSelectDay={setSelectedDate}
-                  onCreatePlan={openCreate}
-                  onQuickAdd={quickAddPlan}
-                  onUndoQuickAdd={undoQuickAdd}
-                  onToggleCompleted={handleToggleCompleted}
-                  onEditPlan={openEdit}
-                  onDeletePlan={requestDelete}
-                />
                 <MonthlyWeeksOverview
                   monthStart={month.start}
                   monthEnd={month.end}
@@ -735,7 +728,7 @@ export default function PlanningPage() {
                     setSelectedDate(date);
                   }}
                   onPlanCreate={openCreate}
-                />                  
+                />
               </motion.div>
             )}
             {view === "day" && (

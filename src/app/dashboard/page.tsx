@@ -1059,7 +1059,7 @@ function DashboardContent() {
         </section>
 
         {/* Focus + Goals - stacked on mobile/tablet, side-by-side on xl+ */}
-        <section className="mb-8 grid gap-5 xl:grid-cols-2">
+        <section className="mb-8 grid items-start gap-5 xl:grid-cols-2">
           <FocusTimer
             todayStats={focusData?.todayStats ?? { minutesFocused: 0, coinsEarned: 0 }}
             history={focusData?.history ?? []}

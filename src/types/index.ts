@@ -636,6 +636,12 @@ export interface WeeklyPlanItem {
   repeatType: PlanRepeatType | null;
   repeatDays: number[] | null;
   isRecurring: boolean;
+  /** Rule metadata for editing a series from one of its visible occurrences. */
+  seriesStartDate?: string | null;
+  repeatInterval?: number | null;
+  repeatEndType?: PlanEndType;
+  repeatEndDate?: string | null;
+  repeatEndCount?: number | null;
   reminderOffsetMin: number | null;
 }
 

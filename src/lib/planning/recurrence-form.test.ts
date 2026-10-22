@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { firstWeeklyOccurrence, recurrenceInitialDate, syncInitialWeekday, validateWeeklyRecurrence } from "./recurrence-form";
+import { firstWeeklyOccurrence, mergeCompletedOccurrenceDates, recurrenceInitialDate, syncInitialWeekday, validateWeeklyRecurrence } from "./recurrence-form";
 
 test("prefill prefers an explicit day, then selected day, then today", () => {
   assert.equal(recurrenceInitialDate("2026-10-26", "2026-10-25", "2026-10-22"), "2026-10-26");
@@ -27,4 +27,16 @@ test("weekly recurrence requires an end date when that end condition is selected
 test("weekly recurrence rejects an empty weekday selection", () => {
   assert.equal(validateWeeklyRecurrence({ startDate: "2026-10-26", days: [], hasEndDate: false, endDate: null }).repeatDays, "Selecione pelo menos um dia da semana.");
   assert.equal(firstWeeklyOccurrence("2026-10-26", []), null);
+});
+
+test("weekly recurrence validates a count end condition", () => {
+  assert.equal(validateWeeklyRecurrence({ startDate: "2026-10-26", days: [1], hasEndDate: false, endDate: null, hasEndCount: true, endCount: "" }).repeatCount, "Informe uma quantidade entre 1 e 10.000 ocorrências.");
+  assert.deepEqual(validateWeeklyRecurrence({ startDate: "2026-10-26", days: [1], hasEndDate: false, endDate: null, hasEndCount: true, endCount: "12" }), {});
+});
+
+test("completed historical dates remain visible without duplicating generated dates after a rule edit", () => {
+  assert.deepEqual(
+    mergeCompletedOccurrenceDates(["2026-10-29", "2026-11-05"], ["2026-10-26", "2026-10-29"]),
+    ["2026-10-26", "2026-10-29", "2026-11-05"],
+  );
 });

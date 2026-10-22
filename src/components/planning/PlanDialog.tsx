@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Repeat } from "lucide-react";
-import type { Category, WeeklyPlanItem } from "@/types";
+import type { Category, PlanEndType, PlanRepeatType, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 import { SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
 import { recurrenceInitialDate, syncInitialWeekday, validateWeeklyRecurrence, weeklyRecurrenceSummary, type RecurrenceFormErrors } from "@/lib/planning/recurrence-form";
@@ -24,8 +24,10 @@ type PlanFormValues = {
   categoryId?: number;
   startTime: string | null;
   endTime: string | null;
-  repeatType: "once" | "weekly";
+  repeatType: PlanRepeatType;
   repeatDays: number[];
+  repeatEndType: PlanEndType;
+  repeatEndCount: number | null;
   repeatUntil: string | null;
   reminderOffsetMin: number | null;
 };
@@ -81,16 +83,19 @@ export function PlanDialog({
   const [startTime, setStartTime] = useState<string | null>(null);
   const [endTime, setEndTime] = useState<string | null>(null);
   const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const [repeatChanged, setRepeatChanged] = useState(false);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatDaysTouched, setRepeatDaysTouched] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState<string | null>(null);
   const [hasRepeatEnd, setHasRepeatEnd] = useState(false);
+  const [repeatEndType, setRepeatEndType] = useState<PlanEndType>("never");
+  const [repeatEndCount, setRepeatEndCount] = useState("");
   const [reminderOption, setReminderOption] = useState<ReminderOption>("sem-lembrete");
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceFormErrors>({});
-  const [touchedFields, setTouchedFields] = useState({ planDate: false, repeatDays: false, repeatUntil: false });
+  const [touchedFields, setTouchedFields] = useState({ planDate: false, repeatDays: false, repeatUntil: false, repeatCount: false });
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const dateFieldRef = useRef<HTMLDivElement>(null);
   const repeatDaysRef = useRef<HTMLDivElement>(null);
@@ -105,39 +110,59 @@ export function PlanDialog({
     if (open && !wasOpenRef.current) {
       setTitle(plan?.title ?? "");
       setCategoryId(plan?.categoryId?.toString() ?? "");
-      const nextDate = plan ? plan.planDate ?? null : recurrenceInitialDate(initialDate, selectedDate, todayIso());
+      const nextDate = plan
+        ? plan.seriesId !== null ? plan.seriesStartDate ?? plan.planDate ?? null : plan.planDate ?? null
+        : recurrenceInitialDate(initialDate, selectedDate, todayIso());
       setPlanDate(nextDate);
       setStartTime(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? null);
       setEndTime(initialEndTime ?? (plan ? plan.endTime?.slice(0, 5) ?? null : null));
-      setRepeatWeekly(false);
-      setRepeatDays(plan || !nextDate ? [] : syncInitialWeekday(nextDate));
+      const nextRepeatType = plan?.repeatType === "weekly";
+      setRepeatWeekly(nextRepeatType);
+      setRepeatChanged(false);
+      setRepeatDays(nextRepeatType ? plan?.repeatDays ?? [] : !plan && nextDate ? syncInitialWeekday(nextDate) : []);
       setRepeatDaysTouched(false);
-      setRepeatUntil("");
-      setHasRepeatEnd(false);
+      setRepeatUntil(plan?.repeatEndDate ?? "");
+      const nextEndType = plan?.repeatEndType ?? "never";
+      setRepeatEndType(nextEndType);
+      setRepeatEndCount(plan?.repeatEndCount ? String(plan.repeatEndCount) : "");
+      setHasRepeatEnd(nextEndType === "date");
       const offset = plan?.reminderOffsetMin;
       const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
       setReminderOption(found?.value ?? "sem-lembrete");
       setError("");
       setRecurrenceErrors({});
-      setTouchedFields({ planDate: false, repeatDays: false, repeatUntil: false });
+      setTouchedFields({ planDate: false, repeatDays: false, repeatUntil: false, repeatCount: false });
       setSubmitAttempted(false);
     }
     wasOpenRef.current = open;
   }, [open, plan, initialDate, selectedDate, initialStartTime, initialEndTime]);
 
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
+  const preservingInterval = recurringOccurrence && plan?.repeatType === "interval" && !repeatChanged;
 
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
   const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
 
+  function recurrenceValidation(startDate: string | null, days: number[], endDate: string | null, endType = repeatEndType, endCount = repeatEndCount) {
+    return validateWeeklyRecurrence({
+      startDate,
+      days,
+      hasEndDate: endType === "date",
+      endDate,
+      hasEndCount: endType === "count",
+      endCount,
+    });
+  }
+
   function handleDateChange(date: string | null) {
     setPlanDate(date);
     if (date && !repeatDaysTouched) setRepeatDays(syncInitialWeekday(date));
-    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: date, days: date && !repeatDaysTouched ? syncInitialWeekday(date) : repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
+    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(recurrenceValidation(date, date && !repeatDaysTouched ? syncInitialWeekday(date) : repeatDays, repeatUntil));
   }
 
   function handleRepeatChange(weekly: boolean) {
+    setRepeatChanged(true);
     setRepeatWeekly(weekly);
     if (!weekly) setRecurrenceErrors({});
     // A repetição semanal usa a data como âncora: só pré-seleciona o dia
@@ -151,22 +176,26 @@ export function PlanDialog({
       ? repeatDays.filter((selected) => selected !== day)
       : [...repeatDays, day].sort((a, b) => (a + 6) % 7 - (b + 6) % 7);
     setRepeatDays(nextDays);
-    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: nextDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
+    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(recurrenceValidation(planDate, nextDays, repeatUntil));
   }
 
   function touchRecurrenceField(field: keyof RecurrenceFormErrors) {
     setTouchedFields((current) => ({ ...current, [field]: true }));
-    if (repeatWeekly) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
+    if (repeatWeekly) setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, repeatUntil));
   }
 
   const selectedReminderOffset = REMINDER_OPTIONS.find((opt) => opt.value === reminderOption)?.offsetMin ?? null;
   const needsPermission = selectedReminderOffset != null;
   const recurrenceErrorSummary = repeatWeekly ? Object.values(recurrenceErrors).filter(Boolean).join(" ") : "";
+  const recurrenceSummary = planDate
+    ? weeklyRecurrenceSummary(planDate, repeatDays, repeatEndType === "date" ? repeatUntil : null, repeatEndType === "date")
+      .replace(/sem data final\.$/, repeatEndType === "count" ? `após ${repeatEndCount || "…"} ocorrências.` : "sem data final.")
+    : "";
 
   function validate(): PlanFormValues | null {
     setSubmitAttempted(true);
     const nextRecurrenceErrors = repeatWeekly
-      ? validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil })
+      ? recurrenceValidation(planDate, repeatDays, repeatUntil)
       : {};
     setRecurrenceErrors(nextRecurrenceErrors);
     if (Object.keys(nextRecurrenceErrors).length > 0) {
@@ -211,9 +240,13 @@ export function PlanDialog({
         : selectedCategoryId ? parsedCategoryId : undefined,
       startTime: startTime || null,
       endTime: recurringOccurrence ? null : endTime || null,
-      repeatType: repeatWeekly ? "weekly" : "once",
-      repeatDays: repeatWeekly ? repeatDays : [],
-      repeatUntil: repeatWeekly && hasRepeatEnd ? repeatUntil : null,
+      repeatType: recurringOccurrence && plan?.repeatType === "interval" && !repeatChanged
+        ? "interval"
+        : repeatWeekly ? "weekly" : "once",
+      repeatDays: repeatWeekly ? repeatDays : recurringOccurrence && plan?.repeatType === "interval" && !repeatChanged ? plan.repeatDays ?? [] : [],
+      repeatEndType: repeatWeekly || preservingInterval ? repeatEndType : "never",
+      repeatEndCount: (repeatWeekly || preservingInterval) && repeatEndType === "count" ? Number(repeatEndCount) : null,
+      repeatUntil: (repeatWeekly || preservingInterval) && repeatEndType === "date" ? repeatUntil : null,
       reminderOffsetMin: selectedReminderOffset,
     };
   }
@@ -407,7 +440,7 @@ export function PlanDialog({
             ) : null}
           </div>
 
-          {!plan ? (
+          <>
             <section className="glass-section space-y-4 p-4" aria-labelledby="planner-repeat-label">
               <div>
                 <h3 id="planner-repeat-label" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -416,7 +449,7 @@ export function PlanDialog({
                 <div className="mt-2.5 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    aria-pressed={!repeatWeekly}
+                    aria-pressed={!repeatWeekly && !preservingInterval}
                     onClick={() => handleRepeatChange(false)}
                     className="glass-segment px-3 py-2.5 text-sm font-medium"
                   >
@@ -424,7 +457,7 @@ export function PlanDialog({
                   </button>
                   <button
                     type="button"
-                    aria-pressed={repeatWeekly}
+                    aria-pressed={repeatWeekly && !preservingInterval}
                     onClick={() => handleRepeatChange(true)}
                     className="glass-segment flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium"
                   >
@@ -432,6 +465,7 @@ export function PlanDialog({
                     Semanalmente
                   </button>
                 </div>
+                {preservingInterval ? <p className="mt-2 text-xs text-[var(--text-muted)]">Regra atual: a cada {plan?.repeatInterval ?? 2} semanas. Escolha uma opção para substituí-la.</p> : null}
                 {repeatWeekly ? <p className="mt-2 text-xs text-[var(--text-muted)]">A primeira ocorrência será no próximo dia selecionado a partir da data inicial.</p> : null}
               </div>
 
@@ -457,7 +491,7 @@ export function PlanDialog({
                     })}
                   </div>
                   {recurrenceErrors.repeatDays && (touchedFields.repeatDays || submitAttempted) ? <p id="planner-repeat-days-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.repeatDays}</p> : null}
-                  {planDate && <p className="text-xs text-[var(--text-muted)]">{weeklyRecurrenceSummary(planDate, repeatDays, hasRepeatEnd ? repeatUntil : null, hasRepeatEnd)}</p>}
+                  {recurrenceSummary && <p className="text-xs text-[var(--text-muted)]">{recurrenceSummary}</p>}
                   </div>
                   <fieldset className="space-y-2">
                     <legend className="text-xs font-medium text-[var(--text-secondary)]">Fim da repetição</legend>
@@ -465,8 +499,8 @@ export function PlanDialog({
                       <input
                         type="radio"
                         name="planner-repeat-end"
-                        checked={!hasRepeatEnd}
-                        onChange={() => { setHasRepeatEnd(false); setRecurrenceErrors((current) => ({ ...current, repeatUntil: undefined })); }}
+                        checked={repeatEndType === "never"}
+                        onChange={() => { setRepeatEndType("never"); setHasRepeatEnd(false); setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, repeatUntil, "never")); }}
                         className="accent-[var(--accent)]"
                       />
                       Sem data final
@@ -475,11 +509,21 @@ export function PlanDialog({
                       <input
                         type="radio"
                         name="planner-repeat-end"
-                        checked={hasRepeatEnd}
-                        onChange={() => setHasRepeatEnd(true)}
+                        checked={repeatEndType === "date"}
+                        onChange={() => { setRepeatEndType("date"); setHasRepeatEnd(true); setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, repeatUntil, "date")); }}
                         className="accent-[var(--accent)]"
                       />
                       Repetir até
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-secondary)]">
+                      <input
+                        type="radio"
+                        name="planner-repeat-end"
+                        checked={repeatEndType === "count"}
+                        onChange={() => { setRepeatEndType("count"); setHasRepeatEnd(false); setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, repeatUntil, "count")); }}
+                        className="accent-[var(--accent)]"
+                      />
+                      Após ocorrências
                     </label>
                     {hasRepeatEnd ? (
                       <div ref={repeatUntilRef} className="space-y-1" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) touchRecurrenceField("repeatUntil"); }}>
@@ -489,7 +533,7 @@ export function PlanDialog({
                         value={repeatUntil}
                         onChange={(date) => {
                           setRepeatUntil(date);
-                          if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: date }));
+                          if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, date, "date"));
                         }}
                         onBlur={() => touchRecurrenceField("repeatUntil")}
                         aria-invalid={Boolean(recurrenceErrors.repeatUntil)}
@@ -497,6 +541,28 @@ export function PlanDialog({
                         placeholder="Escolha a data final"
                       />
                       {recurrenceErrors.repeatUntil && (touchedFields.repeatUntil || submitAttempted) ? <p id="planner-repeat-until-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.repeatUntil}</p> : null}
+                      </div>
+                    ) : null}
+                    {repeatEndType === "count" ? (
+                      <div ref={repeatUntilRef} className="space-y-1">
+                        <label htmlFor="planner-repeat-count" className="sr-only">Quantidade de ocorrências</label>
+                        <input
+                          id="planner-repeat-count"
+                          type="number"
+                          min={1}
+                          max={10000}
+                          value={repeatEndCount}
+                          onChange={(event) => {
+                            setRepeatEndCount(event.target.value);
+                            if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(recurrenceValidation(planDate, repeatDays, repeatUntil, "count", event.target.value));
+                          }}
+                          onBlur={() => touchRecurrenceField("repeatCount")}
+                          placeholder="Ex.: 12"
+                          aria-invalid={Boolean(recurrenceErrors.repeatCount)}
+                          aria-describedby={recurrenceErrors.repeatCount ? "planner-repeat-count-error" : undefined}
+                          className="glass-field tabular-nums"
+                        />
+                        {recurrenceErrors.repeatCount && (touchedFields.repeatCount || submitAttempted) ? <p id="planner-repeat-count-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.repeatCount}</p> : null}
                       </div>
                     ) : null}
                   </fieldset>
@@ -530,12 +596,7 @@ export function PlanDialog({
                 </section>
               )}
             </section>
-          ) : recurringOccurrence ? (
-            <p className="glass-section flex items-center gap-2 px-3.5 py-2.5 text-xs text-[var(--text-secondary)]">
-              <Repeat size={14} className="shrink-0 text-[var(--accent)]" aria-hidden="true" />
-              {plan?.repeatType === "weekly" ? "Plano semanal" : "Ocorrência de uma série"}
-            </p>
-          ) : null}
+          </>
 
         </form>
       </Modal>
@@ -544,7 +605,7 @@ export function PlanDialog({
         open={Boolean(pendingScope)}
         onClose={() => setPendingScope(null)}
         title="Aplicar alterações da série?"
-        description="Escolha onde as alterações deste plano recorrente serão aplicadas."
+        description="Escolha onde aplicar as alterações. Ajustes em Repetir só mudam quando você escolhe a série inteira."
         surface="glass"
         panelClassName="planner-glass-modal max-w-[420px]"
         zIndex={1010}
@@ -556,10 +617,10 @@ export function PlanDialog({
       >
         <div className="flex flex-col gap-2">
           <Button type="button" variant="secondary" loading={loading} disabled={loading} onClick={() => pendingScope && void save(pendingScope, "occurrence")}>
-            Apenas este dia
+            Apenas esta ocorrência
           </Button>
           <Button type="button" loading={loading} disabled={loading} className="glass-cta" onClick={() => pendingScope && void save(pendingScope, "series")}>
-            Todos os dias da série
+            Toda a série
           </Button>
           {error ? <p className="text-sm text-red-400" role="alert">{error}</p> : null}
         </div>

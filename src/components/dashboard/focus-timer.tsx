@@ -642,21 +642,25 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   useEffect(() => () => stopInterval(), []);
 
   return (
-    <div className="panel p-6">
-      <div className="flex items-center justify-between mb-5">
+    <div className="panel relative isolate overflow-hidden bg-[color-mix(in_srgb,var(--bg-surface)_92%,transparent)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_44px_-34px_rgba(0,0,0,.9)] sm:p-6">
+      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-24 h-64 w-64 -translate-x-1/2 rounded-full bg-emerald-300/[.035] blur-3xl" />
+      <div className="relative z-10 mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Timer size={16} className="text-[var(--accent)]" />
           <span className="eyebrow muted">FOCO</span>
         </div>
         {/* Notification permission — manual opt-in, never requested on load */}
-        {notifPermission === "default" && (
-          <button
-            onClick={() => void activateNotifications()}
-            className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[10px] text-[var(--text-faint)] hover:text-[var(--text)] transition"
-          >
-            <Bell size={10} /> Ativar notificações
-          </button>
-        )}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {notifPermission === "default" && (
+            <button
+              onClick={() => void activateNotifications()}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[10px] text-[var(--text-faint)] transition hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              <Bell size={10} /> Ativar notificações
+            </button>
+          )}
+          {state === "idle" && <span className="whitespace-nowrap rounded-full border border-emerald-300/10 bg-emerald-300/[.035] px-2.5 py-1 text-[9px] font-medium tracking-wide text-[var(--text-faint)]">Arraste o aro</span>}
+        </div>
       </div>
 
       <div className="flex flex-col items-center">
@@ -696,15 +700,6 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
             onPick={state === "idle" ? () => setShowPicker(true) : undefined}
           />
         </div>
-
-        {/* "toque para trocar" hint — sits below the ring, never overlaps the image */}
-        {state === "idle" && (
-          <div className="mt-3 flex items-center justify-center">
-            <span className="text-[9px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
-              toque para trocar
-            </span>
-          </div>
-        )}
 
         <FocusDurationReadout
           minutes={duration}

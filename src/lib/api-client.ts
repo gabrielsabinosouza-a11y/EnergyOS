@@ -288,6 +288,11 @@ export const api = {
     request<{ plan: WeeklyPlan; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/${id}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   updateWeeklyPlan: (id: number, input: { title: string; categoryId?: number; planDate?: string | null; startTime?: string | null; endTime?: string | null; reminderOffsetMin?: number | null }) =>
     request<{ plan: WeeklyPlan }>(`/api/weekly-plans/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+  convertWeeklyPlanToSeries: (id: number, input: {
+    title: string; categoryId?: number; repeatDays: number[]; startTime?: string | null;
+    durationMinutes?: number | null; startDate: string; endType?: "never" | "date" | "count";
+    endDate?: string | null; endCount?: number | null; reminderOffsetMin?: number | null;
+  }) => request<{ series: WeeklyPlanSeries; preservedPlanId: number | null }>(`/api/weekly-plans/${id}/series`, { method: "POST", body: JSON.stringify(input) }),
   deleteWeeklyPlan: (id: number) => request<{ ok: true }>(`/api/weekly-plans/${id}`, { method: "DELETE" }),
 
   // Weekly Plan Series (recurring items)

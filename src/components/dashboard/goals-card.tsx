@@ -278,7 +278,7 @@ const GoalCardItem = memo(function GoalCardItem({
       {/* Surface com tilt 3D e brilho que seguem o ponteiro. */}
       <motion.div
         {...tilt.events}
-        className="relative flex w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 pr-14"
+        className="relative flex w-full min-w-0 flex-col gap-2.5 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 transition-[border-color,box-shadow,background-color] duration-200 hover:border-[var(--border-strong)] hover:shadow-[0_12px_28px_-20px_rgba(34,211,238,.38)] motion-reduce:transition-none"
         style={{
           ...tilt.style,
           borderColor: done ? `${color}33` : "var(--border-subtle)",
@@ -310,11 +310,12 @@ const GoalCardItem = memo(function GoalCardItem({
           />
         </div>
 
+        <div className="flex min-w-0 items-start gap-3 pr-8">
         {/* ── Zona (a): ícone da categoria ── */}
         <motion.div
           animate={celebrating ? { scale: [1, 1.12, 1] } : undefined}
           transition={{ duration: 0.5 }}
-          className="relative flex shrink-0 h-10 w-10 items-center justify-center rounded-full"
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[.06]"
           style={{
             background: `${color}1a`,
             boxShadow: celebrating ? `0 0 14px ${color}80` : `0 0 0 transparent`,
@@ -324,7 +325,7 @@ const GoalCardItem = memo(function GoalCardItem({
           {celebrating && (
             <svg
               className="absolute inset-0 rounded-full"
-              style={{ width: 40, height: 40 }}
+              style={{ width: 36, height: 36 }}
               viewBox="0 0 24 24"
             >
               <circle
@@ -346,7 +347,7 @@ const GoalCardItem = memo(function GoalCardItem({
 
         <div className="min-w-0 flex-1">
           <p
-            className="line-clamp-1 text-xs font-medium leading-tight text-[var(--text)]"
+            className="line-clamp-2 break-words text-[13px] font-semibold leading-snug text-[var(--text)] [overflow-wrap:anywhere]"
             title={title}
             style={done ? { textDecoration: "line-through", color: "var(--text-faint)" } : undefined}
           >
@@ -415,8 +416,11 @@ const GoalCardItem = memo(function GoalCardItem({
             )}
           </div>
 
+        </div>
+        </div>
+
           {/* Barra de progresso: largura com spring + shimmer ao aumentar. */}
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface-active)]" role="progressbar" aria-label={`Progresso de ${title}`} aria-valuemin={0} aria-valuemax={targetValue} aria-valuenow={Math.min(currentValue, targetValue)}>
             <motion.div
               className="relative h-full rounded-full overflow-hidden"
               style={{
@@ -447,7 +451,6 @@ const GoalCardItem = memo(function GoalCardItem({
               </AnimatePresence>
             </motion.div>
           </div>
-        </div>
 
         {deadline && typeof document !== "undefined" &&
           createPortal(
@@ -487,7 +490,7 @@ const GoalCardItem = memo(function GoalCardItem({
           )}
 
         {/* ── Zona (b): cluster de ação (− / +), camada própria ── */}
-        <div className="relative z-10 flex shrink-0 items-center gap-1 pointer-events-auto">
+        <div className="relative z-10 flex w-full shrink-0 items-center justify-end gap-1 pointer-events-auto">
           {done ? (
             uncompletePending ? (
               <div className="flex items-center gap-1">
@@ -859,7 +862,7 @@ export function GoalsCard({
 
   if (goals.length === 0) {
     return (
-      <div className="panel p-4 sm:p-6 h-full flex flex-col items-center justify-center">
+      <div className="panel flex min-h-[176px] min-w-0 flex-col items-center justify-center p-4 sm:p-6">
         <motion.div
           animate={reduced ? {} : { y: [0, -5, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -888,13 +891,13 @@ export function GoalsCard({
   }
 
   return (
-    <div className="panel p-4 sm:p-6 h-full flex flex-col">
+    <div className="panel flex min-w-0 flex-col p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <span className="eyebrow muted">METAS ATIVAS</span>
         <span className="text-xs text-[var(--text-muted)]">{goals.length} meta{goals.length === 1 ? "" : "s"}</span>
       </div>
 
-      <div className="relative grid grow grid-cols-1 md:grid-cols-2 gap-3 content-start min-w-0">
+      <div className="relative grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] content-start gap-3">
         <AnimatePresence mode="popLayout" initial={false}>
           {activeGoals.map((goal) => {
             const { color, icon } = goal.category;
@@ -946,7 +949,7 @@ export function GoalsCard({
             whileHover={reduced ? undefined : { borderColor: "rgba(113,212,255,0.5)", color: "#71d4ff" }}
             whileTap={reduced ? undefined : { scale: 0.97 }}
             aria-label="Criar nova meta"
-            className="flex min-h-[72px] sm:min-h-[88px] h-full w-full flex-col items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition cursor-pointer"
+            className="flex min-h-[136px] h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/40 text-[var(--text-muted)] transition-colors duration-200 hover:bg-[var(--accent-bg)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             transition={{ ...spring.snappy }}
           >
             <motion.span
