@@ -105,39 +105,157 @@ function ReferenceImageField({
     <>
       <section
         aria-label="Imagem de referência"
-        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-        onDrop={(event) => { event.preventDefault(); setDragging(false); void uploadFile(event.dataTransfer.files[0]); }}
-        className={`rounded-2xl border bg-white/[.025] p-3 transition-all duration-200 ${dragging ? "border-cyan-300/70 bg-cyan-300/[.08] shadow-[0_0_28px_rgba(34,211,238,.18)]" : "border-white/[.08] hover:border-white/[.13]"}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragging(false);
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          void uploadFile(event.dataTransfer.files[0]);
+        }}
+        className={`rounded-2xl border bg-white/[.025] p-3 transition-all duration-200 ${
+          dragging
+            ? "border-cyan-300/70 bg-cyan-300/[.08] shadow-[0_0_28px_rgba(34,211,238,.18)]"
+            : "border-white/[.08] hover:border-white/[.13]"
+        }`}
       >
         <div className="mb-2 flex items-center justify-between gap-3">
-          <div><p className="text-xs font-semibold text-[var(--text)]">Imagem de referência</p><p className="mt-0.5 text-[10px] text-[var(--text-faint)]">Uma imagem para suas ideias · até 5 MB</p></div>
-          {imageUrl && <span className="rounded-full border border-cyan-200/10 bg-cyan-200/[.06] px-2 py-1 text-[9px] font-medium text-cyan-100/80">Anexada</span>}
+          <div>
+            <p className="text-xs font-semibold text-[var(--text)]">
+              Imagem de referência
+            </p>
+            <p className="mt-0.5 text-[10px] text-[var(--text-faint)]">
+              Uma imagem para suas ideias · até 5 MB
+            </p>
+          </div>
+
+          {imageUrl && (
+            <span className="rounded-full border border-cyan-200/10 bg-cyan-200/[.06] px-2 py-1 text-[9px] font-medium text-cyan-100/80">
+              Anexada
+            </span>
+          )}
         </div>
-        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void uploadFile(event.target.files?.[0])} className="sr-only" aria-label="Escolher imagem de referência" />
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,.jpg,.jpeg,.png,.webp"
+          onChange={(event) => void uploadFile(event.target.files?.[0])}
+          className="sr-only"
+          aria-label="Escolher imagem de referência"
+        />
 
         {imageUrl ? (
           <div className="flex items-center gap-3 rounded-xl border border-white/[.06] bg-black/10 p-2.5">
-          <motion.button type="button" onClick={() => setViewOpen(true)} aria-label="Ver imagem de referência em tamanho grande" whileHover={{ scale: 1.025 }} className="group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#071225] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200">
-              <Image src={imageUrl} alt="Prévia da imagem de referência" fill sizes="80px" loading="lazy" unoptimized className="object-cover transition-transform duration-300 group-hover:scale-110" />
-              <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100"><ExternalLink size={15} /></span>
+            <motion.button
+              type="button"
+              onClick={() => setViewOpen(true)}
+              aria-label="Ver imagem de referência em tamanho grande"
+              whileHover={{ scale: 1.025 }}
+              className="group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#071225] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200"
+            >
+              <Image
+                src={imageUrl}
+                alt="Prévia da imagem de referência"
+                fill
+                sizes="80px"
+                loading="lazy"
+                unoptimized
+                className="object-cover transition-transform duration-300 group-hover:scale-110"
+              />
+              <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100">
+                <ExternalLink size={15} />
+              </span>
             </motion.button>
-            <div className="min-w-0 flex-1"><p className="text-xs font-medium text-slate-200">Referência visual anexada</p><p className="mt-1 text-[10px] text-slate-500">Não aparece como miniatura no quadro.</p></div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-slate-200">
+                Referência visual anexada
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Não aparece como miniatura no quadro.
+              </p>
+            </div>
+
             <div className="flex shrink-0 flex-col gap-1.5">
-              <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-[10px] text-slate-300 transition hover:border-cyan-200/25 hover:bg-cyan-200/[.06] hover:text-cyan-100 disabled:opacity-50">{uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Trocar</button>
-              <button type="button" onClick={() => { onChange(null, null); setError(null); }} disabled={uploading} className="rounded-lg px-2 py-1 text-[10px] text-slate-500 transition hover:bg-red-400/[.07] hover:text-red-300 disabled:opacity-50">Remover</button>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-[10px] text-slate-300 transition hover:border-cyan-200/25 hover:bg-cyan-200/[.06] hover:text-cyan-100 disabled:opacity-50"
+              >
+                {uploading ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : (
+                  <Upload size={11} />
+                )}
+                Trocar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(null, null);
+                  setError(null);
+                }}
+                disabled={uploading}
+                className="rounded-lg px-2 py-1 text-[10px] text-slate-500 transition hover:bg-red-400/[.07] hover:text-red-300 disabled:opacity-50"
+              >
+                Remover
+              </button>
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="flex min-h-[106px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/[.13] bg-[#071225]/35 px-4 py-4 text-center transition hover:border-cyan-200/35 hover:bg-cyan-200/[.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:cursor-wait">
-            {uploading ? <Loader2 size={18} className="animate-spin text-cyan-200" /> : <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/10 bg-cyan-200/[.06] text-cyan-100"><ImageIcon size={16} /></span>}
-            <span className="text-xs font-medium text-slate-300">{uploading ? "Preparando imagem…" : dragging ? "Solte para anexar" : "Arraste uma imagem ou clique para escolher"}</span>
-            {!uploading && <span className="text-[10px] text-slate-500">PNG · JPG · WEBP</span>}
-          </motion.button>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="flex min-h-[106px] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/[.13] bg-[#071225]/35 px-4 py-4 text-center transition hover:border-cyan-200/35 hover:bg-cyan-200/[.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:cursor-wait"
+          >
+            {uploading ? (
+              <Loader2 size={18} className="animate-spin text-cyan-200" />
+            ) : (
+              <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/10 bg-cyan-200/[.06] text-cyan-100">
+                <ImageIcon size={16} />
+              </span>
+            )}
+
+            <span className="text-xs font-medium text-slate-300">
+              {uploading
+                ? "Preparando imagem…"
+                : dragging
+                  ? "Solte para anexar"
+                  : "Arraste uma imagem ou clique para escolher"}
+            </span>
+
+            {!uploading && (
+              <span className="text-[10px] text-slate-500">
+                PNG · JPG · WEBP
+              </span>
+            )}
+          </button>
         )}
-        {uploading && imageUrl && <p className="mt-2 flex items-center gap-1.5 text-[10px] text-cyan-100/80"><Loader2 size={11} className="animate-spin" /> Enviando substituição…</p>}
-        {error && <p className="mt-2 text-xs text-red-300" role="alert">{error}</p>}
+
+        {uploading && imageUrl && (
+          <p className="mt-2 flex items-center gap-1.5 text-[10px] text-cyan-100/80">
+            <Loader2 size={11} className="animate-spin" />
+            Enviando substituição…
+          </p>
+        )}
+
+        {error && (
+          <p className="mt-2 text-xs text-red-300" role="alert">
+            {error}
+          </p>
+        )}
       </section>
+
 
       <AnimatePresence>
         {viewOpen && imageUrl && (
@@ -221,7 +339,7 @@ function SortableCard({
       >
         <GripVertical size={14} />
       </button>
-      
+
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-[var(--text)] truncate">{task.title}</p>
@@ -1113,12 +1231,12 @@ export function KanbanBoard({
         const activeId = Number(active.id);
         const activeData = active.data.current as { status?: KanbanStatus; task?: KanbanTask };
         const overData = over.data.current as { status?: KanbanStatus; task?: KanbanTask };
-        
+
         if (!activeData?.status) return;
-        
+
         const oldStatus = activeData.status;
         const newStatus = overData?.status || overData?.task?.status || oldStatus;
-        
+
         if (oldStatus === newStatus) {
           if (overData?.task) {
             const overId = Number(over.id);
