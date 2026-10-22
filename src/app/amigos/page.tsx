@@ -843,10 +843,10 @@ function ChatPanel({
   );
 
   return (
-    <Modal onClose={onClose} variant="side-right">
-      <div className="flex h-full w-full flex-col overflow-hidden">
+    <Modal onClose={onClose} variant="side-right" surface="glass" panelClassName="isolate h-[100dvh] w-full max-w-none overflow-hidden border-l border-white/10 bg-[linear-gradient(155deg,#10233a_0%,#091626_46%,#050d18_100%)] shadow-[-24px_0_80px_-32px_rgba(0,0,0,.85)] sm:max-w-xl">
+      <div className="isolate flex h-full min-h-0 w-full flex-col overflow-hidden bg-[radial-gradient(ellipse_at_70%_10%,rgba(34,211,238,.07),transparent_48%)]">
         {/* Conversation Header - Premium Design */}
-        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg)]/95 backdrop-blur-xl px-4 py-3">
+        <div className="z-10 flex min-h-[76px] shrink-0 items-center gap-3 border-b border-white/10 bg-[#091626]/90 px-4 pt-[max(.75rem,env(safe-area-inset-top,0px))] pb-3 shadow-[0_8px_24px_-20px_rgba(0,0,0,.9)] backdrop-blur-xl">
           <div className="relative">
             <UserAvatar user={friend} size={36} />
             {/* Online indicator */}
@@ -875,7 +875,7 @@ function ChatPanel({
         </div>
 
         {/* Message History - Proper scrollable area */}
-        <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(113,212,255,.25) transparent' }}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(113,212,255,.25) transparent' }}>
           <ChatThread
             messages={chatMessages}
             currentUserId={currentUserId}
@@ -895,38 +895,18 @@ function ChatPanel({
             }}
             replyingTo={replyingTo ? dmToChatMessage(replyingTo) : null}
             onCancelReply={() => setReplyingTo(null)}
-            inputSlot={null} // We use our own composer at the bottom
+            inputSlot={
+              <ChatComposer
+                replying={Boolean(replyingTo)}
+                onSendText={async (body) => {
+                  if (replyingTo) await handleReply(body, replyingTo.id);
+                  else await handleSend(body);
+                }}
+                onSendMedia={handleSendMedia}
+              />
+            }
           />
         </div>
-
-        {/* Reply Preview */}
-        {replyingTo && (
-          <div className="flex items-center gap-2 overflow-hidden border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-4 py-2">
-            <MessageCircle size={14} className="shrink-0 text-[var(--accent)]" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-medium text-[var(--accent)]">
-                Respondendo {dmToChatMessage(replyingTo).senderName ?? "mensagem"}
-              </p>
-              <p className="truncate text-xs text-[var(--text-muted)]">
-                {replyingTo.body ?? "mídia"}
-              </p>
-            </div>
-            <button
-              onClick={() => setReplyingTo(null)}
-              className="shrink-0 rounded-full p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
-              aria-label="Cancelar resposta"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* Composer - Premium Design */}
-        <ChatComposer
-          replying={!!replyingTo}
-          onSendText={(body) => handleSend(body)}
-          onSendMedia={handleSendMedia}
-        />
       </div>
     </Modal>
   );

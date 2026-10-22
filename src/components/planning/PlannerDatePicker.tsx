@@ -60,11 +60,6 @@ export function PlannerDatePicker({
     return () => window.clearTimeout(timeout);
   }, []);
 
-  useEffect(() => {
-    if (value) setActiveDate(value);
-    else if (today) setActiveDate(today);
-  }, [today, value]);
-
   const close = useCallback((restoreFocus = false) => {
     setOpen(false);
     setPosition(null);

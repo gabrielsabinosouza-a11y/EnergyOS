@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HOUR_HEIGHT, layoutTimedEvents, toMinutes } from "@/lib/planning/time";
+import { APP_TIMEZONE } from "@/lib/planning/dates";
 import { EventBlock } from "./EventBlock";
 import type { WeeklyPlanItem } from "@/types";
 import { planItemKey } from "./PlanRow";
@@ -12,6 +13,18 @@ export interface TimeGridDay {
   selected: boolean;
   /** Eventos timed (com horário) do dia, ordenados por início. */
   events: WeeklyPlanItem[];
+}
+
+function currentPlannerMinutes(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
 }
 
 interface PlannerTimeGridProps {
@@ -31,8 +44,7 @@ export function PlannerTimeGrid({ days, onSlotClick, onEventClick }: PlannerTime
   // Atualiza a linha do "agora" a cada minuto.
   useEffect(() => {
     const update = () => {
-      const d = new Date();
-      setNowMinutes(d.getHours() * 60 + d.getMinutes());
+      setNowMinutes(currentPlannerMinutes());
     };
     const timeout = window.setTimeout(update, 0);
     const id = window.setInterval(update, 60_000);
@@ -43,8 +55,7 @@ export function PlannerTimeGrid({ days, onSlotClick, onEventClick }: PlannerTime
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const now = new Date();
-    const targetMinutes = now.getHours() * 60 + now.getMinutes() - 60;
+    const targetMinutes = currentPlannerMinutes() - 60;
     el.scrollTop = Math.max(0, (targetMinutes / 60) * HOUR_HEIGHT);
   }, []);
 

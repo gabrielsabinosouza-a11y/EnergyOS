@@ -10,6 +10,7 @@ import {
   Copy,
   Pin,
   MessageCircleReply,
+  MessageCircle,
   Pencil,
   Pause,
   Play,
@@ -26,6 +27,7 @@ import { Modal } from "@/components/modal";
 function formatClock(iso?: string): string {
   if (!iso) return "";
   return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
@@ -48,15 +50,13 @@ function formatPinExpiry(iso: string): string {
 
 /** Returns true if two ISO dates are on different days (in the user's timezone). */
 function differentDays(a: string, b: string): boolean {
-  const da = new Date(a);
-  const db = new Date(b);
-  // Use locale-aware date strings for proper timezone comparison
-  return da.toLocaleDateString() !== db.toLocaleDateString();
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatter.format(new Date(a)) !== formatter.format(new Date(b));
 }
 
 function sameMessageSequence(a: ChatMessage | null | undefined, b: ChatMessage | null | undefined): boolean {
   return Boolean(a && b && a.senderId === b.senderId && !differentDays(a.createdAt, b.createdAt) &&
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() <= 5 * 60_000);
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() <= 2 * 60_000);
 }
 
 /* ─── @mention rendering ─────────────────────────────────────────── */
@@ -118,35 +118,20 @@ function MentionText({
 /** Format a date for the divider label in the user's local timezone.
  *  Displays "Hoje", "Ontem", or "9 de setembro de 2025" for other dates.
  */
-const MONTH_NAMES_PT = [
-  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-];
 function formatDateDivider(iso: string): string {
-  // Use locale-aware formatting for proper timezone handling
-  const msgDate = new Date(iso);
+  const timezone = "America/Sao_Paulo";
+  const formatter = new Intl.DateTimeFormat("pt-BR", { timeZone: timezone, day: "numeric", month: "long", year: "numeric" });
+  const keyFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+  const messageDate = new Date(iso);
   const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  // Compare only the date part (year, month, day) in local timezone
-  const msgLocalDate = msgDate.toLocaleDateString('pt-BR');
-  const todayLocalDate = today.toLocaleDateString('pt-BR');
-  const yesterdayLocalDate = yesterday.toLocaleDateString('pt-BR');
-
-  if (msgLocalDate === todayLocalDate) return "Hoje";
-  if (msgLocalDate === yesterdayLocalDate) return "Ontem";
-  
-  // Include year for dates other than today/yesterday
-  const day = msgDate.getDate();
-  const month = MONTH_NAMES_PT[msgDate.getMonth()];
-  const year = msgDate.getFullYear();
-  
-  // If the year is the current year, don't show it
-  if (year === today.getFullYear()) {
-    return `${day} de ${month}`;
-  }
-  return `${day} de ${month} de ${year}`;
+  const messageKey = keyFormatter.format(messageDate);
+  const todayKey = keyFormatter.format(today);
+  const [year, month, day] = todayKey.split("-").map(Number);
+  const yesterdayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.UTC(year, month - 1, day - 1)));
+  if (messageKey === todayKey) return "Hoje";
+  if (messageKey === yesterdayKey) return "Ontem";
+  const label = formatter.format(messageDate);
+  return Number(messageKey.slice(0, 4)) === year ? label.replace(/ de \d{4}$/, "") : label;
 }
 
 /* ─── UserAvatar (inline) ─────────────────────────────────────────── */
@@ -400,8 +385,8 @@ function ReplyPreview({
 
 function DateDivider({ label }: { label: string }) {
   return (
-    <div className="my-6 flex items-center justify-center px-4">
-      <div className="flex items-center gap-3 rounded-full bg-[var(--bg-surface)]/60 px-4 py-1.5 text-xs font-medium text-[var(--text-muted)] shadow-sm backdrop-blur-sm">
+    <div className="sticky top-1 z-10 my-4 flex items-center justify-center px-4">
+      <div className="flex items-center gap-3 rounded-full border border-white/10 bg-[#081421]/90 px-4 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur-xl">
         <div className="h-px w-8 bg-[var(--border-subtle)]" />
         <span>{label}</span>
         <div className="h-px w-8 bg-[var(--border-subtle)]" />
@@ -447,7 +432,7 @@ function getBubbleClasses(isMe: boolean, groupPosition: string): string {
       middle: "rounded-l-md rounded-r-md",
       last: "rounded-tr-md rounded-br-md",
     };
-    return `bg-[var(--accent)] ${radii[groupPosition as keyof typeof radii] || radii.single}`;
+    return `bg-gradient-to-br from-cyan-300 to-sky-400 text-slate-950 shadow-[0_8px_26px_-12px_rgba(34,211,238,.65)] ${radii[groupPosition as keyof typeof radii] || radii.single}`;
   }
   const radii = {
     single: "rounded-2xl",
@@ -515,17 +500,14 @@ function MessageBubble({
   }, []);
 
   // Determine alignment based on whether it's my message
-  const alignItems = isMe ? "end" : "start";
-  const justifyContent = isMe ? "flex-end" : "flex-start";
-
   return (
     <motion.div
       initial={reduced || !animateEntrance ? false : isMe
-        ? { opacity: 0, y: 8, rotateX: 8, scale: 0.9 }
-        : { opacity: 0, x: -12, y: 8, rotateX: 8, scale: 0.95 }}
+        ? { opacity: 0, x: 16, scale: 0.96 }
+        : { opacity: 0, x: -16, scale: 0.96 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1, rotateX: 0 }}
       transition={isMe ? { type: "spring", stiffness: 360, damping: 24, mass: 0.72 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="flex items-end gap-3"
+      className={`flex w-full items-end gap-2.5 ${isMe ? "justify-end" : "justify-start"}`}
     >
       {/* Avatar (only for incoming messages when showAvatar is true) */}
       {showAvatar && !isMe && (
@@ -535,7 +517,7 @@ function MessageBubble({
       )}
 
       {/* Message content container */}
-      <div className="flex flex-col items-start max-w-full flex-1">
+      <div className={`flex min-w-0 max-w-[85%] flex-col sm:max-w-[75%] ${isMe ? "items-end" : "items-start"}`}>
         {/* Sender name (only for first in group) */}
         {showSenderName && !isMe && (
           <p className="mb-0.5 text-[10px] font-medium text-[var(--text-muted)]">
@@ -625,13 +607,20 @@ function MessageBubble({
             !msg.messageType ||
             msg.messageType === "TEXT" ? (
               <div
-                className={`px-4 py-2.5 text-sm leading-relaxed ${(isMe ? "text-black" : "text-[var(--text)]")}`}
+                className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] px-4 py-2.5 text-sm leading-relaxed ${(isMe ? "text-slate-950" : "text-[var(--text)]")}`}
               >
                 {mentionMembers?.length
                   ? <MentionText text={msg.body ?? ""} members={mentionMembers} isMe={isMe} />
                   : msg.body}
               </div>
             ) : null}
+            <div className={`flex items-center justify-end gap-1.5 px-3 pb-2 text-[11px] leading-none ${isMe ? "text-slate-900/80" : "text-slate-300/80"}`}>
+              <span>
+                {formatClock(msg.createdAt)}
+                {msg.editedAt && Math.abs(new Date(msg.editedAt).getTime() - new Date(msg.createdAt).getTime()) > 1000 && " · editada"}
+              </span>
+              {msg.pending ? <span className="italic">enviando…</span> : isMe ? <CheckMark read={read} /> : null}
+            </div>
           </div>
 
           {/* Action trigger button - positioned outside the bubble */}
@@ -670,19 +659,6 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Timestamp and status */}
-        <div
-          className={`mt-1 flex items-center gap-1 text-xs ${
-            isMe ? "justify-end" : "justify-start"
-          }`}
-        >
-          <p className={`${isMe ? "text-black/75" : "text-[var(--text-muted)]"}`}>
-            {formatClock(msg.createdAt)}
-            {msg.editedAt && Math.abs(new Date(msg.editedAt).getTime() - new Date(msg.createdAt).getTime()) > 1000 && " (editada)"}
-          </p>
-          {msg.pending && <span className="italic text-[var(--text-faint)]">enviando…</span>}
-          {isMe && !msg.pending && <CheckMark read={read} />}
-        </div>
       </div>
     </motion.div>
   );
@@ -1033,6 +1009,18 @@ export function ChatThread({
     }
   }, [input, sending, editingId, onEdit, replyingTo, onReply, onSend]);
 
+  const handleQuickGreeting = useCallback(async () => {
+    if (!onSend || sending) return;
+    setSending(true);
+    try {
+      await onSend("Oi!");
+    } catch {
+      // The normal composer remains available if the quick send fails.
+    } finally {
+      setSending(false);
+    }
+  }, [onSend, sending]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1172,13 +1160,24 @@ export function ChatThread({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full scroll-pt-4 overflow-y-auto px-5 py-4 sm:px-8 lg:px-12"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-label="Mensagens da conversa"
+        className="h-full scroll-pt-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-8 lg:px-12"
       >
-        <div ref={contentRef} className="flex flex-col">
+        <div ref={contentRef} className="flex min-h-full flex-col">
         {messages.length === 0 && (
-          <p className="pt-12 text-center text-xs text-[var(--text-faint)]">
-            Nenhuma mensagem ainda
-          </p>
+          <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+            <span className="mb-4 grid h-14 w-14 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-300/[.08] text-cyan-200 shadow-[0_0_40px_-18px_rgba(34,211,238,.55)]">
+              <MessageCircle size={24} aria-hidden="true" />
+            </span>
+            <p className="font-display text-base font-semibold text-[var(--text)]">A conversa começa aqui</p>
+            <p className="mt-1 max-w-xs text-sm text-[var(--text-muted)]">Mande uma mensagem para quebrar o gelo.</p>
+            <button type="button" disabled={sending || !onSend} onClick={() => void handleQuickGreeting()} className="mt-4 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:opacity-60">
+              Diga oi
+            </button>
+          </div>
         )}
 
         {messagesWithDividers.map((item, index) => {
@@ -1340,7 +1339,7 @@ export function ChatThread({
           )}
         </AnimatePresence>
 
-        {inputSlot ?? (
+        {inputSlot !== undefined ? inputSlot : (
           <div className="border-t border-[var(--border-subtle)] px-5 py-3 backdrop-blur-lg sm:px-8 lg:px-12">
             <div className="glass-card flex items-center gap-1.5 px-2 py-2">
             <input
