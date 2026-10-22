@@ -143,8 +143,8 @@ function FriendCard({
     >
       <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-cyan-300/[.07] blur-3xl transition-opacity group-hover:opacity-150" />
       <div className="relative flex items-start gap-3.5">
-        <motion.div whileHover={reduced ? undefined : { rotate: 2, scale: 1.06 }} transition={{ type: "spring", stiffness: 220, damping: 22 }} className="relative shrink-0 rounded-2xl p-[2px] bg-gradient-to-br from-cyan-300/70 via-sky-400/20 to-blue-500/20">
-          <div className="rounded-[14px] bg-[#071225] p-[2px]"><UserAvatar user={friend} size={54} /></div>
+        <motion.div whileHover={reduced ? undefined : { rotate: 2, scale: 1.06 }} transition={{ type: "spring", stiffness: 220, damping: 22 }} className="relative shrink-0 rounded-full bg-gradient-to-br from-cyan-300/70 via-sky-400/20 to-blue-500/20 p-[2px]">
+          <div className="rounded-full bg-[#071225] p-[2px]"><UserAvatar user={friend} size={54} /></div>
           <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-[3px] border-[#0a1930] ${active ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" : "bg-slate-500"}`} aria-label={active ? "Ativo recentemente" : "Offline"} />
         </motion.div>
         <div className="min-w-0 flex-1 pt-0.5">
@@ -645,7 +645,7 @@ export default function AmigosPage() {
               {[...friends].sort((a, b) => Number(favoriteIds.has(b.id)) - Number(favoriteIds.has(a.id)) || Number(isRecentlyActive(b, 15, clock)) - Number(isRecentlyActive(a, 15, clock)) || b.currentStreak - a.currentStreak).slice(0, 4).map((friend) => (
                 <motion.button key={friend.id} variants={fadeUp} layout whileHover={reduced ? undefined : { y: -4 }} onClick={() => setActiveChat(friend)} className="group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border border-cyan-200/[.12] bg-[linear-gradient(115deg,rgba(14,35,59,.88),rgba(7,18,37,.92))] p-3.5 text-left shadow-[0_12px_40px_-34px_rgba(34,211,238,.55)] transition hover:border-cyan-200/30 hover:shadow-[0_16px_45px_-30px_rgba(34,211,238,.42)]">
                   <span aria-hidden="true" className="absolute -right-5 -top-8 h-24 w-24 rounded-full bg-cyan-300/[.08] blur-2xl" />
-                  <span className="relative rounded-[14px] bg-gradient-to-br from-cyan-200/80 via-sky-300/20 to-blue-500/50 p-[2px]"><span className="block rounded-xl bg-[#071225] p-[2px]"><UserAvatar user={friend} size={46} /></span><span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#0a1930] ${isRecentlyActive(friend, 15, clock) ? "bg-emerald-400" : "bg-slate-500"}`} /></span>
+                  <span className="relative rounded-full bg-gradient-to-br from-cyan-200/80 via-sky-300/20 to-blue-500/50 p-[2px]"><span className="block rounded-full bg-[#071225] p-[2px]"><UserAvatar user={friend} size={46} /></span><span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#0a1930] ${isRecentlyActive(friend, 15, clock) ? "bg-emerald-400" : "bg-slate-500"}`} /></span>
                   <span className="relative min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-100">{friend.displayName}</span><span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400"><Flame size={11} className="text-orange-300" /> {friend.currentStreak} dias de sequência</span></span>
                   <ArrowRight size={15} className="relative shrink-0 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-cyan-200" />
                 </motion.button>
