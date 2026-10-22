@@ -12,10 +12,11 @@ import { KANBAN_DONE_XP, KANBAN_DONE_COINS } from "../daily-limits";
 const KANBAN_STATUSES: readonly KanbanStatus[] = ["todo", "doing", "done"];
 const KANBAN_PRIORITIES: readonly KanbanPriority[] = ["low", "medium", "high"];
 
-/** Colunas de kanban_task + categoria resolvida (join com categories). */
+/** Colunas de kanban_task + categoria resolvida (join com categories) + image fields. */
 const KANBAN_SELECT = `
   select k.id, k.profile_id, k.title, k.description, k.status, k.position, k.labels,
          k.due_date, k.priority, k.assignee_id, k.created_at, k.updated_at,
+         k.image_url, k.image_path,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
          c.created_at as category_created_at
@@ -35,6 +36,8 @@ interface KanbanRow {
   assignee_id: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  image_url: string | null;
+  image_path: string | null;
   category_id: string | number;
   category_user_id: string | null;
   category_name: string;
@@ -68,6 +71,8 @@ function mapKanban(row: KanbanRow): KanbanTask {
     dueDate: row.due_date ? (typeof row.due_date === "string" ? row.due_date : row.due_date.toISOString().slice(0, 10)) : undefined,
     priority: row.priority,
     assigneeId: row.assignee_id ?? undefined,
+    imageUrl: row.image_url ?? undefined,
+    imagePath: row.image_path ?? undefined,
     createdAt: typeof row.created_at === "string" ? row.created_at : row.created_at.toISOString(),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
   };
@@ -110,6 +115,8 @@ export interface CreateKanbanInput {
   dueDate?: string;
   priority?: KanbanPriority;
   assigneeId?: string;
+  image_url?: string;
+  image_path?: string;
 }
 
 export async function createKanbanTask(profileId: string, input: CreateKanbanInput): Promise<KanbanTask> {
@@ -128,10 +135,10 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
   const nextPos = Number(maxPos.rows[0]?.max_pos ?? -1) + 1;
 
   const inserted = await pool.query<{ id: string | number }>(
-    `insert into kanban_tasks (profile_id, title, description, status, position, category_id, labels, due_date, priority, assignee_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `insert into kanban_tasks (profile_id, title, description, status, position, category_id, labels, due_date, priority, assignee_id, image_url, image_path)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      returning id`,
-    [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null],
+    [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null, input.image_url ?? null, input.image_path ?? null],
   );
   const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [inserted.rows[0].id]);
   return mapKanban(result.rows[0]);
@@ -147,6 +154,8 @@ export interface UpdateKanbanPatch {
   dueDate?: string | null;
   priority?: KanbanPriority;
   assigneeId?: string | null;
+  image_url?: string | null;
+  image_path?: string | null;
 }
 
 export async function updateKanbanTask(profileId: string, taskId: number, patch: UpdateKanbanPatch): Promise<KanbanTask> {
@@ -196,6 +205,14 @@ export async function updateKanbanTask(profileId: string, taskId: number, patch:
   if (patch.assigneeId !== undefined) {
     values.push(patch.assigneeId);
     updates.push(`assignee_id = $${values.length}`);
+  }
+  if (patch.image_url !== undefined) {
+    values.push(patch.image_url);
+    updates.push(`image_url = $${values.length}`);
+  }
+  if (patch.image_path !== undefined) {
+    values.push(patch.image_path);
+    updates.push(`image_path = $${values.length}`);
   }
 
   if (updates.length === 0) throw new ValidationError("Nenhum campo para atualizar.");

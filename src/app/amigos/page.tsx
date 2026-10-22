@@ -2,17 +2,30 @@
 
 import "@/app/amigos-chat.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { animate, motion, AnimatePresence, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Image from "next/image";
 import {
   Check,
+  Activity,
+  ArrowDownWideNarrow,
+  ArrowRight,
+  ArrowUpRight,
+  Command,
+  Crown,
+  Flame,
+  Heart,
   Loader2,
   MessageCircle,
+  Radio,
   Search,
+  SlidersHorizontal,
+  Sparkles,
   UserMinus,
   UserPlus,
+  UsersRound,
+  Zap,
   X,
   XIcon,
 } from "lucide-react";
@@ -44,11 +57,12 @@ function UserAvatar({
 }) {
   if (user.photoUrl) {
     return (
-      <img
+      <Image
         src={user.photoUrl}
         alt={user.displayName}
         width={size}
         height={size}
+        unoptimized
         className="shrink-0 rounded-full object-cover"
       />
     );
@@ -77,6 +91,99 @@ function relativeTime(iso?: string): string {
   if (hrs < 24) return `${hrs}h`;
   const days = Math.floor(hrs / 24);
   return `${days}d`;
+}
+
+function isRecentlyActive(friend: FriendSummary, minutes = 15, now = Date.now()) {
+  if (!friend.lastActiveAt) return false;
+  const elapsed = now - new Date(friend.lastActiveAt).getTime();
+  return elapsed >= 0 && elapsed <= minutes * 60_000;
+}
+
+function AnimatedMetric({ value, reduced }: { value: number; reduced: boolean }) {
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, (latest) => Math.round(latest).toLocaleString("pt-BR"));
+  const [display, setDisplay] = useState("0");
+
+  useEffect(() => {
+    const unsubscribe = rounded.on("change", setDisplay);
+    if (reduced) {
+      count.set(value);
+      return unsubscribe;
+    }
+    const controls = animate(count, value, { duration: 1.1, ease: [0.22, 1, 0.36, 1] });
+    return () => { unsubscribe(); controls.stop(); };
+  }, [count, reduced, rounded, value]);
+
+  return <motion.span>{display}</motion.span>;
+}
+
+function FriendCard({
+  friend,
+  favorite,
+  reduced,
+  onChat,
+  onToggleFavorite,
+  onContextMenu,
+}: {
+  friend: FriendSummary;
+  favorite: boolean;
+  reduced: boolean;
+  onChat: () => void;
+  onToggleFavorite: () => void;
+  onContextMenu: (event: ReactMouseEvent) => void;
+}) {
+  const active = isRecentlyActive(friend);
+  return (
+    <motion.article
+      layout
+      whileHover={reduced ? undefined : { y: -6, transition: { type: "spring", stiffness: 220, damping: 22 } }}
+      whileTap={reduced ? undefined : { scale: .985 }}
+      onContextMenu={onContextMenu}
+      className="group relative min-w-0 overflow-hidden rounded-2xl border border-white/[.075] bg-[#0a1930]/75 p-4 shadow-[0_12px_40px_-28px_rgba(34,211,238,.35)] backdrop-blur-xl transition-colors duration-300 hover:border-cyan-300/25 hover:bg-[#10233b]/90 hover:shadow-[0_18px_55px_-28px_rgba(34,211,238,.34)] sm:p-5"
+    >
+      <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-cyan-300/[.07] blur-3xl transition-opacity group-hover:opacity-150" />
+      <div className="relative flex items-start gap-3.5">
+        <motion.div whileHover={reduced ? undefined : { rotate: 2, scale: 1.06 }} transition={{ type: "spring", stiffness: 220, damping: 22 }} className="relative shrink-0 rounded-2xl p-[2px] bg-gradient-to-br from-cyan-300/70 via-sky-400/20 to-blue-500/20">
+          <div className="rounded-[14px] bg-[#071225] p-[2px]"><UserAvatar user={friend} size={54} /></div>
+          <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-[3px] border-[#0a1930] ${active ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" : "bg-slate-500"}`} aria-label={active ? "Ativo recentemente" : "Offline"} />
+        </motion.div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h3 className="truncate text-sm font-semibold tracking-[-.02em] text-slate-100 group-hover:text-cyan-100">{friend.displayName}</h3>
+            {friend.currentStreak >= 30 && <Crown size={13} className="shrink-0 text-amber-300" aria-label="Sequência de 30 dias ou mais" />}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-slate-400">{friend.username ? `@${friend.username}` : "Sua conexão no EnergyOS"}</p>
+          <p className={`mt-2 flex items-center gap-1.5 text-[10px] font-medium ${active ? "text-emerald-300" : "text-slate-500"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-400" : "bg-slate-500"}`} />
+            {active ? `Ativo há ${relativeTime(friend.lastActiveAt)}` : friend.lastActiveAt ? `Visto há ${relativeTime(friend.lastActiveAt)}` : "Ainda sem atividade"}
+          </p>
+        </div>
+        <button type="button" onClick={onToggleFavorite} aria-label={favorite ? `Remover ${friend.displayName} dos favoritos` : `Favoritar ${friend.displayName}`} aria-pressed={favorite} className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition ${favorite ? "border-pink-300/20 bg-pink-300/10 text-pink-300" : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/5 hover:text-pink-300"}`}>
+          <Heart size={15} fill={favorite ? "currentColor" : "none"} />
+        </button>
+      </div>
+
+      <div className="relative mt-4 flex items-center gap-2 border-t border-white/[.06] pt-3.5">
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-orange-300/[.08] px-2.5 py-1.5 text-xs font-semibold text-orange-200">
+          <Image src={streakIconSource(friend.currentStreak)} alt="" width={13} height={13} unoptimized />
+          {friend.currentStreak} <span className="font-normal text-orange-100/60">dias</span>
+        </span>
+        {friend.unreadCount > 0 && <span className="ml-auto rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-bold text-[#061321]">{friend.unreadCount > 99 ? "99+" : friend.unreadCount} novas</span>}
+      </div>
+
+      <div className="relative mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
+        <button type="button" onClick={onChat} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-3 text-xs font-bold text-[#061321] transition hover:bg-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">
+          <MessageCircle size={14} /> Conversar
+        </button>
+        <a href={`/perfil/${friend.id}`} aria-label={`Ver perfil de ${friend.displayName}`} className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] text-slate-300 transition hover:border-cyan-200/25 hover:bg-cyan-200/[.07] hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200">
+          <ArrowUpRight size={15} />
+        </a>
+        <button type="button" onClick={onContextMenu} aria-label={`Mais opções para ${friend.displayName}`} className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] text-slate-400 transition hover:border-white/15 hover:bg-white/[.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200">
+          <SlidersHorizontal size={14} />
+        </button>
+      </div>
+    </motion.article>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +234,44 @@ export default function AmigosPage() {
   const [searching, setSearching] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [friendFilter, setFriendFilter] = useState<"all" | "active" | "favorites">("all");
+  const [friendSort, setFriendSort] = useState<"active" | "streak" | "name">("active");
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
+  const favoritesLoadedRef = useRef(false);
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("energyos:friend-favorites");
+      if (stored) setFavoriteIds(new Set(JSON.parse(stored) as string[]));
+    } catch { /* use an empty favorites list when storage is unavailable */ }
+    favoritesLoadedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (favoritesLoadedRef.current) localStorage.setItem("energyos:friend-favorites", JSON.stringify([...favoriteIds]));
+  }, [favoriteIds]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === "Escape") {
+        setSearchFocused(false);
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   /* DM Chat */
   const [activeChat, setActiveChat] = useState<FriendSummary | null>(null);
@@ -244,6 +389,17 @@ export default function AmigosPage() {
     [requests],
   );
   const hasRequests = incoming.length > 0 || outgoing.length > 0;
+  const activeFriends = useMemo(() => friends.filter((friend) => isRecentlyActive(friend, 15, clock)), [friends, clock]);
+  const unreadTotal = useMemo(() => friends.reduce((total, friend) => total + friend.unreadCount, 0), [friends]);
+  const networkStreakDays = useMemo(() => friends.reduce((total, friend) => total + friend.currentStreak, 0), [friends]);
+  const visibleFriends = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase("pt-BR").replace(/^@+/, "");
+    return friends
+      .filter((friend) => !query || friend.displayName.toLocaleLowerCase("pt-BR").includes(query) || friend.username?.toLocaleLowerCase("pt-BR").includes(query))
+      .filter((friend) => friendFilter !== "active" || activeFriends.some((active) => active.id === friend.id))
+      .filter((friend) => friendFilter !== "favorites" || favoriteIds.has(friend.id))
+      .sort((a, b) => friendSort === "streak" ? b.currentStreak - a.currentStreak : friendSort === "name" ? a.displayName.localeCompare(b.displayName, "pt-BR") : (b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0) - (a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0));
+  }, [friends, searchQuery, friendFilter, friendSort, activeFriends, favoriteIds]);
 
   /* ---------------------------------------------------------------- */
   /*  Loading / error states                                           */
@@ -272,6 +428,34 @@ export default function AmigosPage() {
       <main className="relative min-h-screen w-full max-w-none px-4 py-7 sm:px-6 sm:py-8 lg:px-8 lg:py-10 xl:px-12">
         <Header eyebrow="Social" title="Amigos" />
 
+        <motion.section initial="hidden" animate="visible" variants={stagger} className="relative isolate mb-7 mt-3 overflow-hidden rounded-[28px] border border-cyan-200/[.11] bg-[linear-gradient(125deg,rgba(10,25,48,.96),rgba(7,18,37,.88)_52%,rgba(14,35,59,.86))] px-5 py-7 shadow-[0_25px_90px_-48px_rgba(34,211,238,.36)] sm:px-8 sm:py-9 lg:px-10">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+            <div className="absolute -right-20 -top-36 h-80 w-80 rounded-full bg-cyan-300/[.12] blur-[100px]" />
+            <div className="absolute -bottom-40 left-[28%] h-72 w-72 rounded-full bg-blue-500/[.12] blur-[100px]" />
+            <div className="absolute inset-0 opacity-[.13] [background-image:radial-gradient(rgba(190,230,255,.6)_1px,transparent_1px)] [background-size:23px_23px]" />
+          </div>
+          <motion.div variants={fadeUp} className="relative z-10 max-w-3xl">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/15 bg-cyan-200/[.06] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.18em] text-cyan-100/80"><Sparkles size={13} /> Sua rede em movimento</div>
+            <h1 className="font-display text-3xl font-semibold leading-[1.08] tracking-[-.045em] text-white sm:text-4xl lg:text-[3.35rem]">Conecte-se. <span className="bg-gradient-to-r from-cyan-200 via-sky-300 to-blue-400 bg-clip-text text-transparent">Evolua.</span> Cresça.</h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300/75 sm:text-base">Sua rede de crescimento dentro do EnergyOS. Celebre consistência, acompanhe seu círculo e mantenha a energia em movimento.</p>
+          </motion.div>
+
+          <motion.div variants={stagger} className="relative z-10 mt-7 grid grid-cols-2 gap-2.5 sm:mt-8 sm:grid-cols-4 sm:gap-3">
+            {[
+              { label: "Amigos", value: friends.length, icon: UsersRound, tint: "text-cyan-200", accent: "bg-cyan-200" },
+              { label: "Ativos · 15 min", value: activeFriends.length, icon: Radio, tint: "text-emerald-300", accent: "bg-emerald-300" },
+              { label: "Não lidas", value: unreadTotal, icon: MessageCircle, tint: "text-sky-300", accent: "bg-sky-300" },
+              { label: "Dias de sequência", value: networkStreakDays, icon: Flame, tint: "text-orange-300", accent: "bg-orange-300" },
+            ].map(({ label, value, icon: Icon, tint, accent }) => (
+              <motion.div key={label} variants={fadeUp} whileHover={reduced ? undefined : { y: -3 }} className="relative overflow-hidden rounded-2xl border border-white/[.075] bg-[#061326]/55 p-3.5 backdrop-blur-xl sm:p-4">
+                <span className={`absolute inset-x-4 top-0 h-px ${accent} opacity-40`} />
+                <div className="flex items-center justify-between"><span className="text-[10px] font-medium uppercase tracking-[.13em] text-slate-400 sm:text-[11px]">{label}</span><Icon size={15} className={tint} /></div>
+                <div className={`mt-2 text-2xl font-semibold tracking-[-.04em] ${tint}`}><AnimatedMetric value={value} reduced={!!reduced} /></div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </motion.section>
+
         {error && (
           <div className="glass-card mb-8 border-[var(--red)]/20 bg-[var(--red-bg)] p-4 text-sm text-[var(--red)]">
             {error}
@@ -285,11 +469,12 @@ export default function AmigosPage() {
           variants={fadeUp}
           initial="hidden"
           animate="visible"
-          className="mb-8"
+          className="relative mb-8"
         >
-          <div className="glass-card flex items-center gap-3 px-4 py-3">
-            <Search size={18} className="shrink-0 text-[var(--text-muted)]" />
+          <div className={`relative flex items-center gap-3 rounded-2xl border bg-[#09182d]/80 px-4 py-3.5 shadow-[0_12px_45px_-35px_rgba(34,211,238,.8)] backdrop-blur-xl transition-all duration-300 ${searchFocused ? "border-cyan-200/40 shadow-[0_0_0_4px_rgba(34,211,238,.07),0_15px_50px_-30px_rgba(34,211,238,.55)]" : "border-white/[.08] hover:border-white/[.15]"}`}>
+            <Search size={18} className={`shrink-0 transition-colors ${searchFocused ? "text-cyan-200" : "text-slate-400"}`} />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Buscar usuarios..."
               value={searchQuery}
@@ -299,9 +484,10 @@ export default function AmigosPage() {
                 if (!searchQuery) handleSearch("");
               }}
               onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-              className="w-full bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
+              className="w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 outline-none"
             />
             {searching && <Loader2 size={16} className="shrink-0 animate-spin text-[var(--accent)]" />}
+            <span className="hidden shrink-0 items-center gap-1 rounded-md border border-white/10 bg-white/[.04] px-2 py-1 text-[10px] text-slate-400 sm:inline-flex"><Command size={11} /> K</span>
           </div>
 
           <AnimatePresence>
@@ -311,16 +497,16 @@ export default function AmigosPage() {
                 initial="hidden"
                 animate="visible"
                 exit="hidden"
-                className="mt-3 space-y-2"
+                className="absolute inset-x-0 z-30 mt-2 space-y-1.5 rounded-2xl border border-white/10 bg-[#071426]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-2xl"
               >
                 <p className="px-1 text-[10px] uppercase tracking-widest text-[var(--text-faint)]">
-                  {searchQuery.trim() ? "Sugestões de usuários" : "Usuários para conhecer"}
+                  {searchQuery.trim() ? "Pessoas para conhecer" : "Sugestões para sua rede"}
                 </p>
                 {searchResults.map((r) => (
                   <motion.div
                     key={r.id}
                     variants={fadeUp}
-                    className="glass-card flex items-center gap-3 px-4 py-3"
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-white/[.045]"
                   >
                     <UserAvatar user={r} />
                     <div className="min-w-0 flex-1">
@@ -444,79 +630,64 @@ export default function AmigosPage() {
           </motion.section>
         )}
 
-        {/* -------------------------------------------------------------- */}
-        {/*  Friends list                                                  */}
-        {/* -------------------------------------------------------------- */}
-        <motion.section variants={fadeUp} initial="hidden" animate="visible">
-          <h2 className="mb-3 font-display text-base text-[var(--text-secondary)]">
-            Seus amigos
-          </h2>
-
+        <motion.section variants={fadeUp} initial="hidden" animate="visible" className="mb-8">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div><p className="mb-1 text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200/65">Suas conexões em destaque</p><h2 className="font-display text-xl font-semibold tracking-[-.03em] text-slate-100 sm:text-2xl">Seu círculo principal</h2></div>
+            <span className="hidden items-center gap-1.5 pb-1 text-[11px] text-slate-500 sm:flex"><Activity size={13} className="text-cyan-200/70" /> Sinais da sua rede</span>
+          </div>
           {friends.length === 0 ? (
-            <div className="glass-card p-8 text-center text-sm text-[var(--text-muted)]">
-              Nenhum amigo ainda
+            <div className="flex min-h-36 items-center justify-between gap-4 rounded-2xl border border-dashed border-cyan-200/15 bg-[#09182d]/50 p-5 sm:p-7">
+              <div><p className="font-semibold text-slate-100">Seu próximo capítulo começa com uma conexão.</p><p className="mt-1 text-sm text-slate-400">Busque alguém pelo nome ou username e convide para crescer junto.</p></div>
+              <UsersRound size={25} className="shrink-0 text-cyan-200/60" />
             </div>
           ) : (
-            <motion.div
-              variants={stagger}
-              initial="hidden"
-              animate="visible"
-              className="grid gap-2.5 sm:gap-3 md:grid-cols-2 lg:grid-cols-3"
-            >
-              {friends.map((f) => (
-                <motion.button
-                  key={f.id}
-                  variants={fadeUp}
-                  whileHover={reduced ? undefined : { y: -2, transition: { duration: 0.15 } }}
-                  whileTap={reduced ? undefined : { scale: 0.98 }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setListMenu({ x: e.clientX, y: e.clientY, friend: f });
-                  }}
-                  onClick={() => {
-                    setActiveChat(f);
-                    if (f.unreadCount > 0) {
-                      setFriends((prev) =>
-                        prev.map((x) => (x.id === f.id ? { ...x, unreadCount: 0 } : x)),
-                      );
-                    }
-                  }}
-                  className="glass-card group relative flex items-center gap-3 px-3 py-2.5 sm:px-4 sm:py-3 text-left transition hover:border-[var(--accent)]/30 min-w-0"
-                >
-                  <UserAvatar user={f} size={f.photoUrl ? 36 : 36} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs sm:text-sm font-medium text-[var(--text)] group-hover:text-[var(--accent)]">
-                      {f.displayName}
-                    </p>
-                    {f.username && (
-                      <p className="truncate text-[10px] sm:text-xs text-[var(--text-muted)]">
-                        @{f.username}
-                      </p>
-                    )}
-                    <div className="mt-1 flex items-center gap-2 sm:gap-3 text-[8px] sm:text-[10px] text-[var(--text-faint)]">
-                      <span className="flex items-center gap-0.5 sm:gap-1 text-[var(--orange)]">
-                        <Image src={streakIconSource(f.currentStreak)} alt="streak" width={9} height={9} style={{ objectFit: "contain" }} unoptimized />
-                        <span className="text-[9px] sm:text-xs">{f.currentStreak}</span>
-                      </span>
-                      {f.lastActiveAt && <span className="truncate">{relativeTime(f.lastActiveAt)} atras</span>}
-                    </div>
-                  </div>
-
-                  {f.unreadCount > 0 && (
-                    <span className="absolute right-3 top-3 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-black">
-                      {f.unreadCount > 99 ? "99+" : f.unreadCount}
-                    </span>
-                  )}
-
-                  <MessageCircle
-                    size={16}
-                    className="shrink-0 text-[var(--text-faint)] transition group-hover:text-[var(--accent)]"
-                  />
+            <motion.div variants={stagger} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[...friends].sort((a, b) => Number(favoriteIds.has(b.id)) - Number(favoriteIds.has(a.id)) || Number(isRecentlyActive(b, 15, clock)) - Number(isRecentlyActive(a, 15, clock)) || b.currentStreak - a.currentStreak).slice(0, 4).map((friend) => (
+                <motion.button key={friend.id} variants={fadeUp} layout whileHover={reduced ? undefined : { y: -4 }} onClick={() => setActiveChat(friend)} className="group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border border-cyan-200/[.12] bg-[linear-gradient(115deg,rgba(14,35,59,.88),rgba(7,18,37,.92))] p-3.5 text-left shadow-[0_12px_40px_-34px_rgba(34,211,238,.55)] transition hover:border-cyan-200/30 hover:shadow-[0_16px_45px_-30px_rgba(34,211,238,.42)]">
+                  <span aria-hidden="true" className="absolute -right-5 -top-8 h-24 w-24 rounded-full bg-cyan-300/[.08] blur-2xl" />
+                  <span className="relative rounded-[14px] bg-gradient-to-br from-cyan-200/80 via-sky-300/20 to-blue-500/50 p-[2px]"><span className="block rounded-xl bg-[#071225] p-[2px]"><UserAvatar user={friend} size={46} /></span><span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#0a1930] ${isRecentlyActive(friend, 15, clock) ? "bg-emerald-400" : "bg-slate-500"}`} /></span>
+                  <span className="relative min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-100">{friend.displayName}</span><span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400"><Flame size={11} className="text-orange-300" /> {friend.currentStreak} dias de sequência</span></span>
+                  <ArrowRight size={15} className="relative shrink-0 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-cyan-200" />
                 </motion.button>
               ))}
             </motion.div>
           )}
         </motion.section>
+
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <motion.section layout variants={fadeUp} initial="hidden" animate="visible" className="min-w-0">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div><p className="mb-1 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Sua rede</p><h2 className="font-display text-xl font-semibold tracking-[-.03em] text-slate-100">Amigos <span className="ml-1 text-sm font-medium text-slate-500">{visibleFriends.length}</span></h2></div>
+              <label className="flex items-center gap-2 self-start rounded-xl border border-white/[.08] bg-[#09182d]/65 px-3 py-2 text-xs text-slate-400 sm:self-auto"><ArrowDownWideNarrow size={14} className="text-cyan-200/75" /><span className="sr-only">Ordenar amigos</span><select value={friendSort} onChange={(event) => setFriendSort(event.target.value as typeof friendSort)} className="bg-transparent text-xs text-slate-300 outline-none"><option value="active">Ativos recentemente</option><option value="streak">Maior sequência</option><option value="name">Nome</option></select></label>
+            </div>
+            <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filtrar amigos">
+              {([{ id: "all", label: "Todos" }, { id: "active", label: "Ativos" }, { id: "favorites", label: "Favoritos" }] as const).map(({ id, label }) => <button key={id} type="button" aria-pressed={friendFilter === id} onClick={() => setFriendFilter(id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-medium transition ${friendFilter === id ? "bg-cyan-200/[.11] text-cyan-100 ring-1 ring-cyan-200/15" : "text-slate-500 hover:bg-white/[.04] hover:text-slate-300"}`}>{label}{id === "active" && <span className="ml-1.5 text-[10px] opacity-65">{activeFriends.length}</span>}</button>)}
+            </div>
+            {visibleFriends.length === 0 ? (
+              <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-white/10 bg-[#09182d]/40 px-6 py-10 text-center"><div><div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-2xl border border-cyan-200/10 bg-cyan-200/[.06] text-cyan-200"><UsersRound size={19} /></div><p className="text-sm font-medium text-slate-200">{friends.length ? "Nenhuma conexão neste filtro" : "Sua rede está começando"}</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{friends.length ? "Experimente outro filtro ou busque alguém pelo nome." : "Use a busca acima para encontrar pessoas e construir seu círculo."}</p></div></div>
+            ) : (
+              <motion.div layout variants={stagger} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <AnimatePresence mode="popLayout">{visibleFriends.map((friend) => <FriendCard key={friend.id} friend={friend} favorite={favoriteIds.has(friend.id)} reduced={!!reduced} onChat={() => { setActiveChat(friend); if (friend.unreadCount) setFriends((prev) => prev.map((item) => item.id === friend.id ? { ...item, unreadCount: 0 } : item)); }} onToggleFavorite={() => setFavoriteIds((prev) => { const next = new Set(prev); if (next.has(friend.id)) next.delete(friend.id); else next.add(friend.id); return next; })} onContextMenu={(event) => { event.preventDefault(); setListMenu({ x: event.clientX, y: event.clientY, friend }); }} />)}</AnimatePresence>
+              </motion.div>
+            )}
+          </motion.section>
+
+          <motion.aside initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .15, duration: .35 }} className="space-y-4 xl:sticky xl:top-6">
+            <section className="overflow-hidden rounded-2xl border border-white/[.08] bg-[#09182d]/70 p-4 backdrop-blur-xl sm:p-5">
+              <div className="mb-4 flex items-center justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-slate-500">Sinal da comunidade</p><h2 className="mt-1 text-sm font-semibold text-slate-100">Pulso da sua rede</h2></div><span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-300/[.08] text-emerald-300"><Radio size={15} /></span></div>
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-300/10 bg-emerald-300/[.045] px-3 py-2.5"><span className="relative flex h-2 w-2">{!reduced && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-50" />}<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-300" /></span><p className="text-xs text-slate-300"><strong className="font-semibold text-emerald-200">{activeFriends.length}</strong> {activeFriends.length === 1 ? "amigo ativo" : "amigos ativos"} nos últimos 15 min</p></div>
+              <div className="space-y-1">
+                {friends.filter((friend) => isRecentlyActive(friend, 15, clock)).slice(0, 4).map((friend) => <div key={friend.id} className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition hover:bg-white/[.035]"><UserAvatar user={friend} size={30} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-slate-200">{friend.displayName}</p><p className="mt-0.5 text-[10px] text-emerald-300/75">Ativo há {relativeTime(friend.lastActiveAt)}</p></div><button type="button" onClick={() => setActiveChat(friend)} aria-label={`Conversar com ${friend.displayName}`} className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-cyan-200/10 hover:text-cyan-100"><MessageCircle size={13} /></button></div>)}
+                {activeFriends.length === 0 && <p className="px-2 py-3 text-xs leading-5 text-slate-500">Quando seus amigos estiverem por aqui, você verá a presença deles neste espaço.</p>}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-cyan-200/[.1] bg-[linear-gradient(145deg,rgba(13,34,58,.8),rgba(7,18,37,.8))] p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-cyan-100"><Zap size={15} /><h2 className="text-sm font-semibold">Uma conversa pode acender o dia</h2></div>
+              {friends.filter((friend) => friend.unreadCount > 0).length ? <div className="mt-3 space-y-2">{friends.filter((friend) => friend.unreadCount > 0).slice(0, 3).map((friend) => <button key={friend.id} type="button" onClick={() => { setActiveChat(friend); setFriends((prev) => prev.map((item) => item.id === friend.id ? { ...item, unreadCount: 0 } : item)); }} className="flex w-full items-center gap-2.5 rounded-xl border border-white/[.06] bg-black/10 p-2.5 text-left transition hover:border-cyan-200/20 hover:bg-cyan-200/[.04]"><UserAvatar user={friend} size={30} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium text-slate-200">{friend.displayName}</span><span className="mt-0.5 block text-[10px] text-slate-500">Tem {friend.unreadCount} mensagem(ns) para você</span></span><ArrowRight size={13} className="shrink-0 text-cyan-200/60" /></button>)}</div> : <p className="mt-2 text-xs leading-5 text-slate-400">Sua caixa está em dia. Chame alguém para celebrar uma sequência ou planejar o próximo foco.</p>}
+            </section>
+          </motion.aside>
+        </div>
 
         {/* -------------------------------------------------------------- */}
         {/*  DM Chat Panel                                                 */}

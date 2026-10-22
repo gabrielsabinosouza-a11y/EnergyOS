@@ -555,6 +555,10 @@ export interface KanbanTask {
   dueDate?: string;
   priority: KanbanPriority;
   assigneeId?: string;
+  /** Reference image for planning/ideas (optional, max 1 per task) */
+  imageUrl?: string;
+  /** Server path to the image file */
+  imagePath?: string;
   createdAt: string;
   updatedAt: string;
 }
