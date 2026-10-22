@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Plus } from "lucide-react";
 import type { WeeklyPlanItem } from "@/types";
@@ -59,7 +59,11 @@ export function WeekView({
   onDeletePlan,
 }: WeekViewProps) {
   const reduced = useReducedMotion();
-  const today = todayIso();
+  const [today, setToday] = useState<string | null>(null);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setToday(todayIso()), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
   const days = useMemo<WeekDay[]>(() => Array.from({ length: 7 }, (_, index) => {
     const date = addDays(weekRange.start, index);
     return {
@@ -75,7 +79,7 @@ export function WeekView({
   const isCurrentWeek = days.some((day) => day.isToday);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4" aria-label="Planejador semanal">
+    <section className="flex shrink-0 flex-col gap-3" aria-label="Planejador semanal">
       <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">

@@ -53,7 +53,7 @@ export function MonthView({
   onDeletePlan,
 }: MonthViewProps) {
   const reduced = useReducedMotion();
-  const today = todayIso();
+  const [today, setToday] = useState<string | null>(null);
   const { year, month } = parseIsoKey(monthRange.start);
   const monthKey = monthRange.start.slice(0, 7);
   const dates = useMemo(() => buildMonthGrid(year, month), [year, month]);
@@ -66,6 +66,11 @@ export function MonthView({
   const boardRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const pendingFocusDate = useRef<string | null>(null);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setToday(todayIso()), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const isMobile = sizeMode === "mobile";
 

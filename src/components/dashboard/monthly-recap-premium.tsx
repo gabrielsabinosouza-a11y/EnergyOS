@@ -23,7 +23,7 @@ import { RewardToast } from "@/components/reward-toast";
 import { AnimatedNumber } from "@/components/ui";
 import { ParticleField, Recap3DIcon, RecapProgressBar } from "@/components/recap/recap-fx";
 import { RecapIntroSlide } from "@/components/recap/recap-intro-slide";
-import { useRecapSound } from "@/lib/recap-sound";
+import { primeRecapSound, useRecapSound } from "@/lib/recap-sound";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
@@ -874,6 +874,13 @@ export function MonthlyRecapPremium({
     setCurrentSlide(currentSlide + 1);
   }, [currentSlide, playSound]);
 
+  const startRecap = useCallback(() => {
+    if (currentSlide !== 0) return;
+    primeRecapSound();
+    playSound("start");
+    setCurrentSlide(1);
+  }, [currentSlide, playSound]);
+
   const goPrev = useCallback(() => {
     if (currentSlide <= 0) return;
     playSound("slide");
@@ -882,9 +889,20 @@ export function MonthlyRecapPremium({
 
   // Zonas de toque: 30% à esquerda (anterior) e 30% à direita (próximo).
   const handleTapZone = useCallback((direction: "prev" | "next") => {
+    if (currentSlide === 0 && direction === "next") {
+      startRecap();
+      return;
+    }
     if (direction === "prev") goPrev();
     else goNext();
-  }, [goNext, goPrev]);
+  }, [currentSlide, goNext, goPrev, startRecap]);
+
+  // Cada capítulo fica visível por até 10 segundos; interação manual reinicia o prazo.
+  useEffect(() => {
+    if (!open || currentSlide >= SLIDE_COUNT - 1) return;
+    const timer = window.setTimeout(() => goNext(), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [currentSlide, goNext, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -964,7 +982,7 @@ export function MonthlyRecapPremium({
   function renderSlide() {
     switch (currentSlide) {
       case 0:
-        return <RecapIntroSlide recapMonth={recap.recapMonth} monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} accent={THEMES.intro.accent} glow={THEMES.intro.glow} />;
+        return <RecapIntroSlide recapMonth={recap.recapMonth} monthLabel={monthLabel} userName={userName} userPhotoUrl={userPhotoUrl} onStart={startRecap} />;
       case 1:
         return (
           <HeroStatSlide
@@ -1228,12 +1246,12 @@ export function MonthlyRecapPremium({
                   <div
                     aria-hidden="true"
                     onClick={() => handleTapZone("prev")}
-                    className="absolute inset-y-0 left-0 z-20 w-[30%] cursor-pointer"
+                    className={`absolute inset-y-0 left-0 z-20 w-[30%] cursor-pointer ${currentSlide === 0 ? "pointer-events-none" : ""}`}
                   />
                   <div
                     aria-hidden="true"
                     onClick={() => handleTapZone("next")}
-                    className="absolute inset-y-0 right-0 z-20 w-[30%] cursor-pointer"
+                    className={`absolute inset-y-0 right-0 z-20 w-[30%] cursor-pointer ${currentSlide === 0 ? "pointer-events-none" : ""}`}
                   />
                 </div>
 
@@ -1285,7 +1303,7 @@ export function MonthlyRecapPremium({
               </div>
 
               {/* Dica fora e abaixo do cartão */}
-              <motion.p
+              {currentSlide !== 0 && <motion.p
                 className="px-2 text-center text-[10px] tracking-[0.18em] uppercase"
                 style={{ color: "rgba(231,244,255,.28)" }}
                 initial={{ opacity: 0 }}
@@ -1293,7 +1311,7 @@ export function MonthlyRecapPremium({
                 transition={{ delay: 0.6 }}
               >
                 Toque nos lados ou use as setas para navegar
-              </motion.p>
+              </motion.p>}
             </div>
             )}
 

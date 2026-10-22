@@ -255,7 +255,7 @@ export function getMonthAccent(month: number): string {
     RECAP_PALETTE.cyan,     // janeiro
     RECAP_PALETTE.cyan,     // fevereiro  
     RECAP_PALETTE.violet,   // março
-    RECAP_PALETTE.garden,   // abril
+    RECAP_PALETTE.green,    // abril
     RECAP_PALETTE.amber,    // maio
     RECAP_PALETTE.amber,    // junho
     RECAP_PALETTE.violet,   // julho
@@ -263,7 +263,7 @@ export function getMonthAccent(month: number): string {
     RECAP_PALETTE.violet,   // setembro
     RECAP_PALETTE.cyan,     // outubro
     RECAP_PALETTE.violet,   // novembro
-    RECAP_PALETTE.garden,   // dezembro
+    RECAP_PALETTE.green,    // dezembro
   ] as const;
   return accents[month % 12];
 }

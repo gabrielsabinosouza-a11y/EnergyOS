@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Plus, CalendarDays, Sparkles } from "lucide-react";
 import type { WeeklyPlanItem } from "@/types";
@@ -42,7 +42,11 @@ export function MonthlyWeeksOverview({
   onPlanCreate,
 }: Props) {
   const reduceMotion = useReducedMotion();
-  const today = todayIso();
+  const [today, setToday] = useState<string | null>(null);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setToday(todayIso()), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
       const plansByDate = useMemo(() => {
     const grouped = new Map<string, WeeklyPlanItem[]>();
 

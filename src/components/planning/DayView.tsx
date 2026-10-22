@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { todayIso, formatLocalDate } from "@/lib/planning/dates";
 import type { WeeklyPlanItem } from "@/types";
 import { PlannerTimeGrid, type TimeGridDay } from "./PlannerTimeGrid";
@@ -24,7 +24,12 @@ export function DayView({
   onDeletePlan,
   onPlanCreate,
 }: DayViewProps) {
-  const isToday = date === todayIso();
+  const [today, setToday] = useState<string | null>(null);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setToday(todayIso()), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+  const isToday = date === today;
   const weekday = formatLocalDate(date, { weekday: "long" });
   const dateLabel = formatLocalDate(date, { day: "numeric", month: "long", year: "numeric" });
   const sorted = useMemo(

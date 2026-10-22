@@ -21,6 +21,10 @@ interface PlannerDatePickerProps {
   label: string;
   placeholder?: string;
   disabled?: boolean;
+  onBlur?: () => void;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+  "aria-required"?: boolean;
 }
 
 const POPOVER_GAP = 8;
@@ -32,20 +36,34 @@ export function PlannerDatePicker({
   label,
   placeholder = "Selecione uma data",
   disabled = false,
+  onBlur,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
+  "aria-required": ariaRequired,
 }: PlannerDatePickerProps) {
-  const today = todayIso();
+  const [today, setToday] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   // `null` = o calendário segue a data selecionada; um valor = mês navegado.
   const [monthOverride, setMonthOverride] = useState<string | null>(null);
-  const [activeDate, setActiveDate] = useState(value ?? today);
+  const [activeDate, setActiveDate] = useState(value ?? "2026-01-05");
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef(new Map<string, HTMLButtonElement>());
-  const month = monthOverride ?? value ?? today;
+  const month = monthOverride ?? value ?? today ?? "2026-01-05";
   const { year, month: monthNumber } = parseIsoKey(month);
   const monthDates = buildMonthGrid(year, monthNumber);
   const hasDate = Boolean(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setToday(todayIso()), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (value) setActiveDate(value);
+    else if (today) setActiveDate(today);
+  }, [today, value]);
 
   const close = useCallback((restoreFocus = false) => {
     setOpen(false);
@@ -55,7 +73,7 @@ export function PlannerDatePicker({
   }, []);
 
   const openPicker = () => {
-    const date = value || today;
+    const date = value || today || todayIso();
     setMonthOverride(null);
     setActiveDate(date);
     setOpen(true);
@@ -166,12 +184,18 @@ export function PlannerDatePicker({
         ref={triggerRef}
         id={id}
         type="button"
+        role="combobox"
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-controls={id ? `${id}-calendar` : undefined}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        aria-required={ariaRequired}
+        onBlur={onBlur}
         disabled={disabled}
         onClick={() => open ? close() : openPicker()}
-        className="glass-field flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+        className={`glass-field flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${ariaInvalid ? "border-red-400/70 ring-1 ring-red-400/30" : ""}`}
       >
         <span className={hasDate ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
           {hasDate ? formatLocalDate(value!, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
@@ -192,6 +216,7 @@ export function PlannerDatePicker({
       {open && position ? createPortal(
         <div
           ref={popoverRef}
+          id={id ? `${id}-calendar` : undefined}
           role="dialog"
           aria-label={`Calendário: ${label}`}
           className="planner-glass-popover fixed z-[1100] max-h-[calc(100dvh-1rem)] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto p-3"
@@ -290,7 +315,7 @@ export function PlannerDatePicker({
               ) : null}
               <button
                 type="button"
-                onClick={() => selectDate(today)}
+                onClick={() => selectDate(today ?? todayIso())}
                 className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent-bg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
               >
                 Hoje

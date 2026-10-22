@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Bell, Check, MoreHorizontal, Pencil, Repeat, Trash2 } from "lucide-react";
 import type { WeeklyPlanItem } from "@/types";
 import { eventColor, shortTimeLabel } from "@/lib/planning/categories";
@@ -14,12 +15,15 @@ export function planItemKey(plan: WeeklyPlanItem): string {
 interface PlanRowProps {
   plan: WeeklyPlanItem;
   compact?: boolean;
+  fullTitle?: boolean;
+  animateCompletion?: boolean;
   onToggleCompleted: (plan: WeeklyPlanItem, completed: boolean) => void;
   onEdit: (plan: WeeklyPlanItem) => void;
   onDelete: (plan: WeeklyPlanItem) => void;
 }
 
-export function PlanRow({ plan, compact = false, onToggleCompleted, onEdit, onDelete }: PlanRowProps) {
+export function PlanRow({ plan, compact = false, fullTitle = false, animateCompletion = false, onToggleCompleted, onEdit, onDelete }: PlanRowProps) {
+  const reduced = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -47,9 +51,10 @@ export function PlanRow({ plan, compact = false, onToggleCompleted, onEdit, onDe
   }, [menuOpen]);
 
   const checkbox = (
-    <button
+    <motion.button
       type="button"
       onClick={() => onToggleCompleted(plan, !completed)}
+      whileTap={!reduced ? { scale: 0.88 } : undefined}
       aria-label={`${completed ? "Reabrir" : "Concluir"} ${plan.title || "plano"}`}
       aria-pressed={completed}
       className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
@@ -58,15 +63,15 @@ export function PlanRow({ plan, compact = false, onToggleCompleted, onEdit, onDe
           : "border-[var(--border-strong)] text-transparent hover:border-[var(--accent)]"
       }`}
     >
-      {completed ? <Check size={12} aria-hidden="true" /> : null}
-    </button>
+      {completed ? (animateCompletion ? <motion.span initial={reduced ? false : { scale: 0, rotate: -28 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 520, damping: 18 }}><Check size={12} aria-hidden="true" /></motion.span> : <Check size={12} aria-hidden="true" />) : null}
+    </motion.button>
   );
 
   const titleButton = (
     <button
       type="button"
       onClick={() => onEdit(plan)}
-      className={`min-w-0 flex-1 truncate text-left text-xs font-medium focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+      className={`min-w-0 flex-1 text-left text-xs font-medium focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${fullTitle ? "whitespace-normal break-words" : "truncate"} ${
         completed ? "text-[var(--text-faint)] line-through" : "text-[var(--text)]"
       }`}
       title={plan.title || "(sem título)"}

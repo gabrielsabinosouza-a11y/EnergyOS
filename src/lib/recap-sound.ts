@@ -14,7 +14,7 @@ import { useCallback, useSyncExternalStore } from "react";
  * qualquer erro é engolido — som é um extra, nunca um requisito.
  */
 
-export type RecapSoundName = "slide" | "tick" | "sparkle";
+export type RecapSoundName = "slide" | "tick" | "sparkle" | "start";
 
 const STORAGE_KEY = "energyos:recap-sound";
 const MASTER_GAIN = 0.13;
@@ -122,6 +122,26 @@ function playSparkle(ctx: AudioContext, master: GainNode) {
   });
 }
 
+function playStart(ctx: AudioContext, master: GainNode) {
+  const t = ctx.currentTime;
+  // Ataque suave com duas notas ascendentes e um sopro curto, como abertura de capítulo.
+  [523.25, 783.99, 1046.5].forEach((frequency, index) => {
+    const at = t + index * 0.075;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(frequency, at);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(index === 2 ? 0.22 : 0.14, at + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.42);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(at);
+    osc.stop(at + 0.44);
+  });
+  playWhoosh(ctx, master);
+}
+
 /** Toca um efeito do recap. Falha em silêncio se o áudio não estiver disponível. */
 export function playRecapSound(name: RecapSoundName) {
   if (typeof window === "undefined") return;
@@ -135,6 +155,7 @@ export function playRecapSound(name: RecapSoundName) {
 
     if (name === "slide") playWhoosh(audioCtx, master);
     else if (name === "tick") playTick(audioCtx, master);
+    else if (name === "start") playStart(audioCtx, master);
     else playSparkle(audioCtx, master);
   } catch {
     /* áudio indisponível — segue sem som */

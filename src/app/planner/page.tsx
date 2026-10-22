@@ -20,6 +20,7 @@ import { WeekView } from "@/components/planning/WeekView";
 import { DayView } from "@/components/planning/DayView";
 import { PlanDialog } from "@/components/planning/PlanDialog";
 import { PlanRow } from "@/components/planning/PlanRow";
+import { WeekHub } from "@/components/planning/week-hub/WeekHub";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
 import { CalendarDays } from "lucide-react";
@@ -101,7 +102,9 @@ function monthGridRange(month: { start: string; end: string }) {
 export default function PlanningPage() {
   const { user } = useAuthRedirect({ ifGuest: "/" });
   const [view, setView] = useState<View>("week");
-  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const planningDate = selectedDate ?? "2026-01-05";
+  const dateReady = selectedDate !== null;
   const [tasks, setTasks] = useState<WeeklyPlanItem[]>([]);
   const tasksRef = useRef(tasks);
   const mutationVersion = useRef(0);
@@ -109,6 +112,8 @@ export default function PlanningPage() {
   const [goalDeadlines, setGoalDeadlines] = useState<Array<{ date: string; title: string }>>([]);
   const [goalDeadlinesError, setGoalDeadlinesError] = useState<string | null>(null);
   const [plansError, setPlansError] = useState<string | null>(null);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [plansRetry, setPlansRetry] = useState(0);
   const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
   const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number; baseXp: number; balance?: number } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -135,8 +140,8 @@ export default function PlanningPage() {
     setTasks(next);
   }, []);
   const announce = useCallback((message: string, error = false) => setFeedback({ message, error }), []);
-  const month = useMemo(() => monthRange(selectedDate), [selectedDate]);
-  const week = useMemo(() => weekRange(selectedDate), [selectedDate]);
+  const month = useMemo(() => monthRange(planningDate), [planningDate]);
+  const week = useMemo(() => weekRange(planningDate), [planningDate]);
   const monthRangeVisible = useMemo(() => monthGridRange(month), [month]);
   const dataRange = view === "day" ? week : monthRangeVisible;
   const weekStarts = useMemo(() => {
@@ -152,8 +157,9 @@ export default function PlanningPage() {
   }, [feedback]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !dateReady) return;
     let current = true;
+    const loadingTimer = window.setTimeout(() => setPlansLoading(true), 0);
     const requestVersion = mutationVersion.current;
     Promise.all([
       Promise.all(weekStarts.map((weekStart) => api.getWeeklyPlans(weekStart))),
@@ -161,8 +167,14 @@ export default function PlanningPage() {
       api.getUnscheduledWeeklyPlans(),
     ])
       .then(([weeks, unscheduled]) => {
-        if (!current || requestVersion !== mutationVersion.current) return;
+        if (!current) return;
+        window.clearTimeout(loadingTimer);
+        if (requestVersion !== mutationVersion.current) {
+          setPlansLoading(false);
+          return;
+        }
         setPlansError(null);
+        setPlansLoading(false);
         // Planos agendados do período + tarefas sem data (que não têm semana).
         const incoming = [
           ...weeks.flat().filter((plan) =>
@@ -177,10 +189,20 @@ export default function PlanningPage() {
         ));
       })
       .catch(() => {
-        if (current) setPlansError("Não foi possível carregar os planos deste período.");
+        if (current) {
+          window.clearTimeout(loadingTimer);
+          setPlansError("Não foi possível carregar os planos deste período.");
+          setPlansLoading(false);
+        }
       });
-    return () => { current = false; };
-  }, [dataRange.end, dataRange.start, updateTasks, user, weekStarts]);
+    return () => { current = false; window.clearTimeout(loadingTimer); };
+  }, [dataRange.end, dataRange.start, dateReady, plansRetry, updateTasks, user, weekStarts]);
+
+  useEffect(() => {
+    if (selectedDate !== null) return;
+    const timer = window.setTimeout(() => setSelectedDate(todayIso()), 0);
+    return () => window.clearTimeout(timer);
+  }, [selectedDate]);
 
   useEffect(() => {
     if (!user) return;
@@ -226,11 +248,8 @@ export default function PlanningPage() {
 
       // Calculate plan start time in America/Sao_Paulo timezone
       const [hours, minutes] = plan.startTime.split(":").map(Number);
-      const planDate = new Date(plan.planDate);
-      planDate.setHours(hours, minutes, 0, 0);
-
-      // Convert to America/Sao_Paulo time
-      const planTimeSP = new Date(planDate.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const [year, monthNumber, day] = plan.planDate.split("-").map(Number);
+      const planTimeSP = new Date(year, monthNumber - 1, day, hours, minutes, 0, 0);
 
       // Calculate reminder time
       const reminderTime = new Date(planTimeSP.getTime() - plan.reminderOffsetMin * 60000);
@@ -284,7 +303,7 @@ export default function PlanningPage() {
   const openCreate = useCallback((date?: string | null, minutes?: number) => {
     setEditorSession((session) => session + 1);
     setEditingPlan(null);
-    setEditorDate(date ?? null);
+    setEditorDate(date ?? selectedDate ?? todayIso());
     if (minutes !== undefined) {
       setEditorStartTime(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
       const end = Math.min(minutes + 60, 23 * 60 + 59);
@@ -294,7 +313,7 @@ export default function PlanningPage() {
       setEditorEndTime(undefined);
     }
     setEditorOpen(true);
-  }, []);
+  }, [selectedDate]);
 
   const openEdit = useCallback((plan: WeeklyPlanItem) => {
     setEditorSession((session) => session + 1);
@@ -320,12 +339,12 @@ export default function PlanningPage() {
       if (tagName === "input" || tagName === "textarea" || active.getAttribute("role") === "dialog") return;
       if (event.key === "n" || event.key === "N") {
         event.preventDefault();
-        openCreate(selectedDate);
+        openCreate(planningDate);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [openCreate, selectedDate, view]);
+  }, [openCreate, planningDate, view]);
 
   const inRange = (start: string, end: string) => (plan: WeeklyPlanItem) =>
     plan.planDate && plan.planDate >= start && plan.planDate <= end;
@@ -334,7 +353,7 @@ export default function PlanningPage() {
     () => tasks.filter(inRange(monthRangeVisible.start, monthRangeVisible.end)),
     [monthRangeVisible.end, monthRangeVisible.start, tasks],
   );
-  const dayTasks = useMemo(() => tasks.filter((plan) => plan.planDate === selectedDate), [selectedDate, tasks]);
+  const dayTasks = useMemo(() => tasks.filter((plan) => plan.planDate === planningDate), [planningDate, tasks]);
 
   // Unscheduled tasks (tasks without a date)
   const unscheduledTasks = useMemo(() => tasks.filter((plan) => !plan.planDate), [tasks]);
@@ -351,15 +370,15 @@ export default function PlanningPage() {
   const handlePrev = useCallback(() => {
     setNavDirection("prev");
     if (view === "month") setSelectedDate(addMonths(month.start, -1));
-    else if (view === "week") setSelectedDate(addDays(selectedDate, -7));
-    else setSelectedDate(addDays(selectedDate, -1));
-  }, [month.start, selectedDate, view]);
+    else if (view === "week") setSelectedDate(addDays(planningDate, -7));
+    else setSelectedDate(addDays(planningDate, -1));
+  }, [month.start, planningDate, view]);
   const handleNext = useCallback(() => {
     setNavDirection("next");
     if (view === "month") setSelectedDate(addMonths(month.start, 1));
-    else if (view === "week") setSelectedDate(addDays(selectedDate, 7));
-    else setSelectedDate(addDays(selectedDate, 1));
-  }, [month.start, selectedDate, view]);
+    else if (view === "week") setSelectedDate(addDays(planningDate, 7));
+    else setSelectedDate(addDays(planningDate, 1));
+  }, [month.start, planningDate, view]);
   const handleToday = useCallback(() => {
     setNavDirection("zoom");
     setSelectedDate(todayIso());
@@ -540,6 +559,33 @@ export default function PlanningPage() {
     }
   }, [announce, togglePlan]);
 
+  const quickAddPlan = useCallback(async (date: string, title: string, startTime: string | null, categoryId?: number) => {
+    try {
+      const { plan } = await api.createWeeklyPlan({ planDate: date, title, startTime, categoryId });
+      const created = fromWeeklyPlan(plan);
+      mutationVersion.current += 1;
+      updateTasks((current) => mergePlans(current, [created]));
+      announce("Plano criado.");
+      return created;
+    } catch (error) {
+      announce(error instanceof Error ? error.message : "Não foi possível criar o plano. Tente novamente.", true);
+      throw error;
+    }
+  }, [announce, updateTasks]);
+
+  const undoQuickAdd = useCallback(async (plan: WeeklyPlanItem) => {
+    try {
+      await api.deleteWeeklyPlan(plan.id);
+      mutationVersion.current += 1;
+      updateTasks((current) => current.filter((item) => item.id !== plan.id || item.seriesId !== null));
+      announce("Plano removido.");
+    } catch {
+      announce("Não foi possível desfazer a criação do plano.", true);
+    }
+  }, [announce, updateTasks]);
+
+  const retryPlans = useCallback(() => setPlansRetry((attempt) => attempt + 1), []);
+
   const requestDelete = useCallback((plan: WeeklyPlanItem) => {
     setDeleteTarget(plan);
     setDeleteError(null);
@@ -581,13 +627,17 @@ export default function PlanningPage() {
     }
   }, [announce, deleteLoading, deleteTarget, updateTasks]);
 
-  const headerLabel = viewLabel(selectedDate, view);
+  const headerLabel = viewLabel(planningDate, view);
   const monthTitle = formatLocalDate(month.start, { month: "long", year: "numeric" });
   const selectMonthDate = useCallback((date: string) => setSelectedDate(date), []);
   const navigateMonthDate = useCallback((date: string, direction: "prev" | "next") => {
     setNavDirection(direction);
     setSelectedDate(date);
   }, []);
+
+  if (!selectedDate) {
+    return <AppShell><div className="planner-root px-4 pt-4 sm:px-6 sm:pt-6" aria-label="Carregando planejamento" aria-busy="true"><div className="h-11 animate-pulse rounded-xl bg-[var(--bg-surface)]" /><div className="mt-4 h-64 animate-pulse rounded-2xl bg-[var(--bg-surface)]" /></div></AppShell>;
+  }
 
   return (
     <AppShell>
@@ -605,7 +655,7 @@ export default function PlanningPage() {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 sm:px-6">
-          {plansError ? (
+          {plansError && view !== "week" ? (
             <p className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-400" role="alert">
               {plansError}
             </p>
@@ -646,17 +696,32 @@ export default function PlanningPage() {
                 animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                 exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
                 transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
-                className="flex min-h-0 flex-1 flex-col gap-3"
+                className="min-h-0 flex flex-1 flex-col gap-6 overflow-y-auto overscroll-contain pb-6"
               >
                 <WeekView
                   weekRange={week}
                   plans={weekTasks}
-                  selectedDate={selectedDate}
+                  selectedDate={planningDate}
                   onDateSelect={(date) => {
                     setSelectedDate(date);
-                    setView("day");
                   }}
                   onPlanCreate={openCreate}
+                  onToggleCompleted={handleToggleCompleted}
+                  onEditPlan={openEdit}
+                  onDeletePlan={requestDelete}
+                />
+                <WeekHub
+                  weekStart={week.start}
+                  plans={weekTasks}
+                  selectedDate={planningDate}
+                  categories={categories}
+                  isLoading={plansLoading}
+                  error={plansError}
+                  onRetry={retryPlans}
+                  onSelectDay={setSelectedDate}
+                  onCreatePlan={openCreate}
+                  onQuickAdd={quickAddPlan}
+                  onUndoQuickAdd={undoQuickAdd}
                   onToggleCompleted={handleToggleCompleted}
                   onEditPlan={openEdit}
                   onDeletePlan={requestDelete}
@@ -665,10 +730,9 @@ export default function PlanningPage() {
                   monthStart={month.start}
                   monthEnd={month.end}
                   plans={monthGridTasks}
-                  selectedDate={selectedDate}
+                  selectedDate={planningDate}
                   onDateSelect={(date) => {
                     setSelectedDate(date);
-                    setView("day");
                   }}
                   onPlanCreate={openCreate}
                 />                  
@@ -757,6 +821,7 @@ export default function PlanningPage() {
           open={editorOpen}
           plan={editingPlan}
           initialDate={editorDate}
+          selectedDate={selectedDate}
           initialStartTime={editorStartTime}
           initialEndTime={editorEndTime}
           categories={categories}

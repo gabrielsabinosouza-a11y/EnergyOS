@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Repeat } from "lucide-react";
 import type { Category, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
-import { SHORT_WEEKDAYS, weekdayOfIso } from "@/lib/planning/dates";
+import { SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
+import { recurrenceInitialDate, syncInitialWeekday, validateWeeklyRecurrence, weeklyRecurrenceSummary, type RecurrenceFormErrors } from "@/lib/planning/recurrence-form";
 import { formatTimeInput, isValidTime24 } from "@/lib/planning/time";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
@@ -42,6 +43,7 @@ interface PlanDialogProps {
   open: boolean;
   plan?: WeeklyPlanItem | null;
   initialDate?: string | null;
+  selectedDate?: string | null;
   initialStartTime?: string;
   initialEndTime?: string;
   categories: Category[];
@@ -64,6 +66,7 @@ export function PlanDialog({
   open,
   plan,
   initialDate,
+  selectedDate,
   initialStartTime,
   initialEndTime,
   categories,
@@ -86,6 +89,12 @@ export function PlanDialog({
   const [pendingScope, setPendingScope] = useState<PlanFormValues | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recurrenceErrors, setRecurrenceErrors] = useState<RecurrenceFormErrors>({});
+  const [touchedFields, setTouchedFields] = useState({ planDate: false, repeatDays: false, repeatUntil: false });
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const dateFieldRef = useRef<HTMLDivElement>(null);
+  const repeatDaysRef = useRef<HTMLDivElement>(null);
+  const repeatUntilRef = useRef<HTMLDivElement>(null);
 
   // Reset form state when modal opens or plan changes
   const wasOpenRef = useRef(false);
@@ -96,11 +105,12 @@ export function PlanDialog({
     if (open && !wasOpenRef.current) {
       setTitle(plan?.title ?? "");
       setCategoryId(plan?.categoryId?.toString() ?? "");
-      setPlanDate(plan?.planDate ?? initialDate ?? null);
+      const nextDate = plan ? plan.planDate ?? null : recurrenceInitialDate(initialDate, selectedDate, todayIso());
+      setPlanDate(nextDate);
       setStartTime(plan?.startTime?.slice(0, 5) ?? initialStartTime ?? null);
       setEndTime(initialEndTime ?? (plan ? plan.endTime?.slice(0, 5) ?? null : null));
       setRepeatWeekly(false);
-      setRepeatDays([]);
+      setRepeatDays(plan || !nextDate ? [] : syncInitialWeekday(nextDate));
       setRepeatDaysTouched(false);
       setRepeatUntil("");
       setHasRepeatEnd(false);
@@ -108,9 +118,12 @@ export function PlanDialog({
       const found = REMINDER_OPTIONS.find((opt) => opt.offsetMin === offset);
       setReminderOption(found?.value ?? "sem-lembrete");
       setError("");
+      setRecurrenceErrors({});
+      setTouchedFields({ planDate: false, repeatDays: false, repeatUntil: false });
+      setSubmitAttempted(false);
     }
     wasOpenRef.current = open;
-  }, [open, plan, initialDate, initialStartTime, initialEndTime]);
+  }, [open, plan, initialDate, selectedDate, initialStartTime, initialEndTime]);
 
   const recurringOccurrence = plan?.seriesId !== null && plan?.seriesId !== undefined;
 
@@ -120,28 +133,51 @@ export function PlanDialog({
 
   function handleDateChange(date: string | null) {
     setPlanDate(date);
-    if (date && !repeatDaysTouched) setRepeatDays([weekdayOfIso(date)]);
+    if (date && !repeatDaysTouched) setRepeatDays(syncInitialWeekday(date));
+    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: date, days: date && !repeatDaysTouched ? syncInitialWeekday(date) : repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
   }
 
   function handleRepeatChange(weekly: boolean) {
     setRepeatWeekly(weekly);
+    if (!weekly) setRecurrenceErrors({});
     // A repetição semanal usa a data como âncora: só pré-seleciona o dia
     // da semana quando já existe uma data escolhida.
-    if (weekly && repeatDays.length === 0 && planDate) setRepeatDays([weekdayOfIso(planDate)]);
-    setError("");
+    if (weekly && repeatDays.length === 0 && planDate) setRepeatDays(syncInitialWeekday(planDate));
   }
 
   function toggleRepeatDay(day: number) {
     setRepeatDaysTouched(true);
-    setRepeatDays((current) => current.includes(day)
-      ? current.filter((selected) => selected !== day)
-      : [...current, day].sort((a, b) => (a + 6) % 7 - (b + 6) % 7));
+    const nextDays = repeatDays.includes(day)
+      ? repeatDays.filter((selected) => selected !== day)
+      : [...repeatDays, day].sort((a, b) => (a + 6) % 7 - (b + 6) % 7);
+    setRepeatDays(nextDays);
+    if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: nextDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
+  }
+
+  function touchRecurrenceField(field: keyof RecurrenceFormErrors) {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+    if (repeatWeekly) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil }));
   }
 
   const selectedReminderOffset = REMINDER_OPTIONS.find((opt) => opt.value === reminderOption)?.offsetMin ?? null;
   const needsPermission = selectedReminderOffset != null;
+  const recurrenceErrorSummary = repeatWeekly ? Object.values(recurrenceErrors).filter(Boolean).join(" ") : "";
 
   function validate(): PlanFormValues | null {
+    setSubmitAttempted(true);
+    const nextRecurrenceErrors = repeatWeekly
+      ? validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: repeatUntil })
+      : {};
+    setRecurrenceErrors(nextRecurrenceErrors);
+    if (Object.keys(nextRecurrenceErrors).length > 0) {
+      const firstInvalid = nextRecurrenceErrors.planDate ? dateFieldRef : nextRecurrenceErrors.repeatDays ? repeatDaysRef : repeatUntilRef;
+      window.requestAnimationFrame(() => {
+        firstInvalid.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        firstInvalid.current?.querySelector<HTMLElement>("button, input")?.focus({ preventScroll: true });
+      });
+      setError("");
+      return null;
+    }
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError("Informe o título do plano.");
@@ -164,18 +200,7 @@ export function PlanDialog({
       setError("O horário de fim deve ser posterior ao início.");
       return null;
     }
-    if (repeatWeekly && !planDate) {
-      setError("Escolha uma data inicial para a repetição semanal.");
-      return null;
-    }
-    if (repeatWeekly && repeatDays.length === 0) {
-      setError("Selecione pelo menos um dia da semana.");
-      return null;
-    }
-    if (repeatWeekly && hasRepeatEnd && repeatUntil && planDate && repeatUntil < planDate) {
-      setError("A data final deve ser igual ou posterior à data inicial.");
-      return null;
-    }
+    setError("");
     return {
       // null = sem data (tarefa não agendada). O corpo da API trata
       // "null" como limpar a data e "undefined" como "não mexer".
@@ -256,7 +281,10 @@ export function PlanDialog({
         surface="glass"
         panelClassName="planner-glass-modal max-w-[520px]"
         footer={
-          <>
+          <div className="w-full">
+            {submitAttempted && recurrenceErrorSummary ? <p className="mb-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="status" aria-live="polite">Revise os campos da repetição: {recurrenceErrorSummary}</p> : null}
+            {error ? <p className="mb-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert">{error}</p> : null}
+            <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={handleCancel} disabled={loading} className="ml-auto">
               Cancelar
             </Button>
@@ -269,7 +297,8 @@ export function PlanDialog({
             >
               {plan ? "Salvar alterações" : "Criar plano"}
             </Button>
-          </>
+            </div>
+          </div>
         }
       >
         <form id="planner-plan-form" onSubmit={handleSubmit} className="space-y-5">
@@ -312,20 +341,24 @@ export function PlanDialog({
 
           <div className="space-y-1.5">
             <label htmlFor="planner-plan-date" className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              Data
-              <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">
-                opcional
-              </span>
+              {repeatWeekly ? "Data inicial" : "Data"}
+              {!repeatWeekly && <span className="rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">opcional</span>}
+              {repeatWeekly && <span className="text-red-300" aria-hidden="true">*</span>}
             </label>
-            <div className="relative">
+            <div ref={dateFieldRef} className="relative space-y-1" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) touchRecurrenceField("planDate"); }}>
               <PlannerDatePicker
                 id="planner-plan-date"
-                label="Data do plano"
+                label={repeatWeekly ? "Data inicial" : "Data do plano"}
                 value={planDate}
                 onChange={handleDateChange}
                 placeholder="Sem data"
                 disabled={Boolean(recurringOccurrence)}
+                aria-required={repeatWeekly}
+                onBlur={() => touchRecurrenceField("planDate")}
+                aria-invalid={repeatWeekly && Boolean(recurrenceErrors.planDate)}
+                aria-describedby={repeatWeekly && recurrenceErrors.planDate ? "planner-plan-date-error" : undefined}
               />
+              {repeatWeekly && recurrenceErrors.planDate && (touchedFields.planDate || submitAttempted) ? <p id="planner-plan-date-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.planDate}</p> : null}
             </div>
           </div>
 
@@ -399,16 +432,15 @@ export function PlanDialog({
                     Semanalmente
                   </button>
                 </div>
-                {repeatWeekly && !planDate ? (
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">
-                    A repetição semanal usa a data como ponto de partida. Escolha uma data para escolher os dias da semana.
-                  </p>
-                ) : null}
+                {repeatWeekly ? <p className="mt-2 text-xs text-[var(--text-muted)]">A primeira ocorrência será no próximo dia selecionado a partir da data inicial.</p> : null}
               </div>
 
               {repeatWeekly ? (
                 <>
-                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Dias da semana">
+                  <div ref={repeatDaysRef} className="space-y-2" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) touchRecurrenceField("repeatDays"); }}>
+                  {/* Group validity belongs to the set of weekday toggles, not an individual day. */}
+                  {/* eslint-disable-next-line jsx-a11y/role-supports-aria-props */}
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Dias da semana" aria-invalid={Boolean(recurrenceErrors.repeatDays)} aria-describedby={recurrenceErrors.repeatDays ? "planner-repeat-days-error" : undefined}>
                     {WEEKDAYS.map(({ label, value }) => {
                       const selected = repeatDays.includes(value);
                       return (
@@ -424,6 +456,9 @@ export function PlanDialog({
                       );
                     })}
                   </div>
+                  {recurrenceErrors.repeatDays && (touchedFields.repeatDays || submitAttempted) ? <p id="planner-repeat-days-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.repeatDays}</p> : null}
+                  {planDate && <p className="text-xs text-[var(--text-muted)]">{weeklyRecurrenceSummary(planDate, repeatDays, hasRepeatEnd ? repeatUntil : null, hasRepeatEnd)}</p>}
+                  </div>
                   <fieldset className="space-y-2">
                     <legend className="text-xs font-medium text-[var(--text-secondary)]">Fim da repetição</legend>
                     <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-secondary)]">
@@ -431,7 +466,7 @@ export function PlanDialog({
                         type="radio"
                         name="planner-repeat-end"
                         checked={!hasRepeatEnd}
-                        onChange={() => setHasRepeatEnd(false)}
+                        onChange={() => { setHasRepeatEnd(false); setRecurrenceErrors((current) => ({ ...current, repeatUntil: undefined })); }}
                         className="accent-[var(--accent)]"
                       />
                       Sem data final
@@ -447,13 +482,22 @@ export function PlanDialog({
                       Repetir até
                     </label>
                     {hasRepeatEnd ? (
+                      <div ref={repeatUntilRef} className="space-y-1" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) touchRecurrenceField("repeatUntil"); }}>
                       <PlannerDatePicker
                         id="planner-repeat-until"
                         label="Repetir até"
                         value={repeatUntil}
-                        onChange={setRepeatUntil}
+                        onChange={(date) => {
+                          setRepeatUntil(date);
+                          if (Object.values(touchedFields).some(Boolean) || submitAttempted) setRecurrenceErrors(validateWeeklyRecurrence({ startDate: planDate, days: repeatDays, hasEndDate: hasRepeatEnd, endDate: date }));
+                        }}
+                        onBlur={() => touchRecurrenceField("repeatUntil")}
+                        aria-invalid={Boolean(recurrenceErrors.repeatUntil)}
+                        aria-describedby={recurrenceErrors.repeatUntil ? "planner-repeat-until-error" : undefined}
                         placeholder="Escolha a data final"
                       />
+                      {recurrenceErrors.repeatUntil && (touchedFields.repeatUntil || submitAttempted) ? <p id="planner-repeat-until-error" className="text-xs text-red-300" aria-live="polite">{recurrenceErrors.repeatUntil}</p> : null}
+                      </div>
                     ) : null}
                   </fieldset>
                 </>
@@ -481,6 +525,7 @@ export function PlanDialog({
                       <Bell size={12} aria-hidden="true" />
                       Aviso local no dispositivo — não altera a recompensa do plano.
                     </p>
+                    {selectedReminderOffset !== null && !startTime ? <p className="mt-1 text-[11px] text-[var(--text-muted)]">Defina um horário de início para receber este lembrete.</p> : null}
                   </div>
                 </section>
               )}
@@ -492,11 +537,6 @@ export function PlanDialog({
             </p>
           ) : null}
 
-          {error ? (
-            <p className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
-              {error}
-            </p>
-          ) : null}
         </form>
       </Modal>
 

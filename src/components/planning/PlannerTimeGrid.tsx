@@ -26,18 +26,17 @@ interface PlannerTimeGridProps {
  */
 export function PlannerTimeGrid({ days, onSlotClick, onEventClick }: PlannerTimeGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [nowMinutes, setNowMinutes] = useState(() => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
-  });
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
 
   // Atualiza a linha do "agora" a cada minuto.
   useEffect(() => {
-    const id = window.setInterval(() => {
+    const update = () => {
       const d = new Date();
       setNowMinutes(d.getHours() * 60 + d.getMinutes());
-    }, 60_000);
-    return () => window.clearInterval(id);
+    };
+    const timeout = window.setTimeout(update, 0);
+    const id = window.setInterval(update, 60_000);
+    return () => { window.clearTimeout(timeout); window.clearInterval(id); };
   }, []);
 
   // Auto-scroll para a hora atual no mount (timeline aberta na hora certa).
@@ -95,7 +94,7 @@ interface DayColumnProps {
   day: TimeGridDay;
   onSlotClick: (date: string, minutes: number) => void;
   onEventClick?: (plan: WeeklyPlanItem) => void;
-  nowMinutes: number;
+  nowMinutes: number | null;
 }
 
 function DayColumn({ day, onSlotClick, onEventClick, nowMinutes }: DayColumnProps) {
@@ -120,7 +119,7 @@ function DayColumn({ day, onSlotClick, onEventClick, nowMinutes }: DayColumnProp
     onSlotClick(day.date, Math.max(0, Math.min(23 * 60 + 30, minutes)));
   };
 
-  const nowTop = (nowMinutes / 60) * HOUR_HEIGHT;
+  const nowTop = ((nowMinutes ?? 0) / 60) * HOUR_HEIGHT;
 
   return (
     <div
@@ -132,7 +131,7 @@ function DayColumn({ day, onSlotClick, onEventClick, nowMinutes }: DayColumnProp
         <EventBlock key={planItemKey(plan)} plan={plan} layout={layout} onClick={() => onEventClick?.(plan)} />
       ))}
 
-      {day.today ? (
+      {day.today && nowMinutes !== null ? (
         <div className="planner-now-line" style={{ top: nowTop }}>
           <div className="planner-now-dot" style={{ top: nowTop }} />
         </div>
