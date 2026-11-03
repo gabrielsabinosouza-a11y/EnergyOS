@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import Image from "next/image";
 import { Modal } from "@/components/modal";
 import { api } from "@/lib/api-client";
-import { StreakIcon, ShieldIcon } from "@/components/streak-icon";
+import { StreakIcon } from "@/components/streak-icon";
 import type { StreakDayStatus } from "@/types";
 import { todayIso } from "@/lib/db/dates";
 import { formatCalendarMonth, getCalendarMonthCells } from "@/lib/calendar-grid";
@@ -173,7 +174,7 @@ export function StreakCalendarModal({
                       ? { boxShadow: `0 0 10px -2px ${glowColor}60` }
                       : undefined
                   }
-                  title={`${day}/${cursorMonth + 1}${kind === "success" ? " — foco completo" : kind === "protected" ? " — protegido por escudo" : ""}`}
+                  title={`${day}/${cursorMonth + 1}${kind === "success" ? " — foco completo" : kind === "protected" ? " — protegido por escudo" : kind === "lost" ? " — sequência perdida" : kind === "none" ? " — sem streak" : ""}`}
                 >
                   <span className="absolute top-0.5 left-0.5 text-[10px] font-medium text-[var(--text)]">{day}</span>
                   {(kind === "success") && (
@@ -185,16 +186,22 @@ export function StreakCalendarModal({
                     </span>
                   )}
                   {kind === "protected" && (
-                    <span
-                      className="flex h-6 w-6 items-center justify-center rounded-full sm:h-8 sm:w-8"
-                      title="Protegido por escudo"
-                      style={{ background: "#71d4ff1f", boxShadow: `0 0 14px #71d4ff50` }}
-                    >
-                      <ShieldIcon size={20} />
-                    </span>
+                    <Image
+                      src="/streak/streak_protected.png"
+                      alt="Sequência protegida"
+                      width={32}
+                      height={32}
+                      className="h-6 w-6 object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.6)] sm:h-8 sm:w-8"
+                    />
                   )}
-                  {kind === "none" && (
-                    <span className="block h-1 w-1 rounded-full bg-[var(--text-faint)]/50" />
+                  {(kind === "lost" || (kind === "none" && dateStr < todayIsoStr)) && (
+                    <Image
+                      src="/streak/streak_lost.png"
+                      alt={kind === "lost" ? "Sequência perdida" : "Sem streak"}
+                      width={24}
+                      height={24}
+                      className="h-5 w-5 animate-pulse object-contain motion-reduce:animate-none sm:h-6 sm:w-6"
+                    />
                   )}
                   {kind === "future" && (
                     <span className="text-[var(--text-faint)]/40">{day}</span>
@@ -210,10 +217,22 @@ export function StreakCalendarModal({
               <StreakIcon size={15} variant="saved" /> Foco completo
             </span>
             <span className="flex items-center gap-1.5">
-              <ShieldIcon size={15} /> Protegido
+              <Image
+                src="/streak/streak_protected.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+              /> Protegido
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="block h-1 w-1 rounded-full bg-[var(--text-faint)]/50" /> Sem streak
+              <Image
+                src="/streak/streak_lost.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 animate-pulse object-contain motion-reduce:animate-none"
+              /> Sem streak
             </span>
           </div>
         </div>

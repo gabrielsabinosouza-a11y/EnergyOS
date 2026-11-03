@@ -123,12 +123,33 @@ export default function LigaPage() {
     );
   }
 
-  if (loadingData || !snapshot) {
+  if (loadingData) {
     return (
       <AppShell>
         <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
           <div className="flex items-center justify-center py-32">
             <Loader2 size={28} className="animate-spin text-[var(--accent)]" />
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
+
+  if (error || !snapshot) {
+    return (
+      <AppShell>
+        <main className="min-h-screen px-5 py-10 sm:px-8 lg:px-12">
+          <div className="mx-auto max-w-lg py-32 text-center">
+            <p role="alert" className="text-sm text-red-400">
+              {error ?? "Não foi possível carregar a liga."}
+            </p>
+            <button
+              type="button"
+              onClick={() => void fetchData()}
+              className="mt-4 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm text-[var(--text)] transition-colors hover:bg-[var(--bg-surface-hover)]"
+            >
+              Tentar novamente
+            </button>
           </div>
         </main>
       </AppShell>

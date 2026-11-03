@@ -9,7 +9,16 @@ import {
 } from 'react-native';
 
 import { ApiError, api } from '@/shared/api';
-import { Button, Card, ErrorState, Screen, Skeleton, Text } from '@/shared/components';
+import {
+  Button,
+  Card,
+  ErrorState,
+  Screen,
+  Skeleton,
+  StatCard,
+  Text,
+} from '@/shared/components';
+import { HabitItem } from '@/features/dashboard/habit-item';
 import type {
   CheckinResponse,
   DailyHabit,
@@ -22,6 +31,8 @@ import type {
 import { useTheme } from '@/hooks/use-theme';
 
 const ENERGY_OPTIONS = [1, 2, 3, 4, 5] as const;
+const streakIcon = require('../../../assets/energyos/streak/alive.png');
+const focusIcon = require('../../../assets/energyos/stats/focus.png');
 
 function getErrorMessage(error: unknown) {
   return error instanceof ApiError
@@ -259,22 +270,18 @@ export default function TodayScreen() {
       </View>
 
       <View style={styles.stats}>
-        <Card style={styles.statCard}>
-          <Text color={theme.textSecondary} variant="caption">
-            SEQUÊNCIA
-          </Text>
-          <Text color={theme.orange} variant="heading">
-            {snapshot.streak.currentStreak} dias
-          </Text>
-        </Card>
-        <Card style={styles.statCard}>
-          <Text color={theme.textSecondary} variant="caption">
-            FOCO NA SEMANA
-          </Text>
-          <Text color={theme.purple} variant="heading">
-            {snapshot.weeklyFocusMinutes} min
-          </Text>
-        </Card>
+        <StatCard
+          color={theme.orange}
+          icon={streakIcon}
+          label="SEQUÊNCIA"
+          value={`${snapshot.streak.currentStreak} dias`}
+        />
+        <StatCard
+          color={theme.purple}
+          icon={focusIcon}
+          label="FOCO NA SEMANA"
+          value={`${snapshot.weeklyFocusMinutes} min`}
+        />
       </View>
 
       <Card style={styles.section}>
@@ -396,51 +403,15 @@ export default function TodayScreen() {
         ) : (
           dailyHabits.map((habit) => {
             const pending = dailyHabitPendingId === habit.id;
-            const completed = habit.completedCount >= habit.dailyTarget;
             return (
-              <View key={habit.id} style={[styles.task, { borderTopColor: theme.border }]}>
-                <View style={styles.taskCopy}>
-                  <Text color={completed ? theme.textMuted : theme.text} variant="label">
-                    {habit.title}
-                  </Text>
-                  <Text color={theme.textSecondary} variant="caption">
-                    {habit.completedCount} de {habit.dailyTarget}
-                  </Text>
-                </View>
-                <View style={styles.habitControls}>
-                  <Pressable
-                    accessibilityLabel={`Diminuir check-ins de ${habit.title}`}
-                    accessibilityRole="button"
-                    accessibilityState={{
-                      busy: pending,
-                      disabled: dailyHabitPendingId !== null || habit.completedCount === 0,
-                    }}
-                    disabled={dailyHabitPendingId !== null || habit.completedCount === 0}
-                    onPress={() => void updateDailyHabit(habit, habit.completedCount - 1)}
-                    style={[styles.habitStep, { borderColor: theme.border }]}>
-                    <Text color={theme.text} variant="label">−</Text>
-                  </Pressable>
-                  <Text
-                    accessibilityLabel={`${habit.title}: ${habit.completedCount} de ${habit.dailyTarget}`}
-                    accessibilityRole="progressbar"
-                    color={completed ? theme.green : theme.accent}
-                    variant="label">
-                    {pending ? '…' : `${habit.completedCount}/${habit.dailyTarget}`}
-                  </Text>
-                  <Pressable
-                    accessibilityLabel={`Adicionar check-in para ${habit.title}`}
-                    accessibilityRole="button"
-                    accessibilityState={{
-                      busy: pending,
-                      disabled: dailyHabitPendingId !== null || completed,
-                    }}
-                    disabled={dailyHabitPendingId !== null || completed}
-                    onPress={() => void updateDailyHabit(habit, habit.completedCount + 1)}
-                    style={[styles.habitStep, { borderColor: theme.accent }]}>
-                    <Text color={theme.accent} variant="label">+</Text>
-                  </Pressable>
-                </View>
-              </View>
+              <HabitItem
+                busy={pending}
+                disabled={dailyHabitPendingId !== null}
+                habit={habit}
+                key={habit.id}
+                onDecrement={() => void updateDailyHabit(habit, habit.completedCount - 1)}
+                onIncrement={() => void updateDailyHabit(habit, habit.completedCount + 1)}
+              />
             );
           })
         )}
@@ -498,7 +469,6 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   heading: { gap: 10, paddingTop: 8 },
   stats: { flexDirection: 'row', gap: 12 },
-  statCard: { flex: 1, gap: 8, padding: 14 },
   section: { gap: 14 },
   energyOptions: { flexDirection: 'row', gap: 10 },
   energyOption: {
@@ -511,9 +481,6 @@ const styles = StyleSheet.create({
   },
   row: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   task: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, paddingTop: 12 },
-  taskCopy: { flex: 1, gap: 4 },
-  habitControls: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  habitStep: { alignItems: 'center', borderRadius: 10, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
   createHabit: { gap: 10 },
   habitInput: { borderRadius: 10, borderWidth: 1, minHeight: 48, paddingHorizontal: 14 },
   complete: { alignItems: 'center', borderRadius: 10, borderWidth: 1, justifyContent: 'center', minHeight: 44, minWidth: 80, paddingHorizontal: 10 },

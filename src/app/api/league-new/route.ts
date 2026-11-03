@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
-import { handleRoute, jsonOk } from "@/lib/http";
-import { ensureUserBootstrap } from "@/lib/db/bootstrap";
+import { handleRoute, jsonOk, routeContext } from "@/lib/http";
 import {
   getUserLeagueSnapshot,
   getLiveCohort,
@@ -9,14 +8,14 @@ import {
 } from "@/lib/db/league-new";
 
 export async function GET(request: NextRequest) {
-  return handleRoute(async () => {
+  return handleRoute(async (context) => {
     const { profileId } = await requireAuth(request);
-    // Run reset check on every fetch (idempotent — only acts if week has turned)
-    await runWeeklyLeagueReset().catch(() => undefined);
+    context.profileId = profileId;
+    await runWeeklyLeagueReset();
     const snapshot = await getUserLeagueSnapshot(profileId);
     const cohort = await getLiveCohort(profileId);
     return jsonOk({ ...snapshot, liveCohort: { members: cohort } });
-  });
+  }, routeContext(request, "/api/league-new"));
 }
 
 // POST /api/league-new — manual weekly reset trigger (admin/cron use)
