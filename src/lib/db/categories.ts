@@ -155,8 +155,13 @@ export async function resolveDefaultCategoryId(): Promise<number> {
     `select id from categories where user_id is null and name = $1`,
     [FALLBACK_CATEGORY_NAME],
   );
-  if (!result.rows[0]) throw new Error("Categoria padrão 'Outros' não encontrada. Execute: npm run db:init");
-  return Number(result.rows[0].id);
+  if (!result.rows[0]) {
+    console.error("[resolveDefaultCategoryId] 'Outros' category not found!");
+    throw new Error("Categoria padrão 'Outros' não encontrada. Execute: npm run db:init");
+  }
+  const id = Number(result.rows[0].id);
+  console.info("[resolveDefaultCategoryId] Found 'Outros' category with id:", id);
+  return id;
 }
 
 /** Valida que a categoria existe e é visível para o perfil (padrão ou própria). */
