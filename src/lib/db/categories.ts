@@ -159,9 +159,7 @@ export async function resolveDefaultCategoryId(): Promise<number> {
     console.error("[resolveDefaultCategoryId] 'Outros' category not found!");
     throw new Error("Categoria padrão 'Outros' não encontrada. Execute: npm run db:init");
   }
-  const id = Number(result.rows[0].id);
-  console.info("[resolveDefaultCategoryId] Found 'Outros' category with id:", id);
-  return id;
+  return Number(result.rows[0].id);
 }
 
 /** Valida que a categoria existe e é visível para o perfil (padrão ou própria). */

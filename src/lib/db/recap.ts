@@ -41,6 +41,14 @@ export function spMonthEndIso(monthStart: string): string {
   return spUtcIso(next.toISOString().slice(0, 10));
 }
 
+/** Last calendar day of a month, for league snapshots stored by week start. */
+export function recapLeagueEndDate(monthStart: string): string {
+  const next = new Date(`${monthStart.slice(0, 7)}-01T12:00:00Z`);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  next.setUTCDate(0);
+  return next.toISOString().slice(0, 10);
+}
+
 /** Primeiro dia do mês seguinte (YYYY-MM-DD) — usado para iterar dias do mês. */
 function monthEndDate(monthStart: string): string {
   const d = new Date(`${monthStart}T12:00:00Z`);
@@ -92,8 +100,8 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
     streakStartDate: row.streak_start_date ? (typeof row.streak_start_date === "string" ? row.streak_start_date : row.streak_start_date.toISOString().slice(0, 10)) : undefined,
     streakEndDate: row.streak_end_date ? (typeof row.streak_end_date === "string" ? row.streak_end_date : row.streak_end_date.toISOString().slice(0, 10)) : undefined,
     streakIsAlive: row.streak_is_alive ?? false,
-    leagueTier: row.league_tier ?? undefined,
-    leagueAtStart: row.league_at_start ?? undefined,
+    leagueTier: resolveNewTier(row.league_tier) ?? row.league_tier ?? undefined,
+    leagueAtStart: resolveNewTier(row.league_at_start) ?? row.league_at_start ?? undefined,
     leaguePromoted: row.league_promoted ?? undefined,
     productivityTag: row.productivity_tag ?? undefined,
     gardenCount: Number(row.garden_count) || 0,
@@ -392,6 +400,33 @@ async function getLeagueAtPoint(
   return { tier: result.rows[0].tier };
 }
 
+async function getCurrentLeagueTier(profileId: string): Promise<string | undefined> {
+  const current = await getLeagueAtPoint(profileId, todayIso());
+  return current?.tier ?? undefined;
+}
+
+async function withRecapLeagueBadge(profileId: string, recap: MonthlyRecap): Promise<MonthlyRecap> {
+  const historical = await getLeagueAtPoint(profileId, recapLeagueEndDate(recap.recapMonth));
+  const historicalTier = resolveNewTier(historical?.tier);
+  if (historicalTier) {
+    return { ...recap, leagueTier: historicalTier };
+  }
+
+  const savedTier = resolveNewTier(recap.leagueTier);
+  if (savedTier) return { ...recap, leagueTier: savedTier };
+
+  console.warn(
+    `[recap] Missing historical league snapshot for profile ${profileId}, month ${recap.recapMonth}; using the latest available league.`,
+  );
+  const currentTier = resolveNewTier(await getCurrentLeagueTier(profileId));
+  if (currentTier) return { ...recap, leagueTier: currentTier };
+
+  console.error(
+    `[recap] No league ranking data found for profile ${profileId}; using the initial Bronze league badge.`,
+  );
+  return { ...recap, leagueTier: "BRONZE" };
+}
+
 async function buildRecapSummary(
   profileId: string,
   monthStart: string,
@@ -412,7 +447,7 @@ async function buildRecapSummary(
     ),
     computeLongestStreakForMonth(profileId, monthStart, monthEnd),
     getLeagueAtPoint(profileId, monthStart),
-    getLeagueAtPoint(profileId, monthEnd),
+    getLeagueAtPoint(profileId, recapLeagueEndDate(monthStart)),
     computeXpForMonth(profileId, monthStart),
     computeCoinsForMonth(profileId, monthStartIso, monthEndIso),
     computeMissionsCompleted(profileId, monthStartIso, monthEndIso),
@@ -687,15 +722,21 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
       // mantendo o mesmo registro (status "live").
       const monthEnd = spMonthEndIso(monthStart);
       const summary = await buildRecapSummary(profileId, monthStart, monthEnd, true);
-      output.push(await upsertRecap(profileId, monthStart, summary, "live"));
+      output.push(await withRecapLeagueBadge(
+        profileId,
+        await upsertRecap(profileId, monthStart, summary, "live"),
+      ));
     } else if (row.status !== "final" && monthStart < currentMonth) {
       // Mês encerrado ainda não finalizado: calcula uma última vez com os
       // totais completos do mês e grava como "final" (lazy finalize na leitura).
       const monthEnd = spMonthEndIso(monthStart);
       const summary = await buildRecapSummary(profileId, monthStart, monthEnd, false);
-      output.push(await upsertRecap(profileId, monthStart, summary, "final"));
+      output.push(await withRecapLeagueBadge(
+        profileId,
+        await upsertRecap(profileId, monthStart, summary, "final"),
+      ));
     } else {
-      output.push(mapRecap(profileId, row));
+      output.push(await withRecapLeagueBadge(profileId, mapRecap(profileId, row)));
     }
   }
   return output;
@@ -730,7 +771,10 @@ export async function generateRecap(
 
   const isCurrentMonth = monthStart === currentMonth;
   const summary = await buildRecapSummary(profileId, monthStart, monthEnd, isCurrentMonth);
-  return upsertRecap(profileId, monthStart, summary, isCurrentMonth ? "live" : "final");
+  return withRecapLeagueBadge(
+    profileId,
+    await upsertRecap(profileId, monthStart, summary, isCurrentMonth ? "live" : "final"),
+  );
 }
 
 const SHARE_REWARD_COINS = 50;

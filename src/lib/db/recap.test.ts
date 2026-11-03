@@ -5,6 +5,7 @@ import {
   computeGoalsCompleted,
   generateRecap,
   GOALS_COMPLETED_QUERY,
+  recapLeagueEndDate,
   spMonthStartIso,
   spMonthEndIso,
 } from "./recap";
@@ -208,6 +209,12 @@ describe("Recap month boundaries (America/Sao_Paulo)", () => {
   it("dezembro rola para janeiro (fuso mantido)", () => {
     assert.equal(spMonthStartIso("2026-12-01"), "2026-12-01T03:00:00.000Z");
     assert.equal(spMonthEndIso("2026-12-01"), "2027-01-01T03:00:00.000Z");
+  });
+
+  it("uses the final day of the recap month for its league snapshot", () => {
+    assert.equal(recapLeagueEndDate("2026-08-01"), "2026-08-31");
+    assert.equal(recapLeagueEndDate("2026-11-01"), "2026-11-30");
+    assert.equal(recapLeagueEndDate("2028-02-01"), "2028-02-29");
   });
 });
 

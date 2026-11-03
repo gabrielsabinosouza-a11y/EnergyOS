@@ -10,6 +10,12 @@ export const NEW_TIER_ORDER = [
 ] as const;
 
 export type NewLeagueTier = typeof NEW_TIER_ORDER[number];
+const LEGACY_TIER_ALIASES: Record<string, NewLeagueTier> = {
+  PRATA: "SILVER",
+  OURO: "GOLD",
+  DIAMANTE: "DIAMOND",
+  LENDAS: "LEGENDS",
+};
 
 export interface NewTierMeta {
   label: string;
@@ -132,6 +138,7 @@ export function tierAfterWeeklyRank(tier: NewLeagueTier, rank: number, groupSize
 export function resolveNewTier(tier?: string | null): NewLeagueTier | null {
   if (!tier) return null;
   const upper = tier.toUpperCase();
+  if (LEGACY_TIER_ALIASES[upper]) return LEGACY_TIER_ALIASES[upper];
   return (NEW_TIER_ORDER as readonly string[]).includes(upper)
     ? upper as NewLeagueTier
     : null;

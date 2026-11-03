@@ -133,17 +133,14 @@ export interface CreateKanbanInput {
 }
 
 export async function createKanbanTask(profileId: string, input: CreateKanbanInput): Promise<KanbanTask> {
-  console.info("[createKanbanTask] Starting with input:", { profileId, input });
   parseProfileId(profileId);
   validateReferenceImage(input.imageUrl, input.imagePath);
   const title = parseTitle(input.title);
   const status = parseEnum(input.status ?? "todo", KANBAN_STATUSES, "Status");
   const priority = parseEnum(input.priority ?? "low", KANBAN_PRIORITIES, "Prioridade");
-  console.info("[createKanbanTask] Parsed title, status, priority");
   const categoryId = input.categoryId !== undefined
     ? await assertCategoryForProfile(profileId, input.categoryId)
     : await resolveDefaultCategoryId();
-  console.info("[createKanbanTask] Resolved categoryId:", categoryId);
 
   const maxPos = await pool.query<{ max_pos: string | number | null }>(
     `select coalesce(max(position), -1) as max_pos from kanban_tasks where profile_id = $1 and status = $2`,

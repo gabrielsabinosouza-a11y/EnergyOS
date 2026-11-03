@@ -859,6 +859,7 @@ export function MonthlyRecapPremium({
 
   const monthLabel = formatMonth(recap.recapMonth);
   const { meta, tier } = tierMeta(recap.leagueTier);
+  const badgeMeta = meta ?? NEW_TIER_META.BRONZE;
   const garden = recap.gardenCount ?? 0;
   const isSummary = currentSlide === SLIDE_COUNT - 1;
 
@@ -1135,17 +1136,21 @@ export function MonthlyRecapPremium({
         onClick={() => { setCurrentSlide(0); setOpen(true); }}
         className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-4 py-3.5 text-left transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--bg-surface-hover)]"
       >
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(255,255,255,.05)" }}>
-          {meta ? (
-            <Image src={meta.iconPath} alt={meta.label} width={20} height={20} unoptimized draggable={false} />
-          ) : (
-            <Award size={18} style={{ color: "#71d4ff" }} />
-          )}
+        <div
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border"
+          style={{
+            background: `${badgeMeta.color}14`,
+            borderColor: `${badgeMeta.color}40`,
+            boxShadow: `0 0 18px ${badgeMeta.glow}`,
+          }}
+        >
+          <Image src={badgeMeta.iconPath} alt={badgeMeta.label} width={23} height={23} unoptimized draggable={false} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--text)]">Ver recap de {monthLabel}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)]">
             {isLive && <span className="text-[var(--accent)]">Ao vivo</span>}
+            <span className="font-semibold" style={{ color: badgeMeta.color }}>{badgeMeta.label}</span>
             <span className="inline-flex items-center gap-0.5">
               <Timer size={10} />
               {formatMinutes(recap.totalFocusMinutes)}

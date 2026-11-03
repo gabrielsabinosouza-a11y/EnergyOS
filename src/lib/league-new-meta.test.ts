@@ -7,6 +7,7 @@ import {
   NEW_TIER_META,
   NEW_TIER_ORDER,
   nextLeagueTier,
+  resolveNewTier,
   tierAfterWeeklyRank,
 } from "./league-new-meta";
 
@@ -58,4 +59,11 @@ test("initial placement thresholds are defined for every non-Legends league", ()
     assert.notEqual(INITIAL_TIER_XP[tier], undefined);
   }
   assert.equal(INITIAL_TIER_XP.LEGENDS, undefined);
+});
+
+test("legacy persisted league names resolve to their canonical badge tiers", () => {
+  assert.equal(resolveNewTier("PRATA"), "SILVER");
+  assert.equal(resolveNewTier("OURO"), "GOLD");
+  assert.equal(resolveNewTier("DIAMANTE"), "DIAMOND");
+  assert.equal(resolveNewTier("LENDAS"), "LEGENDS");
 });

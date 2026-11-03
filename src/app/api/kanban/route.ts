@@ -31,13 +31,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
-    console.info("[Kanban POST] Authenticated profile:", profileId);
 
     await ensureUserBootstrap(profileId);
-    console.info("[Kanban POST] Bootstrap completed for profile:", profileId);
 
     const body = await readJsonBody(request);
-    console.info("[Kanban POST] Request body:", JSON.stringify(body, null, 2));
 
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new ValidationError("Invalid request body.");
@@ -142,13 +139,6 @@ export async function POST(request: NextRequest) {
       labels = data.labels.map((label: string) => label.trim());
     }
 
-    console.info("[Kanban] Creating task:", {
-      profileId,
-      title,
-      status,
-      priority,
-    });
-
     const task = await createKanbanTask(profileId, {
       title,
       description,
@@ -161,8 +151,6 @@ export async function POST(request: NextRequest) {
       imageUrl,
       imagePath,
     });
-
-    console.info("[Kanban] Task created successfully:", task);
 
     return jsonOk({ task }, 201);
   });

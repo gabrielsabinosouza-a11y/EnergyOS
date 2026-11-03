@@ -175,6 +175,7 @@ export function StreakCalendarModal({
                   }
                   title={`${day}/${cursorMonth + 1}${kind === "success" ? " — foco completo" : kind === "protected" ? " — protegido por escudo" : ""}`}
                 >
+                  <span className="absolute top-0.5 left-0.5 text-[10px] font-medium text-[var(--text)]">{day}</span>
                   {(kind === "success") && (
                     <span
                       className="flex h-6 w-6 items-center justify-center rounded-full sm:h-8 sm:w-8"
