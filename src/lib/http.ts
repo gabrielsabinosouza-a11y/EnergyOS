@@ -3,6 +3,32 @@ import type { NextRequest } from "next/server";
 import { AppError, BadRequestError } from "./errors";
 import { ValidationError } from "./db/validation";
 
+const SLOW_REQUEST_THRESHOLD = 1000; // ms - log requests slower than this
+
+// Track slow requests for monitoring
+export const slowRequestLog: Array<{ route: string; method: string; duration: number; timestamp: number }> = [];
+
+/**
+ * Log a slow request for monitoring
+ */
+function logSlowRequest(route: string | undefined, method: string | undefined, duration: number): void {
+  const entry = {
+    route: route || 'unknown',
+    method: method || 'unknown',
+    duration,
+    timestamp: Date.now(),
+  };
+  slowRequestLog.push(entry);
+  
+  // Keep only last 1000 entries
+  if (slowRequestLog.length > 1000) {
+    slowRequestLog.shift();
+  }
+  
+  // Log to console for immediate visibility
+  console.warn(`[PERF] Slow API request: ${method} ${route} took ${duration}ms`);
+}
+
 export function jsonOk<T>(data: T, status = 200): NextResponse {
   return NextResponse.json(data, { status });
 }
@@ -55,9 +81,25 @@ export async function handleRoute(
   context?: RouteContext,
 ): Promise<NextResponse> {
   const ctx: RouteContext = { ...context };
+  const startTime = Date.now();
+  
   try {
-    return await handler(ctx);
+    const response = await handler(ctx);
+    
+    // Track performance
+    const duration = Date.now() - startTime;
+    if (duration > SLOW_REQUEST_THRESHOLD) {
+      logSlowRequest(ctx.route, ctx.method, duration);
+    }
+    
+    return response;
   } catch (error) {
+    // Still track performance for failed requests
+    const duration = Date.now() - startTime;
+    if (duration > SLOW_REQUEST_THRESHOLD) {
+      logSlowRequest(ctx.route, ctx.method, duration);
+    }
+    
     if (error instanceof ValidationError) {
       console.error("[api] Validation error:", error.message, JSON.stringify(ctx));
       return jsonError(400, error.message);
@@ -72,6 +114,7 @@ export async function handleRoute(
         route: ctx.route,
         method: ctx.method,
         profileId: ctx.profileId,
+        duration: Date.now() - startTime,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       }),

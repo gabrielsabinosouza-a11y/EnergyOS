@@ -421,6 +421,89 @@ export async function getStreakCalendar(
 }
 
 /**
+ * Lightweight function to get streak info from cached database values.
+ * This does NOT recompute the streak - it reads from the already-persisted
+ * streak_day_log table and profile streaks. Use this for read-only operations
+ * to avoid the expensive computeStreak() which locks rows and scans 400+ days.
+ *
+ * Use computeStreak() only when you need to reconcile after a state change
+ * (new focus session, shield usage, etc.).
+ */
+export async function getStreakInfo(
+  profileId: string,
+  today: string,
+  computeIfMissing = false,
+): Promise<StreakInfo> {
+  parseProfileId(profileId);
+
+  // Get basic streak info from profile
+  const profileRes = await pool.query<{
+    current_streak: number | null;
+    longest_streak: number | null;
+    streak_shield_count: number | null;
+  }>(
+    `select current_streak, longest_streak, streak_shield_count from profiles where id = $1`,
+    [profileId],
+  );
+
+  if (!profileRes.rows[0]) {
+    throw new NotFoundError("Perfil não encontrado.");
+  }
+
+  const currentStreak = profileRes.rows[0].current_streak ?? 0;
+  const longestStreak = profileRes.rows[0].longest_streak ?? 0;
+  const shieldCount = profileRes.rows[0].streak_shield_count ?? 0;
+
+  // Get today's focus sessions to check if today is qualified
+  const sessionsRes = await pool.query<{ n: string | number }>(
+    `select count(*)::int as n
+       from focus_sessions
+      where profile_id = $1
+        and ended_at is not null
+        and duration_minutes >= 1
+        and (ended_at at time zone $2)::date = $3::date`,
+    [profileId, APP_TIMEZONE, today],
+  );
+  const todaySessions = Number(sessionsRes.rows[0]?.n ?? 0);
+  const todayQualified = todaySessions > 0;
+
+  // Get status for today and yesterday from streak_day_log
+  const yesterday = addDaysIso(today, -1);
+  const logRes = await pool.query<{ log_date: string; status: string }>(
+    `select to_char(log_date, 'YYYY-MM-DD') as log_date, status
+       from streak_day_log
+      where profile_id = $1 and log_date in ($2::date, $3::date)`,
+    [profileId, yesterday, today],
+  );
+  const logByDate = new Map(logRes.rows.map((r) => [r.log_date, r.status]));
+
+  // Get equipped shield icon
+  let equippedShieldIconUrl: string | undefined;
+  try {
+    const equippedShieldId = await getEquippedShieldDesignId(profileId);
+    if (equippedShieldId) {
+      const design = await getStreakShieldDesignById(equippedShieldId);
+      if (design) {
+        equippedShieldIconUrl = design.iconUrl;
+      }
+    }
+  } catch {
+    // Ignore errors fetching shield icon
+  }
+
+  return {
+    currentStreak,
+    longestStreak,
+    todayQualified,
+    todayTotal: todaySessions,
+    todayStatus: (logByDate.get(today) as StreakDayStatus | undefined) ?? null,
+    yesterdayStatus: (logByDate.get(yesterday) as StreakDayStatus | undefined) ?? null,
+    shieldCount,
+    equippedShieldIconUrl,
+  };
+}
+
+/**
  * Real-time streak hook, fired by focus.ts right after a session completes with
  * its full target duration reached. On the FIRST qualifying session of the day
  * it re-runs the streak evaluation so the current streak (profile row, day log

@@ -132,7 +132,6 @@ function DashboardContent() {
   // RecurringDailyTasks and the focus/kanban flows via DailyQuestsProvider.
   const { applyMetric, refresh: refreshQuests } = useDailyQuests();
   const [snapshot, setSnapshot] = useState<DashboardSnapshotResponse | null>(null);
-  const [persistedStreak, setPersistedStreak] = useState({ current: 0, longest: 0 });
   const [goals, setGoals] = useState<Goal[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [kanbanLabels, setKanbanLabels] = useState<KanbanLabel[]>([]);
@@ -237,11 +236,11 @@ function DashboardContent() {
         api.getFocusData()
           .then((f) => { if (!cancelled) setFocusData(f); })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, focus: "Erro ao carregar dados de foco." })); }),
-        api.getProfile()
-          .then((data) => { if (!cancelled) setPersistedStreak({ current: data.user.currentStreak ?? 0, longest: data.user.longestStreak ?? 0 }); })
-          .catch(() => {}),
         api.getSettings()
-          .then((s) => { if (!cancelled) setCoins(s.coins ?? 0); })
+          .then((s) => { if (!cancelled) { 
+            setCoins(s.coins ?? 0);
+            // Remove redundant call - streak info comes from dashboard snapshot
+          } })
           .catch(() => { if (!cancelled) setSectionErrors((p) => ({ ...p, quests: "Erro ao carregar moedas." })); }),
         api.getXpBoost()
           .then((b) => { if (!cancelled) setXpBoostUntil(b.boost?.expiresAt ?? null); })
@@ -967,15 +966,15 @@ function DashboardContent() {
                 <span className="eyebrow"><Sparkles size={13} /> CHECK-IN DIARIO</span>
                 <p className="mt-2 text-xs text-[var(--text-muted)]">Isso nos ajuda a ajustar suas metas de foco hoje</p>
               </div>
-              {(snapshot || persistedStreak.current > 0 || persistedStreak.longest > 0) && (
+              {snapshot?.streak && (
                 <StreakBadge
-                  streak={snapshot?.streak?.currentStreak ?? snapshot?.user.currentStreak ?? persistedStreak.current}
-                  todayQualified={snapshot?.streak?.todayQualified ?? false}
-                  todayStatus={snapshot?.streak?.todayStatus ?? null}
-                  yesterdayStatus={snapshot?.streak?.yesterdayStatus ?? null}
-                  shieldCount={snapshot?.streak?.shieldCount ?? 0}
+                  streak={snapshot.streak.currentStreak}
+                  todayQualified={snapshot.streak.todayQualified}
+                  todayStatus={snapshot.streak.todayStatus}
+                  yesterdayStatus={snapshot.streak.yesterdayStatus}
+                  shieldCount={snapshot.streak.shieldCount}
                   shouldPop={streakPop}
-                  equippedShieldIconUrl={snapshot?.streak?.equippedShieldIconUrl}
+                  equippedShieldIconUrl={snapshot.streak.equippedShieldIconUrl}
                   onOpen={() => setStreakCalendarOpen(true)}
                 />
               )}
@@ -1087,7 +1086,7 @@ function DashboardContent() {
 
       <StreakCalendarModal
         open={streakCalendarOpen}
-        streak={snapshot?.streak?.currentStreak ?? persistedStreak.current}
+        streak={snapshot?.streak?.currentStreak ?? 0}
         shieldCount={snapshot?.streak?.shieldCount ?? 0}
         onClose={() => setStreakCalendarOpen(false)}
       />

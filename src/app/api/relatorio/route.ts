@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
 import { listCheckins, averagesForRange } from "@/lib/db/checkins";
-import { dailyCompletions, computeStreak } from "@/lib/db/tasks";
+import { dailyCompletions, getStreakInfo } from "@/lib/db/tasks";
 import { listInsights } from "@/lib/db/insights";
 import { addDaysIso, todayIso } from "@/lib/db/dates";
 import { parseNumber } from "@/lib/db/validation";
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const [checkins, completions, currentStreak] = await Promise.all([
       listCheckins(profileId, fromDate, today),
       dailyCompletions(profileId, fromDate, today),
-      computeStreak(profileId, today),
+      getStreakInfo(profileId, today),
     ]);
 
     // Calculate weekly comparison

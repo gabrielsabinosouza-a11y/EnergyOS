@@ -400,6 +400,8 @@ export async function awardKanbanCompletion(
 ): Promise<{ xpAwarded: number; coinsAwarded: number }> {
   parseProfileId(profileId);
   const client = await pool.connect();
+  let xpAwarded = 0;
+  let coinsAwarded = 0;
   try {
     await client.query("begin");
 
@@ -414,28 +416,26 @@ export async function awardKanbanCompletion(
     );
     if (statusRow.rows[0]?.status !== "done") {
       await client.query("commit");
-      return { xpAwarded: 0, coinsAwarded: 0 };
+    } else {
+      xpAwarded = await awardKanbanXP(profileId, taskId, KANBAN_DONE_XP, client);
+      if (xpAwarded > 0) {
+        await addCoins(profileId, KANBAN_DONE_COINS, client);
+        coinsAwarded = KANBAN_DONE_COINS;
+      }
+      await client.query("commit");
     }
-
-    const xpAwarded = await awardKanbanXP(profileId, taskId, KANBAN_DONE_XP, client);
-    let coinsAwarded = 0;
-    if (xpAwarded > 0) {
-      await addCoins(profileId, KANBAN_DONE_COINS, client);
-      coinsAwarded = KANBAN_DONE_COINS;
-    }
-    await client.query("commit");
-
-    // League XP is applied after commit: addLeagueXP writes its own tables on
-    // separate connections and cannot join this transaction (see creditXP).
-    if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
-
-    return { xpAwarded, coinsAwarded };
   } catch (err) {
     await client.query("rollback").catch(() => {});
     throw err;
   } finally {
     client.release();
   }
+
+  // This work uses the shared pool, so it must run after releasing the
+  // transaction client to avoid exhausting the pool under concurrent rewards.
+  if (xpAwarded > 0) await addLeagueXP(profileId, xpAwarded);
+
+  return { xpAwarded, coinsAwarded };
 }
 
 export async function promoteTaskToKanban(profileId: string, taskId: number): Promise<KanbanTask> {

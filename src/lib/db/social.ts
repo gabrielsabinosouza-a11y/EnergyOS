@@ -2,7 +2,7 @@ import pool from "../db";
 import type { FriendRequest, FriendSummary, PublicProfile, UserSearchResult } from "@/types";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { parseProfileId, parseTitle, ValidationError } from "./validation";
-import { computeStreak } from "./tasks";
+import { getStreakInfo } from "./tasks";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
 import { sundayWeekStartIso, todayIso } from "./dates";
 import { listAchievementProgress } from "./achievements";
@@ -358,14 +358,14 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
   const today = todayIso();
   const weekStart = sundayWeekStartIso(today);
   const [streakResult, minutesResult, achievementsResult] = await Promise.allSettled([
-    computeStreak(otherId, today),
+    getStreakInfo(otherId, today),
     getWeeklyFocusMinutesForProfiles([otherId], weekStart),
     listAchievementProgress(otherId),
   ]);
 
   // Log failures with context so the root cause is visible in server logs.
   if (streakResult.status === "rejected") {
-    console.error("[profile] computeStreak failed for", otherId, streakResult.reason);
+    console.error("[profile] getStreakInfo failed for", otherId, streakResult.reason);
   }
   if (minutesResult.status === "rejected") {
     console.error("[profile] getWeeklyFocusMinutesForProfiles failed for", otherId, minutesResult.reason);

@@ -2,7 +2,7 @@ import type { DailyCheckin, Metric, Task } from "@/types";
 import { upsertAndGetProfile } from "./profiles";
 import { ensureUserBootstrap } from "./bootstrap";
 import { listCheckins, averagesForRange } from "./checkins";
-import { computeProgress, computeStreak, listTasksByDate, type StreakInfo, type TaskProgress } from "./tasks";
+import { computeProgress, getStreakInfo, listTasksByDate, type StreakInfo, type TaskProgress } from "./tasks";
 import { generateWeeklyInsights } from "./insights";
 import { addDaysIso, todayIso } from "./dates";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
@@ -45,7 +45,7 @@ export async function buildDashboardSnapshot(
     averagesForRange(profileId, weekStart, today),
     averagesForRange(profileId, prevWeekStart, prevWeekEnd),
     generateWeeklyInsights(profileId, today),
-    computeStreak(profileId, today),
+    getStreakInfo(profileId, today),
     getWeeklyFocusMinutesForProfiles([profileId], addDaysIso(today, -6)).then((m) => m.get(profileId) ?? 0),
   ]);
 
