@@ -154,7 +154,29 @@ export async function createKanbanTask(profileId: string, input: CreateKanbanInp
      returning id`,
     [profileId, title, input.description ?? null, status, nextPos, categoryId, input.labels ?? [], input.dueDate ?? null, priority, input.assigneeId ?? null, input.imageUrl ?? null, input.imagePath ?? null],
   );
-  const result = await pool.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [inserted.rows[0].id]);
+  const insertedId = inserted.rows[0]?.id;
+
+  if (insertedId === undefined || insertedId === null) {
+    throw new Error("[Kanban] INSERT returned no task ID.");
+  }
+
+  const result = await pool.query<KanbanRow>(
+    `${KANBAN_SELECT}
+     where k.id = $1
+       and k.profile_id = $2`,
+    [insertedId, profileId],
+  );
+
+  if (!result.rows[0]) {
+    console.error("[Kanban] Inserted task could not be retrieved:", {
+      insertedId,
+      profileId,
+      categoryId,
+    });
+
+    throw new Error("[Kanban] Task inserted but SELECT returned no row.");
+  }
+
   return mapKanban(result.rows[0]);
 }
 

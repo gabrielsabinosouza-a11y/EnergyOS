@@ -12,8 +12,6 @@ import {
   MessageCircleReply,
   MessageCircle,
   Pencil,
-  Pause,
-  Play,
   Trash2,
   X,
 } from "lucide-react";
@@ -166,73 +164,6 @@ function SenderAvatar({ name, photoUrl, senderId, level }: { name?: string; phot
         <Link href={`/perfil/${encodeURIComponent(senderId)}`} className="mt-2 inline-block text-xs font-medium text-[var(--accent)]">Ver perfil</Link>
       </span>}
     </span>
-  );
-}
-
-let activeAudioElement: HTMLAudioElement | null = null;
-
-function AudioMessagePlayer({ message }: { message: ChatMessage }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(message.mediaDurationSeconds ?? 0);
-  const [speed, setSpeed] = useState(1);
-  const waveform = useMemo(() => Array.from({ length: 56 }, (_, index) => {
-    let seed = index * 17 + message.id * 31;
-    for (const char of (message.mediaUrl ?? "")) seed = (seed * 33 + char.charCodeAt(0)) | 0;
-    return 5 + (Math.abs(seed) % 20);
-  }), [message.id, message.mediaUrl]);
-
-  useEffect(() => () => {
-    if (activeAudioElement === audioRef.current) activeAudioElement = null;
-    audioRef.current?.pause();
-  }, []);
-
-  const toggle = async () => {
-    const audio = audioRef.current;
-    if (!audio || failed) return;
-    if (audio.paused) {
-      activeAudioElement?.pause();
-      activeAudioElement = audio;
-      audio.playbackRate = speed;
-      try { await audio.play(); setPlaying(true); } catch { setFailed(true); }
-    } else {
-      audio.pause();
-      setPlaying(false);
-    }
-  };
-
-  const seek = (value: number) => {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration)) return;
-    audio.currentTime = (value / 100) * audio.duration;
-    setCurrent(audio.currentTime);
-  };
-
-  return (
-    <div className="flex w-[min(18rem,70vw)] items-center gap-2 px-3 py-2">
-      <audio ref={audioRef} src={message.mediaUrl} preload="metadata" className="hidden"
-        onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || duration)}
-        onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setCurrent(0); }} onError={() => setFailed(true)} />
-      <button type="button" onClick={() => void toggle()} aria-label={`${playing ? "Pausar" : "Reproduzir"} áudio de ${message.senderName ?? "participante"}, ${fmtDuration(duration) || "0:00"}`}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
-        {failed ? <span aria-hidden>!</span> : playing ? <Pause size={15} /> : <Play size={15} />}
-      </button>
-      <div className="min-w-0 flex-1">
-        {failed ? <a href={message.mediaUrl} download className="text-xs text-[var(--accent)] underline">Baixar áudio</a> : <>
-          <div className="flex h-7 items-center gap-[2px]" role="slider" aria-label="Posição do áudio" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(current)} tabIndex={0}
-            onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seek(Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100))); }}
-            onKeyDown={(event) => { if (event.key === "ArrowRight") seek(Math.min(100, duration ? ((current + 5) / duration) * 100 : 0)); if (event.key === "ArrowLeft") seek(Math.max(0, duration ? ((current - 5) / duration) * 100 : 0)); }}>
-            {waveform.map((height, index) => <span key={index} className="w-[2px] rounded-full" style={{ height, background: index / waveform.length <= (duration ? current / duration : 0) ? "var(--accent)" : "currentColor", opacity: index / waveform.length <= (duration ? current / duration : 0) ? 1 : .45 }} />)}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]"><span>{fmtDuration(current) || "0:00"} / {fmtDuration(duration) || "0:00"}</span>
-            <button type="button" onClick={() => { const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1; setSpeed(next); if (audioRef.current) audioRef.current.playbackRate = next; }} aria-label={`Velocidade ${speed}x`} className="rounded px-1.5 py-0.5 hover:bg-white/10">{speed}x</button>
-          </div>
-        </>}
-      </div>
-    </div>
   );
 }
 
@@ -576,16 +507,6 @@ function MessageBubble({
                   className="max-h-72 w-full object-cover"
                 />
               </button>
-            )}
-            {msg.messageType === "VIDEO" && msg.mediaUrl && (
-              <video
-                src={msg.mediaUrl}
-                controls
-                className="max-h-72 w-full object-cover"
-              />
-            )}
-            {msg.messageType === "AUDIO" && msg.mediaUrl && (
-              <AudioMessagePlayer message={msg} />
             )}
             {msg.messageType === "DOCUMENT" && msg.mediaUrl && (
               <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 px-3 py-3 text-sm ${isMe ? "text-black" : "text-[var(--text)]"}`}>

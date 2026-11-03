@@ -7,16 +7,10 @@ import {
   FileText,
   Loader2,
   Megaphone,
-  Mic,
   Paperclip,
   Send,
-  Square,
-  Video,
-  Trash2,
-  Pause,
-  Play,
 } from "lucide-react";
-import { MAX_AUDIO_SECONDS, MAX_VIDEO_SECONDS, validateImageFile, validateMediaSize, validateVideoFile, readVideoDuration, uploadToCloudinary } from "@/lib/media";
+import { validateImageFile, validateMediaSize, uploadToCloudinary } from "@/lib/media";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
 
@@ -30,7 +24,7 @@ export interface ChatComposerMentionMember {
 export interface ChatComposerProps {
   /** Persist a text send (DM or group). Page decides reply vs plain send. */
   onSendText: (body: string) => Promise<void>;
-  /** Persist a media send (IMAGE/VIDEO/AUDIO/DOCUMENT). */
+  /** Persist a media send (IMAGE/DOCUMENT). */
   onSendMedia: (opts: {
     messageType: string;
     mediaUrl?: string;
@@ -93,17 +87,9 @@ function MentionAvatar({ member, size = 26 }: { member: ChatComposerMentionMembe
 /* ─── ChatComposer ────────────────────────────────────────────────── */
 
 /**
- * Shared full-featured message composer used as ChatThread's `inputSlot` by
- * BOTH the DM (Amigos) and group (Grupos) chats, so media + voice behave
- * identically everywhere. Group-only @mention autocomplete is enabled
- * via the optional `mentionMembers` prop.
- */
-/* ─── ChatComposer ────────────────────────────────────────────────── */
-
-/**
- * Shared full-featured message composer used as ChatThread's `inputSlot` by
- * BOTH the DM (Amigos) and group (Grupos) chats, so media + voice behave
- * identically everywhere. Group-only @mention autocomplete is enabled
+ * Shared message composer used as ChatThread's `inputSlot` by
+ * BOTH the DM (Amigos) and group (Grupos) chats. Supports text, images,
+ * and documents. Group-only @mention autocomplete is enabled
  * via the optional `mentionMembers` prop.
  */
 export function ChatComposer({
@@ -117,35 +103,12 @@ export function ChatComposer({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [recordingPaused, setRecordingPaused] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [shortRecording, setShortRecording] = useState(false);
-  const [recordedPreview, setRecordedPreview] = useState<{ blob: Blob; url: string; mimeType: string; duration: number } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionOpen, setMentionOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingStartedAtRef = useRef(0);
-  const recordingSecondsRef = useRef(0);
-  const pausedAtRef = useRef<number | null>(null);
-  const pausedMsRef = useRef(0);
-  const cancelRecordingRef = useRef(false);
-  const recordingMimeRef = useRef("audio/webm");
-
-  useEffect(() => () => {
-    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    if (recordedPreview) URL.revokeObjectURL(recordedPreview.url);
-  }, [recordedPreview]);
 
   const sendText = useCallback(
     async (raw: string) => {
@@ -201,37 +164,10 @@ export function ChatComposer({
     }
   }
 
-  async function handleSendVideo(file: File) {
-    if (uploadingMedia || busy) return;
-    setUploadingMedia(true);
-    setLocalError(null);
-    try {
-      validateVideoFile(file);
-      const durationSeconds = await readVideoDuration(file);
-      if (durationSeconds <= 0 || durationSeconds > MAX_VIDEO_SECONDS) {
-        setLocalError(`Vídeos devem ter no máximo ${MAX_VIDEO_SECONDS}s.`);
-        return;
-      }
-      const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
-      await pushMedia({
-        messageType: "VIDEO",
-        mediaUrl: secureUrl,
-        mediaDurationSeconds: durationSeconds || undefined,
-        mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size,
-      });
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o vídeo.");
-    } finally {
-      setUploadingMedia(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.type.startsWith("image/")) await handleSendImage(file);
-    else if (file.type === "video/mp4" || /\.mp4$/i.test(file.name)) await handleSendVideo(file);
     else if (
       file.type === "application/pdf" ||
       file.type.startsWith("text/") ||
@@ -254,140 +190,6 @@ export function ChatComposer({
       await pushMedia({ messageType: "DOCUMENT", mediaUrl: secureUrl, mediaFileName: file.name, mediaMimeType: file.type, mediaSizeBytes: file.size });
     } catch (error) { setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o arquivo."); }
     finally { setUploadingMedia(false); setUploadProgress(0); if (fileRef.current) fileRef.current.value = ""; }
-  }
-
-  async function handleSendVoice(blob: Blob, mimeType: string, durationSeconds: number) {
-    if (busy) return;
-    setLocalError(null);
-    try {
-      setUploadingMedia(true);
-      if (blob.size > 10 * 1024 * 1024) throw new Error("Áudios devem ter no máximo 10 MB.");
-      const extension = mimeType.includes("mp4") ? "m4a" : "webm";
-      const file = new File([blob], `audio.${extension}`, { type: mimeType });
-      const { secureUrl } = await uploadToCloudinary(file, setUploadProgress);
-      if (durationSeconds > MAX_AUDIO_SECONDS) throw new Error("Áudios devem ter no máximo 5 minutos.");
-      await pushMedia({
-        messageType: "AUDIO",
-        mediaUrl: secureUrl,
-        mediaDurationSeconds: durationSeconds,
-        mediaFileName: file.name, mediaMimeType: mimeType, mediaSizeBytes: blob.size,
-      });
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Não foi possível enviar o áudio.");
-      throw error;
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  async function startRecording() {
-    setLocalError(null);
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setLocalError("Este navegador não oferece gravação de áudio.");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recordingStreamRef.current = stream;
-      const preferred = ["audio/webm;codecs=opus", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported?.(type));
-      const recorder = preferred ? new MediaRecorder(stream, { mimeType: preferred }) : new MediaRecorder(stream);
-      recordingMimeRef.current = recorder.mimeType || preferred || "audio/webm";
-      recordingChunksRef.current = [];
-      cancelRecordingRef.current = false;
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        recordingStreamRef.current = null;
-        if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-        const mimeType = recordingMimeRef.current.split(";")[0] || "audio/webm";
-        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
-        recordingChunksRef.current = [];
-        setRecording(false);
-        setRecordingPaused(false);
-        if (cancelRecordingRef.current) return;
-        const duration = recordingSecondsRef.current;
-        if (duration < 1 || blob.size === 0) {
-          setShortRecording(true);
-          window.setTimeout(() => setShortRecording(false), 350);
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        setRecordedPreview({ blob, url, mimeType, duration });
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setRecordingSeconds(0);
-      setRecording(true);
-      setRecordingPaused(false);
-      recordingStartedAtRef.current = Date.now();
-      pausedMsRef.current = 0;
-      pausedAtRef.current = null;
-      recordingSecondsRef.current = 0;
-      recordingTimerRef.current = window.setInterval(() => {
-        if (mediaRecorderRef.current !== recorder || recorder.state !== "recording") return;
-        const pausedNow = pausedAtRef.current === null ? 0 : Date.now() - pausedAtRef.current;
-        const seconds = Math.floor((Date.now() - recordingStartedAtRef.current - pausedMsRef.current - pausedNow) / 1000);
-        recordingSecondsRef.current = seconds;
-        setRecordingSeconds(seconds);
-        if (seconds >= MAX_AUDIO_SECONDS) stopRecording();
-      }, 250);
-    } catch (error) {
-      setLocalError(error instanceof DOMException && error.name === "NotAllowedError"
-        ? "Permita o acesso ao microfone nas configurações do navegador."
-        : "Não foi possível acessar o microfone.");
-    }
-  }
-
-  function stopRecording() {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-    mediaRecorderRef.current = null;
-  }
-
-  function toggleRecordingPause() {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder) return;
-    if (recorder.state === "recording") {
-      recorder.pause();
-      pausedAtRef.current = Date.now();
-      setRecordingPaused(true);
-    } else if (recorder.state === "paused") {
-      if (pausedAtRef.current !== null) pausedMsRef.current += Date.now() - pausedAtRef.current;
-      pausedAtRef.current = null;
-      recorder.resume();
-      setRecordingPaused(false);
-    }
-  }
-
-  function cancelRecording() {
-    cancelRecordingRef.current = true;
-    const recorder = mediaRecorderRef.current;
-    mediaRecorderRef.current = null;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current = null;
-    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null;
-    setRecording(false);
-    setRecordingPaused(false);
-    setRecordingSeconds(0);
-  }
-
-  function discardPreview() {
-    if (recordedPreview) URL.revokeObjectURL(recordedPreview.url);
-    setRecordedPreview(null);
-    setRecordingSeconds(0);
-  }
-
-  async function sendRecordedPreview() {
-    if (!recordedPreview || busy) return;
-    try {
-      await handleSendVoice(recordedPreview.blob, recordedPreview.mimeType, recordedPreview.duration);
-      discardPreview();
-    } catch { /* the preview remains available for a retry */ }
   }
 
   /* ─── @mention autocomplete (groups only) ──────────────────────── */
@@ -509,71 +311,44 @@ export function ChatComposer({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,video/mp4,.mp4,application/pdf,text/plain,.doc,.docx,.xls,.xlsx"
+          accept="image/*,application/pdf,text/plain,.doc,.docx,.xls,.xlsx"
           className="hidden"
           onChange={handleFileChange}
         />
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={uploadingMedia || busy || recording}
+          disabled={uploadingMedia || busy}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"
           aria-label="Enviar arquivo"
         >
           {uploadingMedia ? <span className="text-[9px]">{uploadProgress}%</span> : <Paperclip size={15} />}
         </button>
-        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar imagem" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><ImageIcon size={15} /></button>
-        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
-        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy || recording} aria-label="Enviar vídeo MP4" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><Video size={15} /></button>
-        {recording ? (
-          <div className={`chat-led-border flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-red-400/25 bg-red-500/5 px-2 py-1.5 ${shortRecording ? "animate-[chat-shake_.22s_ease-in-out]" : ""}`}>
-            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
-            <span className={`shrink-0 font-mono text-xs tabular-nums ${MAX_AUDIO_SECONDS - recordingSeconds <= 30 ? "text-red-300" : "text-[var(--text)]"}`} aria-live="off">{MAX_AUDIO_SECONDS - recordingSeconds <= 30 ? `${Math.floor(Math.max(0, MAX_AUDIO_SECONDS - recordingSeconds) / 60)}:${String(Math.max(0, MAX_AUDIO_SECONDS - recordingSeconds) % 60).padStart(2, "0")}` : `${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, "0")}`}</span>
-            <div className="flex h-7 min-w-0 flex-1 items-center justify-center gap-[2px] overflow-hidden" aria-hidden="true">
-              {Array.from({ length: 28 }, (_, i) => <span key={i} className="w-[2px] rounded-full bg-cyan-300/70 animate-pulse" style={{ height: `${5 + ((i * 13 + recordingSeconds * 7) % 19)}px`, animationDelay: `${(i % 7) * 70}ms` }} />)}
-            </div>
-            <button type="button" onClick={toggleRecordingPause} aria-label={recordingPaused ? "Retomar gravação" : "Pausar gravação"} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--text-muted)] hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{recordingPaused ? <Play size={15} /> : <Pause size={15} />}</button>
-            <button type="button" onClick={cancelRecording} aria-label="Cancelar gravação" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-300 hover:bg-red-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300"><Trash2 size={15} /></button>
-            <button type="button" onClick={stopRecording} aria-label="Concluir gravação" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--accent)] text-black hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"><Square size={13} /></button>
-          </div>
-        ) : recordedPreview ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-cyan-300/20 bg-white/5 px-2 py-1.5">
-            <audio src={recordedPreview.url} controls className="h-9 min-w-0 flex-1" aria-label="Prévia do áudio gravado" />
-            <button type="button" onClick={discardPreview} aria-label="Descartar áudio" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-300 hover:bg-red-400/10"><Trash2 size={15} /></button>
-            <button type="button" onClick={() => void sendRecordedPreview()} disabled={busy || uploadingMedia} aria-label="Enviar áudio" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--accent)] text-black disabled:opacity-50">{busy || uploadingMedia ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}</button>
-          </div>
-        ) : (
-          <textarea
-            ref={textAreaRef}
-            rows={1}
-            placeholder={replying ? "Responder..." : "Mensagem..."}
-            value={input}
-            onChange={(e) => {
-              const value = e.target.value;
-              const word = value.slice(value.lastIndexOf(" ") + 1);
-              setInput(value);
-              setMentionIndex(0);
-              setMentionOpen(Boolean(mentionEnabled && word.startsWith("@")));
-            }}
-            onBlur={() => setMentionOpen(false)}
-            onKeyDown={handleKeyDown}
-            className="min-h-6 max-h-20 w-full resize-none overflow-y-hidden bg-transparent text-sm leading-5 text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
-          />
-        )}
-        {!recording && !recordedPreview && (
-          <AnimatePresence mode="wait" initial={false}>
-            {input.trim() ? (
-              <motion.button key="send" initial={{ opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.75 }}
-                onClick={() => void sendText(input)} disabled={busy} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30" aria-label="Enviar mensagem">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </motion.button>
-            ) : (
-              <motion.button key="mic" initial={{ opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.75 }}
-                onClick={() => void startRecording()} disabled={uploadingMedia || busy} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30" aria-label="Gravar áudio">
-                <Mic size={15} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        )}
+        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy} aria-label="Enviar imagem" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><ImageIcon size={15} /></button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia || busy} aria-label="Enviar documento" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--accent-bg)] hover:text-[var(--accent)] disabled:opacity-30"><FileText size={15} /></button>
+        <textarea
+          ref={textAreaRef}
+          rows={1}
+          placeholder={replying ? "Responder..." : "Mensagem..."}
+          value={input}
+          onChange={(e) => {
+            const value = e.target.value;
+            const word = value.slice(value.lastIndexOf(" ") + 1);
+            setInput(value);
+            setMentionIndex(0);
+            setMentionOpen(Boolean(mentionEnabled && word.startsWith("@")));
+          }}
+          onBlur={() => setMentionOpen(false)}
+          onKeyDown={handleKeyDown}
+          className="min-h-6 max-h-20 w-full resize-none overflow-y-hidden bg-transparent text-sm leading-5 text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
+        />
+        <AnimatePresence mode="wait" initial={false}>
+          {input.trim() ? (
+            <motion.button key="send" initial={{ opacity: 0, scale: 0.75 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.75 }}
+              onClick={() => void sendText(input)} disabled={busy} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-black transition hover:brightness-110 disabled:opacity-30" aria-label="Enviar mensagem">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
       </div>
     </div>
   );

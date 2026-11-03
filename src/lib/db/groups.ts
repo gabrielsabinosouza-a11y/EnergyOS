@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { GroupDetail, GroupInvite, GroupMember, GroupMessage, GroupPinnedMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
+import type { GroupDetail, GroupInvite, GroupMember, GroupMessage, GroupMessageType, GroupPinnedMessage, GroupRole, GroupSummary, LeagueEntry, MessageReactionSummary } from "@/types";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { parseEnum, parseNumber, parseProfileId, parseTitle, ValidationError } from "./validation";
 import { areFriends } from "./social";
@@ -691,8 +691,8 @@ export async function sendGroupMessage(
   if (membership.rows[0]?.is_banned) throw new ForbiddenError("Você está banido deste grupo.");
   if (membership.rows[0]?.is_muted) throw new ForbiddenError("Você está silenciado neste grupo.");
 
-  const messageType = (opts?.messageType ?? "TEXT") as GroupMessage["messageType"];
-  const allowed: GroupMessage["messageType"][] = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO", "DOCUMENT"];
+  const messageType = (opts?.messageType ?? "TEXT") as GroupMessageType;
+  const allowed: GroupMessageType[] = ["TEXT", "IMAGE", "STICKER", "DOCUMENT"];
   if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
 
   let text: string | null = null;
@@ -713,21 +713,8 @@ export async function sendGroupMessage(
     opts?.mediaDurationSeconds != null && Number.isFinite(opts.mediaDurationSeconds)
       ? Math.max(0, Math.round(opts.mediaDurationSeconds))
       : null;
-
-  // Vídeos curtos (≤30s) para manter o chat leve; áudio também limitado.
-  if (messageType === "VIDEO" && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
-    throw new ValidationError("Vídeos devem ter no máximo 30 segundos.");
-  }
-  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 300) {
-    throw new ValidationError("Áudios devem ter no máximo 5 minutos.");
-  }
   const mediaSizeBytes = opts?.mediaSizeBytes != null ? Number(opts.mediaSizeBytes) : null;
-  const maxMediaSize = messageType === "AUDIO" ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
-  if (messageType === "AUDIO" && mediaSizeBytes == null) throw new ValidationError("Tamanho do áudio inválido.");
-  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > maxMediaSize)) throw new ValidationError("Arquivo de mídia inválido.");
-  if (messageType === "AUDIO" && (!opts?.mediaMimeType || !["audio/webm", "audio/mp4", "audio/m4a"].includes(opts.mediaMimeType.split(";")[0].toLowerCase()))) {
-    throw new ValidationError("Formato de áudio não suportado.");
-  }
+  if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > 20 * 1024 * 1024)) throw new ValidationError("Arquivo de mídia inválido.");
 
   if (messageType === "STICKER" && !text) {
     text = opts?.mediaUrl?.trim() || null;

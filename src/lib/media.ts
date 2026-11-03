@@ -2,8 +2,6 @@
  *  Uploads go straight to Cloudinary from the client (browser → CDN), so both
  *  chat surfaces stay in sync without server round-trips for the file blob. */
 
-export const MAX_VIDEO_SECONDS = 30;
-export const MAX_AUDIO_SECONDS = 300;
 export const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
@@ -14,18 +12,11 @@ export function validateImageFile(file: File): void {
   validateMediaSize(file);
 }
 
-export function validateVideoFile(file: File): void {
-  if (file.type !== "video/mp4" || !/\.mp4$/i.test(file.name)) {
-    throw new Error("Apenas vídeos .mp4 são permitidos.");
-  }
-  if (file.size > MAX_MEDIA_BYTES) throw new Error("Vídeos devem ter no máximo 20 MB.");
-}
-
 export function validateMediaSize(file: File): void {
   if (file.size > MAX_MEDIA_BYTES) throw new Error("Arquivos devem ter no máximo 20 MB.");
 }
 
-/** Upload a media file to Cloudinary and return its secure URL (+ optional duration). */
+/** Upload a media file to Cloudinary and return its secure URL. */
 export async function uploadToCloudinary(
   file: File,
   onProgress?: (percent: number) => void,
@@ -38,7 +29,7 @@ export async function uploadToCloudinary(
   formData.append("file", file);
   formData.append("upload_preset", uploadPreset);
 
-  // Imagens usam o endpoint de imagem; áudio e vídeo usam o de vídeo/raw.
+  // Imagens usam o endpoint de imagem; documentos usam o de vídeo/raw.
   const isImage = file.type.startsWith("image/");
   const endpoint = isImage
     ? `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`
@@ -63,23 +54,4 @@ export async function uploadToCloudinary(
     secureUrl: data.secure_url as string,
     durationSeconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : undefined,
   };
-}
-
-/** Reads a video's duration in seconds (0 if it can't be determined). */
-export function readVideoDuration(file: File): Promise<number> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      const d = Number.isFinite(video.duration) ? video.duration : 0;
-      URL.revokeObjectURL(url);
-      resolve(Math.round(d));
-    };
-    video.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(0);
-    };
-    video.src = url;
-  });
 }

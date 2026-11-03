@@ -1,5 +1,5 @@
 import pool from "../db";
-import type { DirectMessage, MessageReactionSummary } from "@/types";
+import type { DirectMessage, DirectMessageType, MessageReactionSummary } from "@/types";
 import { parseEnum, parseMessage, parseProfileId, ValidationError } from "./validation";
 import { assertFriends, getUserByUsername, sendFriendRequest } from "./social";
 import { ConflictError, NotFoundError } from "../errors";
@@ -219,8 +219,8 @@ export async function sendDirectMessage(
   const other = parseProfileId(otherId);
   await assertFriends(profileId, other);
 
-  const messageType = (opts?.messageType ?? "TEXT") as "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO" | "DOCUMENT";
-  const allowed = ["TEXT", "IMAGE", "VIDEO", "STICKER", "AUDIO", "DOCUMENT"] as const;
+  const messageType = (opts?.messageType ?? "TEXT") as DirectMessageType;
+  const allowed: DirectMessageType[] = ["TEXT", "IMAGE", "STICKER", "DOCUMENT"];
   if (!allowed.includes(messageType)) throw new ValidationError("Tipo de mensagem inválido.");
 
   let text: string | null = null;
@@ -240,12 +240,6 @@ export async function sendDirectMessage(
     opts?.mediaDurationSeconds != null && Number.isFinite(opts.mediaDurationSeconds)
       ? Math.max(0, Math.round(opts.mediaDurationSeconds))
       : null;
-  if (messageType === "VIDEO" && mediaDurationSeconds != null && mediaDurationSeconds > 30) {
-    throw new ValidationError("Vídeos devem ter no máximo 30 segundos.");
-  }
-  if (messageType === "AUDIO" && mediaDurationSeconds != null && mediaDurationSeconds > 120) {
-    throw new ValidationError("Áudios devem ter no máximo 2 minutos.");
-  }
   const mediaSizeBytes = opts?.mediaSizeBytes != null ? Number(opts.mediaSizeBytes) : null;
   if (mediaSizeBytes != null && (!Number.isInteger(mediaSizeBytes) || mediaSizeBytes < 0 || mediaSizeBytes > 20 * 1024 * 1024)) throw new ValidationError("Arquivo de mídia inválido.");
   if (messageType === "STICKER" && !text) {

@@ -160,12 +160,14 @@ export interface StartChatResult {
   friendRequestSent: boolean;
 }
 
+export type DirectMessageType = "TEXT" | "IMAGE" | "STICKER" | "DOCUMENT";
+
 export interface DirectMessage {
   id: number;
   senderId: string;
   recipientId: string;
   body?: string;
-  messageType?: string;
+  messageType?: DirectMessageType;
   mediaUrl?: string;
   mediaDurationSeconds?: number;
   mediaFileName?: string;
@@ -364,7 +366,7 @@ export interface GroupDetail {
   isPublic: boolean;
 }
 
-export type GroupMessageType = "TEXT" | "IMAGE" | "VIDEO" | "STICKER" | "AUDIO" | "DOCUMENT";
+export type GroupMessageType = "TEXT" | "IMAGE" | "STICKER" | "DOCUMENT";
 
 export interface GroupMessage {
   id: number;
