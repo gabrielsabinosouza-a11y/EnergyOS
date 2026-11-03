@@ -25,6 +25,8 @@ native-only integration work are listed in [`FEATURE_PARITY.md`](./FEATURE_PARIT
 
 If the phone cannot reach the computer over LAN, check the firewall/router isolation or use `npx expo start --tunnel`. No Android Studio, local Android SDK, or authored Kotlin/Java is required for this Expo Go workflow. iOS physical-device development with Expo Go requires a compatible iPhone; local iOS simulator builds require macOS.
 
+For Expo web, the API allows localhost and private-LAN origins in development. If hosting the web app separately in production, set `MOBILE_WEB_ORIGINS` on the API server to its exact origin (comma-separated for multiple origins).
+
 ## Project layout
 
 - `src/app/` contains Expo Router routes and layouts.

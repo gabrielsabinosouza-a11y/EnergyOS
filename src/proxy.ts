@@ -4,6 +4,23 @@ import {
   isGuestOnlyRoute,
   getAuthCookieName,
 } from "@/lib/route-access";
+import { isAllowedMobileWebOrigin } from "@/lib/mobile-cors";
+
+const corsMethods = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS";
+const corsHeaders = "Accept, Authorization, Content-Type";
+
+function addCorsHeaders(response: NextResponse, origin: string) {
+  response.headers.set("Access-Control-Allow-Origin", origin);
+  response.headers.set("Access-Control-Allow-Methods", corsMethods);
+  response.headers.set("Access-Control-Allow-Headers", corsHeaders);
+
+  const vary = response.headers.get("Vary");
+  if (!vary?.split(",").some((value) => value.trim().toLowerCase() === "origin")) {
+    response.headers.set("Vary", vary ? `${vary}, Origin` : "Origin");
+  }
+
+  return response;
+}
 
 /**
  * Server-side route protection.
@@ -24,21 +41,36 @@ import {
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApiRoute = pathname.startsWith("/api/");
+  const origin = isApiRoute ? request.headers.get("origin") ?? "" : "";
+  const allowedOrigin = isApiRoute && isAllowedMobileWebOrigin(origin);
+
+  if (isApiRoute && request.method === "OPTIONS") {
+    if (!allowedOrigin) {
+      return NextResponse.json({ error: "Origem não autorizada." }, { status: 403 });
+    }
+
+    return addCorsHeaders(new NextResponse(null, { status: 204 }), origin);
+  }
+
   const session = request.cookies.get(getAuthCookieName())?.value;
 
   if (isProtectedRoute(pathname) && !session) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    return allowedOrigin ? addCorsHeaders(response, origin) : response;
   }
 
   if (isGuestOnlyRoute(pathname) && session) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    return allowedOrigin ? addCorsHeaders(response, origin) : response;
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  return allowedOrigin ? addCorsHeaders(response, origin) : response;
 }
 
 export const config = {

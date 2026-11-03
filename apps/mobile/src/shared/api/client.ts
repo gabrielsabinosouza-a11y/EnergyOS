@@ -113,7 +113,11 @@ async function send(
     return await fetch(url, { ...options, headers });
   } catch (error) {
     if (error instanceof TypeError || (error instanceof Error && error.name === 'AbortError')) {
-      throw new ApiError('Não foi possível conectar. Verifique sua internet e tente novamente.', 'network');
+      console.error('[mobile-api] Falha ao acessar a API do EnergyOS:', error);
+      throw new ApiError(
+        'Não foi possível acessar a API do EnergyOS. Verifique o endereço do servidor e tente novamente.',
+        'network',
+      );
     }
     throw error;
   }
