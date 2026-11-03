@@ -5,7 +5,7 @@ import { motion, AnimatePresence, PanInfo, useReducedMotion } from "framer-motio
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import type { MonthlyRecap, NewLeagueTier } from "@/types";
-import { NEW_TIER_META } from "@/lib/league-new-meta";
+import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 
 const SLIDE_COUNT = 7;
 
@@ -345,11 +345,13 @@ function LeagueSlide({ recap }: { recap: MonthlyRecap }) {
         </h3>
         <p className="text-sm text-[var(--text-muted)]">Liga do Mês</p>
       </div>
-      {recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier && (
-        <p className="text-xs text-[var(--text-muted)]">
-          {recap.leagueAtStart} → {recap.leagueTier}
-        </p>
-      )}
+      {recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier && (() => {
+        const startTier = resolveNewTier(recap.leagueAtStart);
+        const endTier = resolveNewTier(recap.leagueTier);
+        return startTier && endTier
+          ? <p className="text-xs text-[var(--text-muted)]">{NEW_TIER_META[startTier].label} → {NEW_TIER_META[endTier].label}</p>
+          : null;
+      })()}
     </div>
   );
 }
@@ -358,9 +360,11 @@ function SummarySlide({ recap, userName, userPhotoUrl, onClose }: { recap: Month
   const tier = recap.leagueTier ?? "BRONZE";
   const meta = NEW_TIER_META[tier as NewLeagueTier] ?? NEW_TIER_META.BRONZE;
   const promoted = recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier;
+  const startTier = resolveNewTier(recap.leagueAtStart);
+  const endTier = resolveNewTier(recap.leagueTier);
   const promotionText = promoted 
-    ? ` subiu de ${recap.leagueAtStart} para ${recap.leagueTier}`
-    : ` fechou em ${recap.leagueTier}`;
+    ? ` subiu de ${startTier ? NEW_TIER_META[startTier].label : recap.leagueAtStart} para ${endTier ? NEW_TIER_META[endTier].label : recap.leagueTier}`
+    : ` fechou em ${meta.label}`;
   
   const monthTitle = recap.recapMonth.slice(0, 7);
   const date = new Date(monthTitle + "-01");

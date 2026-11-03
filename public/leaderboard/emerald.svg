@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="crystal" x1="25" y1="13" x2="105" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#86EFAC"/>
+      <stop offset=".48" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#15803D"/>
+    </linearGradient>
+    <filter id="glow" x="0" y="0" width="128" height="128" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <path d="M64 8 103 25 119 64 103 103 64 120 25 103 9 64 25 25 64 8Z" fill="#22C55E" fill-opacity=".12" filter="url(#glow)"/>
+  <path d="m43 15 42 0 29 32-16 51-34 20-34-20-16-51 29-32Z" fill="url(#crystal)" stroke="#BBF7D0" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m43 15 7 32-20 51m55-83-7 32 20 51M50 47h28L64 118 50 47Z" fill="#DCFCE7" fill-opacity=".28"/>
+  <path d="m43 15 7 32h28l7-32M32 98l18-51m28 0 20 51M50 47l14 71 14-71" stroke="#ECFDF5" stroke-opacity=".8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m43 15 42 0 29 32H14l29-32Z" fill="#D1FAE5" fill-opacity=".32" stroke="#ECFDF5" stroke-opacity=".75" stroke-width="2" stroke-linejoin="round"/>
+</svg>

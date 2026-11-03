@@ -251,7 +251,7 @@ create unique index if not exists room_join_requests_pending_unique_idx
 
 -- League System
 do $$ begin
-  create type league_tier as enum ('BRONZE', 'PRATA', 'OURO', 'DIAMANTE', 'LENDAS');
+  create type league_tier as enum ('BRONZE', 'SILVER', 'GOLD', 'EMERALD', 'DIAMOND', 'OBSIDIAN', 'LEGENDS');
 exception when duplicate_object then null; end $$;
 
 create table if not exists league_groups (

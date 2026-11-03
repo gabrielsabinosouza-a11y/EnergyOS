@@ -1,3 +1,5 @@
+import type { NewLeagueTier } from "@/lib/league-new-meta";
+
 export type TaskCategory = "FOCO" | "CORPO" | "MENTE" | "ORDEM" | "ENERGIA";
 export type GoalCategory = "sono" | "estudo" | "treino" | "saude" | "foco";
 
@@ -39,8 +41,8 @@ export type FriendshipStatus = "pending" | "accepted";
 export type LeagueTier = "faisca" | "chama" | "aura" | "nucleo";
 export type LeagueResult = "promoted" | "demoted" | "stayed";
 
-// New League System with Bronze/Prata/Ouro/Diamante/Lendas
-export type NewLeagueTier = "BRONZE" | "PRATA" | "OURO" | "DIAMANTE" | "LENDAS";
+// League values and hierarchy are defined in src/lib/league-new-meta.ts.
+export type { NewLeagueTier } from "@/lib/league-new-meta";
 
 export interface LeagueGroup {
   id: number;

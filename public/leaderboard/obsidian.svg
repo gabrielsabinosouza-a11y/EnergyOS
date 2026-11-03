@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="obsidian" x1="26" y1="12" x2="99" y2="119" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8B4FE"/>
+      <stop offset=".32" stop-color="#7C3AED"/>
+      <stop offset=".7" stop-color="#3B0764"/>
+      <stop offset="1" stop-color="#12071F"/>
+    </linearGradient>
+    <filter id="aura" x="0" y="0" width="128" height="128" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <path d="M64 7 106 23 120 61 103 104 64 121 25 104 8 61 22 23 64 7Z" fill="#7C3AED" fill-opacity=".2" filter="url(#aura)"/>
+  <path d="m40 13 48 4 25 34-12 48-37 18-40-21-9-44 25-39Z" fill="url(#obsidian)" stroke="#C4B5FD" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m40 13 13 35-29 48m64-79-16 31 29 51M53 48l19 69 16-69H53Z" fill="#E9D5FF" fill-opacity=".2"/>
+  <path d="m40 13 13 35h35l13-31M24 96l29-48m35 0 29 51M53 48l19 69 16-69" stroke="#E9D5FF" stroke-opacity=".82" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m40 13 48 4 25 34H53L40 13Z" fill="#F3E8FF" fill-opacity=".22" stroke="#E9D5FF" stroke-opacity=".7" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m61 32 8 8m16 28 8-7" stroke="#FFF" stroke-opacity=".9" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

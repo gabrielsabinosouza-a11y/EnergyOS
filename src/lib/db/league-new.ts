@@ -2,49 +2,18 @@ import pool from "../db";
 import type { NewLeagueTier, LeagueGroup, LeagueGroupMember, CohortMember } from "@/types";
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso, weekStartIso } from "./dates";
-
-// Configuration
-const PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
-  BRONZE:   10,
-  PRATA:    10,
-  OURO:     7,
-  DIAMANTE: 5,   // top 5 qualify for Lendas
-  LENDAS:   0,   // no promotion above Lendas
-};
-const REGULAR_TIER_COIN_REWARDS: [number, number, number] = [150, 100, 75];
-const DEMOTION_COUNT = 3;        // bottom N demoted each week
-const LEGENDS_TOP_N = 5;         // top N from each Diamante group qualify for Lendas
-const LEGENDS_MAX_SIZE = 20;     // target Lendas group size
-
-// Configurable Lendas top-3 coin rewards — tune without redeploy
-export const LEGENDS_LEAGUE_REWARDS: [number, number, number] = [500, 300, 150];
-const TIERS: NewLeagueTier[] = ["BRONZE", "PRATA", "OURO", "DIAMANTE", "LENDAS"];
+import {
+  INITIAL_TIER_XP,
+  LEAGUE_DEMOTION_COUNT,
+  LEAGUE_PROMOTION_CUTOFFS,
+  LEAGUE_REWARDS,
+  LEGENDS_MAX_SIZE,
+  NEW_TIER_ORDER,
+  tierAfterWeeklyRank,
+} from "@/lib/league-new-meta";
 
 export function tierRank(tier: NewLeagueTier): number {
-  return TIERS.indexOf(tier);
-}
-
-// Never allow a user to fall below the highest tier they have already reached:
-// their earned tier acts as a lifetime floor for promotions/demotions.
-async function readHighestTier(db: Queryable, profileId: string): Promise<NewLeagueTier | null> {
-  const result = await db.query<{ highest_league_tier: NewLeagueTier | null }>(
-    `select highest_league_tier from profiles where id = $1`,
-    [profileId],
-  );
-  const stored = result.rows[0]?.highest_league_tier ?? null;
-  const hist = await db.query<{ tier: NewLeagueTier }>(
-    `select lg.tier
-       from league_group_members lgm
-       join league_groups lg on lg.id = lgm.league_group_id
-      where lgm.profile_id = $1
-      order by array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], lg.tier) desc
-      limit 1`,
-    [profileId],
-  );
-  const histTier = hist.rows[0]?.tier ?? null;
-  const storedRank = stored ? tierRank(stored) : -1;
-  const histRank = histTier ? tierRank(histTier) : -1;
-  return histRank > storedRank ? histTier : stored;
+  return NEW_TIER_ORDER.indexOf(tier);
 }
 
 async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeagueTier): Promise<void> {
@@ -52,16 +21,10 @@ async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeag
     `update profiles set highest_league_tier = $2
      where id = $1
         and (highest_league_tier is null
-             or array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS']::league_tier[], highest_league_tier)
-                < array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS']::league_tier[], $2::league_tier))`,
-    [profileId, tier],
+             or array_position($3::league_tier[], highest_league_tier)
+                < array_position($3::league_tier[], $2::league_tier))`,
+    [profileId, tier, NEW_TIER_ORDER],
   );
-}
-
-async function clampToHighestTier(db: Queryable, profileId: string, tier: NewLeagueTier): Promise<NewLeagueTier> {
-  const highest = await readHighestTier(db, profileId);
-  if (highest && tierRank(tier) < tierRank(highest)) return highest;
-  return tier;
 }
 
 interface LeagueGroupRow {
@@ -153,8 +116,8 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekEndStr = weekEnd.toISOString().slice(0, 10);
 
-  // Create one group per non-Lendas tier; Lendas is created by promotion job
-  for (const tier of TIERS.filter((t) => t !== "LENDAS")) {
+  // Legends is created by the weekly qualification process.
+  for (const tier of NEW_TIER_ORDER.filter((t) => t !== "LEGENDS")) {
     await pool.query(
       `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
        values ($1, $2, $3, false) on conflict (tier, week_start_date) do nothing`,
@@ -182,7 +145,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
   try {
     await client.query("begin");
 
-    const diamanteQualifiers: string[] = []; // profile IDs qualifying for Lendas
+    const legendsCandidates: Array<{ profileId: string; weeklyXP: number; returningLegend: boolean }> = [];
 
     for (const groupRow of oldGroups.rows) {
       const group = mapLeagueGroup(groupRow);
@@ -194,86 +157,62 @@ export async function runWeeklyLeagueReset(): Promise<void> {
       const n = members.rows.length;
       if (n === 0) continue;
 
-      const tierIdx = TIERS.indexOf(group.tier);
-      const nextTier: NewLeagueTier | null = tierIdx < TIERS.indexOf("DIAMANTE") ? TIERS[tierIdx + 1] as NewLeagueTier : null;
-      const prevTier: NewLeagueTier | null = tierIdx > 0 ? TIERS[tierIdx - 1] as NewLeagueTier : null;
-
-      const promoCutoff = PROMOTION_CUTOFFS[group.tier];
-
       for (let i = 0; i < n; i++) {
         const member = members.rows[i];
         const rank = i + 1;
-        let targetTier: NewLeagueTier = group.tier;
+        const targetTier = tierAfterWeeklyRank(group.tier, rank, n);
 
-        if (group.tier === "DIAMANTE") {
-          // Top LEGENDS_TOP_N qualify for Lendas; bottom DEMOTION_COUNT demote
-          if (rank <= LEGENDS_TOP_N) {
-            diamanteQualifiers.push(member.profile_id);
-          } else if (prevTier && rank > n - DEMOTION_COUNT) {
-            targetTier = prevTier;
-          }
-          // Award coins to top 3
-          if (rank <= 3) {
-            const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
-            await addCoins(member.profile_id, coins, client);
-          }
-        } else if (group.tier === "LENDAS") {
-          // Award coins to top 3; no promotion above Lendas
-          if (rank <= 3) {
-            const coins = LEGENDS_LEAGUE_REWARDS[rank - 1];
-            await addCoins(member.profile_id, coins, client);
-          }
-          // Bottom DEMOTION_COUNT drop back to Diamante next week
-          if (prevTier && rank > n - DEMOTION_COUNT) {
-            targetTier = prevTier;
-          }
-        } else {
-          // Bronze / Prata / Ouro — tier-specific promotion cutoff
-          if (rank <= 3) {
-            const coins = REGULAR_TIER_COIN_REWARDS[rank - 1];
-            await addCoins(member.profile_id, coins, client);
-          }
-          if (nextTier && rank <= promoCutoff) targetTier = nextTier;
-          else if (prevTier && rank > n - DEMOTION_COUNT) targetTier = prevTier;
+        if (group.tier === "OBSIDIAN" && targetTier === "LEGENDS") {
+          legendsCandidates.push({ profileId: member.profile_id, weeklyXP: member.weekly_xp, returningLegend: false });
+        } else if (group.tier === "LEGENDS" && targetTier === "LEGENDS") {
+          legendsCandidates.push({ profileId: member.profile_id, weeklyXP: member.weekly_xp, returningLegend: true });
         }
 
-        // A user can never fall below the highest tier they've already reached.
-        // (Lendas members are placed by the Lendas promotion job below.)
-        if (targetTier !== "LENDAS") {
-          targetTier = await clampToHighestTier(client, member.profile_id, targetTier);
-          await recordHighestTier(client, member.profile_id, targetTier);
+        if (rank <= 3) {
+          const coins = LEAGUE_REWARDS[group.tier][rank - 1];
+          if (coins > 0) {
+            await addCoins(member.profile_id, coins, client);
+          }
         }
+
+        if (targetTier !== "LEGENDS") await recordHighestTier(client, member.profile_id, targetTier);
 
         // Ensure member is in the correct group for the new week
-        if (targetTier !== "LENDAS") {
+        if (targetTier !== "LEGENDS") {
           await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
         }
-        // Lendas members are placed by the Lendas promotion job below
       }
     }
 
-    // ── Lendas promotion: aggregate top-N from all Diamante groups ──────────
-    // Edge case: if fewer than LEGENDS_TOP_N qualifiers exist, we still create
-    // the Lendas group — it just starts smaller. Minimum 1 member required.
-    if (diamanteQualifiers.length > 0) {
+    // Keep eligible Legends and admit the highest-ranked Obsidian qualifiers.
+    const uniqueCandidates = [...new Map(legendsCandidates.map((candidate) => [candidate.profileId, candidate])).values()]
+      .sort((a, b) => b.weeklyXP - a.weeklyXP
+        || Number(b.returningLegend) - Number(a.returningLegend)
+        || a.profileId.localeCompare(b.profileId));
+    if (uniqueCandidates.length > 0) {
       const legendsWeekEnd = new Date(newWeekStart);
       legendsWeekEnd.setDate(legendsWeekEnd.getDate() + 6);
       const legendsGroup = await client.query<LeagueGroupRow>(
         `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
-         values ('LENDAS', $1, $2, true)
-         on conflict (tier, week_start_date) do update set tier = 'LENDAS'
+         values ('LEGENDS', $1, $2, true)
+         on conflict (tier, week_start_date) do update set tier = 'LEGENDS'
          returning *`,
         [newWeekStart, legendsWeekEnd.toISOString().slice(0, 10)]
       );
       const legendsGroupId = Number(legendsGroup.rows[0].id);
 
-      // Cap at LEGENDS_MAX_SIZE — take the highest-XP qualifiers if over cap
-      const capped = diamanteQualifiers.slice(0, LEGENDS_MAX_SIZE);
-      for (const profileId of capped) {
+      for (const candidate of uniqueCandidates) {
+        const isLegend = uniqueCandidates.indexOf(candidate) < LEGENDS_MAX_SIZE;
+        const targetTier = isLegend ? "LEGENDS" : "OBSIDIAN";
+        await recordHighestTier(client, candidate.profileId, targetTier);
+        if (!isLegend) {
+          await ensureMemberInNewWeekGroup(client, candidate.profileId, targetTier, newWeekStart);
+          continue;
+        }
         await client.query(
           `insert into league_group_members (league_group_id, profile_id, weekly_xp)
            values ($1, $2, 0) on conflict (league_group_id, profile_id) do nothing`,
-          [legendsGroupId, profileId]
+          [legendsGroupId, candidate.profileId]
         );
         // Remove any stale same-week membership so qualifiers aren't listed twice
         await client.query(
@@ -283,7 +222,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
                 select lg.id from league_groups lg
                  where lg.week_start_date = $2 and lg.id <> $3
               )`,
-          [profileId, newWeekStart, legendsGroupId]
+          [candidate.profileId, newWeekStart, legendsGroupId]
         );
       }
     }
@@ -341,9 +280,9 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
     `select lg.id as lg_id, lg.tier, lg.is_legends_group as is_legends
      from league_groups lg join league_group_members lgm on lg.id = lgm.league_group_id
      where lgm.profile_id = $1 and lg.week_start_date = $2
-     order by array_position(array['BRONZE','PRATA','OURO','DIAMANTE','LENDAS'], lg.tier) desc
+     order by array_position($3::league_tier[], lg.tier) desc
      limit 1`,
-    [profileId, start]
+    [profileId, start, NEW_TIER_ORDER]
   );
   
   if (existingMember.rows[0]) {
@@ -357,14 +296,11 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   }
   
   // For new users, start in BRONZE
-  let tier: NewLeagueTier = "BRONZE";
   const userXP = await getUserWeeklyXP(profileId);
-  if (userXP >= 5000) tier = "DIAMANTE";
-  else if (userXP >= 3000) tier = "OURO";
-  else if (userXP >= 1500) tier = "PRATA";
-
-  // Never place a user below the highest tier they've already reached.
-  tier = await clampToHighestTier(pool, profileId, tier);
+  const tier = [...NEW_TIER_ORDER].reverse().find((candidate) => {
+    const threshold = INITIAL_TIER_XP[candidate];
+    return threshold !== undefined && userXP >= threshold;
+  }) ?? "BRONZE";
   await recordHighestTier(pool, profileId, tier);
 
   const weekEnd = new Date(start);
@@ -493,8 +429,8 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
     weekStart: start,
     weekEnd: end,
     isLegendsGroup: group.isLegendsGroup,
-    promotionZoneEnd: PROMOTION_CUTOFFS[group.tier],
-    demotionZoneStart: Math.max(1, members.length - DEMOTION_COUNT + 1),
+    promotionZoneEnd: LEAGUE_PROMOTION_CUTOFFS[group.tier],
+    demotionZoneStart: Math.max(1, members.length - LEAGUE_DEMOTION_COUNT + 1),
   };
 }
 
@@ -573,4 +509,3 @@ export async function recomputeWeeklyLeagueXP(profileId: string): Promise<void> 
     console.error("[league] Falha ao recalcular XP semanal após estorno:", error);
   }
 }
-

@@ -146,10 +146,12 @@ export function leagueCopy(tier: NewLeagueTier | null, promoted: boolean): strin
   if (!tier) return "Participe da liga e compete com os melhores.";
   const copies: Record<NewLeagueTier, string> = {
     BRONZE:   "Você está construindo sua base. A ascensão começa aqui.",
-    PRATA:    "Consistência acima da média. A Prata é só o começo.",
-    OURO:     "Liga Ouro — você está entre os 30% mais focados.",
-    DIAMANTE: "Elite do foco. Menos de 10% chegam ao Diamante.",
-    LENDAS:   "Liga Lendas. Você está entre os melhores da plataforma.",
+    SILVER:   "Consistência acima da média. A Prata é só o começo.",
+    GOLD:     "Liga Ouro — você está entre os mais focados.",
+    EMERALD:  "Energia rara, lapidada pela consistência.",
+    DIAMOND:  "Precisão e excelência. Você chegou à elite.",
+    OBSIDIAN: "Cristal mítico. Você está a um passo das Lendas.",
+    LEGENDS:  "Liga Lendas. Você está entre os melhores da plataforma.",
   };
   return copies[tier];
 }

@@ -24,7 +24,7 @@ import { AnimatedNumber } from "@/components/ui";
 import { ParticleField, Recap3DIcon, RecapProgressBar } from "@/components/recap/recap-fx";
 import { RecapIntroSlide } from "@/components/recap/recap-intro-slide";
 import { primeRecapSound, useRecapSound } from "@/lib/recap-sound";
-import { NEW_TIER_META } from "@/lib/league-new-meta";
+import { NEW_TIER_META, resolveNewTier } from "@/lib/league-new-meta";
 import type { NewLeagueTier } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { FinalRecapSurface } from "./recap-final-surface";
@@ -691,9 +691,15 @@ export async function captureRecapCard(
   ctx.font = "400 24px 'Inter', -apple-system, sans-serif";
   ctx.fillText(meta?.description ?? "Participe da liga.", leagueX + 36, row2Y + 202);
   if (recap.leagueAtStart && recap.leagueAtStart !== recap.leagueTier) {
+    const startTier = resolveNewTier(recap.leagueAtStart);
+    const endTier = resolveNewTier(recap.leagueTier);
     ctx.fillStyle = "#3DDC84";
     ctx.font = "600 22px 'Inter', -apple-system, sans-serif";
-    ctx.fillText(`${recap.leagueAtStart} → ${recap.leagueTier}`, leagueX + 36, row2Y + 236);
+    ctx.fillText(
+      `${startTier ? NEW_TIER_META[startTier].label : recap.leagueAtStart} → ${endTier ? NEW_TIER_META[endTier].label : recap.leagueTier}`,
+      leagueX + 36,
+      row2Y + 236,
+    );
   }
 
   // ── Faixa terciária: JARDIM + XP ──

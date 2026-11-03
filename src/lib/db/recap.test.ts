@@ -90,8 +90,8 @@ describe("Recap Metrics Computation", () => {
     // Verify we got a league
     assert.ok(augustLeague, "Should have league data for end of August");
     
-    // The league should NOT be LENDAS (which is the current league for this user)
-    // unless the user actually reached LENDAS by end of August
+    // The league should NOT be LEGENDS (the top league) unless the user reached
+    // it by the end of August.
     // This test just verifies the query works correctly
   });
 
@@ -131,7 +131,7 @@ describe("Recap Metrics Computation", () => {
     // If there's progression, verify it
     if (septStartLeague && septEndLeague) {
       const hasProgression = septStartLeague !== septEndLeague;
-      // The test user should have progression in September (PRATA -> OURO -> DIAMANTE)
+      // The user may progress through any tier introduced by the weekly system.
       console.log(`September league progression: ${septStartLeague} -> ${septEndLeague}`);
     }
   });

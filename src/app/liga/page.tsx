@@ -15,23 +15,16 @@ import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
 import { AvatarWithFrame } from "@/components/avatar";
-import type { NewLeagueTier } from "@/types";
-import type { NewTierMeta } from "@/lib/league-new-meta";
-import { NEW_TIER_META, NEW_TIER_ORDER } from "@/lib/league-new-meta";
+import {
+  LEAGUE_PROMOTION_CUTOFFS,
+  LEAGUE_REWARDS,
+  NEW_TIER_META,
+  NEW_TIER_ORDER,
+  nextLeagueTier,
+} from "@/lib/league-new-meta";
 import type { LeagueNewSnapshot } from "@/lib/db/league-new";
 
-// ── Tier config (fonte única compartilhada com o recap mensal) ───────────────
-
-const TIER_CONFIG: Record<NewLeagueTier, NewTierMeta> = NEW_TIER_META;
-const TIER_ORDER: NewLeagueTier[] = NEW_TIER_ORDER;
-
-const PROMOTION_TEXT: Record<NewLeagueTier, string> = {
-  BRONZE:   "Fique no Top 10 para ser promovido para Prata.",
-  PRATA:    "Fique no Top 10 para ser promovido para Ouro.",
-  OURO:     "Fique no Top 7 para ser promovido para Diamante.",
-  DIAMANTE: "Fique no Top 5 para ser promovido para Lendas.",
-  LENDAS:   "Lendas é o tier mais alto. Os top 3 ganham moedas ao final da semana.",
-};
+const TIER_CONFIG = NEW_TIER_META;
 
 const MEDAL_IMAGES = ["/places/first_place.png", "/places/second_place.png", "/places/third_place.png"] as const;
 
@@ -143,10 +136,11 @@ export default function LigaPage() {
   }
 
   const tierCfg = TIER_CONFIG[snapshot.currentTier];
-  const currentTierIdx = TIER_ORDER.indexOf(snapshot.currentTier);
-  const nextTier = currentTierIdx < TIER_ORDER.length - 1 ? TIER_ORDER[currentTierIdx + 1] : null;
-  const isLendas = snapshot.currentTier === "LENDAS";
-  const isDiamante = snapshot.currentTier === "DIAMANTE";
+  const currentTierIdx = NEW_TIER_ORDER.indexOf(snapshot.currentTier);
+  const nextTier = nextLeagueTier(snapshot.currentTier);
+  const isLegends = snapshot.currentTier === "LEGENDS";
+  const isObsidian = snapshot.currentTier === "OBSIDIAN";
+  const rewards = LEAGUE_REWARDS[snapshot.currentTier];
   const userMember = snapshot.members.find((m) => m.profileId === user.uid);
   const displayRank = snapshot.userRank > 0 ? snapshot.userRank : null;
 
@@ -167,6 +161,14 @@ export default function LigaPage() {
   const userZone = displayRank !== null ? zoneForRank(displayRank) : null;
   const isInPromo = userZone === "promo";
   const isInDemo = userZone === "demote";
+  const promotionText = nextTier
+    ? `Fique no Top ${LEAGUE_PROMOTION_CUTOFFS[snapshot.currentTier]} para avançar para ${TIER_CONFIG[nextTier].label}.`
+    : "Lendas é o tier mais alto. Os três primeiros recebem as maiores recompensas da liga.";
+  const heroBackground = isObsidian
+    ? "linear-gradient(135deg, #12071F 0%, #211038 52%, #12071F 100%)"
+    : isLegends
+      ? "linear-gradient(135deg, rgba(246,200,95,.18) 0%, rgba(124,58,237,.18) 55%, rgba(18,7,31,.96) 100%)"
+      : `linear-gradient(135deg, ${tierCfg.color}15, ${tierCfg.color}08)`;
 
   return (
     <AppShell>
@@ -185,7 +187,7 @@ export default function LigaPage() {
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <div
             className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] p-6 shadow-xl"
-            style={{ background: `linear-gradient(135deg, ${tierCfg.color}15, ${tierCfg.color}08)` }}
+            style={{ background: heroBackground, boxShadow: `0 18px 60px -36px ${tierCfg.glow}` }}
           >
             <span aria-hidden className="absolute inset-0 opacity-30"
               style={{ background: `radial-gradient(circle at center, ${tierCfg.glow} 0%, transparent 70%)` }} />
@@ -203,12 +205,12 @@ export default function LigaPage() {
                   </motion.div>
                   <div>
                     <h2 className="font-display text-3xl font-bold tracking-tight" style={{ color: tierCfg.color }}>
-                      {tierCfg.label}{isLendas && <span className="ml-2">✨</span>}
+                      {tierCfg.label}{isLegends && <span className="ml-2">✨</span>}
                     </h2>
                     <p className="mt-0.5 text-sm text-[var(--text-muted)]">{tierCfg.description}</p>
-                    {isDiamante && (
-                      <p className="mt-1.5 flex items-center gap-1 text-[10px] text-amber-400">
-                        <Crown size={11} /> Top 5 avança para <strong>Lendas</strong>
+                    {isObsidian && (
+                      <p className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-300">
+                        <Crown size={11} /> Os melhores avançam para <strong>Lendas</strong>
                       </p>
                     )}
                   </div>
@@ -241,7 +243,7 @@ export default function LigaPage() {
 
               {/* Tier progress bar */}
               <div className="mt-6 flex items-center justify-center gap-2">
-                {TIER_ORDER.map((t, i) => {
+                {NEW_TIER_ORDER.map((t, i) => {
                   const cfg = TIER_CONFIG[t];
                   const isCurrent = t === snapshot.currentTier;
                   const isPast = currentTierIdx > i;
@@ -401,7 +403,7 @@ export default function LigaPage() {
                 <div className="h-px flex-1 bg-red-400/30" />
               </div>
             )}
-            {isLendas && (
+            {isLegends && (
               <div className="flex items-center gap-2">
                 <div className="h-px flex-1 bg-amber-400/30" />
                 <span className="text-[10px] text-amber-400 whitespace-nowrap">Sem promoção — Lendas é o topo</span>
@@ -418,7 +420,7 @@ export default function LigaPage() {
               <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">SOBRE SEU TIER</span>
             </div>
             <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-              {PROMOTION_TEXT[snapshot.currentTier]}
+              {promotionText}
             </p>
             <div className="mt-3 flex flex-col gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-faint)]">Recompensas do pódio</p>
@@ -426,19 +428,19 @@ export default function LigaPage() {
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/first_place.png" alt="1º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 1º lugar
                 </span>
-                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />150 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold" style={{ color: tierCfg.color }}><CoinIcon size={13} />{rewards[0]} moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/second_place.png" alt="2º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 2º lugar
                 </span>
-                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />100 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold" style={{ color: tierCfg.color }}><CoinIcon size={13} />{rewards[1]} moedas</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                   <Image src="/places/third_place.png" alt="3º" width={16} height={16} style={{ width: 16, height: 16 }} unoptimized draggable={false} /> 3º lugar
                 </span>
-                <span className="flex items-center gap-1 font-mono font-bold text-[var(--accent)]"><CoinIcon size={13} />75 moedas</span>
+                <span className="flex items-center gap-1 font-mono font-bold" style={{ color: tierCfg.color }}><CoinIcon size={13} />{rewards[2]} moedas</span>
               </div>
             </div>
             {nextTier && (() => {

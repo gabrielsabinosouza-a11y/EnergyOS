@@ -59,6 +59,8 @@ rewards, permissions, and balances; never reproduce reward calculations on-devic
   register native APNs/FCM tokens.
 - Web media paths use browser APIs and Cloudinary upload flows. Native selection,
   recording, and upload need an Expo-compatible adapter.
+- Mobile group chat must not expose camera, video-call/recording, or audio/voice
+  controls or icons; keep those options out when the chat UI is implemented.
 - Some route families have separate versions or overloaded responses; confirm the
   exact response shape and authorization behavior at each implementation slice.
 - Native Google Sign-In requires a custom native module and therefore a development
