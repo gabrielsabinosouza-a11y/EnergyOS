@@ -98,7 +98,8 @@ export async function POST(request: NextRequest) {
         throw new ValidationError(`Invalid ${field}.`);
       }
 
-      return value.trim();
+      const trimmed = value.trim();
+      return trimmed === "" ? undefined : trimmed;
     };
 
     const description = optionalString(
