@@ -7,7 +7,7 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "energyos",
-  userInterfaceStyle: "dark",
+  userInterfaceStyle: "automatic",
   ios: {
     icon: "./assets/expo.icon",
   },
