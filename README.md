@@ -1,6 +1,9 @@
 ## energyOS
 
 Rascunho inicial de um dashboard pessoal para acompanhar energia, foco, sono, estudo, treino e consistência.
+
+> **Documentação atual do produto e plano mobile:** [docs/PROJECT_AND_MOBILE_PLAN.md](docs/PROJECT_AND_MOBILE_PLAN.md). O documento descreve a arquitetura verificada, o status, os limites para Claude e a recomendação para React Native/Expo em monorepo. Algumas seções abaixo são notas históricas do primeiro protótipo.
+
 ### Stack inicial
 
 - Next.js + React + TypeScript + Tailwind CSS

@@ -299,24 +299,24 @@ export async function moveKanbanTask(
       [profileId, taskId]
     );
     if (!taskResult.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
-    
+
     const oldStatus = taskResult.rows[0].status;
     const oldPosition = taskResult.rows[0].position;
-    
+
     // If moving within the same column, we need to reorder positions
     if (oldStatus === validatedStatus) {
       // Update positions in the same column
       if (validatedPosition > oldPosition) {
         // Moving down: decrement positions between old and new
         await client.query(
-          `update kanban_tasks set position = position - 1 
+          `update kanban_tasks set position = position - 1
            where profile_id = $1 and status = $2 and position > $3 and position <= $4`,
           [profileId, oldStatus, oldPosition, validatedPosition]
         );
       } else if (validatedPosition < oldPosition) {
         // Moving up: increment positions between new and old
         await client.query(
-          `update kanban_tasks set position = position + 1 
+          `update kanban_tasks set position = position + 1
            where profile_id = $1 and status = $2 and position >= $3 and position < $4`,
           [profileId, oldStatus, validatedPosition, oldPosition]
         );
@@ -325,19 +325,19 @@ export async function moveKanbanTask(
       // Moving between different columns
       // 1. Remove from old column - shift positions down
       await client.query(
-        `update kanban_tasks set position = position - 1 
+        `update kanban_tasks set position = position - 1
          where profile_id = $1 and status = $2 and position > $3`,
         [profileId, oldStatus, oldPosition]
       );
-      
+
       // 2. Add to new column - shift positions up
       await client.query(
-        `update kanban_tasks set position = position + 1 
+        `update kanban_tasks set position = position + 1
          where profile_id = $1 and status = $2 and position >= $3`,
         [profileId, validatedStatus, validatedPosition]
       );
     }
-    
+
     // 3. Update the moved task itself
     const updated = await client.query<{ id: string | number }>(
       `update kanban_tasks set status = $1, position = $2, updated_at = now()
@@ -345,7 +345,7 @@ export async function moveKanbanTask(
        returning id`,
       [validatedStatus, validatedPosition, profileId, taskId]
     );
-    
+
     if (!updated.rows[0]) throw new NotFoundError("Tarefa não encontrada.");
 
     const result = await client.query<KanbanRow>(`${KANBAN_SELECT} where k.id = $1`, [updated.rows[0].id]);
@@ -482,7 +482,7 @@ export async function createKanbanLabel(profileId: string, input: CreateKanbanLa
 export async function deleteKanbanLabel(profileId: string, labelId: number): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(labelId) || labelId <= 0) throw new ValidationError("Etiqueta inválida.");
-  
+
   const result = await pool.query(
     `delete from kanban_labels where profile_id = $1 and id = $2`,
     [profileId, labelId],

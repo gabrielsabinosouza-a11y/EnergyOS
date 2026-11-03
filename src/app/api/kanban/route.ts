@@ -13,24 +13,29 @@ export async function GET(request: NextRequest) {
     return jsonOk({ tasks, labels });
   });
 }
-
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
-    const { profileId } = await requireAuth(request);
-    await ensureUserBootstrap(profileId);
-    const body = await readJsonBody(request);
-    const task = await createKanbanTask(profileId, {
-      title: body.title as string,
-      description: body.description as string | undefined,
-      status: body.status as "todo" | "doing" | "done" | undefined,
-      categoryId: body.categoryId as number | undefined,
-      labels: body.labels as string[] | undefined,
-      dueDate: body.dueDate as string | undefined,
-      priority: body.priority as "low" | "medium" | "high" | undefined,
-      assigneeId: body.assigneeId as string | undefined,
-      imageUrl: body.imageUrl as string | undefined,
-      imagePath: body.imagePath as string | undefined,
-    });
-    return jsonOk({ task }, 201);
+    try {
+      const { profileId } = await requireAuth(request);
+      await ensureUserBootstrap(profileId);
+      const body = await readJsonBody(request);
+      console.log("[kanban POST] body:", JSON.stringify(body));
+      const task = await createKanbanTask(profileId, {
+        title: body.title as string,
+        description: body.description as string | undefined,
+        status: body.status as "todo" | "doing" | "done" | undefined,
+        categoryId: body.categoryId as number | undefined,
+        labels: body.labels as string[] | undefined,
+        dueDate: body.dueDate as string | undefined,
+        priority: body.priority as "low" | "medium" | "high" | undefined,
+        assigneeId: body.assigneeId as string | undefined,
+        imageUrl: body.imageUrl as string | undefined,
+        imagePath: body.imagePath as string | undefined,
+      });
+      return jsonOk({ task }, 201);
+    } catch (error) {
+      console.error("[kanban POST] failed:", error);
+      throw error;
+    }
   });
 }
