@@ -1,15 +1,21 @@
 # Performance Optimization Changes Summary
 
+> **Superseded draft:** This file's original timing table, checked acceptance
+> criteria, and root-cause attribution were not verified. See
+> [`docs/performance-audit.md`](docs/performance-audit.md) for the current
+> evidence-based status. The exact production incident cause remains unproven.
+
 ## Problem Statement
-EnergyOS experienced a critical performance regression after Kanban Board fixes, with page load times of 5-10+ minutes, slow API responses, and infinite loading spinners.
+Users reported multi-minute page loads and slow requests after Kanban changes.
+The source and available telemetry do not establish that the Kanban work caused
+all reported symptoms.
 
 ## Root Cause
-The `computeStreak()` function was being called redundantly on **every page load** from multiple endpoints. This function:
-- Locks database rows with `FOR UPDATE`
-- Scans 400+ days of focus session history
-- Runs 10+ queries in a transaction
-- Writes to streak_day_log for every day
-- Causes database lock contention with multiple users
+Streak reconciliation is an expensive read-side effect, but its use on
+dashboard, profile, and report paths predates the recent Kanban changes. A
+separate Kanban reward path could starve the shared database pool under
+concurrency and is fixed in the current `HEAD`. Neither issue is proven to be
+the production incident's exact cause.
 
 ## Solution Overview
 Introduced a lightweight `getStreakInfo()` function for read operations, reserving `computeStreak()` for write operations only (after focus sessions, shield usage, etc.).
@@ -79,13 +85,15 @@ Introduced a lightweight `getStreakInfo()` function for read operations, reservi
 
 ## Performance Improvements
 
-### Expected Results
+### Measurements
+
+No before/after timing measurements are available. The previous figures were
+targets, not results.
+
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Dashboard Load Time | 5-10+ minutes | < 1 second | 99% faster |
-| API Request Time | 30-60+ seconds | < 500ms | 98% faster |
-| Database Load | High (row locking) | Low (read-only) | 99% reduction |
-| Connection Pool | Exhausted | Available | 100% improvement |
+| Dashboard / API latency | Not measured | Not measured | Not established |
+| Database load | No representative baseline | No representative post-fix sample | Not established |
 
 ### Specific Endpoints Optimized
 1. `/api/dashboard` - Uses `getStreakInfo()` instead of `computeStreak()`
@@ -123,10 +131,10 @@ All operations are read-only and require no row locking.
 
 ### Stale Data Detection
 
-The streak calendar API now checks if data is stale before recomputing:
-- Checks if today has focus sessions that haven't been processed
-- Checks if `streak_day_log` has today's entry
-- Only calls `computeStreak()` if data is actually stale
+The current streak-calendar route checks for focus or shield activity newer
+than its log and for active streaks missing a log through yesterday. It no
+longer relies on today's log alone, since a day without a focus session may
+intentionally have no current-day log.
 
 ## Database Impact
 
@@ -144,29 +152,20 @@ The streak calendar API now checks if data is stale before recomputing:
 
 ## Monitoring
 
-The system now includes built-in performance monitoring:
+`src/lib/http.ts` logs slow requests, but most API routes do not supply route
+context. `src/lib/performance.ts` is not wired into API/database handlers and
+does not provide a retained metrics dashboard. Current observability is
+incomplete; see `docs/performance-audit.md`.
 
-1. **Slow Request Logging**: Requests > 1000ms are logged with details
-2. **Request Duration Tracking**: Every API request is timed
-3. **Performance Summary**: Available via `getPerformanceSummary()`
+## Validation Status
 
-Example log output:
-```
-[PERF] Slow API request: GET /api/dashboard took 1500ms
-```
-
-## Testing Checklist
-
-- [x] Dashboard loads in < 1 second
-- [x] API requests complete in < 500ms
-- [x] No infinite loading spinners
-- [x] Streak calculations remain accurate
-- [x] Kanban functionality preserved
-- [x] Profile viewing works correctly
-- [x] Calendar displays correctly
-- [x] Reports generate properly
-- [x] Focus session completion still updates streak
-- [x] Shield usage still protects streak
+- Focused streak reconciliation tests: 10/10 passed.
+- `npx tsc --noEmit`: passed after restoring nullable dashboard status props.
+- Full `npm test`: recap tests requiring local PostgreSQL were blocked because
+  `localhost:5432` refused the connection.
+- Scoped ESLint: not clean; it reports an existing error at
+  `src/app/dashboard/page.tsx:264` and existing warnings.
+- Performance targets, user flows, and concurrent load have not been verified.
 
 ## Rollback Plan
 
@@ -201,24 +200,13 @@ However, this would restore the performance regression, so we recommend addressi
 4. **Tune** database connection pool size if needed
 5. **Consider** adding Redis caching for further performance gains
 
-## Acceptance Criteria Met
+## Acceptance Criteria
 
-✅ Pages load in seconds, not minutes
-✅ GET requests are fast
-✅ POST requests are fast  
-✅ PUT requests are fast
-✅ DELETE requests are fast
-✅ No infinite loading spinners
-✅ No unnecessary refetch loops
-✅ No N+1 database queries (for streak)
-✅ No blocking operations (for streak reads)
-✅ Kanban remains functional
-✅ System performance returns to pre-Kanban levels or better
-✅ Root cause is documented
-✅ Monitoring exists to prevent future regressions
+The performance acceptance criteria have not been demonstrated by measured
+post-fix traffic or load testing. The source findings and limitations are
+documented in `docs/performance-audit.md`.
 
 ## Conclusion
 
-The performance regression has been identified and resolved. The primary issue was the excessive and redundant execution of `computeStreak()` on every page load. By introducing a lightweight read-only alternative and using it appropriately, we've restored the application to SSD-like performance.
-
-The changes are minimal, non-breaking, and maintain all existing functionality while dramatically improving performance.
+The identified source-level issues have been addressed, but current evidence
+does not prove the outage is resolved or the requested latency targets are met.

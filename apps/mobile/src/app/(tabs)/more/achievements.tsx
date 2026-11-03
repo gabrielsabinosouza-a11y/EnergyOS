@@ -43,7 +43,8 @@ export default function AchievementsScreen() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   async function toggleFeatured(item: Achievement) {

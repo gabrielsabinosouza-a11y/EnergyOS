@@ -1,4 +1,4 @@
-import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan, WeeklyPlanItem, WeeklyPlanSeries } from "@/types";
+import type { AchievementProgress, Category, DailyCheckin, DailyQuest, DirectMessage, FocusSession, FriendRequest, FriendSummary, GroupDetail, GroupInvite, GroupMessage, GroupPinnedMessage, GroupSummary, Insight, KanbanLabel, KanbanTask, LeagueSnapshot, Metric, PinDurationDays, PublicProfile, QuestProgressWithQuest, StreakDayStatus, Task, User, DailyCheckin as _DailyCheckin, UserDailyTask, UserSearchResult, UserSettings, UserXP, WeeklyPlan, WeeklyPlanItem, WeeklyPlanSeries } from "@/types";
 import type { GoalFrequency } from "@/lib/db/goals";
 import type { GoalLogAction, GoalLogEntry } from "@/lib/db/goal-logs";
 import type { HabitFrequency, HabitWithCompletion } from "@/lib/db/habits";
@@ -32,11 +32,10 @@ export async function isAuthConfigured(): Promise<boolean> {
   return auth !== null;
 }
 
-async function authToken(): Promise<string | null>{
+async function authToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
-  const {auth} = await import("@/lib/firebase")
+  const { auth } = await import("@/lib/firebase");
   if (!auth) {
-    // Firebase not configured - log once per session
     if (!(window as unknown as { __firebaseConfigErrorLogged?: boolean }).__firebaseConfigErrorLogged) {
       console.error("[Auth Error] Firebase auth is not configured. Please check NEXT_PUBLIC_FIREBASE_* environment variables.");
       (window as unknown as { __firebaseConfigErrorLogged?: boolean }).__firebaseConfigErrorLogged = true;
@@ -44,8 +43,6 @@ async function authToken(): Promise<string | null>{
     return null;
   }
 
-  // Wait for auth to be ready. Try authStateReady first (available in newer Firebase SDK),
-  // fall back to onAuthStateChanged if not available.
   if (typeof auth.authStateReady === "function") {
     await auth.authStateReady();
   } else {
@@ -58,7 +55,6 @@ async function authToken(): Promise<string | null>{
   }
 
   if (!auth.currentUser) {
-    // No signed-in user - the caller should handle this by redirecting to login
     return null;
   }
 
@@ -67,10 +63,19 @@ async function authToken(): Promise<string | null>{
 
 export class ApiRequestError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** Raw JSON body returned by the server, when available. Useful for debugging. */
+  readonly body?: unknown;
+  /** Set to true on HTTP 401 so UI layers can redirect to login. */
+  readonly authError?: boolean;
+
+  constructor(message: string, status: number, body?: unknown) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.body = body;
+    if (status === 401) {
+      (this as { authError?: boolean }).authError = true;
+    }
   }
 }
 
@@ -79,17 +84,19 @@ const RETRY_BASE_DELAY_MS = 200;  // exponential: 200, 400
 
 /** Returns true for status codes that warrant a retry (5xx, 408, 429). 4xx client errors are never retried except 408 (timeout) and 429 (rate limited). */
 export function isRetryableStatus(status: number): boolean {
-  // 4xx client errors are never retried — EXCEPT 408 (timeout).
   if (status >= 400 && status < 500) {
     return status === 408;
   }
-  // Retry on any 5xx.
   return status >= 500;
 }
 
 /**
  * Auth-aware request wrapper. Throws a specific error when auth fails (401)
  * that UI layers can catch to redirect to login.
+ *
+ * On any non-2xx response the server-provided `error` message is used verbatim
+ * (falling back to a generic message), so callers see the real cause — e.g.
+ * "Erro no banco de dados: null value in column ..." instead of just "status 500".
  */
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const token = await authToken();
@@ -106,7 +113,6 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     try {
       response = await fetch(input, fetchInit);
     } catch {
-      // Network failure — retry if we have attempts left.
       if (attempt >= MAX_RETRIES) throw new ApiRequestError("Falha de rede. Tente novamente.", 0);
       await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
       continue;
@@ -118,31 +124,32 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 
     lastStatus = response.status;
 
-    // 401 Unauthorized - auth failed or not configured. Don't retry.
+    // Parse the error body once; reuse for 401 and non-retryable paths.
+    const body = (await response.json().catch(() => ({}))) as ApiError;
+
     if (lastStatus === 401) {
-      const body = (await response.json().catch(() => ({}))) as ApiError;
       const message = body.error || "Autenticação necessária";
-      const error = new ApiRequestError(message, 401);
-      (error as ApiRequestError & { authError?: boolean }).authError = true; // Flag for UI handling
-      throw error;
+      throw new ApiRequestError(message, 401, body);
     }
 
     if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
-      const body = (await response.json().catch(() => ({}))) as ApiError;
-      const message = body.error || `Não foi possível concluir a solicitação. (status ${response.status})`;
-      throw new ApiRequestError(message, response.status);
+      const message =
+        body.error ||
+        `Não foi possível concluir a solicitação. (status ${response.status})`;
+      throw new ApiRequestError(message, response.status, body);
     }
     // Retryable 5xx / 408 / 429 — back off and retry.
     await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
   }
 
-  // Should be unreachable, but keeps the type checker happy.
+  // Unreachable, but keeps the type checker happy.
   throw new ApiRequestError("Não foi possível concluir a solicitação.", lastStatus);
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
 
 export interface TaskBundle {
   date: string;

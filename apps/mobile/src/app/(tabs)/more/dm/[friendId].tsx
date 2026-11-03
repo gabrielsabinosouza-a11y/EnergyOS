@@ -33,7 +33,7 @@ export default function DirectMessageScreen() {
     if (!friendId) return;
     try {
       const [friendResult, messageResult] = await Promise.all([
-        api.get<{ friends: Array<{ id: string; displayName: string }> }>('/api/friends'),
+        api.get<{ friends: { id: string; displayName: string }[] }>('/api/friends'),
         api.get<{ messages: Message[] }>(`/api/dm/${encodeURIComponent(friendId)}`),
       ]);
       setFriendName(friendResult.friends.find((friend) => friend.id === friendId)?.displayName || 'Conversa');
@@ -49,9 +49,12 @@ export default function DirectMessageScreen() {
   }, [friendId]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = setTimeout(() => void load(), 0);
     const interval = setInterval(() => void load(), 15_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [load]);
 
   async function sendMessage() {

@@ -48,9 +48,12 @@ export default function GroupChatScreen() {
   }, [id]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = setTimeout(() => void load(), 0);
     const interval = setInterval(() => void load(), 15_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [load]);
 
   async function sendMessage() {

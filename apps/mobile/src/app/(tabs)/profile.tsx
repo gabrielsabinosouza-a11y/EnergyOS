@@ -37,7 +37,9 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => {
-    if (user) void loadProfile();
+    if (!user) return;
+    const timer = setTimeout(() => void loadProfile(), 0);
+    return () => clearTimeout(timer);
   }, [loadProfile, user]);
 
   async function saveName() {

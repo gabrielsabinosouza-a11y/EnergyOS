@@ -47,7 +47,8 @@ export default function PlannerScreen() {
   }, []);
 
   useEffect(() => {
-    void loadPlans();
+    const timer = setTimeout(() => void loadPlans(), 0);
+    return () => clearTimeout(timer);
   }, [loadPlans]);
 
   async function createPlan() {

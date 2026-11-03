@@ -56,7 +56,8 @@ export default function SettingsScreen() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {

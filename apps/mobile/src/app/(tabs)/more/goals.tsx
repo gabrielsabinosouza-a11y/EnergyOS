@@ -15,7 +15,7 @@ type Goal = {
   completedAt: string | null;
 };
 
-type GoalBundle = { goal: Goal; habits: Array<{ id: number; title: string; frequency: string }> };
+type GoalBundle = { goal: Goal; habits: { id: number; title: string; frequency: string }[] };
 
 function errorText(error: unknown) {
   return error instanceof ApiError ? error.message : 'Não foi possível concluir esta ação.';
@@ -47,7 +47,8 @@ export default function GoalsScreen() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   async function createGoal() {

@@ -7,8 +7,8 @@ import { getProductDate } from '@/shared/date';
 import { useTheme } from '@/hooks/use-theme';
 
 type Report = {
-  checkins: Array<{ checkinDate: string; energyScore?: number; sleepHours?: number; studyMinutes?: number }>;
-  completions: Array<{ date: string; completed: number; total: number }>;
+  checkins: { checkinDate: string; energyScore?: number; sleepHours?: number; studyMinutes?: number }[];
+  completions: { date: string; completed: number; total: number }[];
   streakInfo: { currentStreak: number; bestStreak: number; totalDays: number };
   weeklyComparison: {
     thisWeek: { sleep: number; study: number; tasks: number };
@@ -47,7 +47,8 @@ export default function ReportsScreen() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const weekly = report?.weeklyComparison;

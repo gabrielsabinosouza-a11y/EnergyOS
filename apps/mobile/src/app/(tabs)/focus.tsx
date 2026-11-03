@@ -26,7 +26,7 @@ type FocusRoom = {
   code?: string;
   status?: string;
   durationMinutes?: number;
-  participants?: Array<{ displayName?: string }>;
+  participants?: { displayName?: string }[];
 };
 
 function errorText(error: unknown) {
@@ -72,7 +72,8 @@ export default function FocusScreen() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   useEffect(() => {

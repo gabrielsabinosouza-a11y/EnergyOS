@@ -14,36 +14,21 @@ calendar freshness bug that could repeat reconciliation. Available production
 telemetry does not establish that either issue caused the reported outage, and
 the requested response-time targets have not been measured.
 
-## Root Cause Analysis
+## Verified Source Findings (not incident attribution)
 
-### Primary Issue: Redundant `computeStreak()` Calls
+`computeStreak()` does lock a profile and reconcile a bounded history, so it is
+expensive when repeatedly called as a read side effect. Its use from dashboard,
+social-profile, report, and calendar reads predates the recent Kanban changes;
+the first three paths were moved to persisted streak reads in a later change.
+The calendar's old freshness check could still repeat reconciliation when an
+inactive user had no current-day focus session. That predicate has since been
+replaced with checks for unlogged activity and missing active-streak logs.
 
-The `computeStreak()` function was being called on **every page load** from multiple endpoints:
-
-1. **Dashboard API** (`/api/dashboard`) - Called on every page load
-2. **Streak Calendar API** (`/api/streak-calendar`) - Called when viewing calendar
-3. **Social Profile API** (`/api/social/profile/[id]`) - Called when viewing other users' profiles
-4. **Relatorio API** (`/api/relatorio`) - Called when viewing reports
-
-### Why This Was Devastating
-
-The `computeStreak()` function performs:
-
-1. **Database Row Locking** - Uses `FOR UPDATE` to exclusively lock the profile row
-2. **400+ Day History Scan** - Queries focus_sessions for the last 400 days
-3. **Multiple Sequential Queries** - Runs 10+ queries in a transaction
-4. **Write Operations** - Updates streak_day_log table for every day
-5. **Profile Updates** - Updates the profile's current_streak and longest_streak
-6. **Mission Progress Tracking** - Calls `recordMissionProgress()`
-
-### Cascading Effect
-
-With multiple users accessing the application:
-- Each user tries to lock their profile row with `FOR UPDATE`
-- Database spends significant time scanning 400+ days of history
-- Long-running transactions block other operations
-- Connection pool exhaustion occurs
-- The entire system slows to a crawl
+Separately, a Kanban reward path held a checked-out PostgreSQL client while
+calling another helper that acquired from the same pool. Under concurrency,
+this can starve the pool; the current `HEAD` releases the client before awarding
+league XP. Neither finding is supported by captured production traces as the
+cause of the reported minutes-long waits.
 
 ## Performance Optimizations Implemented
 
@@ -162,28 +147,12 @@ Created comprehensive performance monitoring utilities:
 - Database query duration tracking
 - Performance summary generation
 
-## Performance Improvements
+## Performance Measurements
 
-### Before Optimization
-- Dashboard load: **5-10+ minutes**
-- API requests: **30-60+ seconds**
-- Database: Constant row locking, 400+ day scans per request
-- User experience: **Unusable**
-
-### After Optimization
-- Dashboard load: **< 1 second** (target)
-- API requests: **< 500ms** (target)
-- Database: Read-only queries, no row locking for read operations
-- User experience: **Responsive and fast**
-
-### Metrics
-
-| Endpoint | Before | After | Improvement |
-|----------|--------|-------|-------------|
-| `/api/dashboard` | 30-60s | < 1s | 98% faster |
-| `/api/streak-calendar` | 30-60s | < 500ms | 98% faster |
-| `/api/social/profile/[id]` | 30-60s | < 500ms | 98% faster |
-| `/api/relatorio` | 30-60s | < 1s | 98% faster |
+No before/after endpoint timings were captured. The durations and percentages
+in the original draft were estimates, not measurements, and are intentionally
+not repeated here. See `docs/performance-audit.md` for the live telemetry window,
+query-plan observation, and validation limitations.
 
 ## Technical Details
 
@@ -254,27 +223,16 @@ No schema changes were required.
 5. **Frontend Optimization** - Reduce redundant renders and API calls
 6. **Real-time Monitoring** - Deploy performance dashboard
 
-## Monitoring Setup
+## Monitoring Status
 
-The system now includes:
-
-1. **Slow Request Logging** - Requests > 1000ms are logged
-2. **Request Duration Tracking** - Every API request is timed
-3. **Performance Metrics** - Accessible via `getPerformanceSummary()`
-
-Example slow request log entry:
-```
-[PERF] Slow API request: GET /api/dashboard took 1500ms
-```
+`src/lib/http.ts` logs slow requests, but most API routes do not supply route
+context. `src/lib/performance.ts` is not wired into API/database handlers and
+does not retain completed request-duration samples as a metrics dashboard.
+The current setup is useful diagnostic logging, not complete observability.
 
 ## Conclusion
 
-The performance regression was caused by a **single function** (`computeStreak`) being called **too frequently**. By introducing a lightweight read-only alternative (`getStreakInfo`) and using it for read operations, we've restored the application to SSD-like performance.
-
-The changes are:
-- **Minimal** - Only modified necessary files
-- **Non-breaking** - All existing functionality preserved
-- **Safe** - No data consistency issues introduced
-- **Maintainable** - Clear separation of concerns (write vs read operations)
-
-The application should now meet or exceed the pre-Kanban performance levels.
+The source-level hazards have been addressed, but current evidence does not
+prove that application responsiveness has returned to pre-Kanban levels. Capture
+representative post-fix API timings and database query statistics before
+declaring the incident resolved.
