@@ -970,8 +970,8 @@ function DashboardContent() {
                 <StreakBadge
                   streak={snapshot.streak.currentStreak}
                   todayQualified={snapshot.streak.todayQualified}
-                  todayStatus={snapshot.streak.todayStatus}
-                  yesterdayStatus={snapshot.streak.yesterdayStatus}
+                  todayStatus={snapshot.streak.todayStatus ?? null}
+                  yesterdayStatus={snapshot.streak.yesterdayStatus ?? null}
                   shieldCount={snapshot.streak.shieldCount}
                   shouldPop={streakPop}
                   equippedShieldIconUrl={snapshot.streak.equippedShieldIconUrl}

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -47,6 +48,7 @@ export function PlannerDatePicker({
   const [monthOverride, setMonthOverride] = useState<string | null>(null);
   const [activeDate, setActiveDate] = useState(value ?? "2026-01-05");
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const reduced = useReducedMotion();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -175,38 +177,60 @@ export function PlannerDatePicker({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        id={id}
-        type="button"
-        role="combobox"
-        aria-label={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={id ? `${id}-calendar` : undefined}
-        aria-invalid={ariaInvalid}
-        aria-describedby={ariaDescribedBy}
-        aria-required={ariaRequired}
-        onBlur={onBlur}
-        disabled={disabled}
-        onClick={() => open ? close() : openPicker()}
-        className={`glass-field flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${ariaInvalid ? "border-red-400/70 ring-1 ring-red-400/30" : ""}`}
-      >
-        <span className={hasDate ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
-          {hasDate ? formatLocalDate(value!, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
-        </span>
-        {hasDate && !disabled && (
-          <span
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); clearDate(); }}
-            className="text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer"
-            title="Limpar data"
-            aria-hidden="true"
-          >
-            ×
+      <div className={`glass-field flex items-center gap-1.5 ${ariaInvalid ? "border-red-400/70 ring-1 ring-red-400/30" : ""}`}>
+        <button
+          ref={triggerRef}
+          id={id}
+          type="button"
+          role="combobox"
+          aria-label={label}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={id ? `${id}-calendar` : undefined}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+          aria-required={ariaRequired}
+          onBlur={onBlur}
+          disabled={disabled}
+          onClick={() => open ? close() : openPicker()}
+          className="flex min-w-0 flex-1 cursor-pointer items-center text-left disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none"
+        >
+          <span className={hasDate ? "text-[var(--text)]" : "text-[var(--text-muted)]"}>
+            {hasDate ? formatLocalDate(value!, { day: "2-digit", month: "2-digit", year: "numeric" }) : placeholder}
           </span>
-        )}
-        <CalendarDays size={16} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
-      </button>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <AnimatePresence initial={false}>
+            {hasDate && !disabled ? (
+              <motion.button
+                type="button"
+                aria-label="Clear date"
+                title="Clear date"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+                transition={{ duration: reduced ? 0 : 0.14 }}
+                onClick={clearDate}
+                className="date-icon-button grid h-8 w-8 place-items-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-white/[.08] hover:text-[var(--text)] active:bg-white/[.12] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+              >
+                <X size={15} aria-hidden="true" />
+              </motion.button>
+            ) : null}
+          </AnimatePresence>
+          <button
+            type="button"
+            aria-label={open ? "Fechar calendário" : "Abrir calendário"}
+            aria-pressed={open}
+            disabled={disabled}
+            onClick={() => open ? close() : openPicker()}
+            className={`date-icon-button grid h-8 w-8 place-items-center rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50 ${
+              open ? "bg-[var(--accent)]/12 text-[var(--accent)]" : "text-[var(--text-muted)] hover:bg-white/[.08] hover:text-[var(--text)] active:bg-white/[.12]"
+            }`}
+          >
+            <CalendarDays size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
 
       {open && position ? createPortal(
         <div

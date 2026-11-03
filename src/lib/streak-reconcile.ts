@@ -38,7 +38,34 @@ export interface ReconcileStreakResult {
   status: "qualified" | "alive" | "protected" | "broken" | "empty";
 }
 
+export interface StreakFreshness {
+  currentStreak: number;
+  latestFocusDay: string | null;
+  latestProtectedDay: string | null;
+  latestLogDay: string | null;
+  today: string;
+}
+
 const MAX_WINDOW_DAYS = 400;
+
+export function needsStreakReconciliation({
+  currentStreak,
+  latestFocusDay,
+  latestProtectedDay,
+  latestLogDay,
+  today,
+}: StreakFreshness): boolean {
+  const latestActivityDay = [latestFocusDay, latestProtectedDay]
+    .filter((day): day is string => day !== null)
+    .sort()
+    .at(-1);
+
+  if (latestActivityDay && (!latestLogDay || latestActivityDay > latestLogDay)) {
+    return true;
+  }
+
+  return currentStreak > 0 && (!latestLogDay || latestLogDay < shiftIso(today, -1));
+}
 
 export function reconcileStreak({
   focusDays,

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { handleRoute, jsonOk, readJsonBody, routeContext } from "@/lib/http";
 import { ValidationError } from "@/lib/db/validation";
 
 import {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     return jsonOk({ tasks, labels });
-  });
+  }, routeContext(request, "/api/kanban"));
 }
 
 export async function POST(request: NextRequest) {
@@ -153,5 +153,5 @@ export async function POST(request: NextRequest) {
     });
 
     return jsonOk({ task }, 201);
-  });
+  }, routeContext(request, "/api/kanban"));
 }

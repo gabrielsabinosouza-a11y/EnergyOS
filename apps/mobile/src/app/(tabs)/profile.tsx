@@ -78,7 +78,7 @@ export default function ProfileScreen() {
       </View>
       <Card style={styles.card}>
         <Text variant="heading">{profile?.displayName || user?.displayName || 'Pessoa EnergyOS'}</Text>
-        <Text color={theme.textSecondary}>{user.email}</Text>
+        <Text color={theme.textSecondary}>{user?.email}</Text>
         {profile?.username ? <Text color={theme.accent}>@{profile.username}</Text> : null}
         {profile ? (
           <View style={styles.stats}>

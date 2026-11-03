@@ -1,47 +1,52 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { handleRoute, jsonOk } from "@/lib/http";
-import { computeStreak, getStreakCalendar, getStreakInfo } from "@/lib/db/tasks";
+import { handleRoute, jsonOk, routeContext } from "@/lib/http";
+import { computeStreak, getStreakCalendar } from "@/lib/db/tasks";
 import { ValidationError } from "@/lib/db/validation";
-import { todayIso, addDaysIso } from "@/lib/db/dates";
+import { APP_TIMEZONE, todayIso } from "@/lib/db/dates";
 import pool from "@/lib/db";
+import { needsStreakReconciliation } from "@/lib/streak-reconcile";
 
-/**
- * Check if streak data is stale (needs reconciliation).
- * A simple heuristic: if the last streak computation was today, we can skip recomputation.
- */
 async function isStreakStale(profileId: string, today: string): Promise<boolean> {
-  // Check if there are any focus sessions today that haven't been processed
-  const sessionsRes = await pool.query<{ n: string }>(
-    `select count(*)::int as n
-       from focus_sessions
-      where profile_id = $1
-        and ended_at is not null
-        and duration_minutes >= 1
-        and (ended_at at time zone 'America/Sao_Paulo')::date = $2::date`,
-    [profileId, today],
+  const result = await pool.query<{
+    current_streak: number;
+    latest_focus_day: string | null;
+    latest_protected_day: string | null;
+    latest_log_day: string | null;
+  }>(
+    `select coalesce(p.current_streak, 0)::int as current_streak,
+       (select to_char(max((fs.ended_at at time zone $2)::date), 'YYYY-MM-DD')
+          from focus_sessions fs
+         where fs.profile_id = p.id
+           and fs.ended_at is not null
+           and fs.duration_minutes >= 1
+           and (fs.ended_at at time zone $2)::date > ($3::date - interval '400 days')
+           and (fs.ended_at at time zone $2)::date <= $3::date) as latest_focus_day,
+       (select to_char(max(su.used_on_date), 'YYYY-MM-DD')
+          from streak_shield_usage su
+         where su.profile_id = p.id
+           and su.used_on_date > ($3::date - interval '400 days')
+           and su.used_on_date <= $3::date) as latest_protected_day,
+       (select to_char(max(sdl.log_date), 'YYYY-MM-DD')
+          from streak_day_log sdl
+         where sdl.profile_id = p.id
+           and sdl.log_date > ($3::date - interval '400 days')
+           and sdl.log_date <= $3::date) as latest_log_day
+       from profiles p
+      where p.id = $1`,
+    [profileId, APP_TIMEZONE, today],
   );
-  
-  const todaySessions = Number(sessionsRes.rows[0]?.n ?? 0);
-  
-  if (todaySessions === 0) {
-    // No sessions today, check if streak_day_log has today's entry
-    const logRes = await pool.query<{ n: string }>(
-      `select count(*)::int as n from streak_day_log where profile_id = $1 and log_date = $2::date`,
-      [profileId, today],
-    );
-    return Number(logRes.rows[0]?.n ?? 0) === 0;
-  }
-  
-  // Has sessions today, check if streak_day_log has today as 'success'
-  const logRes = await pool.query<{ status: string }>(
-    `select status from streak_day_log where profile_id = $1 and log_date = $2::date`,
-    [profileId, today],
-  );
-  
-  // If no entry or not 'success', we need to reconcile
-  return !logRes.rows[0] || logRes.rows[0].status !== 'success';
+  const row = result.rows[0];
+  if (!row) return true;
+
+  return needsStreakReconciliation({
+    currentStreak: row.current_streak,
+    latestFocusDay: row.latest_focus_day,
+    latestProtectedDay: row.latest_protected_day,
+    latestLogDay: row.latest_log_day,
+    today,
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -65,8 +70,6 @@ export async function GET(request: NextRequest) {
 
     const today = todayIso();
     
-    // Only reconcile if data is stale (not already computed for today)
-    // This avoids expensive computeStreak on every calendar request
     const needsReconciliation = await isStreakStale(profileId, today);
     if (needsReconciliation) {
       await computeStreak(profileId, today);
@@ -74,5 +77,5 @@ export async function GET(request: NextRequest) {
 
     const byDate = await getStreakCalendar(profileId, year, month);
     return jsonOk({ year, month, days: byDate });
-  });
+  }, routeContext(request, "/api/streak-calendar"));
 }

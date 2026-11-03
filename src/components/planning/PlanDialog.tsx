@@ -10,6 +10,7 @@ import { formatTimeInput, isValidTime24 } from "@/lib/planning/time";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
 import { PlannerDatePicker } from "./PlannerDatePicker";
+import { CategoryPicker } from "./CategoryPicker";
 
 type RepeatScope = "occurrence" | "series";
 type ReminderOption = "sem-lembrete" | "no-horario" | "5-min" | "10-min" | "30-min" | "1-hora";
@@ -78,7 +79,7 @@ export function PlanDialog({
 }: PlanDialogProps) {
   // State for form fields
   const [title, setTitle] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [planDate, setPlanDate] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [endTime, setEndTime] = useState<string | null>(null);
@@ -109,7 +110,7 @@ export function PlanDialog({
     // o que o usuário já digitou seria apagado no meio da digitação.
     if (open && !wasOpenRef.current) {
       setTitle(plan?.title ?? "");
-      setCategoryId(plan?.categoryId?.toString() ?? "");
+      setCategoryId(plan?.categoryId?.toString() ?? null);
       const nextDate = plan
         ? plan.seriesId !== null ? plan.seriesStartDate ?? plan.planDate ?? null : plan.planDate ?? null
         : recurrenceInitialDate(initialDate, selectedDate, todayIso());
@@ -142,8 +143,10 @@ export function PlanDialog({
 
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
-  const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
-  const selectedCategory = categories.find((category) => String(category.id) === selectedCategoryId) ?? plan?.category;
+  const selectedCategoryId = categoryId ?? plan?.categoryId?.toString() ?? String(categories[0]?.id ?? "");
+  const selectedCategory = selectedCategoryId
+    ? categories.find((category) => String(category.id) === selectedCategoryId) ?? plan?.category
+    : undefined;
 
   function recurrenceValidation(startDate: string | null, days: number[], endDate: string | null, endType = repeatEndType, endCount = repeatEndCount) {
     return validateWeeklyRecurrence({
@@ -333,7 +336,7 @@ export function PlanDialog({
           </div>
         }
       >
-        <form id="planner-plan-form" onSubmit={handleSubmit} className="space-y-5">
+        <form id="planner-plan-form" onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-1.5">
             <label htmlFor="planner-plan-title" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Título
@@ -350,29 +353,18 @@ export function PlanDialog({
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <label htmlFor="planner-plan-category" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Categoria
             </label>
-            <select
+            <CategoryPicker
               id="planner-plan-category"
+              categories={categories}
               value={selectedCategoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-              className="glass-field"
-              style={selectedCategory ? {
-                color: selectedCategory.color,
-                borderColor: `${selectedCategory.color}80`,
-                backgroundColor: `${selectedCategory.color}12`,
-              } : undefined}
-            >
-              {!recurringOccurrence ? <option value="">Padrão</option> : null}
-              {!categories.some((category) => String(category.id) === selectedCategoryId)
-                ? <option value={selectedCategoryId} style={{ color: plan?.category.color }}>{plan?.category.name ?? "Categoria atual"}</option>
-                : null}
-              {categories.map((category) => (
-                <option key={category.id} value={String(category.id)} style={{ color: category.color }}>{category.name}</option>
-              ))}
-            </select>
+              allowDefault={!recurringOccurrence}
+              fallbackCategory={selectedCategory}
+              onChange={setCategoryId}
+            />
           </div>
 
           <div className="space-y-1.5">

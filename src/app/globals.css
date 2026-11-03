@@ -1711,7 +1711,8 @@ body { overflow-wrap: break-word; }
 }
 /* Foco independente do hover: anel ciano suave + luz interna. */
 .planner-glass-modal .glass-field:focus,
-.planner-glass-modal .glass-field:focus-visible {
+.planner-glass-modal .glass-field:focus-visible,
+.planner-glass-modal .glass-field:focus-within {
   border-color: color-mix(in srgb, var(--accent) 58%, transparent);
   background: linear-gradient(180deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .035));
   box-shadow:
@@ -1825,9 +1826,10 @@ body { overflow-wrap: break-word; }
   .planner-glass-modal .glass-field,
   .planner-glass-modal .glass-segment,
   .planner-glass-modal .glass-chip,
-  .planner-glass-modal .glass-cta { transition: none; }
+  .planner-glass-modal .glass-cta,
+  .category-option,
+  .date-icon-button { transition: none; }
   .planner-glass-modal .glass-segment:hover,
   .planner-glass-modal .glass-chip:hover,
   .planner-glass-modal .glass-cta:hover { transform: none; }
 }
-

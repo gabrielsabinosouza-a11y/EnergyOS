@@ -30,6 +30,13 @@ type Group = {
   unreadCount: number;
 };
 
+type UserSearchResult = {
+  id: string;
+  displayName: string;
+  username?: string;
+  relation: 'none' | 'friends' | 'pending_outgoing' | 'pending_incoming';
+};
+
 function errorText(error: unknown) {
   return error instanceof ApiError ? error.message : 'Não foi possível concluir esta ação.';
 }
@@ -39,7 +46,8 @@ export default function SocialScreen() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [friendId, setFriendId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,16 +79,34 @@ export default function SocialScreen() {
     void load();
   }, [load]);
 
-  async function sendRequest() {
-    const id = friendId.trim();
-    if (!id || saving) return;
+  async function searchUsers() {
+    const query = searchQuery.trim();
+    if (query.length < 2 || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.get<{ results: UserSearchResult[] }>(`/api/social/search?q=${encodeURIComponent(query)}`);
+      setSearchResults(result.results);
+      if (result.results.length === 0) setNotice('Nenhum perfil encontrado.');
+    } catch (searchError) {
+      setError(errorText(searchError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendRequest(addresseeId: string) {
     setSaving(true);
     setError('');
     setNotice('');
     try {
-      await api.post('/api/friends', { addresseeId: id });
-      setFriendId('');
+      await api.post('/api/friends', { addresseeId });
       setNotice('Solicitação de amizade enviada.');
+      setSearchResults((current) =>
+        current.map((result) =>
+          result.id === addresseeId ? { ...result, relation: 'pending_outgoing' } : result,
+        ),
+      );
       await load();
     } catch (sendError) {
       setError(errorText(sendError));
@@ -142,18 +168,34 @@ export default function SocialScreen() {
       {notice ? <Text accessibilityLiveRegion="polite" color={theme.green}>{notice}</Text> : null}
 
       <Card style={styles.form}>
-        <Text variant="sectionTitle">Adicionar amigo</Text>
-        <Text color={theme.textSecondary}>Use o ID do perfil para enviar uma solicitação.</Text>
+        <Text variant="sectionTitle">Encontrar pessoas</Text>
+        <Text color={theme.textSecondary}>Busque pelo nome ou @usuário.</Text>
         <TextInput
-          accessibilityLabel="ID do perfil para adicionar como amigo"
+          accessibilityLabel="Buscar pessoas pelo nome ou usuário"
           autoCapitalize="none"
-          onChangeText={setFriendId}
-          placeholder="ID do perfil"
+          onChangeText={setSearchQuery}
+          onSubmitEditing={() => void searchUsers()}
+          placeholder="Nome ou @usuário"
           placeholderTextColor={theme.textMuted}
           style={[styles.input, { backgroundColor: theme.surfaceHover, borderColor: theme.border, color: theme.text }]}
-          value={friendId}
+          value={searchQuery}
         />
-        <Button disabled={!friendId.trim()} loading={saving} onPress={sendRequest} title="Enviar solicitação" />
+        <Button disabled={searchQuery.trim().length < 2} loading={saving} onPress={searchUsers} title="Buscar" variant="secondary" />
+        {searchResults.map((result) => (
+          <View key={result.id} style={[styles.searchResult, { borderTopColor: theme.border }]}>
+            <View style={styles.copy}>
+              <Text variant="label">{result.displayName}</Text>
+              {result.username ? <Text color={theme.textSecondary}>@{result.username}</Text> : null}
+            </View>
+            {result.relation === 'none' ? (
+              <Button disabled={saving} onPress={() => void sendRequest(result.id)} title="Adicionar" />
+            ) : (
+              <Text color={theme.textSecondary} variant="caption">
+                {result.relation === 'friends' ? 'Amigos' : result.relation === 'pending_incoming' ? 'Solicitação recebida' : 'Pendente'}
+              </Text>
+            )}
+          </View>
+        ))}
       </Card>
 
       {requests.filter((request) => request.direction === 'incoming').length > 0 ? (
@@ -238,6 +280,7 @@ const styles = StyleSheet.create({
   section: { gap: 12 },
   form: { gap: 12 },
   input: { borderRadius: 12, borderWidth: 1, minHeight: 48, paddingHorizontal: 14 },
+  searchResult: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 12, paddingTop: 10 },
   item: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
   copy: { flex: 1, gap: 4 },
   actions: { alignItems: 'center', flexDirection: 'row', gap: 6 },

@@ -8,16 +8,16 @@ access `src/lib/db`, PostgreSQL, or browser-only modules.
 
 | Web area | Web source | Mobile destination | Status |
 |---|---|---|---|
-| Sign-in, registration, password recovery | `src/app/(auth)/login`, `cadastro`; `src/lib/firebase.ts` | `src/app/(auth)/*`, `src/auth/` | Email/password, restore, reset, sign-out implemented; Google pending native integration |
-| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx`, `src/features/dashboard`, `tasks`, `habits` | Dashboard snapshot, check-in, date-specific task completion, habit creation, and server-confirmed habit progress implemented; habit editing/history and quests pending |
-| Planner (day/week/month), recurring plans | `src/app/planner`; `src/components/planning/`, `weekly-plan/` | `src/app/(tabs)/planner.tsx`, `src/features/planner` | Navigation shell only |
-| Consistency, streaks, reports, recap | `src/app/dashboard/consistencia`, `src/app/relatorio`; recap components | `src/app/progress/*`, `src/features/progress` | Not implemented |
-| Focus timer and rooms | `src/components/dashboard/focus-timer.tsx`, `src/app/salas-de-foco/` | `src/app/(tabs)/focus.tsx`, `src/features/focus` | Navigation shell only |
-| Friends, public profiles, direct messages | `src/app/amigos/`, `src/app/perfil/[id]/`, `src/components/chat/` | `src/app/social/*`, `src/features/social` | Navigation shell only |
-| Groups and group chat | `src/app/grupos/`, group/chat components | `src/app/social/groups/*`, `src/features/groups` | Not implemented |
-| Goals and goal habits | `src/app/dashboard/`, goals components | `src/app/goals/*`, `src/features/goals` | Not implemented |
-| Profile and settings | `src/app/perfil/`, `src/app/configuracoes/` | `src/app/(tabs)/profile.tsx`, `src/app/settings/*` | Firebase account identity and sign-out implemented; profile data and settings API pending |
-| Achievements, store, garden, league | `src/app/perfil/`, `src/app/loja/`, `jardim/`, `liga/` | `src/app/rewards/*`, `src/features/rewards` | Not implemented |
+| Sign-in, registration, password recovery | `src/app/(auth)/login`, `cadastro`; `src/lib/firebase.ts` | `src/app/(auth)/*`, `src/auth/` | Email/password, auth restore, reset, and sign-out implemented; Google pending native integration |
+| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx` | Dashboard, check-in, date-specific task completion, habit creation and progress implemented; habit history/editing and quests pending |
+| Planner (day/week/month), recurring plans | `src/app/planner`; `src/components/planning/`, `weekly-plan/` | `src/app/(tabs)/planner.tsx` | Weekly plans load, create, complete, and delete through the API; month/day calendar and recurring-series controls pending |
+| Consistency, streaks, reports, recap | `src/app/dashboard/consistencia`, `src/app/relatorio`; recap components | `src/app/(tabs)/more/reports.tsx` | Recent report metrics, streak calendar summary, and weekly comparison implemented; monthly recap pending |
+| Focus timer and rooms | `src/components/dashboard/focus-timer.tsx`, `src/app/salas-de-foco/` | `src/app/(tabs)/focus.tsx` | Personal session start/end/history, room list/create, and code-based join implemented; room controls and reliable active-session restoration pending |
+| Friends, public profiles, direct messages | `src/app/amigos/`, `src/app/perfil/[id]/`, `src/components/chat/` | `src/app/(tabs)/social.tsx`, `src/app/(tabs)/more/dm/[friendId].tsx` | Search, friend requests, and text DMs implemented with bounded polling; public profile details, media, and richer message actions pending |
+| Groups and group chat | `src/app/grupos/`, group/chat components | `src/app/(tabs)/social.tsx`, `src/app/(tabs)/more/groups/[id].tsx` | Group list/create and text chat implemented with bounded polling; invite/member/leaderboard management pending |
+| Goals and goal habits | `src/app/dashboard/`, goals components | `src/app/(tabs)/more/goals.tsx` | Goal creation and server-confirmed progress logs implemented; goal habit management pending |
+| Profile and settings | `src/app/perfil/`, `src/app/configuracoes/` | `src/app/(tabs)/profile.tsx`, `src/app/(tabs)/more/settings.tsx` | Profile display name, account sign-out, and persisted notification/theme/routine preferences implemented; photo/avatar customization pending |
+| Achievements, store, garden, league | `src/app/perfil/`, `src/app/loja/`, `jardim/`, `liga/` | `src/app/(tabs)/more/{achievements,store,garden,league}.tsx` | Achievement progress/highlights, decoration and shield purchases, garden view, and current league standings implemented |
 
 “Navigation shell only” means the route and themed layout exist but do not yet
 load or mutate user data. No product feature is considered complete until it uses
@@ -54,7 +54,8 @@ rewards, permissions, and balances; never reproduce reward calculations on-devic
   active personal focus session. A session cannot be reliably restored after app
   suspension without a server contract change.
 - Messaging and focus-room updates are HTTP polling flows, not a documented
-  websocket/SSE protocol. The mobile app must use bounded polling and refresh.
+  websocket/SSE protocol. The mobile app uses bounded 15-second polling for
+  conversations and pull-to-refresh; there is no background polling.
 - Current push subscriptions use browser Web Push/service workers; they do not
   register native APNs/FCM tokens.
 - Web media paths use browser APIs and Cloudinary upload flows. Native selection,
@@ -67,13 +68,9 @@ rewards, permissions, and balances; never reproduce reward calculations on-devic
   build; Expo Go cannot run the provider package. Build and OAuth client setup must
   be configured before this flow can be tested.
 
-## Delivery order
+## Mobile navigation
 
-1. Auth restore and typed API transport.
-2. Dashboard, check-in, tasks/habits, then focus.
-3. Profile/settings, goals and planner.
-4. Consistency/reports and reward surfaces.
-5. Friends, groups, chat, rooms, native media/push and hardening.
-
-The first native pass uses five bottom tabs: Hoje, Planejar, Foco, Social, Perfil.
-Detail and secondary features belong in stack routes rather than overcrowding tabs.
+The app uses five bottom tabs: Hoje, Planejar, Foco, Social, and Perfil.
+Secondary screens (goals, reports, achievements, league, store, garden,
+settings, and conversations) are nested in the authenticated stack so the tab
+bar remains focused on daily use.

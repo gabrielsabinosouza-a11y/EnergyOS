@@ -9,6 +9,7 @@ type FocusSession = {
   id: number;
   startedAt: string;
   durationMinutes: number;
+  targetDurationMinutes: number;
   xpEarned: number;
 };
 
@@ -189,7 +190,7 @@ export default function FocusScreen() {
       <Card style={styles.center}>
         <Text color={theme.textSecondary} variant="caption">SESSÃO PESSOAL</Text>
         <Text color={theme.accent} style={styles.timer} variant="title">
-          {activeSession ? formatTime(Math.max(0, Number(activeSession.durationMinutes) * 60 - seconds)) : `${targetMinutes}:00`}
+          {activeSession ? formatTime(Math.max(0, Number(activeSession.targetDurationMinutes) * 60 - seconds)) : formatTime((Number(targetMinutes) || 0) * 60)}
         </Text>
         {activeSession ? (
           <>

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { handleRoute, jsonOk, readJsonBody, routeContext } from "@/lib/http";
 import { updateKanbanTask, deleteKanbanTask } from "@/lib/db/kanban";
 import { awardKanbanCompletion } from "@/lib/db/kanban";
 import pool from "@/lib/db";
@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ? await awardKanbanCompletion(profileId, taskId)
         : { xpAwarded: 0, coinsAwarded: 0 };
     return jsonOk({ task, xpAwarded, coinsAwarded });
-  });
+  }, routeContext(request, "/api/kanban/[id]"));
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -51,5 +51,5 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { id } = await params;
     await deleteKanbanTask(profileId, Number(id));
     return jsonOk({ ok: true });
-  });
+  }, routeContext(request, "/api/kanban/[id]"));
 }

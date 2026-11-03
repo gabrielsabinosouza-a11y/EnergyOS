@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
+import { handleRoute, jsonOk, readJsonBody, routeContext } from "@/lib/http";
 import { moveKanbanTask } from "@/lib/db/kanban";
 import { awardKanbanCompletion } from "@/lib/db/kanban";
 import type { KanbanStatus } from "@/types";
@@ -39,5 +39,5 @@ export async function POST(request: NextRequest) {
     }
     
     return jsonOk({ task, xpAwarded, coinsAwarded });
-  });
+  }, routeContext(request, "/api/kanban/move"));
 }
