@@ -9,14 +9,14 @@ access `src/lib/db`, PostgreSQL, or browser-only modules.
 | Web area | Web source | Mobile destination | Status |
 |---|---|---|---|
 | Sign-in, registration, password recovery | `src/app/(auth)/login`, `cadastro`; `src/lib/firebase.ts` | `src/app/(auth)/*`, `src/auth/` | Email/password, restore, reset, sign-out implemented; Google pending native integration |
-| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx`, `src/features/dashboard`, `tasks`, `habits` | Dashboard snapshot, check-in, and date-specific task completion implemented; recurring habits/quests pending |
+| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx`, `src/features/dashboard`, `tasks`, `habits` | Dashboard snapshot, check-in, date-specific task completion, habit creation, and server-confirmed habit progress implemented; habit editing/history and quests pending |
 | Planner (day/week/month), recurring plans | `src/app/planner`; `src/components/planning/`, `weekly-plan/` | `src/app/(tabs)/planner.tsx`, `src/features/planner` | Navigation shell only |
 | Consistency, streaks, reports, recap | `src/app/dashboard/consistencia`, `src/app/relatorio`; recap components | `src/app/progress/*`, `src/features/progress` | Not implemented |
 | Focus timer and rooms | `src/components/dashboard/focus-timer.tsx`, `src/app/salas-de-foco/` | `src/app/(tabs)/focus.tsx`, `src/features/focus` | Navigation shell only |
 | Friends, public profiles, direct messages | `src/app/amigos/`, `src/app/perfil/[id]/`, `src/components/chat/` | `src/app/social/*`, `src/features/social` | Navigation shell only |
 | Groups and group chat | `src/app/grupos/`, group/chat components | `src/app/social/groups/*`, `src/features/groups` | Not implemented |
 | Goals and goal habits | `src/app/dashboard/`, goals components | `src/app/goals/*`, `src/features/goals` | Not implemented |
-| Profile and settings | `src/app/perfil/`, `src/app/configuracoes/` | `src/app/(tabs)/profile.tsx`, `src/app/settings/*` | Navigation shell only |
+| Profile and settings | `src/app/perfil/`, `src/app/configuracoes/` | `src/app/(tabs)/profile.tsx`, `src/app/settings/*` | Firebase account identity and sign-out implemented; profile data and settings API pending |
 | Achievements, store, garden, league | `src/app/perfil/`, `src/app/loja/`, `jardim/`, `liga/` | `src/app/rewards/*`, `src/features/rewards` | Not implemented |
 
 “Navigation shell only” means the route and themed layout exist but do not yet

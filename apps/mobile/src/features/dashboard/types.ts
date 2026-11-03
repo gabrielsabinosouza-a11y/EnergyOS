@@ -42,3 +42,28 @@ export type CheckinResponse = {
   xpAwarded: number;
   coinsAwarded: number;
 };
+
+export type DailyHabit = {
+  id: number;
+  title: string;
+  taskDate: string;
+  isCompleted: boolean;
+  dailyTarget: number;
+  completedCount: number;
+};
+
+export type DailyHabitsResponse = {
+  tasks: DailyHabit[];
+  date: string;
+};
+
+export type DailyHabitCreateResponse = {
+  task: DailyHabit;
+  date: string;
+};
+
+export type DailyHabitProgressResponse = {
+  task: DailyHabit;
+  xpAwarded: number;
+  coinsAwarded: number;
+};

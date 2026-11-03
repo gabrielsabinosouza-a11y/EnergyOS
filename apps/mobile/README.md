@@ -2,8 +2,9 @@
 
 Native mobile client for EnergyOS, built with Expo, React Native, TypeScript, and Expo Router. It is isolated from the root web app with its own `package.json` and `package-lock.json`; the repository root does not define npm workspaces.
 
-The current implementation includes Firebase email/password authentication and a
-first real-data dashboard slice. Remaining routes are not yet feature-complete. See
+The current implementation includes Firebase email/password authentication and
+API-backed dashboard/check-in, date-specific tasks, and daily habit creation and
+progress. Remaining routes and supporting flows are not yet feature-complete. See
 [`FEATURE_PARITY.md`](./FEATURE_PARITY.md) for the web-to-mobile coverage map,
 existing API families, native integration gaps, and implementation order.
 

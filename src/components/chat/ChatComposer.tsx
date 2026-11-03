@@ -11,6 +11,7 @@ import {
   Send,
 } from "lucide-react";
 import { validateImageFile, validateMediaSize, uploadToCloudinary } from "@/lib/media";
+import type { DirectMessageType } from "@/types";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
 
@@ -26,7 +27,7 @@ export interface ChatComposerProps {
   onSendText: (body: string) => Promise<void>;
   /** Persist a media send (IMAGE/DOCUMENT). */
   onSendMedia: (opts: {
-    messageType: string;
+    messageType: DirectMessageType;
     mediaUrl?: string;
     body?: string;
     mediaDurationSeconds?: number;
@@ -131,7 +132,7 @@ export function ChatComposer({
 
   /** Set busy while persisting; rethrows so callers surface a friendly error. */
   async function pushMedia(opts: {
-    messageType: string;
+    messageType: DirectMessageType;
     mediaUrl?: string;
     body?: string;
     mediaDurationSeconds?: number;

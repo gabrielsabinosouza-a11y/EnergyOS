@@ -2,8 +2,9 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import { handleRoute, jsonOk } from "@/lib/http";
-import { getStreakCalendar } from "@/lib/db/tasks";
+import { computeStreak, getStreakCalendar } from "@/lib/db/tasks";
 import { ValidationError } from "@/lib/db/validation";
+import { todayIso } from "@/lib/db/dates";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -23,6 +24,10 @@ export async function GET(request: NextRequest) {
     if (!Number.isInteger(month) || month < 0 || month > 11) {
       throw new ValidationError("Mês inválido.");
     }
+
+    // Always reconcile before reading the log so shields are consumed and
+    // streak_day_log is up-to-date even if the dashboard hasn't been opened yet.
+    await computeStreak(profileId, todayIso());
 
     const byDate = await getStreakCalendar(profileId, year, month);
     return jsonOk({ year, month, days: byDate });

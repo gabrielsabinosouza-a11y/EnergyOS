@@ -291,8 +291,8 @@ export async function computeStreak(profileId: string, today: string): Promise<S
       }
     }
 
-    // streak_day_log: escopo = dias com realidade conhecida (foco, protegidos,
-    // perdidos) — nunca sobrescrever "protected" com "lost".
+    // streak_day_log: single source of truth for calendar rendering.
+    // Priority: success > protected > lost — never downgrade a better status.
     for (const day of focusDays) {
       await client.query(
         `insert into streak_day_log (profile_id, log_date, status)
@@ -301,11 +301,13 @@ export async function computeStreak(profileId: string, today: string): Promise<S
         [profileId, day],
       );
     }
+    // Only write 'protected' when the day has no focus session (never downgrade success → protected).
     for (const day of [...protectedDays, ...newProtectedDays]) {
       await client.query(
         `insert into streak_day_log (profile_id, log_date, status)
          values ($1, $2, 'protected')
-         on conflict (profile_id, log_date) do update set status = 'protected'`,
+         on conflict (profile_id, log_date)
+         do update set status = case when streak_day_log.status = 'success' then 'success' else 'protected' end`,
         [profileId, day],
       );
     }
@@ -314,7 +316,10 @@ export async function computeStreak(profileId: string, today: string): Promise<S
         `insert into streak_day_log (profile_id, log_date, status)
          values ($1, $2, 'lost')
          on conflict (profile_id, log_date)
-         do update set status = case when streak_day_log.status = 'protected' then 'protected' else 'lost' end`,
+         do update set status = case
+           when streak_day_log.status in ('success', 'protected') then streak_day_log.status
+           else 'lost'
+         end`,
         [profileId, day],
       );
     }
@@ -383,10 +388,9 @@ export async function computeStreak(profileId: string, today: string): Promise<S
 }
 
 /**
- * Historia real por dia para o calendario de sequencia: mapeia cada dia de um
- * mes para o estado correspondente do streak, reutilizando o MESMO predicado de
- * `computeStreak` (sessao de foco qualificada OR dia protegido por escudo).
- * Nao recalcula o streak — so consulta o historico ja existente.
+ * Historia real por dia para o calendario de sequencia: le diretamente do
+ * streak_day_log, que e a fonte unica de verdade escrita por computeStreak.
+ * Dias sem entrada no log nao aparecem (sem streak naquele dia).
  */
 export async function getStreakCalendar(
   profileId: string,
@@ -400,34 +404,19 @@ export async function getStreakCalendar(
   const nextYear = month === 11 ? year + 1 : year;
   const toDateExclusive = `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-01`;
 
-  // Dia "vivo" por sessao de foco qualificada (mesmo predicado do streak).
-  const sessions = await pool.query<{ day: string }>(
-    `select to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day
-       from focus_sessions
-      where profile_id = $2
-        and ended_at is not null
-        and duration_minutes >= 1
-        and (ended_at at time zone $1)::date >= $3::date
-        and (ended_at at time zone $1)::date < $4::date`,
-    [APP_TIMEZONE, profileId, fromDate, toDateExclusive],
+  const logRes = await pool.query<{ log_date: string; status: string }>(
+    `select to_char(log_date, 'YYYY-MM-DD') as log_date, status
+       from streak_day_log
+      where profile_id = $1
+        and log_date >= $2::date
+        and log_date < $3::date`,
+    [profileId, fromDate, toDateExclusive],
   );
 
   const byDate: Record<string, StreakDayStatus> = {};
-  for (const row of sessions.rows) byDate[row.day] = "success";
-
-  // Dia protegido por escudo (sobrescreve apenas onde nao houve sessao).
-  const protectedRes = await pool.query<{ day: string }>(
-    `select to_char(used_on_date, 'YYYY-MM-DD') as day
-       from streak_shield_usage
-      where profile_id = $1
-        and used_on_date >= $2::date
-        and used_on_date < $3::date`,
-    [profileId, fromDate, toDateExclusive],
-  );
-  for (const row of protectedRes.rows) {
-    if (!byDate[row.day]) byDate[row.day] = "protected";
+  for (const row of logRes.rows) {
+    byDate[row.log_date] = row.status as StreakDayStatus;
   }
-
   return byDate;
 }
 

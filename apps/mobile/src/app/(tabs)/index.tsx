@@ -4,12 +4,21 @@ import {
   Pressable,
   RefreshControl,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 
 import { ApiError, api } from '@/shared/api';
 import { Button, Card, ErrorState, Screen, Skeleton, Text } from '@/shared/components';
-import type { CheckinResponse, DashboardSnapshot, DashboardTask } from '@/features/dashboard/types';
+import type {
+  CheckinResponse,
+  DailyHabit,
+  DailyHabitCreateResponse,
+  DailyHabitProgressResponse,
+  DailyHabitsResponse,
+  DashboardSnapshot,
+  DashboardTask,
+} from '@/features/dashboard/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const ENERGY_OPTIONS = [1, 2, 3, 4, 5] as const;
@@ -31,8 +40,19 @@ export default function TodayScreen() {
   const [checkinMessage, setCheckinMessage] = useState('');
   const [taskPendingId, setTaskPendingId] = useState<number | null>(null);
   const [taskError, setTaskError] = useState('');
+  const [dailyHabits, setDailyHabits] = useState<DailyHabit[]>([]);
+  const [dailyHabitsLoading, setDailyHabitsLoading] = useState(true);
+  const [dailyHabitsError, setDailyHabitsError] = useState('');
+  const [dailyHabitPendingId, setDailyHabitPendingId] = useState<number | null>(null);
+  const [dailyHabitNotice, setDailyHabitNotice] = useState('');
+  const [habitDraft, setHabitDraft] = useState('');
+  const [savingHabit, setSavingHabit] = useState(false);
 
   const requestSnapshot = useCallback(() => api.get<DashboardSnapshot>('/api/dashboard'), []);
+  const requestDailyHabits = useCallback(
+    () => api.get<DailyHabitsResponse>('/api/daily-tasks'),
+    [],
+  );
 
   const loadSnapshot = useCallback(async () => {
     try {
@@ -46,6 +66,19 @@ export default function TodayScreen() {
       setRefreshing(false);
     }
   }, [requestSnapshot]);
+
+  const loadDailyHabits = useCallback(async () => {
+    setDailyHabitsLoading(true);
+    try {
+      const result = await requestDailyHabits();
+      setDailyHabits(result.tasks);
+      setDailyHabitsError('');
+    } catch (loadError) {
+      setDailyHabitsError(getErrorMessage(loadError));
+    } finally {
+      setDailyHabitsLoading(false);
+    }
+  }, [requestDailyHabits]);
 
   useEffect(() => {
     let active = true;
@@ -69,11 +102,31 @@ export default function TodayScreen() {
     };
   }, [requestSnapshot]);
 
+  useEffect(() => {
+    let active = true;
+    requestDailyHabits()
+      .then((result) => {
+        if (!active) return;
+        setDailyHabits(result.tasks);
+        setDailyHabitsError('');
+      })
+      .catch((loadError: unknown) => {
+        if (active) setDailyHabitsError(getErrorMessage(loadError));
+      })
+      .finally(() => {
+        if (active) setDailyHabitsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [requestDailyHabits]);
+
   const refresh = useCallback(() => {
     setRefreshing(true);
     setError('');
-    void loadSnapshot();
-  }, [loadSnapshot]);
+    void Promise.all([loadSnapshot(), loadDailyHabits()]).finally(() => setRefreshing(false));
+  }, [loadDailyHabits, loadSnapshot]);
 
   async function saveCheckin() {
     if (energyScore === null || savingCheckin) return;
@@ -107,6 +160,51 @@ export default function TodayScreen() {
       setTaskError(getErrorMessage(completeError));
     } finally {
       setTaskPendingId(null);
+    }
+  }
+
+  async function updateDailyHabit(habit: DailyHabit, completedCount: number) {
+    if (dailyHabitPendingId !== null || completedCount === habit.completedCount) return;
+    setDailyHabitPendingId(habit.id);
+    setDailyHabitsError('');
+    setDailyHabitNotice('');
+    try {
+      const result = await api.patch<DailyHabitProgressResponse>(
+        `/api/daily-tasks/${habit.id}`,
+        { completedCount },
+      );
+      setDailyHabits((current) =>
+        current.map((item) => (item.id === habit.id ? result.task : item)),
+      );
+      const rewards = [
+        result.xpAwarded > 0 ? `+${result.xpAwarded} XP` : '',
+        result.coinsAwarded > 0 ? `+${result.coinsAwarded} moedas` : '',
+      ].filter(Boolean);
+      setDailyHabitNotice(
+        rewards.length > 0 ? `Progresso salvo · ${rewards.join(' · ')}` : 'Progresso salvo.',
+      );
+    } catch (updateError) {
+      setDailyHabitsError(getErrorMessage(updateError));
+    } finally {
+      setDailyHabitPendingId(null);
+    }
+  }
+
+  async function createDailyHabit() {
+    const title = habitDraft.trim();
+    if (!title || savingHabit) return;
+    setSavingHabit(true);
+    setDailyHabitsError('');
+    setDailyHabitNotice('');
+    try {
+      const result = await api.post<DailyHabitCreateResponse>('/api/daily-tasks', { title });
+      setDailyHabits((current) => [...current, result.task]);
+      setHabitDraft('');
+      setDailyHabitNotice('Hábito criado.');
+    } catch (createError) {
+      setDailyHabitsError(getErrorMessage(createError));
+    } finally {
+      setSavingHabit(false);
     }
   }
 
@@ -280,6 +378,112 @@ export default function TodayScreen() {
         ) : null}
       </Card>
 
+      <Card style={styles.section}>
+        <Text variant="sectionTitle">Hábitos de hoje</Text>
+        <Text color={theme.textSecondary}>
+          Seus check-ins e recompensas são registrados pela sua conta.
+        </Text>
+        {dailyHabitsLoading ? (
+          <Skeleton style={styles.habitsSkeleton} />
+        ) : dailyHabitsError && dailyHabits.length === 0 ? (
+          <ErrorState
+            description={dailyHabitsError}
+            onRetry={() => void loadDailyHabits()}
+            title="Não foi possível carregar seus hábitos"
+          />
+        ) : dailyHabits.length === 0 ? (
+          <Text color={theme.textSecondary}>Nenhum hábito está programado para hoje.</Text>
+        ) : (
+          dailyHabits.map((habit) => {
+            const pending = dailyHabitPendingId === habit.id;
+            const completed = habit.completedCount >= habit.dailyTarget;
+            return (
+              <View key={habit.id} style={[styles.task, { borderTopColor: theme.border }]}>
+                <View style={styles.taskCopy}>
+                  <Text color={completed ? theme.textMuted : theme.text} variant="label">
+                    {habit.title}
+                  </Text>
+                  <Text color={theme.textSecondary} variant="caption">
+                    {habit.completedCount} de {habit.dailyTarget}
+                  </Text>
+                </View>
+                <View style={styles.habitControls}>
+                  <Pressable
+                    accessibilityLabel={`Diminuir check-ins de ${habit.title}`}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      busy: pending,
+                      disabled: dailyHabitPendingId !== null || habit.completedCount === 0,
+                    }}
+                    disabled={dailyHabitPendingId !== null || habit.completedCount === 0}
+                    onPress={() => void updateDailyHabit(habit, habit.completedCount - 1)}
+                    style={[styles.habitStep, { borderColor: theme.border }]}>
+                    <Text color={theme.text} variant="label">−</Text>
+                  </Pressable>
+                  <Text
+                    accessibilityLabel={`${habit.title}: ${habit.completedCount} de ${habit.dailyTarget}`}
+                    accessibilityRole="progressbar"
+                    color={completed ? theme.green : theme.accent}
+                    variant="label">
+                    {pending ? '…' : `${habit.completedCount}/${habit.dailyTarget}`}
+                  </Text>
+                  <Pressable
+                    accessibilityLabel={`Adicionar check-in para ${habit.title}`}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      busy: pending,
+                      disabled: dailyHabitPendingId !== null || completed,
+                    }}
+                    disabled={dailyHabitPendingId !== null || completed}
+                    onPress={() => void updateDailyHabit(habit, habit.completedCount + 1)}
+                    style={[styles.habitStep, { borderColor: theme.accent }]}>
+                    <Text color={theme.accent} variant="label">+</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })
+        )}
+        <View style={styles.createHabit}>
+          <TextInput
+            accessibilityLabel="Nome do novo hábito"
+            editable={!savingHabit}
+            maxLength={40}
+            onChangeText={setHabitDraft}
+            onSubmitEditing={() => void createDailyHabit()}
+            placeholder="Criar um hábito"
+            placeholderTextColor={theme.textMuted}
+            returnKeyType="done"
+            style={[
+              styles.habitInput,
+              {
+                backgroundColor: theme.surfaceHover,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
+            value={habitDraft}
+          />
+          <Button
+            disabled={!habitDraft.trim()}
+            loading={savingHabit}
+            onPress={createDailyHabit}
+            title="Adicionar"
+            variant="secondary"
+          />
+        </View>
+        {dailyHabitsError && dailyHabits.length > 0 ? (
+          <Text accessibilityLiveRegion="polite" color={theme.red}>
+            {dailyHabitsError}
+          </Text>
+        ) : null}
+        {dailyHabitNotice ? (
+          <Text accessibilityLiveRegion="polite" color={theme.green}>
+            {dailyHabitNotice}
+          </Text>
+        ) : null}
+      </Card>
+
       {error ? (
         <Card style={styles.errorCard}>
           <Text accessibilityLiveRegion="polite" color={theme.red}>
@@ -308,6 +512,10 @@ const styles = StyleSheet.create({
   row: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   task: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, paddingTop: 12 },
   taskCopy: { flex: 1, gap: 4 },
+  habitControls: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  habitStep: { alignItems: 'center', borderRadius: 10, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  createHabit: { gap: 10 },
+  habitInput: { borderRadius: 10, borderWidth: 1, minHeight: 48, paddingHorizontal: 14 },
   complete: { alignItems: 'center', borderRadius: 10, borderWidth: 1, justifyContent: 'center', minHeight: 44, minWidth: 80, paddingHorizontal: 10 },
   errorCard: { borderColor: '#f87171' },
   eyebrowSkeleton: { height: 12, width: 130 },
@@ -315,4 +523,5 @@ const styles = StyleSheet.create({
   copySkeleton: { height: 20, width: '94%' },
   summarySkeleton: { height: 94 },
   cardSkeleton: { height: 208 },
+  habitsSkeleton: { height: 72 },
 });

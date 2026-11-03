@@ -42,6 +42,7 @@ import type {
   FriendRequest,
   UserSearchResult,
   DirectMessage,
+  DirectMessageType,
 } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -958,7 +959,7 @@ function ChatPanel({
     }
   }
 
-  async function handleSendMedia(opts: { messageType: string; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
+  async function handleSendMedia(opts: { messageType: DirectMessageType; mediaUrl?: string; body?: string; mediaDurationSeconds?: number; mediaFileName?: string; mediaMimeType?: string; mediaSizeBytes?: number }) {
     const tempId = nextTempId();
     addOptimisticMessage({
       id: tempId,
