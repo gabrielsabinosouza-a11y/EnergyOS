@@ -46,9 +46,14 @@ export async function ensureWeeklyPlanSeriesSchema() {
       skipped            boolean not null default false,
       override_title     text,
       override_start_time time,
+      override_category_id int references categories(id) on delete set null,
       reminder_offset_min int,
       unique (series_id, occurrence_date)
     )
+  `);
+  await pool.query(`
+    alter table weekly_plan_occurrences
+    add column if not exists override_category_id int references categories(id) on delete set null
   `);
   // Ensure the xp_ledger source CHECK constraint exists with the complete
   // list of valid sources (centralised — see ensureXpLedgerSourceCheck).
@@ -693,6 +698,7 @@ export async function skipOccurrence(profileId: string, seriesId: number, occurr
 
 export interface OccurrenceOverrideInput {
   title?: string;
+  categoryId?: number;
   startTime?: string | null;
   reminderOffsetMin?: number | null;
 }
@@ -707,6 +713,9 @@ export async function updateOccurrenceOverride(
   if (!Number.isInteger(seriesId) || seriesId <= 0) throw new ValidationError("Plano inválido.");
   occurrenceDate = parseDate(occurrenceDate, "Data da ocorrência");
   assertOccurrenceIsValid(await getOccurrenceRule(profileId, seriesId), occurrenceDate);
+  const categoryId = input.categoryId !== undefined
+    ? await assertCategoryForProfile(profileId, input.categoryId)
+    : undefined;
 
   // Verify ownership first
   const check = await pool.query(
@@ -724,6 +733,7 @@ export async function updateOccurrenceOverride(
     values.push(val);
   };
   if (input.title !== undefined) push("override_title = $N", input.title);
+  if (categoryId !== undefined) push("override_category_id = $N", categoryId);
   if (input.startTime !== undefined) push("override_start_time = $N", input.startTime);
   if (input.reminderOffsetMin !== undefined) push("reminder_offset_min = $N", input.reminderOffsetMin);
   if (sets.length === 0) throw new ValidationError("Nada para atualizar.");
@@ -865,22 +875,59 @@ export async function listWeeklyPlanOccurrences(profileId: string, weekStart: st
 
     for (const date of dates) {
       // Check if there's an occurrence record with state
-      const occResult = await pool.query(
-        `select id, completed_at, skipped, override_title, override_start_time, reminder_offset_min
-         from weekly_plan_occurrences
-         where series_id = $1 and occurrence_date = $2::date`,
+      const occResult = await pool.query<{
+        id: string | number;
+        completed_at: Date | string | null;
+        skipped: boolean;
+        override_title: string | null;
+        override_start_time: string | null;
+        override_category_id: string | number | null;
+        override_category_user_id: string | null;
+        override_category_name: string | null;
+        override_category_color: string | null;
+        override_category_icon: string | null;
+        override_category_is_custom: boolean | null;
+        override_category_created_at: Date | string | null;
+        reminder_offset_min: number | null;
+      }>(
+        `select o.id, o.completed_at, o.skipped, o.override_title, o.override_start_time,
+                o.override_category_id, c.user_id as override_category_user_id,
+                c.name as override_category_name, c.color as override_category_color,
+                c.icon as override_category_icon, c.is_custom as override_category_is_custom,
+                c.created_at as override_category_created_at, o.reminder_offset_min
+         from weekly_plan_occurrences o
+         left join categories c on c.id = o.override_category_id
+         where o.series_id = $1 and o.occurrence_date = $2::date`,
         [series.id, date],
       );
       const occ = occResult.rows[0];
       if (occ?.skipped) continue;
+
+      const category: Category = occ?.override_category_id != null
+        && occ.override_category_name !== null
+        && occ.override_category_color !== null
+        && occ.override_category_is_custom !== null
+        && occ.override_category_created_at !== null
+        ? {
+            id: Number(occ.override_category_id),
+            userId: occ.override_category_user_id,
+            name: occ.override_category_name,
+            color: occ.override_category_color,
+            icon: occ.override_category_icon,
+            isCustom: occ.override_category_is_custom,
+            createdAt: typeof occ.override_category_created_at === "string"
+              ? occ.override_category_created_at
+              : occ.override_category_created_at.toISOString(),
+          }
+        : series.category;
 
       items.push({
         id: occ ? Number(occ.id) : series.id, // use occurrence id if exists, else series id
         seriesId: series.id,
         planDate: date,
         title: occ?.override_title || series.title,
-        categoryId: series.categoryId,
-        category: series.category,
+        categoryId: category.id,
+        category,
         iconType: series.iconType,
         iconValue: series.iconValue,
         color: series.color,

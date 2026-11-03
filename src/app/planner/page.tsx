@@ -384,6 +384,7 @@ export default function PlanningPage() {
       if (scope === "series") {
         await api.updateWeeklyPlanSeries(plan.seriesId, {
           title: values.title,
+          categoryId: values.categoryId ?? plan.categoryId,
           startTime: values.startTime,
           reminderOffsetMin: values.reminderOffsetMin,
           repeatType: values.repeatType,
@@ -404,6 +405,9 @@ export default function PlanningPage() {
         }
         await api.updatePlanOccurrenceOverride(plan.seriesId, plan.planDate, {
           title: values.title,
+          ...(values.categoryId !== undefined && values.categoryId !== plan.categoryId
+            ? { categoryId: values.categoryId }
+            : {}),
           startTime: values.startTime,
           reminderOffsetMin: values.reminderOffsetMin,
         });
@@ -419,9 +423,17 @@ export default function PlanningPage() {
           incoming,
         ));
       } else {
+        const category = categories.find((item) => item.id === values.categoryId) ?? plan.category;
         updateTasks((current) => current.map((item) =>
           item.seriesId === plan.seriesId && item.planDate === plan.planDate
-            ? { ...item, title: values.title, startTime: values.startTime ?? null, reminderOffsetMin: values.reminderOffsetMin }
+            ? {
+                ...item,
+                title: values.title,
+                categoryId: values.categoryId ?? item.categoryId,
+                category,
+                startTime: values.startTime ?? null,
+                reminderOffsetMin: values.reminderOffsetMin,
+              }
             : item
         ));
       }
@@ -524,7 +536,7 @@ export default function PlanningPage() {
     mutationVersion.current += 1;
     updateTasks((current) => mergePlans(current, [fromWeeklyPlan(created)]));
     announce("Plano criado.");
-  }, [announce, dataRange.end, dataRange.start, updateTasks, weekStarts]);
+  }, [announce, categories, dataRange.end, dataRange.start, updateTasks, weekStarts]);
 
   const completionRequests = useRef(new Map<string, Promise<{ xpAwarded: number; coinsAwarded: number; balance?: number }>>());
   const completionSequence = useRef(new Map<string, number>());

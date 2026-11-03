@@ -14,9 +14,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await readJsonBody(request);
     await updateOccurrenceOverride(profileId, Number(id), date, {
       title: body.title as string | undefined,
+      categoryId: body.categoryId as number | undefined,
       startTime: body.startTime as string | null | undefined,
+      reminderOffsetMin: body.reminderOffsetMin as number | null | undefined,
     });
     return jsonOk({ ok: true });
   });
 }
-

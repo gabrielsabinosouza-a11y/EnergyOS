@@ -143,6 +143,7 @@ export function PlanDialog({
 
   /** Categoria efetiva: a escolhida pelo usuário ou a primeira disponível. */
   const selectedCategoryId = categoryId || String(plan?.categoryId ?? categories[0]?.id ?? "");
+  const selectedCategory = categories.find((category) => String(category.id) === selectedCategoryId) ?? plan?.category;
 
   function recurrenceValidation(startDate: string | null, days: number[], endDate: string | null, endType = repeatEndType, endCount = repeatEndCount) {
     return validateWeeklyRecurrence({
@@ -217,7 +218,7 @@ export function PlanDialog({
       return null;
     }
     const parsedCategoryId = Number(selectedCategoryId);
-    if (!recurringOccurrence && selectedCategoryId && (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0)) {
+    if (selectedCategoryId && (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0)) {
       setError("Escolha uma categoria.");
       return null;
     }
@@ -235,9 +236,7 @@ export function PlanDialog({
       // "null" como limpar a data e "undefined" como "não mexer".
       planDate: planDate ?? null,
       title: trimmedTitle,
-      categoryId: recurringOccurrence
-        ? plan!.categoryId
-        : selectedCategoryId ? parsedCategoryId : undefined,
+      categoryId: selectedCategoryId ? parsedCategoryId : undefined,
       startTime: startTime || null,
       endTime: recurringOccurrence ? null : endTime || null,
       repeatType: recurringOccurrence && plan?.repeatType === "interval" && !repeatChanged
@@ -360,14 +359,18 @@ export function PlanDialog({
               value={selectedCategoryId}
               onChange={(event) => setCategoryId(event.target.value)}
               className="glass-field"
-              disabled={Boolean(recurringOccurrence)}
+              style={selectedCategory ? {
+                color: selectedCategory.color,
+                borderColor: `${selectedCategory.color}80`,
+                backgroundColor: `${selectedCategory.color}12`,
+              } : undefined}
             >
               {!recurringOccurrence ? <option value="">Padrão</option> : null}
               {!categories.some((category) => String(category.id) === selectedCategoryId)
-                ? <option value={selectedCategoryId}>{plan?.category.name ?? "Categoria atual"}</option>
+                ? <option value={selectedCategoryId} style={{ color: plan?.category.color }}>{plan?.category.name ?? "Categoria atual"}</option>
                 : null}
               {categories.map((category) => (
-                <option key={category.id} value={String(category.id)}>{category.name}</option>
+                <option key={category.id} value={String(category.id)} style={{ color: category.color }}>{category.name}</option>
               ))}
             </select>
           </div>

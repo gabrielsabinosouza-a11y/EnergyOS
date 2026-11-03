@@ -2,8 +2,8 @@
 
 Native mobile client for EnergyOS, built with Expo, React Native, TypeScript, and Expo Router. It is isolated from the root web app with its own `package.json` and `package-lock.json`; the repository root does not define npm workspaces.
 
-The current implementation is the native theme and navigation shell. Its tab routes
-are not yet connected to authenticated product data. See
+The current implementation includes Firebase email/password authentication and a
+first real-data dashboard slice. Remaining routes are not yet feature-complete. See
 [`FEATURE_PARITY.md`](./FEATURE_PARITY.md) for the web-to-mobile coverage map,
 existing API families, native integration gaps, and implementation order.
 
@@ -26,6 +26,8 @@ If the phone cannot reach the computer over LAN, check the firewall/router isola
 
 - `src/app/` contains Expo Router routes and layouts.
 - `src/shared/components/` contains mobile primitives and accessible loading/error/empty states.
+- `src/shared/api/` contains the typed bearer-token API transport and error types.
+- `src/auth/` contains Firebase initialization and session state.
 - `src/constants/theme.ts` contains native tokens based on the web palette.
 - `src/features/`, `src/auth/`, and `src/shared/api/` will contain the feature and data layers as they are implemented.
 - `app.config.ts` contains Expo app configuration.

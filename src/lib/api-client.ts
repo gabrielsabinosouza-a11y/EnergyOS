@@ -334,7 +334,7 @@ export const api = {
     request<{ ok: true; xpAwarded: number; coinsAwarded: number; balance?: number }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}`, { method: "PATCH", body: JSON.stringify({ completed }) }),
   skipPlanOccurrence: (seriesId: number, date: string) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/skip`, { method: "PATCH" }),
-  updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; startTime?: string | null; reminderOffsetMin?: number | null }) =>
+  updatePlanOccurrenceOverride: (seriesId: number, date: string, input: { title?: string; categoryId?: number; startTime?: string | null; reminderOffsetMin?: number | null }) =>
     request<{ ok: true }>(`/api/weekly-plans/series/${seriesId}/occurrence/${date}/override`, { method: "PATCH", body: JSON.stringify(input) }),
 
   // Focus

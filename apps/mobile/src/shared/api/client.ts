@@ -1,7 +1,30 @@
 import { auth } from '@/auth/firebase';
+import type { User } from 'firebase/auth';
 import { ApiError } from './errors';
 
 type JsonRecord = Record<string, unknown>;
+
+function getTokenError(error: unknown): ApiError {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String(error.code)
+      : '';
+  if (code === 'auth/network-request-failed') {
+    return new ApiError('Não foi possível validar sua sessão por causa da conexão.', 'network');
+  }
+  if (code === 'auth/user-token-expired' || code === 'auth/invalid-user-token') {
+    return new ApiError('Sua sessão expirou. Entre novamente.', 'unauthorized', 401);
+  }
+  return new ApiError('Não foi possível validar sua sessão.', 'auth');
+}
+
+async function getIdToken(user: User, forceRefresh = false) {
+  try {
+    return await user.getIdToken(forceRefresh);
+  } catch (error) {
+    throw getTokenError(error);
+  }
+}
 
 function getBaseUrl(): string {
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
@@ -106,14 +129,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   const url = getRequestUrl(path);
   const method = (options.method ?? 'GET').toUpperCase();
-  const firstToken = await user.getIdToken();
+  const firstToken = await getIdToken(user);
   let response = await send(url, options, firstToken);
 
   if (
     response.status === 401 &&
     (method === 'GET' || method === 'HEAD' || method === 'OPTIONS')
   ) {
-    const refreshedToken = await user.getIdToken(true);
+    const refreshedToken = await getIdToken(user, true);
     response = await send(url, options, refreshedToken);
   }
 

@@ -2,8 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FirebaseError, getApp, getApps, initializeApp } from 'firebase/app';
 import {
   getAuth,
-  getReactNativePersistence,
   initializeAuth,
+  // @ts-expect-error The public Firebase docs expose this from the RN conditional entry.
+  getReactNativePersistence,
   type Auth,
 } from 'firebase/auth';
 import { Platform } from 'react-native';

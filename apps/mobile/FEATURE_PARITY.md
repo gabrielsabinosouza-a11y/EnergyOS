@@ -8,8 +8,8 @@ access `src/lib/db`, PostgreSQL, or browser-only modules.
 
 | Web area | Web source | Mobile destination | Status |
 |---|---|---|---|
-| Sign-in, registration, password recovery | `src/app/(auth)/login`, `cadastro`; `src/lib/firebase.ts` | `src/app/(auth)/*`, `src/auth/` | Not implemented |
-| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx`, `src/features/dashboard`, `tasks`, `habits` | Navigation shell only |
+| Sign-in, registration, password recovery | `src/app/(auth)/login`, `cadastro`; `src/lib/firebase.ts` | `src/app/(auth)/*`, `src/auth/` | Email/password, restore, reset, sign-out implemented; Google pending native integration |
+| Dashboard, check-in, daily tasks, habits, quests | `src/app/dashboard`; `src/components/dashboard/` | `src/app/(tabs)/index.tsx`, `src/features/dashboard`, `tasks`, `habits` | Dashboard snapshot, check-in, and date-specific task completion implemented; recurring habits/quests pending |
 | Planner (day/week/month), recurring plans | `src/app/planner`; `src/components/planning/`, `weekly-plan/` | `src/app/(tabs)/planner.tsx`, `src/features/planner` | Navigation shell only |
 | Consistency, streaks, reports, recap | `src/app/dashboard/consistencia`, `src/app/relatorio`; recap components | `src/app/progress/*`, `src/features/progress` | Not implemented |
 | Focus timer and rooms | `src/components/dashboard/focus-timer.tsx`, `src/app/salas-de-foco/` | `src/app/(tabs)/focus.tsx`, `src/features/focus` | Navigation shell only |
@@ -61,6 +61,9 @@ rewards, permissions, and balances; never reproduce reward calculations on-devic
   recording, and upload need an Expo-compatible adapter.
 - Some route families have separate versions or overloaded responses; confirm the
   exact response shape and authorization behavior at each implementation slice.
+- Native Google Sign-In requires a custom native module and therefore a development
+  build; Expo Go cannot run the provider package. Build and OAuth client setup must
+  be configured before this flow can be tested.
 
 ## Delivery order
 

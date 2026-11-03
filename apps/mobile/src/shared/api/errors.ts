@@ -1,5 +1,6 @@
 export type ApiErrorKind =
   | 'configuration'
+  | 'auth'
   | 'unauthorized'
   | 'validation'
   | 'rate_limit'
