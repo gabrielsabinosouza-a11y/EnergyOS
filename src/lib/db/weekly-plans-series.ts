@@ -59,9 +59,15 @@ export async function ensureWeeklyPlanSeriesSchema() {
   // list of valid sources (centralised — see ensureXpLedgerSourceCheck).
   await ensureXpLedgerSourceCheck();
   await pool.query(`
+  create index if not exists idx_wps_profile
+  on weekly_plan_series(profile_id, archived)
+`);
+
+await pool.query(`
   create index if not exists idx_wpo_series_date
   on weekly_plan_occurrences(series_id, occurrence_date)
 `);
+ 
 }
 
 // ── Query helpers ───────────────────────────────────────────────────────────────
