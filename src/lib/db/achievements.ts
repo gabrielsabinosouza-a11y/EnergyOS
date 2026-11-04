@@ -159,7 +159,6 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     sleepChampion,
     perfectWeeks,
     social,
-    rarest,
     squadLeader,
     focusCompanion,
     flowState,

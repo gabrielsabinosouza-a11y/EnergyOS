@@ -25,7 +25,6 @@ export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow
  * Tier-based icon assets (one image per unlock tier, 1-indexed), keyed by
  * achievement id. The icon shown for an achievement reflects its unlockedTier.
  * Some achievements have fewer images than tiers; the last image is reused for
- * higher tiers. `rarest_aura` has no asset and falls back to a lucide icon.
  */
 export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
   streak_master: [

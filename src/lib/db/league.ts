@@ -4,7 +4,6 @@ import { parseProfileId } from "./validation";
 import { leagueResetAtIso, sundayWeekStartIso, todayIso } from "./dates";
 import { getWeeklyFocusMinutesForProfiles } from "./focus";
 import { acceptedFriendIds } from "./social";
-import { unlockRarestAura } from "./achievements";
 import { LEAGUE_TIERS, TIER_META } from "@/lib/league-meta";
 import {
   DEMOTION_START_RANK,
@@ -135,9 +134,6 @@ async function finalizeWeek(oldWeek: string, newWeek: string): Promise<void> {
           [profileId, newWeek, nextTier],
         );
 
-        if (tier === "nucleo" && rank === 1) {
-          await unlockRarestAura(profileId);
-        }
       }
     }
 
