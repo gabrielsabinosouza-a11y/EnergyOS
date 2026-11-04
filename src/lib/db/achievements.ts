@@ -17,9 +17,8 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   early_riser: [5, 25, 100],
   sleep_champion: [10, 50, 100],
   consistency_king: [1, 10, 30],
-  xp_olympian: [1000, 10000, 50000],
+  xp_olympian: [1000, 10000, 30000],
   social_spark: [1, 5, 20],
-  rarest_aura: [1],
   top_1_global: [1],
   squad_leader: [3, 10, 20, 35],
   focus_companion: [1, 5, 10, 30],
@@ -34,7 +33,6 @@ const META: Record<string, { title: string; description: string; category: strin
   consistency_king: { title: "Rei da Consistência", description: "Semanas perfeitas de foco", category: "checkin" },
   xp_olympian: { title: "Olimpiano de XP", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Faísca Social", description: "Faça amigos e entre em grupos", category: "social" },
-  rarest_aura: { title: "Líder do Núcleo", description: "Lidere a antiga liga Núcleo", category: "league" },
   top_1_global: { title: "Top 1 Global", description: "Termine em 1º lugar na Liga Lendas", category: "league" },
   squad_leader: { title: "Líder de Esquadrão", description: "Tenha o maior grupo onde você é dono", category: "social" },
   focus_companion: { title: "Companheiro de Foco", description: "Conclua sessões focando com outras pessoas", category: "focus" },
@@ -314,7 +312,6 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     consistency_king: Number(perfectWeeks?.rows[0]?.count ?? 0),
     xp_olympian: userXP?.totalXP ?? 0,
     social_spark: Number(social?.rows[0]?.friends ?? 0) + Number(social?.rows[0]?.groups ?? 0),
-    rarest_aura: rarest?.rows[0]?.unlocked_tier ? 1 : 0,
     top_1_global: Number(top1Global?.rows[0]?.times_top_1_global ?? 0),
     squad_leader: Number(squadLeader?.rows[0]?.largest ?? 0),
     focus_companion: Number(focusCompanion?.rows[0]?.current_value ?? 0),
@@ -477,20 +474,6 @@ export async function markAchievementSeen(profileId: string, achievementId: stri
   if ((result.rowCount ?? 0) === 0) throw new NotFoundError("Conquista não encontrada.");
 }
 
-export async function unlockRarestAura(profileId: string): Promise<void> {
-  parseProfileId(profileId);
-  await pool.query(
-    `insert into user_achievement_progress
-       (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
-     values ($1, 'rarest_aura', 1, 1, now(), null)
-     on conflict (profile_id, achievement_id) do update set
-       current_value = 1,
-       unlocked_tier = 1,
-       unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
-       seen_at = case when user_achievement_progress.unlocked_tier = 0 then null else user_achievement_progress.seen_at end`,
-    [profileId],
-  );
-}
 
 export async function toggleFeaturedAchievement(
   profileId: string,
