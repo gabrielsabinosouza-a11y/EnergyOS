@@ -31,8 +31,8 @@ export function PressableScale({
   const reducedMotion = useReducedMotion();
   const pressed = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: pressed.value < 1 ? 0.92 : 1,
-    transform: [{ scale: pressed.value }],
+    opacity: pressed.get() < 1 ? 0.92 : 1,
+    transform: [{ scale: pressed.get() }],
   }));
 
   return (
@@ -43,11 +43,11 @@ export function PressableScale({
         onPress?.(event);
       }}
       onPressIn={(event) => {
-        pressed.value = reducedMotion ? 1 : withSpring(0.97, motion.spring.snappy);
+        pressed.set(reducedMotion ? 1 : withSpring(0.97, motion.spring.snappy));
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
-        pressed.value = withSpring(1, motion.spring.snappy);
+        pressed.set(withSpring(1, motion.spring.snappy));
         onPressOut?.(event);
       }}
       style={[style, animatedStyle]}>

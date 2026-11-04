@@ -82,7 +82,7 @@ export const typography = {
   body: { fontSize: 15, lineHeight: 22, fontWeight: '400' as const },
   label: { fontSize: 14, lineHeight: 20, fontWeight: '600' as const },
   caption: { fontSize: 12, lineHeight: 16, fontWeight: '500' as const },
-  mono: { fontSize: 20, lineHeight: 26, fontWeight: '700' as const, fontVariant: ['tabular-nums'] as const },
+  mono: { fontSize: 20, lineHeight: 26, fontWeight: '700' as const },
 } as const;
 
 export const shadows = {

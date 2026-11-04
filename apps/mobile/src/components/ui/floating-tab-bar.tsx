@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { Tabs } from 'expo-router';
+import type { ComponentProps } from 'react';
 import Animated, {
   Extrapolation,
   interpolate,
   interpolateColor,
+  type SharedValue,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -18,7 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, motion, radii, shadows } from '@/theme';
 import { supportsBlur } from './platform';
 
-export function FloatingTabBar({ descriptors, navigation, state }: BottomTabBarProps) {
+type FloatingTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
+
+export function FloatingTabBar({ descriptors, navigation, state }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const routes = state.routes.filter((route) => route.name !== 'more');
@@ -37,7 +41,7 @@ export function FloatingTabBar({ descriptors, navigation, state }: BottomTabBarP
   const itemWidth = routes.length ? barWidth / routes.length : 0;
   const indicatorStyle = useAnimatedStyle(() => ({
     opacity: selectedTab < 0 ? 0 : 1,
-    transform: [{ translateX: activeIndex.value * itemWidth }],
+    transform: [{ translateX: activeIndex.get() * itemWidth }],
   }), [itemWidth, selectedTab]);
 
   return (
@@ -80,13 +84,13 @@ export function FloatingTabBar({ descriptors, navigation, state }: BottomTabBarP
 }
 
 type TabButtonProps = {
-  activeIndex: Animated.SharedValue<number>;
+  activeIndex: SharedValue<number>;
   focused: boolean;
   index: number;
   label: string;
   onPress: () => void;
   onLongPress: () => void;
-  options: BottomTabBarProps['descriptors'][string]['options'];
+  options: FloatingTabBarProps['descriptors'][string]['options'];
 };
 
 function TabButton({
@@ -101,14 +105,14 @@ function TabButton({
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{
       scale: interpolate(
-        activeIndex.value,
+        activeIndex.get(),
         [index - 1, index, index + 1],
         [1, 1.12, 1],
         Extrapolation.CLAMP,
       ),
     }],
     opacity: interpolate(
-      activeIndex.value,
+      activeIndex.get(),
       [index - 1, index, index + 1],
       [0.72, 1, 0.72],
       Extrapolation.CLAMP,
@@ -116,7 +120,7 @@ function TabButton({
   }), [index]);
   const colorStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
-      activeIndex.value,
+    activeIndex.get(),
       [index - 1, index, index + 1],
       [colors.textMuted, colors.primary, colors.textMuted],
     ),
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   barTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(10,20,36,0.32)',
     borderTopColor: 'rgba(255,255,255,0.10)',
     borderTopWidth: StyleSheet.hairlineWidth,

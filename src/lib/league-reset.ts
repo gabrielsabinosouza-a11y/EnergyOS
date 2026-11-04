@@ -1,5 +1,6 @@
 import {
   TOP1_GLOBAL_FIRST_UNLOCK_BONUS,
+  getLeagueZone,
   type NewLeagueTier,
 } from "@/lib/league-new-meta";
 
@@ -38,7 +39,12 @@ export async function persistLeagueWeeklyResultOnce(
 ): Promise<boolean> {
   if (!(await writer.recordResultIfAbsent(result))) return false;
 
-  if (result.weeklyXP > 0 && result.rank <= 3 && result.coinsAwarded > 0) {
+  const zone = getLeagueZone(result.tier, result.rank, result.groupSize);
+  if (
+    result.weeklyXP > 0 &&
+    (zone === "promotion" || zone === "reward") &&
+    result.coinsAwarded > 0
+  ) {
     await writer.awardCoins({
       profileId: result.profileId,
       amount: result.coinsAwarded,

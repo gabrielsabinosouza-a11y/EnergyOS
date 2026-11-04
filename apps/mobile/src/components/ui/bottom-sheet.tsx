@@ -29,20 +29,20 @@ export function BottomSheet({ children, onClose, title, visible }: BottomSheetPr
 
   useEffect(() => {
     if (visible) {
-      translateY.value = withSpring(0, reducedMotion ? { damping: 24, stiffness: 220, duration: 0 } : motion.spring.soft);
+      translateY.set(reducedMotion ? 0 : withSpring(0, motion.spring.soft));
     }
   }, [reducedMotion, translateY, visible]);
 
   const pan = Gesture.Pan()
     .onUpdate((event) => {
-      translateY.value = Math.max(0, event.translationY);
+      translateY.set(Math.max(0, event.translationY));
     })
     .onEnd((event) => {
       if (event.translationY > 120 || event.velocityY > 900) {
-        translateY.value = withTiming(420, { duration: reducedMotion ? 0 : 180 });
+        translateY.set(withTiming(420, { duration: reducedMotion ? 0 : 180 }));
         runOnJS(onClose)();
       } else {
-        translateY.value = withSpring(0, motion.spring.soft);
+        translateY.set(withSpring(0, motion.spring.soft));
       }
     });
 

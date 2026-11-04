@@ -6,10 +6,12 @@ import { ensureUserBootstrap } from "@/lib/db/bootstrap";
 import {
   cancelFocusSession,
   endFocusSession,
+  expireAwayFocusSessions,
   getFocusHistory,
   getLifetimeFocusMinutes,
   getTodayFocusStats,
   startFocusSession,
+  registerFocusAppState,
   updateFocusSessionPause,
 } from "@/lib/db/focus";
 import { getUserXP } from "@/lib/db/xp";
@@ -17,6 +19,7 @@ import { getUserXP } from "@/lib/db/xp";
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
+    await expireAwayFocusSessions(profileId);
     const [history, todayStats, xp, lifetimeFocusMinutes] = await Promise.all([
       getFocusHistory(profileId),
       getTodayFocusStats(profileId),
@@ -51,6 +54,11 @@ export async function POST(request: NextRequest) {
     if (action === "pause" || action === "resume") {
       await updateFocusSessionPause(profileId, Number(body.sessionId), action);
       return jsonOk({ paused: action === "pause" });
+    }
+
+    if (action === "app_state" && (body.state === "away" || body.state === "return")) {
+      const gaveUp = await registerFocusAppState(profileId, Number(body.sessionId), body.state);
+      return jsonOk({ gaveUp });
     }
 
     if (action === "complete" || action === "give_up" || action === "end") {

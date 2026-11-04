@@ -408,7 +408,7 @@ export default function LigaPage() {
                       </div>
                     )}
                     {displayMemberRank === DEMOTION_START_RANK - 1 &&
-                      groupSize > 10 &&
+                      groupSize >= DEMOTION_START_RANK &&
                       snapshot.currentTier !== "BRONZE" && (
                         <div className="flex items-center gap-2 px-4 py-2">
                           <span className="text-[10px] text-red-400 whitespace-nowrap">

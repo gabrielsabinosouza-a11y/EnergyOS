@@ -27,7 +27,7 @@ export function Skeleton({ radius = radii.md, style }: SkeletonProps) {
 const styles = StyleSheet.create({
   track: { backgroundColor: colors.glassStrong, overflow: 'hidden' },
   shimmer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
 });

@@ -27,7 +27,9 @@ export function GradientButton({
 }: GradientButtonProps) {
   const unavailable = disabled || loading;
   const primary = variant === 'primary';
-  const background = primary ? gradients.primary : [colors.glassStrong, colors.glass];
+  const background: [string, string] = primary
+    ? [...gradients.primary]
+    : [colors.glassStrong, colors.glass];
 
   return (
     <PressableScale

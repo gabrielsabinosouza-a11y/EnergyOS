@@ -5,6 +5,7 @@ alter table focus_sessions add column if not exists end_reason text;
 alter table focus_sessions add column if not exists focused_seconds integer not null default 0;
 alter table focus_sessions add column if not exists paused_at timestamptz;
 alter table focus_sessions add column if not exists total_paused_seconds integer not null default 0;
+alter table focus_sessions add column if not exists away_started_at timestamptz;
 
 alter table focus_sessions drop constraint if exists focus_sessions_end_reason_check;
 alter table focus_sessions add constraint focus_sessions_end_reason_check

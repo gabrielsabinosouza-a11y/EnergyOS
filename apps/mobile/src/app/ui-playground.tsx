@@ -21,7 +21,7 @@ import {
   StatCard,
   Toast,
 } from '@/components/ui';
-import { colors, gradients, radii, spacing, typography } from '@/theme';
+import { colors, radii, spacing, typography } from '@/theme';
 
 export default function UiPlaygroundScreen() {
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   progressCard: { gap: 16 },
   progressHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   cardTitle: { ...typography.label, color: colors.text },
-  progressValue: { ...typography.mono, color: colors.purple },
+  progressValue: { ...typography.mono, color: colors.purple, fontVariant: ['tabular-nums'] },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionCard: { gap: 10 },
   rowIcon: { color: colors.primary, fontSize: 22 },

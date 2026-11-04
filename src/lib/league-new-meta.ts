@@ -138,7 +138,11 @@ export function getLeagueZone(tier: NewLeagueTier, rank: number, groupSize: numb
     rank > groupSize
   ) return "safe";
   if (rank <= PROMOTION_TOP) return tier === "LEGENDS" ? "reward" : "promotion";
-  if (tier !== "BRONZE" && groupSize > 10 && rank >= DEMOTION_START_RANK) return "demotion";
+  if (
+    tier !== "BRONZE" &&
+    groupSize >= DEMOTION_START_RANK &&
+    rank >= DEMOTION_START_RANK
+  ) return "demotion";
   return "safe";
 }
 

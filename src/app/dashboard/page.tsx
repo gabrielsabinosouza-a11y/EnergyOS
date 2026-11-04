@@ -641,38 +641,57 @@ function DashboardContent() {
     return result;
   }
 
-  async function endFocus(sessionId: number, focusedSeconds: number, pausedCount = 0) {
+  async function endFocus(
+    sessionId: number,
+    focusedSeconds: number,
+    pausedCount = 0,
+    endReason: "completed" | "gave_up" = "completed",
+  ) {
     // Optimistic: advance the focus-related missions in the SAME interaction —
     // the missões diárias progress bars update instantly and the claim-ready
     // glow appears the moment a mission completes. The server records the same
     // metrics (and rolls the streak forward on full-duration sessions);
     // refreshQuests() reconciles with the authoritative response.
     const minutes = Math.max(1, Math.round(focusedSeconds / 60));
-    applyMetric("SESSIONS_COMPLETED", { incrementBy: 1 });
-    applyMetric("TOTAL_MINUTES", { incrementBy: minutes });
-    if (minutes >= 60) applyMetric("LONG_SESSION_60", { incrementBy: 1 });
+    if (endReason === "completed") {
+      applyMetric("SESSIONS_COMPLETED", { incrementBy: 1 });
+      applyMetric("TOTAL_MINUTES", { incrementBy: minutes });
+      if (minutes >= 60) applyMetric("LONG_SESSION_60", { incrementBy: 1 });
+    }
     try {
-      const result = await api.endFocus(sessionId, focusedSeconds, false, pausedCount);
-      void refreshQuests();
+      const result = await api.endFocus(sessionId, focusedSeconds, false, pausedCount, undefined, endReason);
+      if (endReason === "completed") void refreshQuests();
       api.getFocusData().then((f) => setFocusData(f));
       // Streak cresceu? Avisa na hora: "+1 dia de sequência".
-      if (result.streak && result.streak.currentStreak > result.streak.previousStreak) {
+      if (endReason === "completed" && result.streak && result.streak.currentStreak > result.streak.previousStreak) {
         setToast({ message: "+1 dia de sequência", type: "success" });
       }
       // Re-pull the snapshot so the streak badge reflects the (possibly new)
       // streak right away — the server already ran the real-time evaluation.
-      void fetchDashboard();
+      if (endReason === "completed") void fetchDashboard();
       // Surface any achievement tier-up (e.g. XP Olympian, Focus Companion)
       // immediately instead of waiting for the next tab switch.
-      if (typeof window !== "undefined") {
+      if (endReason === "completed" && typeof window !== "undefined") {
         window.dispatchEvent(new Event("energyos:achievements-changed"));
       }
       return result;
     } catch (error) {
       // Roll the optimistic mission bumps back to server truth.
-      void refreshQuests();
+      if (endReason === "completed") void refreshQuests();
       throw error;
     }
+  }
+
+  async function cancelFocus(sessionId: number) {
+    await api.cancelFocus(sessionId);
+  }
+
+  async function pauseFocus(sessionId: number) {
+    await api.pauseFocus(sessionId);
+  }
+
+  async function resumeFocus(sessionId: number) {
+    await api.resumeFocus(sessionId);
   }
 
   /**
@@ -1065,6 +1084,9 @@ function DashboardContent() {
             boostActive={!!xpBoostUntil}
             onStart={startFocus}
             onEnd={endFocus}
+            onCancel={cancelFocus}
+            onPause={pauseFocus}
+            onResume={resumeFocus}
           />
           <GoalsCard goals={goals} categories={categories} onProgress={goalProgressAction} onDelete={deleteGoal} onUpdate={updateGoal} onUncomplete={uncompleteGoal} onCreate={createGoal} />
         </section>

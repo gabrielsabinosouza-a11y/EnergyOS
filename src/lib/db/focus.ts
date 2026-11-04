@@ -4,12 +4,15 @@ import { ConflictError, NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE, dayInTz } from "./dates";
 import {
+  CANCEL_LATENCY_TOLERANCE_SECONDS,
+  GRACE_PERIOD_SECONDS,
+  AWAY_LIMIT_SECONDS,
   canCancelFocusSession,
   focusSessionEffects,
   focusedSecondsAt,
   focusPhaseAt,
   type FocusSessionEndReason,
-} from "../focus-session-state";
+} from "@/../apps/mobile/src/shared/focus-session-state";
 import { recordMissionProgress } from "./daily-quests";
 import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
@@ -64,6 +67,10 @@ export function finalizedFocusMinutes(focusedSeconds: number): number {
 
 export type GardenGrowthStage = "sprout" | "young" | "mature";
 export type GardenStatus = "growing" | "alive" | "withered";
+
+function timestampMs(value: Date | string): number {
+  return typeof value === "string" ? new Date(value).getTime() : value.getTime();
+}
 
 export interface GardenEntry {
   id: number;
@@ -243,6 +250,7 @@ interface FocusRow {
   end_reason?: FocusSessionEndReason | null;
   focused_seconds?: number;
   paused_at?: Date | string | null;
+  away_started_at?: Date | string | null;
   total_paused_seconds?: number;
   paused_count?: number | null;
   server_now?: Date | string;
@@ -298,7 +306,8 @@ export async function startFocusSession(
     }
 
     const active = await client.query<FocusRow>(
-      `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+      `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned,
+              end_reason, focused_seconds
        from focus_sessions where profile_id = $1 and ended_at is null limit 1`,
       [profileId],
     );
@@ -345,19 +354,16 @@ export async function cancelFocusSession(profileId: string, sessionId: number): 
       where profile_id = $1 and id = $2 and ended_at is null
         and started_at >= now() - make_interval(secs => $3)
       returning id`,
-    [profileId, sessionId, 17],
+    [profileId, sessionId, GRACE_PERIOD_SECONDS + CANCEL_LATENCY_TOLERANCE_SECONDS],
   );
   if (result.rows[0]) return;
 
-  const active = await pool.query<{ started_at: Date | string; ended_at: Date | string | null }>(
-    `select started_at, ended_at from focus_sessions where profile_id = $1 and id = $2`,
+  const active = await pool.query<{ started_at: Date | string; ended_at: Date | string | null; server_now: Date | string }>(
+    `select started_at, ended_at, now() as server_now from focus_sessions where profile_id = $1 and id = $2`,
     [profileId, sessionId],
   );
   if (!active.rows[0] || active.rows[0].ended_at) return;
-  const startedAt = typeof active.rows[0].started_at === "string"
-    ? new Date(active.rows[0].started_at).getTime()
-    : active.rows[0].started_at.getTime();
-  if (!canCancelFocusSession(startedAt, Date.now())) {
+  if (!canCancelFocusSession(timestampMs(active.rows[0].started_at), timestampMs(active.rows[0].server_now))) {
     throw new ConflictError("O período de cancelamento terminou. Você pode desistir da sessão.");
   }
   throw new ConflictError("Não foi possível cancelar a sessão. Tente novamente.");
@@ -377,15 +383,15 @@ export async function updateFocusSessionPause(
   );
   const row = result.rows[0];
   if (!row || row.ended_at) throw new ConflictError("Esta sessão não está mais em andamento.");
-  const startedAtMs = new Date(row.started_at).getTime();
-  const serverNowMs = new Date(row.server_now!).getTime();
+  const startedAtMs = timestampMs(row.started_at);
+  const serverNowMs = timestampMs(row.server_now!);
   if (action === "pause") {
     if (focusPhaseAt(startedAtMs, serverNowMs) !== "focusing") {
       throw new ConflictError("A pausa estará disponível após o período de cancelamento.");
     }
     if (row.paused_at) return;
     const updated = await pool.query(
-      `update focus_sessions set paused_at = now(), paused_count = coalesce(paused_count, 0) + 1
+      `update focus_sessions set paused_at = now(), paused_count = coalesce(paused_count, 0) + 1, away_started_at = null
         where profile_id = $1 and id = $2 and ended_at is null and paused_at is null
         returning id`,
       [profileId, sessionId],
@@ -404,6 +410,60 @@ export async function updateFocusSessionPause(
     [profileId, sessionId],
   );
   if (!updated.rows[0]) throw new ConflictError("Esta sessão não está mais em andamento.");
+}
+
+export async function registerFocusAppState(
+  profileId: string,
+  sessionId: number,
+  state: "away" | "return",
+): Promise<boolean> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
+  const result = await pool.query<FocusRow>(
+    `select id, started_at, ended_at, paused_at, paused_count, away_started_at, now() as server_now
+       from focus_sessions where profile_id = $1 and id = $2`,
+    [profileId, sessionId],
+  );
+  const row = result.rows[0];
+  if (!row || row.ended_at) return false;
+  if (state === "away") {
+    if (row.paused_at || focusPhaseAt(timestampMs(row.started_at), timestampMs(row.server_now!)) !== "focusing") {
+      return false;
+    }
+    await pool.query(
+      `update focus_sessions set away_started_at = coalesce(away_started_at, now())
+        where profile_id = $1 and id = $2 and ended_at is null and paused_at is null`,
+      [profileId, sessionId],
+    );
+    return false;
+  }
+  if (!row.away_started_at) return false;
+  const awaySeconds = Math.floor(
+    (timestampMs(row.server_now!) - timestampMs(row.away_started_at)) / 1000,
+  );
+  if (awaySeconds >= AWAY_LIMIT_SECONDS) {
+    await endFocusSession(profileId, sessionId, 0, Boolean(row.room_id), Number(row.paused_count) || 0, undefined, "gave_up");
+    return true;
+  }
+  await pool.query(
+    `update focus_sessions set away_started_at = null
+      where profile_id = $1 and id = $2 and ended_at is null`,
+    [profileId, sessionId],
+  );
+  return false;
+}
+
+export async function expireAwayFocusSessions(profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  const result = await pool.query<{ id: number; room_id: number | null; paused_count: number | null }>(
+    `select id, room_id, paused_count from focus_sessions
+      where profile_id = $1 and ended_at is null
+        and away_started_at <= now() - make_interval(secs => $2)`,
+    [profileId, AWAY_LIMIT_SECONDS],
+  );
+  for (const session of result.rows) {
+    await endFocusSession(profileId, Number(session.id), 0, Boolean(session.room_id), Number(session.paused_count) || 0, undefined, "gave_up");
+  }
 }
 
 export async function endFocusSession(
@@ -453,16 +513,16 @@ export async function endFocusSession(
     : FOCUS_DURATION_MAX_MINUTES;
   const targetCap = Math.max(1, Math.min(rawTarget, FOCUS_DURATION_MAX_MINUTES));
   const serverNow = session.rows[0].server_now!;
-  const startedAtMs = new Date(session.rows[0].started_at).getTime();
-  const endTimeMs = endedAt ? new Date(endedAt).getTime() : new Date(serverNow).getTime();
-  if (endReason === "gave_up" && focusPhaseAt(startedAtMs, new Date(serverNow).getTime()) === "grace_period") {
+  const startedAtMs = timestampMs(session.rows[0].started_at);
+  const endTimeMs = endedAt ? timestampMs(endedAt) : timestampMs(serverNow);
+  if (endReason === "gave_up" && focusPhaseAt(startedAtMs, timestampMs(serverNow)) === "grace_period") {
     throw new ConflictError("O período de cancelamento ainda está ativo.");
   }
   const actualFocusedSeconds = focusedSecondsAt(
     startedAtMs,
     endTimeMs,
     Number(session.rows[0].total_paused_seconds) || 0,
-    session.rows[0].paused_at ? new Date(session.rows[0].paused_at).getTime() : null,
+    session.rows[0].paused_at ? timestampMs(session.rows[0].paused_at) : null,
   );
   const targetSeconds = targetCap * 60;
   if (endReason === "completed" && actualFocusedSeconds < targetSeconds - 3) {
@@ -488,7 +548,7 @@ export async function endFocusSession(
         set duration_minutes = $3, focused_seconds = $6,
             ended_at = coalesce($5::timestamptz, now()), xp_earned = 0,
             paused_count = coalesce(paused_count, $4),
-            end_reason = $7, paused_at = null
+            end_reason = $7, paused_at = null, away_started_at = null
       where profile_id = $1 and id = $2 and ended_at is null
       returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned,
                 end_reason, focused_seconds`,
@@ -735,9 +795,12 @@ export async function getTodayFocusStats(profileId: string): Promise<{ minutesFo
   const today = todayIso();
   const result = await pool.query<{ minutes: string | number; coins: string | number }>(
     `select coalesce(sum(duration_minutes), 0) as minutes,
-            coalesce(sum(least($4, greatest(round(duration_minutes * $5 / 60),
-                            case when duration_minutes >= $6 then $3 else 0 end))), 0) as coins
-     from focus_sessions where profile_id = $1 and ended_at is not null and started_at::date = $2::date`,
+            coalesce(sum(case when coalesce(end_reason, 'completed') = 'completed'
+              then least($4, greatest(round(duration_minutes * $5 / 60),
+                            case when duration_minutes >= $6 then $3 else 0 end))
+              else 0 end), 0) as coins
+     from focus_sessions
+     where profile_id = $1 and ended_at is not null and started_at::date = $2::date`,
     [profileId, today, FOCUS_COINS_MIN, FOCUS_COINS_CAP, FOCUS_COINS_PER_HOUR, FOCUS_DURATION_MIN_MINUTES],
   );
   return { minutesFocused: Number(result.rows[0]?.minutes ?? 0), coinsEarned: Number(result.rows[0]?.coins ?? 0) };

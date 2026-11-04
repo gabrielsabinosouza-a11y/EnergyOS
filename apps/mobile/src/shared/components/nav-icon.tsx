@@ -1,4 +1,4 @@
-import { Image, type ImageSourcePropType, StyleSheet } from 'react-native';
+import { Image, type ColorValue, type ImageSourcePropType, StyleSheet } from 'react-native';
 
 const icons = {
   consistency: require('../../../assets/energyos/navigation/consistency.png'),
@@ -19,7 +19,7 @@ export type NavIconName = keyof typeof icons;
 type NavIconProps = {
   name: NavIconName;
   size?: number;
-  color?: string;
+  color?: ColorValue;
 };
 
 export function NavIcon({ color, name, size = 24 }: NavIconProps) {

@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   surfaceTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.015)',
     borderTopColor: 'rgba(255,255,255,0.10)',
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -104,7 +104,7 @@ export function AppExtras() {
   const { user, loading } = useAuth();
   const { current, dismiss } = useAchievementUnlocks(!!user && !loading);
   const [leagueToast, setLeagueToast] = useState<RewardToastData | null>(null);
-  const [leagueToastNeedsAcknowledgement, setLeagueToastNeedsAcknowledgement] = useState(false);
+  const [leagueResultsToAcknowledge, setLeagueResultsToAcknowledge] = useState<number[]>([]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -127,7 +127,7 @@ export function AppExtras() {
             ? `Resultado da Liga (${results.length} semanas): ${resultMessage}`
             : resultMessage,
         });
-        setLeagueToastNeedsAcknowledgement(true);
+        setLeagueResultsToAcknowledge(results.map((result) => result.id));
         window.dispatchEvent(new Event("energyos:achievements-changed"));
       })
       .catch((error) => {
@@ -166,12 +166,13 @@ export function AppExtras() {
 
   const dismissLeagueToast = useCallback(() => {
     setLeagueToast(null);
-    if (!leagueToastNeedsAcknowledgement) return;
-    setLeagueToastNeedsAcknowledgement(false);
-    void api.acknowledgeLeagueWeeklyResults().catch((error) => {
+    if (leagueResultsToAcknowledge.length === 0) return;
+    const ids = leagueResultsToAcknowledge;
+    setLeagueResultsToAcknowledge([]);
+    void api.acknowledgeLeagueWeeklyResults(ids).catch((error) => {
       console.error("[league] Falha ao confirmar a notificação semanal:", error);
     });
-  }, [leagueToastNeedsAcknowledgement]);
+  }, [leagueResultsToAcknowledge]);
 
   return (
     <>

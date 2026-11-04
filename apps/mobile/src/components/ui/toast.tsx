@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { AnimatePresence, MotiView } from 'moti';
+import { MotiView } from 'moti';
 
 import { colors, radii, shadows, typography } from '@/theme';
 
@@ -29,19 +29,16 @@ export function Toast({
 
   return (
     <View pointerEvents="box-none" style={styles.position}>
-      <AnimatePresence>
-        {visible ? (
-          <MotiView
-            from={{ opacity: 0, translateY: 14 }}
-            animate={{ opacity: 1, translateY: 0 }}
-            exit={{ opacity: 0, translateY: 10 }}
-            transition={{ type: 'timing', duration: 200 }}
-            style={[styles.toast, { borderLeftColor: accents[type] }]}>
-            <View style={[styles.dot, { backgroundColor: accents[type] }]} />
-            <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text>
-          </MotiView>
-        ) : null}
-      </AnimatePresence>
+      {visible ? (
+        <MotiView
+          from={{ opacity: 0, translateY: 14 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: 'timing', duration: 200 }}
+          style={[styles.toast, { borderLeftColor: accents[type] }]}>
+          <View style={[styles.dot, { backgroundColor: accents[type] }]} />
+          <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text>
+        </MotiView>
+      ) : null}
     </View>
   );
 }

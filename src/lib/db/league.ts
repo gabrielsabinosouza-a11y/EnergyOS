@@ -204,7 +204,7 @@ export async function getLeagueSnapshot(profileId: string): Promise<LeagueSnapsh
   const n = ranked.length;
   const meta = TIER_META[currentTier];
   const promotionUntilRank = meta.next ? PROMOTION_TOP : null;
-  const demotionFromRank = meta.prev && n > 10 ? DEMOTION_START_RANK : null;
+  const demotionFromRank = meta.prev && n >= DEMOTION_START_RANK ? DEMOTION_START_RANK : null;
 
   return {
     tier: currentTier,

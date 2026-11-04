@@ -567,8 +567,8 @@ export const api = {
   getLeagueNew: () => request<import("@/lib/db/league-new").LeagueNewSnapshot>("/api/league-new"),
   getLeagueWeeklyResults: () =>
     request<{ results: import("@/lib/db/league-new").LeagueWeeklyResultNotification[] }>("/api/league-new/results"),
-  acknowledgeLeagueWeeklyResults: () =>
-    request<{ ok: true }>("/api/league-new/results", { method: "POST", body: JSON.stringify({}) }),
+  acknowledgeLeagueWeeklyResults: (ids: number[]) =>
+    request<{ ok: true }>("/api/league-new/results", { method: "POST", body: JSON.stringify({ ids }) }),
 
   // Achievements
   getAchievements: () => request<{ achievements: AchievementProgress[] }>("/api/achievements"),

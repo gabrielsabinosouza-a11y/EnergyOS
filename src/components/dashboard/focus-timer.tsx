@@ -28,6 +28,11 @@ import {
   startCompletionTitleFlash,
   updateCountdownTabTitle,
 } from "@/lib/session-alerts";
+import {
+  focusPhaseAt,
+  GRACE_PERIOD_SECONDS,
+  type FocusSessionEndReason,
+} from "@/../apps/mobile/src/shared/focus-session-state";
 
 // ─── Session Persistence Types ───────────────────────────────────────────────
 
@@ -102,7 +107,10 @@ interface FocusTimerProps {
   history: FocusSession[];
   boostActive: boolean;
   onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
-  onEnd: (sessionId: number, focusedSeconds: number, pausedCount?: number) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
+  onEnd: (sessionId: number, focusedSeconds: number, pausedCount?: number, endReason?: FocusSessionEndReason) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
+  onCancel: (sessionId: number) => Promise<void>;
+  onPause: (sessionId: number) => Promise<void>;
+  onResume: (sessionId: number) => Promise<void>;
 }
 
 type TimerState = "idle" | "running" | "paused";
@@ -180,7 +188,7 @@ function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostA
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }: FocusTimerProps) {
+export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, onCancel, onPause, onResume }: FocusTimerProps) {
   const [duration, setDuration] = useState(FOCUS_DURATION_DEFAULT_MINUTES);
   const [state, setState] = useState<TimerState>("idle");
   const [remaining, setRemaining] = useState(FOCUS_DURATION_DEFAULT_MINUTES * 60);
@@ -196,6 +204,10 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const [mounted, setMounted] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [promptDismissed, setPromptDismissed] = useState(false);
+  const [showGiveUpConfirm, setShowGiveUpConfirm] = useState(false);
+  const [cancelNotice, setCancelNotice] = useState("");
+  const [giveUpNotice, setGiveUpNotice] = useState("");
+  const [actionError, setActionError] = useState("");
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
@@ -209,6 +221,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const completedRef = useRef(false);
   const soundEnabledRef = useRef(true);
   const pausedCountRef = useRef(0);
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -300,7 +313,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
         const handleCompletedWhileClosed = async (sessionId: number, durationMinutes: number) => {
           try {
             const focusedSeconds = durationMinutes * 60;
-            const result = await onEnd(sessionId, focusedSeconds, pausedCountRef.current);
+            const result = await onEnd(sessionId, focusedSeconds, pausedCountRef.current, "completed");
             
             setLastCoins(result.coinsAwarded);
             setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
@@ -441,6 +454,19 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
   const countdownProgress = Math.min(((totalDurationSec - remaining) / totalDurationSec) * 100, 100);
   const isActive = state !== "idle";
   const isPaused = state === "paused";
+  const isGracePeriod = state === "running" && !!sessionRef.current &&
+    focusPhaseAt(sessionRef.current.startedAt, Date.now()) === "grace_period";
+  const graceSecondsRemaining = sessionRef.current
+    ? Math.max(0, Math.ceil((GRACE_PERIOD_SECONDS * 1000 - (Date.now() - sessionRef.current.startedAt)) / 1000))
+    : 0;
+  const graceProgress = Math.max(0, Math.min(1, graceSecondsRemaining / GRACE_PERIOD_SECONDS));
+  const sessionStatusText = state === "idle"
+    ? "RITMO NO SEU TEMPO"
+    : isGracePeriod
+      ? "PERÍODO DE CANCELAMENTO"
+      : isPaused
+        ? "PAUSADO"
+        : "EM ANDAMENTO";
   const cfg = ENERGY_CONFIGS[selectedEnergy];
   const imageSize = Math.round(RING_SIZE * 0.58);
 
@@ -524,7 +550,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     const focusedMinutes = durationRef.current;
 
     try {
-      const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
+      const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "completed");
       setLastCoins(result.coinsAwarded);
       setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
 
@@ -584,8 +610,17 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     } catch { /* handled by parent */ }
   }
 
-  function handlePause() {
+  async function handlePause() {
     if (state !== "running") return;
+    const sess = sessionRef.current;
+    if (!sess) return;
+    setActionError("");
+    try {
+      await onPause(sess.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível pausar a sessão.");
+      return;
+    }
     // Freeze the remaining time at this instant; the run segment is over.
     remainingMsRef.current = computeRemainingMs();
     runningSinceRef.current = null;
@@ -594,22 +629,56 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     stateRef.current = "paused";
   }
 
-  function handleResume() {
+  async function handleResume() {
     if (state !== "paused") return;
+    const sess = sessionRef.current;
+    if (!sess) return;
+    setActionError("");
+    try {
+      await onResume(sess.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível retomar a sessão.");
+      return;
+    }
     // Start a fresh run segment; remaining continues from the frozen value.
     runningSinceRef.current = Date.now();
     setState("running");
     stateRef.current = "running";
   }
 
-  async function handleStop(giveUp = false) {
+  async function handleCancel() {
+    const sess = sessionRef.current;
+    if (!sess || !isGracePeriod) return;
+    setActionError("");
+    try {
+      await onCancel(sess.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível cancelar a sessão.");
+      return;
+    }
     stopInterval();
-    if (giveUp) setIsExtinguished(true);
+    completedRef.current = false;
+    restoreTabTitle();
+    sessionRef.current = null;
+    runningSinceRef.current = null;
+    setState("idle");
+    stateRef.current = "idle";
+    remainingRef.current = durationRef.current * 60;
+    setRemaining(durationRef.current * 60);
+    clearSessionState();
+    setCancelNotice("Sessão cancelada");
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    noticeTimeoutRef.current = setTimeout(() => setCancelNotice(""), 2500);
+  }
 
+  async function confirmGiveUp() {
+    stopInterval();
     const sess = sessionRef.current;
     completedRef.current = false;
     restoreTabTitle();
-    if (!sess) { setState("idle"); return; }
+    setShowGiveUpConfirm(false);
+    setActionError("");
+    if (!sess) return;
 
     // Capture the remaining time BEFORE clearing the run-segment timestamp so
     // the currently-running segment's elapsed seconds aren't lost.
@@ -618,28 +687,35 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
     runningSinceRef.current = null;
 
     try {
-      const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current);
-      if (!giveUp) {
-        setLastCoins(result.coinsAwarded);
-        setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
-        setRewardCount(getEnergyReward(Math.floor(focusedSeconds / 60)));
-        setShowComplete(true);
-      }
-    } catch { /* handled by parent */ }
+      await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "gave_up");
+      setIsExtinguished(true);
+      setGiveUpNotice("Você consegue mais na próxima.");
+      if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+      noticeTimeoutRef.current = setTimeout(() => {
+        setIsExtinguished(false);
+        setGiveUpNotice("");
+      }, 3500);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível desistir da sessão.");
+      runningSinceRef.current = stateRef.current === "running" ? Date.now() : null;
+      startInterval();
+      return;
+    }
 
     sessionRef.current = null;
     setState("idle");
     stateRef.current = "idle";
     remainingRef.current = durationRef.current * 60;
     setRemaining(durationRef.current * 60);
-    setIsExtinguished(false);   // always clear so idle shows full-stage preview
-    
     // Clear persisted session state on stop/cancel
     clearSessionState();
   }
 
   // Cleanup on unmount
   useEffect(() => () => stopInterval(), []);
+  useEffect(() => () => {
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+  }, []);
 
   return (
     <div className="panel relative isolate overflow-hidden bg-[color-mix(in_srgb,var(--bg-surface)_92%,transparent)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_44px_-34px_rgba(0,0,0,.9)] sm:p-6">
@@ -706,12 +782,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           remainingSeconds={remaining}
           active={isActive}
           paused={isPaused}
+          runningLabel={sessionStatusText}
           fontSize={44}
         />
 
         {/* Contextual notification prompt — only after a session starts, with an
             in-app explanation BEFORE the actual browser permission request */}
-        {state === "running" && notifPermission === "default" && !promptDismissed && (
+        {state === "running" && !isGracePeriod && notifPermission === "default" && !promptDismissed && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -762,7 +839,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
         </AnimatePresence>
 
         {/* Action buttons */}
-        <div className="mt-4 flex justify-center gap-2">
+        <div className="mt-4 flex min-h-11 justify-center gap-2">
           {state === "idle" && !showComplete && (
             <motion.button
               whileTap={{ scale: 0.92 }}
@@ -776,31 +853,82 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
           {state === "running" && (
             <>
-              <motion.button whileTap={{ scale: 0.92 }} onClick={handlePause}
-                className="flex items-center gap-2 rounded-full bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] px-4 py-2 text-xs font-bold text-[var(--text)] hover:bg-[var(--bg-surface-active)] transition-colors">
-                <Pause size={14} /> Pausar
-              </motion.button>
-              <motion.button whileTap={{ scale: 0.92 }} onClick={() => handleStop(true)}
-                className="flex items-center gap-2 rounded-full bg-[#ffb86b] px-4 py-2 text-xs font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity">
-                <Square size={12} fill="currentColor" /> Parar
-              </motion.button>
+              {!isGracePeriod && (
+                <motion.button whileTap={{ scale: 0.92 }} onClick={() => void handlePause()}
+                  aria-label="Pausar sessão de foco"
+                  className="flex items-center gap-2 rounded-full bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] px-4 py-2 text-xs font-bold text-[var(--text)] hover:bg-[var(--bg-surface-active)] transition-colors">
+                  <Pause size={14} /> Pausar
+                </motion.button>
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.button
+                  key={isGracePeriod ? "cancel" : "give-up"}
+                  initial={{ opacity: 0, scale: 0.94 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.94 }}
+                  transition={{ duration: 0.16 }}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => isGracePeriod ? void handleCancel() : setShowGiveUpConfirm(true)}
+                  aria-label={isGracePeriod
+                    ? `Cancelar sessão sem penalidade, ${graceSecondsRemaining} segundos restantes`
+                    : "Desistir da sessão de foco"}
+                  className={`relative flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition-colors ${
+                    isGracePeriod
+                      ? "border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text)]"
+                      : "bg-[#ff9c6b] text-[var(--bg-primary)] hover:bg-[#ff815d]"
+                  }`}
+                >
+                  {isGracePeriod ? (
+                    <>
+                      <span>Cancelar ({graceSecondsRemaining}s)</span>
+                      <svg aria-hidden="true" className="-mr-1 h-5 w-5 -rotate-90" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity=".2" strokeWidth="2" />
+                        <circle
+                          cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"
+                          strokeDasharray={`${2 * Math.PI * 9 * graceProgress} ${2 * Math.PI * 9}`}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      <Square size={12} fill="currentColor" /> Desistir
+                    </>
+                  )}
+                </motion.button>
+              </AnimatePresence>
             </>
           )}
 
           {state === "paused" && (
             <>
-              <motion.button whileTap={{ scale: 0.92 }} onClick={handleResume}
+              <motion.button whileTap={{ scale: 0.92 }} onClick={() => void handleResume()}
                 className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
                 style={{ background: cfg.accent, transition: "background-color 0.4s ease, opacity 0.2s" }}>
                 <Play size={14} fill="currentColor" /> Continuar
               </motion.button>
-              <motion.button whileTap={{ scale: 0.92 }} onClick={() => handleStop(true)}
-                className="flex items-center gap-2 rounded-full bg-[#ffb86b] px-4 py-2 text-xs font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity">
-                <Square size={12} fill="currentColor" /> Parar
+              <motion.button whileTap={{ scale: 0.92 }} onClick={() => setShowGiveUpConfirm(true)}
+                aria-label="Desistir da sessão pausada"
+                className="flex items-center gap-2 rounded-full bg-[#ff9c6b] px-4 py-2 text-xs font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity">
+                <Square size={12} fill="currentColor" /> Desistir
               </motion.button>
             </>
           )}
         </div>
+        {actionError && <p role="alert" className="mt-2 text-center text-xs text-red-300">{actionError}</p>}
+        <AnimatePresence>
+          {(cancelNotice || giveUpNotice) && (
+            <motion.p
+              role="status"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mt-2 text-center text-xs text-[var(--text-muted)]"
+            >
+              {cancelNotice || giveUpNotice}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Today stats - responsive grid */}
@@ -825,10 +953,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
           <div className="mt-2 space-y-1">
             {history.slice(0, 3).map((s) => (
               <div key={s.id} className="flex items-center justify-between text-[10px] py-1">
-                <span className="text-[var(--text-muted)]">{Math.floor(s.durationMinutes / 60)}h{s.durationMinutes % 60 > 0 ? ` ${s.durationMinutes % 60}min` : ""}</span>
-                <span className="flex items-center gap-1 text-[#ffb86b] font-mono">
-                  <CoinIcon size={11} />
-                  +{s.xpEarned}
+                <span className={s.endReason === "gave_up" ? "text-[var(--text-faint)]" : "text-[var(--text-muted)]"}>
+                  {s.endReason === "gave_up" ? "💔 " : ""}
+                  {Math.floor(s.durationMinutes / 60)}h{s.durationMinutes % 60 > 0 ? ` ${s.durationMinutes % 60}min` : ""}
+                  {s.endReason === "gave_up" ? " · Desistiu" : ""}
+                </span>
+                <span className={`flex items-center gap-1 font-mono ${s.endReason === "gave_up" ? "text-[var(--text-faint)]" : "text-[#ffb86b]"}`}>
+                  <CoinIcon size={11} />+{s.endReason === "gave_up" ? 0 : s.xpEarned}
                 </span>
               </div>
             ))}
@@ -838,6 +969,49 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd }:
 
       {/* Energy picker modal */}
       <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
+
+      <AnimatePresence>
+        {showGiveUpConfirm && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setShowGiveUpConfirm(false);
+            }}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="focus-giveup-title"
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#101b2b] p-5 shadow-2xl"
+            >
+              <h2 id="focus-giveup-title" className="text-center text-base font-semibold text-[var(--text)]">
+                Tem certeza que quer desistir? Sua energia vai se apagar. 💔
+              </h2>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  autoFocus
+                  onClick={() => setShowGiveUpConfirm(false)}
+                  className="rounded-xl bg-[var(--accent)] px-3 py-3 text-sm font-bold text-[var(--bg-primary)]"
+                >
+                  Continuar focando
+                </button>
+                <button
+                  onClick={() => void confirmGiveUp()}
+                  className="rounded-xl border border-red-400/30 bg-red-500/15 px-3 py-3 text-sm font-bold text-red-200"
+                >
+                  Desistir
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showPicker && (
         <EnergyPickerModal

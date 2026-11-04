@@ -234,10 +234,11 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           });
         }
 
-        const coinsAwarded = member.weekly_xp > 0 && rank <= 3
+        const zone = getLeagueZone(group.tier, rank, n);
+        const coinsAwarded = member.weekly_xp > 0 &&
+          (zone === "promotion" || zone === "reward")
           ? LEAGUE_REWARDS[group.tier][rank - 1]
           : 0;
-        const zone = getLeagueZone(group.tier, rank, n);
         const result = targetTier === group.tier
           ? "stayed"
           : NEW_TIER_ORDER.indexOf(targetTier) > NEW_TIER_ORDER.indexOf(group.tier)
@@ -576,6 +577,7 @@ export type LeagueNewSnapshot = Awaited<ReturnType<typeof getUserLeagueSnapshot>
 };
 
 export interface LeagueWeeklyResultNotification {
+  id: number;
   weekStart: string;
   tier: NewLeagueTier;
   rank: number;
@@ -586,6 +588,7 @@ export interface LeagueWeeklyResultNotification {
 
 export async function getPendingLeagueWeeklyResults(profileId: string): Promise<LeagueWeeklyResultNotification[]> {
   const result = await pool.query<{
+    id: string | number;
     week_start_date: Date | string;
     tier: NewLeagueTier;
     rank: number;
@@ -593,7 +596,7 @@ export async function getPendingLeagueWeeklyResults(profileId: string): Promise<
     resulting_tier: NewLeagueTier;
     coins_awarded: number;
   }>(
-    `select week_start_date, tier, rank, result, resulting_tier, coins_awarded
+    `select id, week_start_date, tier, rank, result, resulting_tier, coins_awarded
      from league_weekly_results
      where profile_id = $1 and notified_at is null
      order by week_start_date desc, rank asc
@@ -601,6 +604,7 @@ export async function getPendingLeagueWeeklyResults(profileId: string): Promise<
     [profileId],
   );
   return result.rows.map((row) => ({
+    id: Number(row.id),
     weekStart: typeof row.week_start_date === "string"
       ? row.week_start_date.slice(0, 10)
       : row.week_start_date.toISOString().slice(0, 10),
@@ -612,12 +616,13 @@ export async function getPendingLeagueWeeklyResults(profileId: string): Promise<
   })).sort((a, b) => b.weekStart.localeCompare(a.weekStart) || a.rank - b.rank);
 }
 
-export async function acknowledgeLeagueWeeklyResults(profileId: string): Promise<void> {
+export async function acknowledgeLeagueWeeklyResults(profileId: string, ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
   await pool.query(
     `update league_weekly_results
      set notified_at = now()
-     where profile_id = $1 and notified_at is null`,
-    [profileId],
+     where profile_id = $1 and notified_at is null and id = any($2::bigint[])`,
+    [profileId, ids],
   );
 }
 
@@ -650,7 +655,9 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
     weekEnd: end,
     isLegendsGroup: group.isLegendsGroup,
     promotionZoneEnd: group.tier === "LEGENDS" ? 0 : PROMOTION_TOP,
-    demotionZoneStart: group.tier !== "BRONZE" && members.length > 10 ? DEMOTION_START_RANK : 0,
+    demotionZoneStart: group.tier !== "BRONZE" && members.length >= DEMOTION_START_RANK
+      ? DEMOTION_START_RANK
+      : 0,
   };
 }
 

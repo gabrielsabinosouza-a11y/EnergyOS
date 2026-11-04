@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 
-import { colors, gradients, radii, typography } from '@/theme';
+import { colors, radii, typography } from '@/theme';
 import { PressableScale } from './pressable-scale';
 import { ProgressBar } from './progress-bar';
 
