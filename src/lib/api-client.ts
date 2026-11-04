@@ -61,20 +61,48 @@ async function authToken(): Promise<string | null> {
   return auth.currentUser.getIdToken();
 }
 
+/**
+ * Custom error for API request failures with status code and body.
+ * Uses a factory function to avoid ES6 class inheritance issues with Error.
+ */
+export function createApiRequestError(message: string, status: number, body?: unknown): Error & {
+  status: number;
+  body?: unknown;
+  authError: boolean;
+  name: string;
+} {
+  const error = new Error(message) as Error & {
+    status: number;
+    body?: unknown;
+    authError: boolean;
+    name: string;
+  };
+  error.name = "ApiRequestError";
+  error.status = status;
+  error.body = body;
+  error.authError = status === 401;
+  if (Error.captureStackTrace) {
+    Error.captureStackTrace(error, createApiRequestError);
+  }
+  return error;
+}
+
+// For backwards compatibility, create a class-like interface
 export class ApiRequestError extends Error {
   readonly status: number;
-  /** Raw JSON body returned by the server, when available. Useful for debugging. */
   readonly body?: unknown;
-  /** Set to true on HTTP 401 so UI layers can redirect to login. */
   readonly authError: boolean;
 
   constructor(message: string, status: number, body?: unknown) {
-    super(message);
-    this.name = "ApiRequestError";
-    this.status = status;
-    this.body = body;
-    this.authError = status === 401;
-    Object.setPrototypeOf(this, ApiRequestError.prototype);
+    const baseError = createApiRequestError(message, status, body);
+    super(baseError.message);
+    this.name = baseError.name;
+    this.status = baseError.status;
+    this.body = baseError.body;
+    this.authError = baseError.authError;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, ApiRequestError);
+    }
   }
 }
 
@@ -112,7 +140,7 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     try {
       response = await fetch(input, fetchInit);
     } catch {
-      if (attempt >= MAX_RETRIES) throw new ApiRequestError("Falha de rede. Tente novamente.", 0);
+      if (attempt >= MAX_RETRIES) throw createApiRequestError("Falha de rede. Tente novamente.", 0);
       await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
       continue;
     }
@@ -128,21 +156,21 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 
     if (lastStatus === 401) {
       const message = body.error || "Autenticação necessária";
-      throw new ApiRequestError(message, 401, body);
+      throw createApiRequestError(message, 401, body);
     }
 
     if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
       const message =
         body.error ||
         `Não foi possível concluir a solicitação. (status ${response.status})`;
-      throw new ApiRequestError(message, response.status, body);
+      throw createApiRequestError(message, response.status, body);
     }
     // Retryable 5xx / 408 / 429 — back off and retry.
     await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
   }
 
   // Unreachable, but keeps the type checker happy.
-  throw new ApiRequestError("Não foi possível concluir a solicitação.", lastStatus);
+  throw createApiRequestError("Não foi possível concluir a solicitação.", lastStatus);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -274,7 +302,7 @@ export const api = {
     });
     const result = await response.json().catch(() => ({})) as { imageUrl?: string; imagePath?: string; error?: string };
     if (!response.ok || !result.imageUrl || !result.imagePath) {
-      throw new ApiRequestError(result.error ?? "Não foi possível enviar a imagem.", response.status);
+      throw createApiRequestError(result.error ?? "Não foi possível enviar a imagem.", response.status);
     }
     return { imageUrl: result.imageUrl, imagePath: result.imagePath };
   },

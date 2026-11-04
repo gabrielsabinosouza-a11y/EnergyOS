@@ -445,7 +445,7 @@ async function ensureMemberInNewWeekGroup(
 export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ group: LeagueGroup; member: LeagueGroupMember }> {
   const { start } = getCurrentWeekDates();
   await initializeLeagueGroups(start);
-  
+
   const existingMember = await pool.query<{ lg_id: string | number; tier: NewLeagueTier; is_legends: boolean }>(
     `select lg.id as lg_id, lg.tier, lg.is_legends_group as is_legends
      from league_groups lg join league_group_members lgm on lg.id = lgm.league_group_id
@@ -454,7 +454,7 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
      limit 1`,
     [profileId, start, NEW_TIER_ORDER]
   );
-  
+
   if (existingMember.rows[0]) {
     const group = await getLeagueGroupById(Number(existingMember.rows[0].lg_id));
     const member = await getLeagueGroupMember(Number(existingMember.rows[0].lg_id), profileId);
@@ -464,7 +464,7 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
     }
     return { group, member };
   }
-  
+
   // For new users, start in BRONZE
   const userXP = await getUserWeeklyXP(profileId);
   const tier = [...NEW_TIER_ORDER].reverse().find((candidate) => {
@@ -486,7 +486,7 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
     );
     group = mapLeagueGroup(result.rows[0]);
   }
-  
+
   const member = await addMemberToGroup(group.id, profileId);
   return { group, member };
 }
@@ -639,13 +639,13 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
 }> {
   const { start, end } = getCurrentWeekDates();
   await initializeLeagueGroups(start);
-  
+
   const { group } = await getOrCreateUserLeagueGroup(profileId);
   await syncGroupWeeklyXPFromLedger(pool, group.id, start);
   await calculateGroupRanks(group.id);
   const members = await getLeagueGroupMembers(group.id);
   const updatedMember = await getLeagueGroupMember(group.id, profileId);
-  
+
   return {
     currentTier: group.tier,
     currentGroup: group,
@@ -674,36 +674,92 @@ export async function getUserWeeklyXP(profileId: string, weekStart?: string): Pr
   return Number(result.rows[0]?.total_xp ?? 0);
 }
 
-export async function getLiveCohort(profileId: string): Promise<CohortMember[]> {
+
+export async function getLiveCohort(
+  profileId: string
+): Promise<CohortMember[]> {
   const userSession = await pool.query<{ started_at: Date | string }>(
-    `select started_at from focus_sessions where profile_id = $1 order by started_at desc limit 1`,
+    `
+      SELECT started_at
+      FROM focus_sessions
+      WHERE profile_id = $1
+      ORDER BY started_at DESC
+      LIMIT 1
+    `,
     [profileId]
   );
-  
+
   if (!userSession.rows[0]) return [];
-  
+
   const userStartTime = new Date(userSession.rows[0].started_at);
-  const oneHourBefore = new Date(userStartTime.getTime() - 60 * 60 * 1000);
-  const oneHourAfter = new Date(userStartTime.getTime() + 60 * 60 * 1000);
-  
-  const cohort = await pool.query<{ profile_id: string; display_name: string; photo_url: string | null; started_at: Date | string }>(
-    `select p.id as profile_id, p.display_name, p.photo_url, fs.started_at
-     from focus_sessions fs join profiles p on fs.profile_id = p.id
-     where fs.started_at >= $1 and fs.started_at <= $2
-       and (
-         exists (select 1 from friendships f where f.requester_id = $3 and f.addressee_id = p.id and f.status = 'accepted')
-         or exists (select 1 from friendships f where f.requester_id = p.id and f.addressee_id = $3 and f.status = 'accepted')
-       )
-       and p.id != $3
-     order by fs.started_at desc`,
+
+  const oneHourBefore = new Date(
+    userStartTime.getTime() - 60 * 60 * 1000
+  );
+
+  const oneHourAfter = new Date(
+    userStartTime.getTime() + 60 * 60 * 1000
+  );
+
+  const cohort = await pool.query<{
+    profile_id: string;
+    display_name: string;
+    photo_url: string | null;
+    started_at: Date | string;
+  }>(
+    `
+      WITH latest_friend_sessions AS (
+        SELECT DISTINCT ON (fs.profile_id)
+          p.id AS profile_id,
+          p.display_name,
+          p.photo_url,
+          fs.started_at
+
+        FROM focus_sessions fs
+
+        INNER JOIN profiles p
+          ON p.id = fs.profile_id
+
+        WHERE fs.started_at >= $1
+          AND fs.started_at <= $2
+          AND p.id != $3
+
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM friendships f
+              WHERE f.requester_id = $3
+                AND f.addressee_id = p.id
+                AND f.status = 'accepted'
+            )
+
+            OR EXISTS (
+              SELECT 1
+              FROM friendships f
+              WHERE f.requester_id = p.id
+                AND f.addressee_id = $3
+                AND f.status = 'accepted'
+            )
+          )
+
+        ORDER BY fs.profile_id, fs.started_at DESC
+      )
+
+      SELECT *
+      FROM latest_friend_sessions
+      ORDER BY started_at DESC
+    `,
     [oneHourBefore, oneHourAfter, profileId]
   );
-  
+
   return cohort.rows.map((row) => ({
     profileId: row.profile_id,
     displayName: row.display_name,
     photoUrl: row.photo_url ?? undefined,
-    sessionStartTime: typeof row.started_at === "string" ? row.started_at : row.started_at.toISOString(),
+    sessionStartTime:
+      typeof row.started_at === "string"
+        ? row.started_at
+        : row.started_at.toISOString(),
   }));
 }
 

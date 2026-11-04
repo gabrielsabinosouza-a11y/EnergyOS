@@ -108,6 +108,14 @@ export async function handleRoute(
       console.error("[api] App error:", error.message, "Status:", error.status, JSON.stringify(ctx));
       return jsonError(error.status, error.message);
     }
+    const caughtError = error as Error & {
+      code?: string;
+      detail?: string;
+      column?: string;
+      table?: string;
+      constraint?: string;
+      cause?: unknown;
+    };
     console.error(
       "[api] erro inesperado:",
       JSON.stringify({
@@ -115,8 +123,14 @@ export async function handleRoute(
         method: ctx.method,
         profileId: ctx.profileId,
         duration: Date.now() - startTime,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        error: caughtError instanceof Error ? caughtError.message : String(caughtError),
+        code: caughtError?.code,
+        detail: caughtError?.detail,
+        table: caughtError?.table,
+        column: caughtError?.column,
+        constraint: caughtError?.constraint,
+        cause: caughtError?.cause instanceof Error ? caughtError.cause.message : caughtError?.cause,
+        stack: caughtError instanceof Error ? caughtError.stack : undefined,
       }),
     );
     return jsonError(500, "Erro interno do servidor.");
@@ -131,28 +145,3 @@ export function routeContext(request: NextRequest, route?: string): RouteContext
     return { route, method: request.method };
   }
 }
-const err = error as Error & {
-  code?: string;
-  detail?: string;
-  column?: string;
-  table?: string;
-  constraint?: string;
-  cause?: unknown;
-};
-console.error(
-  "[api] erro inesperado:",
-  JSON.stringify({
-    route: ctx.route,
-    method: ctx.method,
-    profileId: ctx.profileId,
-    duration: Date.now() - startTime,
-    error: err instanceof Error ? err.message : String(error),
-    code: err?.code,
-    detail: err?.detail,
-    table: err?.table,
-    column: err?.column,
-    constraint: err?.constraint,
-    cause: err?.cause instanceof Error ? err.cause.message : err?.cause,
-    stack: err instanceof Error ? err.stack : undefined,
-  }),
-);
