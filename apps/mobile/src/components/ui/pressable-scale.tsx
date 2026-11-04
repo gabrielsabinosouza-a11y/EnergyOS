@@ -47,7 +47,7 @@ export function PressableScale({
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
-        pressed.set(withSpring(1, motion.spring.snappy));
+        pressed.set(reducedMotion ? 1 : withSpring(1, motion.spring.snappy));
         onPressOut?.(event);
       }}
       style={[style, animatedStyle]}>

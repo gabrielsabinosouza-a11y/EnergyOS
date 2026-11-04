@@ -1,7 +1,13 @@
-import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import type { ComponentType, ReactNode } from 'react';
+import { useEffect } from 'react';
+import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { MotiView } from 'moti';
-import { useReducedMotion } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedProps,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { colors, typography } from '@/theme';
 import { GlassCard } from './glass-card';
@@ -9,12 +15,13 @@ import { GlassCard } from './glass-card';
 type StatCardProps = {
   label: string;
   value: string | number;
+  suffix?: string;
   icon?: ReactNode;
   color?: string;
   index?: number;
 };
 
-export function StatCard({ color = colors.primary, icon, index = 0, label, value }: StatCardProps) {
+export function StatCard({ color = colors.primary, icon, index = 0, label, suffix = '', value }: StatCardProps) {
   const reducedMotion = useReducedMotion();
 
   return (
@@ -27,9 +34,56 @@ export function StatCard({ color = colors.primary, icon, index = 0, label, value
           {icon ? <View style={styles.icon}>{icon}</View> : null}
           <Text numberOfLines={1} style={styles.label}>{label}</Text>
         </View>
-        <Text numberOfLines={1} style={[styles.value, { color }]}>{value}</Text>
+        {typeof value === 'number' ? (
+          <CountUpValue color={color} reducedMotion={reducedMotion} suffix={suffix} value={value} />
+        ) : (
+          <Text numberOfLines={1} style={[styles.value, { color }]}>{value}</Text>
+        )}
       </GlassCard>
     </MotiView>
+  );
+}
+
+type AnimatedTextInputProps = TextInputProps & { text?: string };
+
+const AnimatedTextInput = Animated.createAnimatedComponent(
+  TextInput as ComponentType<AnimatedTextInputProps>,
+);
+
+function CountUpValue({
+  color,
+  reducedMotion,
+  suffix,
+  value,
+}: {
+  color: string;
+  reducedMotion: boolean;
+  suffix: string;
+  value: number;
+}) {
+  const count = useSharedValue(reducedMotion ? value : 0);
+
+  useEffect(() => {
+    count.set(reducedMotion ? value : withTiming(value, { duration: 650 }));
+  }, [count, reducedMotion, value]);
+
+  const animatedProps = useAnimatedProps<AnimatedTextInputProps>(() => ({
+    text: `${Math.round(count.get())}${suffix}`,
+  }));
+
+  return (
+    <AnimatedTextInput
+      accessibilityLabel={`${value}${suffix}`}
+      accessibilityRole="text"
+      animatedProps={animatedProps}
+      caretHidden
+      contextMenuHidden
+      defaultValue={`${reducedMotion ? value : 0}${suffix}`}
+      editable={false}
+      selectTextOnFocus={false}
+      showSoftInputOnFocus={false}
+      style={[styles.value, { color }]}
+    />
   );
 }
 

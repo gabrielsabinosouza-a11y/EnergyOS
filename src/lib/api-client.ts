@@ -66,16 +66,15 @@ export class ApiRequestError extends Error {
   /** Raw JSON body returned by the server, when available. Useful for debugging. */
   readonly body?: unknown;
   /** Set to true on HTTP 401 so UI layers can redirect to login. */
-  readonly authError?: boolean;
+  readonly authError: boolean;
 
   constructor(message: string, status: number, body?: unknown) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
     this.body = body;
-    if (status === 401) {
-      (this as { authError?: boolean }).authError = true;
-    }
+    this.authError = status === 401;
+    Object.setPrototypeOf(this, ApiRequestError.prototype);
   }
 }
 
@@ -426,6 +425,8 @@ export const api = {
     request<{ ok: true; message: string }>(`/api/focus-rooms/${roomId}`, { method: "DELETE" }),
   giveUpFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/give-up`, { method: "POST" }),
+  cancelFocusRoomGrace: (roomId: number) =>
+    request<{ room: import("@/lib/db/focus-rooms").FocusRoom; message: string }>(`/api/focus-rooms/${roomId}/cancel`, { method: "POST" }),
   completeFocusRoom: (roomId: number) =>
     request<{ room: import("@/lib/db/focus-rooms").FocusRoom | null; message: string; serverTime?: string }>(`/api/focus-rooms/${roomId}/complete`, { method: "POST" }),
   restartFocusRoom: (roomId: number) =>

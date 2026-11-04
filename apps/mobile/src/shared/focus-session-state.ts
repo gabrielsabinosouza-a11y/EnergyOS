@@ -17,8 +17,9 @@ export function focusPhaseAt(startedAtMs: number, nowMs: number): FocusSessionPh
 }
 
 export function canCancelFocusSession(startedAtMs: number, nowMs: number): boolean {
-  return nowMs - startedAtMs <=
-    (GRACE_PERIOD_SECONDS + CANCEL_LATENCY_TOLERANCE_SECONDS) * 1000;
+  const elapsedMs = nowMs - startedAtMs;
+  return elapsedMs >= 0 &&
+    elapsedMs <= (GRACE_PERIOD_SECONDS + CANCEL_LATENCY_TOLERANCE_SECONDS) * 1000;
 }
 
 export function focusedSecondsAt(

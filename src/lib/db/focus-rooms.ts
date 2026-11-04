@@ -6,11 +6,19 @@ import { todayIso } from "./dates";
 import { endFocusSession } from "./focus";
 import { clearAllGroupRoomPresence, clearGroupRoomPresence, ensureGroupRoomPresenceSchema } from "./group-room-presence";
 import { FOCUS_DURATION_MIN_MINUTES, FOCUS_DURATION_MAX_MINUTES, isValidFocusDurationMinutes } from "../focus-duration";
+import {
+  canCancelFocusSession,
+  focusPhaseAt,
+} from "@/../apps/mobile/src/shared/focus-session-state";
 
 // Types matching the database schema
 export type RoomStatus = "waiting" | "active" | "paused" | "completed" | "expired" | "restarting" | "confirming";
 export type RestartChoice = "pending" | "confirmed" | "declined";
 export type ParticipantSessionStatus = "waiting" | "focusing" | "completed" | "left";
+
+function timestampMs(value: Date | string): number {
+  return typeof value === "string" ? new Date(value).getTime() : value.getTime();
+}
 
 export interface FocusRoomRow {
   id: string | number;
@@ -724,8 +732,8 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const room = await client.query<{ host_profile_id: string; status: string; last_resumed_at: Date | string | null; ends_at: Date | string | null; duration_minutes: number; elapsed_seconds: number }>(
-      `select host_profile_id, status, last_resumed_at, ends_at, duration_minutes, elapsed_seconds from focus_rooms where id = $1 for update`,
+    const room = await client.query<{ host_profile_id: string; status: string; started_at: Date | string | null; last_resumed_at: Date | string | null; ends_at: Date | string | null; duration_minutes: number; elapsed_seconds: number }>(
+      `select host_profile_id, status, started_at, last_resumed_at, ends_at, duration_minutes, elapsed_seconds from focus_rooms where id = $1 for update`,
       [roomId]
     );
 
@@ -745,6 +753,11 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
     }
 
     const now = Date.now();
+    if (room.rows[0].started_at &&
+        focusPhaseAt(timestampMs(room.rows[0].started_at), now) === "grace_period") {
+      await client.query("rollback");
+      throw new ConflictError("A pausa estará disponível após o período de cancelamento.");
+    }
     const lastResumed = room.rows[0].last_resumed_at
       ? new Date(
           typeof room.rows[0].last_resumed_at === "string"
@@ -767,6 +780,12 @@ export async function pauseFocusRoom(roomId: number, hostProfileId: string): Pro
              last_resumed_at = null
        where id = $4`,
       [currentSegment, remainingSeconds, new Date(now).toISOString(), roomId]
+    );
+    await client.query(
+      `update focus_sessions
+          set paused_at = now(), paused_count = coalesce(paused_count, 0) + 1
+        where room_id = $1 and ended_at is null and paused_at is null`,
+      [roomId],
     );
 
     await client.query("commit");
@@ -825,6 +844,14 @@ export async function resumeFocusRoom(roomId: number, hostProfileId: string): Pr
         where id = $4`,
       [endsAt, remainingSeconds, now.toISOString(), roomId]
     );
+    await client.query(
+      `update focus_sessions
+          set total_paused_seconds = coalesce(total_paused_seconds, 0)
+                + greatest(0, floor(extract(epoch from (now() - paused_at)))::int),
+              paused_at = null
+        where room_id = $1 and ended_at is null and paused_at is not null`,
+      [roomId],
+    );
 
     await client.query("commit");
   } catch (error) {
@@ -879,40 +906,12 @@ export async function endFocusRoom(roomId: number): Promise<FocusRoom> {
 // complete the full duration and collect the reward.
 export async function stopFocusRoom(roomId: number, hostProfileId: string): Promise<FocusRoom> {
   parseProfileId(hostProfileId);
-
-  const now = new Date().toISOString();
-
-  // Transfer host control if any other participant is still focusing.
-  const next = await pool.query<{ profile_id: string }>(
-    `select profile_id from room_participants
-     where room_id = $1 and profile_id <> $2 and session_status <> 'left'
-     order by joined_at asc limit 1`,
-    [roomId, hostProfileId],
-  );
-  if (next.rows[0]) {
-    await pool.query(
-      `update focus_rooms set host_profile_id = $2 where id = $1 and host_profile_id = $3`,
-      [roomId, next.rows[0].profile_id, hostProfileId],
-    );
-  }
-
-  // Only the host's own session ends. The room status is left untouched so the
-  // shared countdown keeps running for every other participant, who can therefore still
-  // complete the full duration and collect the reward.
-  await pool.query(
-    `update room_participants
-     set session_status = 'left', gave_up_at = coalesce(gave_up_at, $1)
-     where room_id = $2 and profile_id = $3`,
-    [now, roomId, hostProfileId],
-  );
-  await clearGroupRoomPresence(roomId, hostProfileId);
-
-  const room = await pool.query<{ id: string | number; host_profile_id: string }>(
-    `select id, host_profile_id from focus_rooms where id = $1`,
+  await participantGaveUp(roomId, hostProfileId);
+  const room = await pool.query<{ host_profile_id: string }>(
+    `select host_profile_id from focus_rooms where id = $1`,
     [roomId],
   );
   if (!room.rows[0]) throw new NotFoundError("Room not found");
-
   const updatedRoom = await getFocusRoomById(room.rows[0].host_profile_id, roomId);
   return updatedRoom!;
 }
@@ -924,10 +923,24 @@ export async function participantGaveUp(roomId: number, profileId: string): Prom
 
   const now = new Date().toISOString();
 
-  const room = await pool.query<{ host_profile_id: string }>(
-    `select host_profile_id from focus_rooms where id = $1`,
+  const room = await pool.query<{ host_profile_id: string; status: RoomStatus; started_at: Date | string | null; server_now: Date | string }>(
+    `select host_profile_id, status, started_at, now() as server_now from focus_rooms where id = $1`,
     [roomId],
   );
+  if (!room.rows[0] || (room.rows[0].status !== "active" && room.rows[0].status !== "paused")) {
+    throw new ConflictError("A sala não está em andamento.");
+  }
+  const focusSession = await pool.query<{ id: number; started_at: Date | string; paused_count: number | null }>(
+    `select id, started_at, paused_count from focus_sessions
+      where room_id = $1 and profile_id = $2 and ended_at is null
+      order by started_at desc limit 1`,
+    [roomId, profileId],
+  );
+  const sessionStartedAt = focusSession.rows[0]?.started_at ?? room.rows[0].started_at;
+  if (sessionStartedAt &&
+      focusPhaseAt(timestampMs(sessionStartedAt), timestampMs(room.rows[0].server_now)) === "grace_period") {
+    throw new ConflictError("O período de cancelamento ainda está ativo.");
+  }
   if (room.rows[0]?.host_profile_id === profileId) {
     const next = await pool.query<{ profile_id: string }>(
       `select profile_id from room_participants
@@ -950,9 +963,75 @@ export async function participantGaveUp(roomId: number, profileId: string): Prom
     [now, roomId, profileId]
   );
   await clearGroupRoomPresence(roomId, profileId);
+  if (focusSession.rows[0]) {
+    await endFocusSession(
+      profileId,
+      Number(focusSession.rows[0].id),
+      0,
+      true,
+      Number(focusSession.rows[0].paused_count) || 0,
+      undefined,
+      "gave_up",
+    );
+  }
 
   // Note: Garden withering for focus rooms is handled separately
   // via the individual session completion flow
+}
+
+export async function cancelRoomParticipantGrace(roomId: number, profileId: string): Promise<void> {
+  parseProfileId(profileId);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const room = await client.query<{
+      status: RoomStatus;
+      started_at: Date | string | null;
+      server_now: Date | string;
+    }>(
+      `select status, started_at, now() as server_now from focus_rooms where id = $1 for update`,
+      [roomId],
+    );
+    if (!room.rows[0] || (room.rows[0].status !== "active" && room.rows[0].status !== "paused")) {
+      throw new ConflictError("A sala não está em andamento.");
+    }
+    const participant = await client.query<{ session_status: ParticipantSessionStatus }>(
+      `select session_status from room_participants where room_id = $1 and profile_id = $2 for update`,
+      [roomId, profileId],
+    );
+    if (!participant.rows[0] || participant.rows[0].session_status !== "focusing") {
+      throw new ConflictError("Você não está focando nesta sala.");
+    }
+    const session = await client.query<{ id: number; started_at: Date | string }>(
+      `select id, started_at from focus_sessions
+        where room_id = $1 and profile_id = $2 and ended_at is null
+        order by started_at desc limit 1 for update`,
+      [roomId, profileId],
+    );
+    const startedAt = session.rows[0]?.started_at ?? room.rows[0].started_at;
+    if (!startedAt || !canCancelFocusSession(timestampMs(startedAt), timestampMs(room.rows[0].server_now))) {
+      throw new ConflictError("O período de cancelamento terminou. Você pode desistir da sessão.");
+    }
+    if (session.rows[0]) {
+      await client.query(
+        `delete from focus_sessions where id = $1 and profile_id = $2 and ended_at is null`,
+        [session.rows[0].id, profileId],
+      );
+    }
+    await client.query(
+      `update room_participants
+          set session_status = 'waiting', completed_at = null, gave_up_at = null
+        where room_id = $1 and profile_id = $2 and session_status = 'focusing'`,
+      [roomId, profileId],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  await clearGroupRoomPresence(roomId, profileId);
 }
 
 

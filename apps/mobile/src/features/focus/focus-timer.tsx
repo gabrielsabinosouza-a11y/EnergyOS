@@ -13,6 +13,12 @@ import Svg, {
   Path,
   Stop,
 } from 'react-native-svg';
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { useTheme } from '@/hooks/use-theme';
 import { Text } from '@/shared/components';
@@ -30,6 +36,9 @@ type FocusTimerProps = {
   elapsedProgress: number;
   active: boolean;
   paused: boolean;
+  gracePeriod: boolean;
+  graceSecondsRemaining: number;
+  extinguished: boolean;
   onDurationChange: (minutes: number) => void;
 };
 
@@ -45,11 +54,16 @@ export function FocusTimer({
   elapsedProgress,
   onDurationChange,
   paused,
+  gracePeriod,
+  graceSecondsRemaining,
+  extinguished,
   remainingSeconds,
 }: FocusTimerProps) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const [pulse] = useState(() => new Animated.Value(1));
+  const shake = useSharedValue(0);
+  const fade = useSharedValue(0);
   const ringSize = Math.min(280, Math.max(200, width - 104));
   const idleProgress = Math.max(
     0.04,
@@ -80,9 +94,34 @@ export function FocusTimer({
     return () => animation.stop();
   }, [pulse]);
 
+  useEffect(() => {
+    if (!extinguished) {
+      fade.value = withTiming(0, { duration: 180 });
+      shake.value = 0;
+      return;
+    }
+    fade.value = withTiming(1, { duration: 700 });
+    shake.value = withSequence(
+      withTiming(-4, { duration: 55 }),
+      withTiming(4, { duration: 55 }),
+      withTiming(-3, { duration: 55 }),
+      withTiming(3, { duration: 55 }),
+      withTiming(0, { duration: 75 }),
+    );
+  }, [extinguished, fade, shake]);
+
+  const extinguishedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fade.value * 0.45,
+    transform: [{ translateX: shake.value }, { scale: 1 - fade.value * 0.04 }],
+  }));
+
   return (
     <View style={styles.container}>
-      <View accessibilityLabel="Progresso da sessão de foco" style={{ height: ringSize, width: ringSize }}>
+      <View
+        accessibilityLabel={gracePeriod
+          ? `Período de cancelamento: ${graceSecondsRemaining} segundos restantes`
+          : paused ? 'Sessão de foco pausada' : 'Progresso da sessão de foco'}
+        style={{ height: ringSize, width: ringSize }}>
         <Svg height={ringSize} viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`} width={ringSize}>
           <Defs>
             <LinearGradient id="focusRing" x1="0%" x2="100%" y1="0%" y2="100%">
@@ -110,7 +149,7 @@ export function FocusTimer({
             r={RING_RADIUS}
             rotation={-90}
             origin={`${VIEWBOX_SIZE / 2}, ${VIEWBOX_SIZE / 2}`}
-            stroke="url(#focusRing)"
+            stroke={extinguished ? '#77818d' : 'url(#focusRing)'}
             strokeDasharray={`${RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`}
             strokeDashoffset={dashOffset}
             strokeLinecap="round"
@@ -119,12 +158,12 @@ export function FocusTimer({
           <Circle cx={markerX} cy={markerY} fill="#7924b5" r={9} stroke="#d7a4ff" strokeWidth={3} />
           <Path
             d="M130 55 C126 77 103 83 105 106 C87 121 91 145 109 155 C102 173 116 191 131 201 C126 183 144 178 148 161 C169 147 165 125 148 113 C158 93 148 75 136 68 C140 84 128 90 125 99 C119 82 137 72 130 55Z"
-            fill="url(#focusFlame)"
+            fill={extinguished ? '#77818d' : 'url(#focusFlame)'}
             opacity={0.96}
           />
           <Path
             d="M130 103 C122 116 112 122 116 137 C119 147 128 151 126 165 C139 156 151 145 144 132 C141 124 133 119 130 103Z"
-            fill="#f1d8ff"
+            fill={extinguished ? '#a7afb9' : '#f1d8ff'}
             opacity={0.72}
           />
         </Svg>
@@ -142,12 +181,29 @@ export function FocusTimer({
             },
           ]}
         />
+        {extinguished ? (
+          <Reanimated.View
+            pointerEvents="none"
+            style={[
+              styles.deadEnergy,
+              {
+                height: ringSize * 0.3,
+                left: ringSize * 0.35,
+                top: ringSize * 0.35,
+                width: ringSize * 0.3,
+              },
+              extinguishedStyle,
+            ]}
+          />
+        ) : null}
       </View>
 
       <Text
         accessibilityLabel={
           active
-            ? `Tempo restante: ${formatCountdown(remainingSeconds)}`
+            ? gracePeriod
+              ? `Período de cancelamento, ${graceSecondsRemaining} segundos restantes`
+              : `Tempo restante: ${formatCountdown(remainingSeconds)}`
             : `${durationMinutes} minutos de foco`
         }
         color={theme.text}
@@ -156,7 +212,9 @@ export function FocusTimer({
         {active ? formatCountdown(remainingSeconds) : durationMinutes}
       </Text>
       <Text color={theme.textMuted} style={styles.unit} variant="caption">
-        {active ? (paused ? 'SESSÃO PAUSADA' : 'TEMPO RESTANTE') : 'MINUTOS DE FOCO'}
+        {active
+          ? paused ? 'SESSÃO PAUSADA' : gracePeriod ? 'PERÍODO DE CANCELAMENTO' : 'TEMPO RESTANTE'
+          : 'MINUTOS DE FOCO'}
       </Text>
 
       {!active ? (
@@ -199,6 +257,12 @@ const styles = StyleSheet.create({
   flameGlow: {
     borderRadius: 999,
     opacity: 0.12,
+    position: 'absolute',
+  },
+  deadEnergy: {
+    backgroundColor: '#7b8490',
+    borderRadius: 999,
+    opacity: 0.18,
     position: 'absolute',
   },
   time: { fontSize: 42, fontVariant: ['tabular-nums'], lineHeight: 50, marginTop: 4 },

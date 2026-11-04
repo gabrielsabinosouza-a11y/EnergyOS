@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { colors, radii, typography } from '@/theme';
 import { PressableScale } from './pressable-scale';
@@ -31,6 +32,7 @@ export function AchievementMedal({
   rarity = 'rare',
   title,
 }: AchievementMedalProps) {
+  const reducedMotion = useReducedMotion();
   const accent = locked ? '#79869A' : rarityColors[rarity];
   const content = (
     <View style={styles.content}>
@@ -75,9 +77,13 @@ export function AchievementMedal({
   ) : <MotiView
     accessibilityLabel={`${title}${locked ? ', bloqueada' : ''}`}
     style={styles.container}
-    from={{ opacity: 0, scale: 0.94 }}
+    from={reducedMotion ? undefined : { opacity: 0, scale: 0.94 }}
     animate={{ opacity: 1, scale: 1 }}
-    transition={{ type: 'spring', damping: 18, stiffness: 240 }}>
+    transition={
+      reducedMotion
+        ? { type: 'timing', duration: 0 }
+        : { type: 'spring', damping: 18, stiffness: 240 }
+    }>
     {content}
   </MotiView>;
 }

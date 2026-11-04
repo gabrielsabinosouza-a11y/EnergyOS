@@ -1,56 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import {
-  LayoutDashboard, Settings, TrendingUp, UserPlus, Users, Trophy,
-  Leaf, ShoppingBag, DoorOpen, MoreHorizontal, X, Library, CalendarCheck, CalendarDays,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Modal } from "./modal";
+import { navigationItems } from "@/shared/navigation-config";
+import type { NavigationItem } from "@/shared/navigation-config";
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  img?: string;
-  badge?: "dm" | "group" | null;
-};
-
-export const navigationItems: NavItem[] = [
-  { href: "/dashboard", label: "Visão geral",      icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
-  { href: "/planner", label: "Planejamento",       icon: CalendarDays, img: "/sidebar_menu/planner.png" },
-  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
-  { href: "/salas-de-foco", label: "Salas de foco", icon: DoorOpen, badge: null, img: "/sidebar_menu/rooms.png" },
-  { href: "/amigos",    label: "Amigos",           icon: UserPlus,     badge: "dm" as const, img: "/sidebar_menu/friends.png" },
-  { href: "/liga",      label: "Liga",             icon: Trophy,       badge: null, img: "/sidebar_menu/leaderboard.png" },
-  { href: "/grupos",    label: "Grupos",           icon: Users,        badge: "group" as const, img: "/sidebar_menu/groups.png" },
-  { href: "/loja",      label: "Loja",             icon: ShoppingBag,  badge: null, img: "/sidebar_menu/store.png" },
-  { href: "/jardim",    label: "Meu jardim",       icon: Leaf, img: "/sidebar_menu/garden.png" },
-  { href: "/perfil",    label: "Meu perfil",       icon: TrendingUp, img: "/sidebar_menu/profile.png" },
-  { href: "/configuracoes", label: "Configurações", icon: Settings, img: "/sidebar_menu/settings.png" },
-];
-
-/* Bottom tab bar: the 4 most frequently used sections get permanent,
-   thumb-reachable tabs; everything else lives behind "Mais". The custom
-   pixel icons (img) match the desktop sidebar — lucide is only a fallback. */
-const PRIMARY_TABS: readonly NavItem[] = [
-  { href: "/dashboard",     label: "Início", icon: LayoutDashboard, img: "/sidebar_menu/dashboard.png" },
-  { href: "/salas-de-foco", label: "Foco",   icon: DoorOpen,        img: "/sidebar_menu/rooms.png" },
-  { href: "/amigos",        label: "Amigos", icon: UserPlus, badge: "dm" as const, img: "/sidebar_menu/friends.png" },
-  { href: "/liga",          label: "Liga",   icon: Trophy,          img: "/sidebar_menu/leaderboard.png" },
-] as const;
-
-const MORE_TABS: readonly NavItem[] = [
-  { href: "/dashboard/consistencia", label: "Consistência", icon: CalendarCheck, img: "/sidebar_menu/consistency.png" },
-  { href: "/grupos",        label: "Grupos",        icon: Users,       badge: "group" as const, img: "/sidebar_menu/groups.png" },
-  { href: "/loja",          label: "Loja",          icon: ShoppingBag, img: "/sidebar_menu/store.png" },
-  { href: "/jardim",        label: "Meu jardim",    icon: Leaf,        img: "/sidebar_menu/garden.png" },
-  { href: "/perfil",        label: "Meu perfil",    icon: TrendingUp,  img: "/sidebar_menu/profile.png" },
-  { href: "/configuracoes", label: "Configurações", icon: Settings,    img: "/sidebar_menu/settings.png" },
-] as const;
+function iconPath(icon: NavigationItem["icon"]) {
+  return `/sidebar_menu/${icon === "league" ? "leaderboard" : icon}.png`;
+}
 
 function isActivePath(pathname: string, href: string) {
   // "/dashboard" é a raiz de subrotas (ex.: /dashboard/consistencia): só fica
@@ -112,14 +71,14 @@ export function Sidebar({ pathname }: { pathname: string }) {
       </Link>
 
       <nav className="space-y-1">
-        {navigationItems.map(({ href, label, icon: Icon, badge, img }) => {
-          const isActive = pathname === href;
+        {navigationItems.map(({ route, label, icon, badge }) => {
+          const isActive = pathname === route;
           const unreadCount = badgeCountFor(badge, unreadCounts);
           const showBadge = unreadCount > 0;
           return (
             <Link
-              key={href}
-              href={href}
+              key={route}
+              href={route}
               className={`nav-item relative ${isActive ? "active" : ""}`}
             >
               {isActive && (
@@ -140,17 +99,13 @@ export function Sidebar({ pathname }: { pathname: string }) {
                 />
               )}
               <span className="relative z-10 flex items-center gap-[13px]">
-                {img ? (
-                  <Image
-                    src={img}
-                    alt=""
-                    width={30}
-                    height={30}
-                    className="shrink-0 object-contain"
-                  />
-                ) : (
-                  <Icon size={30} />
-                )}
+                <Image
+                  src={iconPath(icon)}
+                  alt=""
+                  width={30}
+                  height={30}
+                  className="shrink-0 object-contain"
+                />
                 <span>{label}</span>
                 {showBadge && (
                   <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--orange)] px-1 text-[10px] font-bold text-black">
@@ -166,19 +121,91 @@ export function Sidebar({ pathname }: { pathname: string }) {
   );
 }
 
-/* ═══════════════════════ MOBILE NAVIGATION (<lg) ═══════════════════════
-   Compact sticky brand bar on top + fixed bottom tab bar with a "Mais"
-   bottom sheet. Bottom tabs beat hamburger-only patterns for apps opened
-   many times a day (check-ins, timers): primary destinations are one
-   thumb-tap away. */
+/* Compact sticky brand bar and horizontally scrollable mobile navigation. */
 export function MobileNav({ pathname }: { pathname: string }) {
   const unreadCounts = useUnreadCounts();
-  // A folha "Mais" só fica aberta enquanto o pathname não muda: navegar para
-  // uma seção fecha sozinho, sem setState dentro de useEffect.
-  const [openedAt, setOpenedAt] = useState<string | null>(null);
-  const showMore = openedAt === pathname;
+  const reduced = useReducedMotion();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const initialScroll = useRef(true);
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const suppressTimer = useRef<number | null>(null);
+  const activeItem = navigationItems.find(({ route, mobileRoute }) => (
+    isActivePath(pathname, route) || isActivePath(pathname, mobileRoute)
+  ));
+  const [edges, setEdges] = useState({ left: false, right: true });
 
-  const moreActive = MORE_TABS.some(({ href }) => isActivePath(pathname, href));
+  const updateEdges = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const nextEdges = {
+      left: element.scrollLeft > 2,
+      right: element.scrollLeft + element.clientWidth < element.scrollWidth - 2,
+    };
+    setEdges((current) => (
+      current.left === nextEdges.left && current.right === nextEdges.right
+        ? current
+        : nextEdges
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (!activeItem) return;
+    const element = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-mobile-nav-item="${activeItem.id}"]`,
+    );
+    if (!element) return;
+    element.scrollIntoView({
+      behavior: initialScroll.current || reduced ? "instant" : "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+    initialScroll.current = false;
+    requestAnimationFrame(updateEdges);
+  }, [activeItem, reduced, updateEdges]);
+
+  useEffect(() => {
+    const handleResize = () => updateEdges();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [updateEdges]);
+
+  useEffect(() => () => {
+    if (suppressTimer.current !== null) window.clearTimeout(suppressTimer.current);
+  }, []);
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    pointerStart.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    const start = pointerStart.current;
+    pointerStart.current = null;
+    if (!start) return;
+    const deltaX = Math.abs(event.clientX - start.x);
+    const deltaY = Math.abs(event.clientY - start.y);
+    if (deltaX > 10 && deltaX > deltaY) {
+      suppressClick.current = true;
+      if (suppressTimer.current !== null) window.clearTimeout(suppressTimer.current);
+      suppressTimer.current = window.setTimeout(() => {
+        suppressClick.current = false;
+        suppressTimer.current = null;
+      }, 0);
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLAnchorElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const links = Array.from(
+      scrollRef.current?.querySelectorAll<HTMLAnchorElement>("[data-mobile-nav-item]") ?? [],
+    );
+    const currentIndex = links.indexOf(event.currentTarget);
+    const target = links[currentIndex + (event.key === "ArrowRight" ? 1 : -1)];
+    if (!target) return;
+    event.preventDefault();
+    target.focus();
+    target.scrollIntoView({ behavior: reduced ? "instant" : "smooth", inline: "center", block: "nearest" });
+  }
 
   return (
     <>
@@ -194,84 +221,59 @@ export function MobileNav({ pathname }: { pathname: string }) {
 
       {/* Bottom tab bar */}
       <nav className="bottom-tabbar lg:hidden" aria-label="Navegação principal">
-        <div className="flex items-stretch">
-          {PRIMARY_TABS.map(({ href, label, icon: Icon, img, ...rest }) => {
-            const badge = "badge" in rest ? rest.badge : undefined;
-            const active = isActivePath(pathname, href);
-            const showDot = badgeCountFor(badge, unreadCounts) > 0;
-            return (
-              <Link key={href} href={href} className={`tab-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
-                <span className="tab-icon">
-                  {img ? (
-                    <Image src={img} alt="" width={24} height={24} className="shrink-0 object-contain" />
-                  ) : (
-                    <Icon size={21} strokeWidth={active ? 2.3 : 2} />
-                  )}
-                  {showDot && <span className="tab-dot" aria-label="Mensagens não lidas" />}
-                </span>
-                <span className="tab-label">{label}</span>
-              </Link>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setOpenedAt(pathname)}
-            className={`tab-item ${moreActive ? "active" : ""}`}
-            aria-expanded={showMore}
+        <div className="bottom-tabbar-glass">
+          <div
+            className="bottom-tabbar-scroll"
+            onPointerDownCapture={handlePointerDown}
+            onPointerUpCapture={handlePointerUp}
+            onPointerCancelCapture={() => { pointerStart.current = null; }}
+            onClickCapture={(event) => {
+              if (!suppressClick.current) return;
+              event.preventDefault();
+              event.stopPropagation();
+              suppressClick.current = false;
+              if (suppressTimer.current !== null) window.clearTimeout(suppressTimer.current);
+              suppressTimer.current = null;
+            }}
+            onScroll={updateEdges}
+            ref={scrollRef}
           >
-            <span className="tab-icon">
-              <MoreHorizontal size={21} strokeWidth={moreActive ? 2.3 : 2} />
-            </span>
-            <span className="tab-label">Mais</span>
-          </button>
+            {navigationItems.map(({ id, route, label, shortLabel, icon, badge }) => {
+              const active = activeItem?.id === id;
+              const unreadCount = badgeCountFor(badge, unreadCounts);
+              return (
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  aria-label={unreadCount > 0 ? `${label}, ${unreadCount} mensagens não lidas` : label}
+                  className={`tab-item ${active ? "active" : ""}`}
+                  data-mobile-nav-item={id}
+                  href={route}
+                  key={id}
+                  onKeyDown={handleKeyDown}
+                >
+                  {active && (
+                    <motion.span
+                      aria-hidden="true"
+                      className="tab-active-pill"
+                      layoutId={reduced ? undefined : "mobile-nav-active-pill"}
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span className="tab-icon">
+                    <Image src={iconPath(icon)} alt="" width={25} height={25} className="shrink-0 object-contain" />
+                    {unreadCount > 0 && (
+                      <span className="tab-dot" aria-label={`${unreadCount} mensagens não lidas`} />
+                    )}
+                  </span>
+                  <span className="tab-label">{shortLabel}</span>
+                </Link>
+              );
+            })}
+          </div>
+          {edges.left && <span aria-hidden="true" className="bottom-tabbar-fade bottom-tabbar-fade-left" />}
+          {edges.right && <span aria-hidden="true" className="bottom-tabbar-fade bottom-tabbar-fade-right" />}
         </div>
       </nav>
-
-      {/* "Mais" — bottom sheet with the remaining sections */}
-      {showMore && (
-        <Modal open={showMore} onClose={() => setOpenedAt(null)} variant="bottom-sheet">
-          <div className="glass-card w-full max-w-md overflow-hidden rounded-b-none! p-2 sm:rounded-b-[14px]!" role="menu" aria-label="Mais seções">
-            <div className="flex items-center justify-between px-4 pb-1 pt-3">
-              <span className="eyebrow muted"><Library size={12} /> MAIS SEÇÕES</span>
-              <button
-                type="button"
-                onClick={() => setOpenedAt(null)}
-                aria-label="Fechar"
-                className="tap flex h-11 w-11 items-center justify-center rounded-lg text-[var(--text-faint)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 p-2">
-              {MORE_TABS.map(({ href, label, icon: Icon, img, ...rest }) => {
-                const badge = "badge" in rest ? rest.badge : undefined;
-                const active = isActivePath(pathname, href);
-                const showDot = badgeCountFor(badge, unreadCounts) > 0;
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    role="menuitem"
-                    className={`relative flex min-h-[56px] items-center gap-3 rounded-xl border px-3.5 py-3 text-[13px] font-medium transition ${
-                      active
-                        ? "border-[var(--accent)]/40 bg-[var(--accent-bg)] text-[var(--accent)]"
-                        : "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text)]"
-                    }`}
-                  >
-                    {img ? (
-                      <Image src={img} alt="" width={20} height={20} className="shrink-0 object-contain" />
-                    ) : (
-                      <Icon size={18} className="shrink-0" />
-                    )}
-                    <span className="truncate">{label}</span>
-                    {showDot && <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-[var(--orange)] shadow-[0_0_8px_rgba(255,184,107,.6)]" aria-label="Mensagens não lidas" />}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </Modal>
-      )}
     </>
   );
 }

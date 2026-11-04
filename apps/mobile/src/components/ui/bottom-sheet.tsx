@@ -39,10 +39,10 @@ export function BottomSheet({ children, onClose, title, visible }: BottomSheetPr
     })
     .onEnd((event) => {
       if (event.translationY > 120 || event.velocityY > 900) {
-        translateY.set(withTiming(420, { duration: reducedMotion ? 0 : 180 }));
+        translateY.set(reducedMotion ? 420 : withTiming(420, { duration: 180 }));
         runOnJS(onClose)();
       } else {
-        translateY.set(withSpring(0, motion.spring.soft));
+        translateY.set(reducedMotion ? 0 : withSpring(0, motion.spring.soft));
       }
     });
 

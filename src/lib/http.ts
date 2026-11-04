@@ -19,12 +19,12 @@ function logSlowRequest(route: string | undefined, method: string | undefined, d
     timestamp: Date.now(),
   };
   slowRequestLog.push(entry);
-  
+
   // Keep only last 1000 entries
   if (slowRequestLog.length > 1000) {
     slowRequestLog.shift();
   }
-  
+
   // Log to console for immediate visibility
   console.warn(`[PERF] Slow API request: ${method} ${route} took ${duration}ms`);
 }
@@ -82,16 +82,16 @@ export async function handleRoute(
 ): Promise<NextResponse> {
   const ctx: RouteContext = { ...context };
   const startTime = Date.now();
-  
+
   try {
     const response = await handler(ctx);
-    
+
     // Track performance
     const duration = Date.now() - startTime;
     if (duration > SLOW_REQUEST_THRESHOLD) {
       logSlowRequest(ctx.route, ctx.method, duration);
     }
-    
+
     return response;
   } catch (error) {
     // Still track performance for failed requests
@@ -99,7 +99,7 @@ export async function handleRoute(
     if (duration > SLOW_REQUEST_THRESHOLD) {
       logSlowRequest(ctx.route, ctx.method, duration);
     }
-    
+
     if (error instanceof ValidationError) {
       console.error("[api] Validation error:", error.message, JSON.stringify(ctx));
       return jsonError(400, error.message);
@@ -131,3 +131,28 @@ export function routeContext(request: NextRequest, route?: string): RouteContext
     return { route, method: request.method };
   }
 }
+const err = error as Error & {
+  code?: string;
+  detail?: string;
+  column?: string;
+  table?: string;
+  constraint?: string;
+  cause?: unknown;
+};
+console.error(
+  "[api] erro inesperado:",
+  JSON.stringify({
+    route: ctx.route,
+    method: ctx.method,
+    profileId: ctx.profileId,
+    duration: Date.now() - startTime,
+    error: err instanceof Error ? err.message : String(error),
+    code: err?.code,
+    detail: err?.detail,
+    table: err?.table,
+    column: err?.column,
+    constraint: err?.constraint,
+    cause: err?.cause instanceof Error ? err.cause.message : err?.cause,
+    stack: err instanceof Error ? err.stack : undefined,
+  }),
+);

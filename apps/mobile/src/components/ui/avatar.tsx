@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { colors, gradients, radii } from '@/theme';
 
@@ -13,14 +14,16 @@ type AvatarProps = {
 };
 
 export function Avatar({ badge, name, size = 56, source }: AvatarProps) {
+  const reducedMotion = useReducedMotion();
   const imageSource = typeof source === 'string' ? { uri: source } : source;
   const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase();
 
   return (
     <View style={{ height: size + 8, width: size + 8 }}>
       <MotiView
-        from={{ rotate: '0deg' }}
-        animate={{ rotate: '0deg' }}
+        from={reducedMotion ? undefined : { opacity: 0.65, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: 'timing', duration: reducedMotion ? 0 : 350 }}
         style={[styles.ring, { borderRadius: (size + 8) / 2, height: size + 8, width: size + 8 }]}>
         <LinearGradient colors={gradients.primary} style={StyleSheet.absoluteFill} />
       </MotiView>

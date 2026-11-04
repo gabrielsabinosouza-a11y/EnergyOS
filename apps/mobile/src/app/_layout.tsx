@@ -40,7 +40,6 @@ function AppNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={status === 'ready' && user !== null}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="ui-playground" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

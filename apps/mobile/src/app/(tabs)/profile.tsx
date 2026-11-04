@@ -78,6 +78,13 @@ export default function ProfileScreen() {
         </Text>
         <Text variant="title">Seu perfil</Text>
       </View>
+      {__DEV__ ? (
+        <Button
+          onPress={() => router.push('/ui-playground')}
+          title="Prévia do sistema visual"
+          variant="quiet"
+        />
+      ) : null}
       <Card style={styles.card}>
         <Text variant="heading">{profile?.displayName || user?.displayName || 'Pessoa EnergyOS'}</Text>
         <Text color={theme.textSecondary}>{user?.email}</Text>

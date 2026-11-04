@@ -49,6 +49,10 @@ import {
   sendSystemCompletionNotification,
   startCompletionTitleFlash,
 } from "@/lib/session-alerts";
+import {
+  focusPhaseAt,
+  GRACE_PERIOD_SECONDS,
+} from "@/../apps/mobile/src/shared/focus-session-state";
 
 type PageState = "list" | "create" | "join" | "room";
 
@@ -61,6 +65,7 @@ const ROOM_SESSION_KEY = (roomId: number) => `energyos_room_session_${roomId}`;
 interface PersistedRoomSession {
   sessionId: number;
   created: string;
+  startedAt?: string;
   finalized: boolean;
 }
 
@@ -541,8 +546,7 @@ export default function FocusRoomsPage() {
     const persisted = loadRoomSession(currentRoom.id);
     const myParticipant = currentRoom.participants.find((p) => p.profileId === myProfileId);
 
-    // If I already gave up, don't create a new session
-    if (myParticipant && myParticipant.sessionStatus === "left") return;
+    if (!myParticipant || myParticipant.sessionStatus !== "focusing") return;
 
     if (persisted && persisted.sessionId && !persisted.finalized) {
       roomSessionRef.current = persisted;
@@ -558,7 +562,12 @@ export default function FocusRoomsPage() {
       .then(({ session }) => {
         if (cancelled) return;
         const created = new Date().toISOString();
-        const state: PersistedRoomSession = { sessionId: session.id, created, finalized: false };
+        const state: PersistedRoomSession = {
+          sessionId: session.id,
+          created,
+          startedAt: session.startedAt,
+          finalized: false,
+        };
         roomSessionRef.current = state;
         saveRoomSession(currentRoom.id, state);
         setLastCoins(0);
@@ -573,6 +582,21 @@ export default function FocusRoomsPage() {
   const isRunningRoom = currentRoom?.status === "active" || currentRoom?.status === "paused";
   const startedAtMs = currentRoom?.startedAt ? new Date(currentRoom.startedAt).getTime() : null;
   const totalMs = currentRoom ? currentRoom.durationMinutes * 60 * 1000 : 0;
+  const myRoomParticipant = currentRoom?.participants.find((participant) => participant.profileId === myProfileId);
+  const roomGraceStartedAt = currentRoom?.startedAt;
+  const roomGracePeriod = Boolean(
+    isRunningRoom &&
+    currentRoom?.status === "active" &&
+    myRoomParticipant?.sessionStatus === "focusing" &&
+    roomGraceStartedAt &&
+    focusPhaseAt(new Date(roomGraceStartedAt).getTime(), nowMs + serverOffsetMs) === "grace_period",
+  );
+  const roomGraceSecondsRemaining = roomGraceStartedAt
+    ? Math.max(0, Math.ceil(
+        (GRACE_PERIOD_SECONDS * 1000 -
+          ((nowMs + serverOffsetMs) - new Date(roomGraceStartedAt).getTime())) / 1000,
+      ))
+    : 0;
 
   // Pause-aware remaining time. The server keeps `elapsedSeconds` (accumulated
   // focused time before the current run segment) plus `lastResumedAt` (when the
@@ -788,6 +812,8 @@ export default function FocusRoomsPage() {
         // Active/paused: mark as gave up instead of removing from history
         await api.giveUpFocusRoom(currentRoom.id);
         await finalizeSession(currentRoom, 0, false);
+        setShowStopConfirm(false);
+        setSuccessMessage("Você consegue mais na próxima.");
         setError(null);
       } else {
         await api.leaveFocusRoom(currentRoom.id);
@@ -801,7 +827,11 @@ export default function FocusRoomsPage() {
     }
   }, [currentRoom, fetchRooms, finalizeSession]);
 
-  const handleGiveUp = useCallback(async () => {
+  const handleGiveUp = useCallback(() => {
+    setShowStopConfirm(true);
+  }, []);
+
+  const confirmGiveUp = useCallback(async () => {
     if (!currentRoom) return;
     setLoadingAction("givingup");
     setError(null);
@@ -819,6 +849,27 @@ export default function FocusRoomsPage() {
       setLoadingAction(null);
     }
   }, [currentRoom, myProfileId, finalizeSession]);
+
+  const handleCancelRoomGrace = useCallback(async () => {
+    if (!currentRoom || !roomGracePeriod) return;
+    setLoadingAction("cancelling");
+    setError(null);
+    try {
+      const result = await api.cancelFocusRoomGrace(currentRoom.id);
+      setCurrentRoom(result.room);
+      const session = roomSessionRef.current;
+      if (session) {
+        const finalized = { ...session, finalized: true };
+        roomSessionRef.current = finalized;
+        saveRoomSession(currentRoom.id, finalized);
+      }
+      setSuccessMessage("Sessão cancelada.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível cancelar a sessão.");
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [currentRoom, roomGracePeriod]);
 
   const handlePreviewDuration = useCallback((minutes: number) => {
     pendingDurationRef.current = minutes;
@@ -901,7 +952,7 @@ export default function FocusRoomsPage() {
       // session as a give-up (no energy planted, no completion reward). The
       // shared room timer keeps running for everyone else.
       await finalizeSession(currentRoom, 0, false);
-      setSuccessMessage("Você parou sua sessão. A sala continua para os outros participantes.");
+      setSuccessMessage("Você consegue mais na próxima. A sala continua para os outros participantes.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao encerrar a sessão");
       setShowStopConfirm(false);
@@ -1416,6 +1467,7 @@ export default function FocusRoomsPage() {
                 active={running}
                 paused={paused}
                 pausedLabel="pausada"
+                runningLabel={roomGracePeriod ? "PERÍODO DE CANCELAMENTO" : "em andamento"}
               />
               {paused && (
                 <span className="mt-1 flex items-center gap-1 text-[10px] text-amber-400">
@@ -1529,13 +1581,29 @@ export default function FocusRoomsPage() {
                 )}
                 {(room.status === "active" || room.status === "paused") && myParticipant?.sessionStatus === "focusing" && (
                   <button
-                    onClick={handleGiveUp}
-                    disabled={loadingAction === "givingup"}
-                    className="w-full rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400 transition-colors hover:bg-red-500/15 disabled:opacity-50 flex items-center justify-center gap-2"
+                    onClick={() => roomGracePeriod ? void handleCancelRoomGrace() : handleGiveUp()}
+                    disabled={loadingAction === "givingup" || loadingAction === "cancelling"}
+                    className={`w-full rounded-xl border px-4 py-3 text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                      roomGracePeriod
+                        ? "border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] text-[var(--text)]"
+                        : "border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                    }`}
                   >
-                    {loadingAction === "givingup" ? <Loader2 size={16} className="animate-spin" /> : <>
-                      <X size={15} /> Desistir da sessão
-                    </>}
+                    {loadingAction === "givingup" || loadingAction === "cancelling"
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : roomGracePeriod
+                        ? <>
+                            <span>Cancelar ({roomGraceSecondsRemaining}s)</span>
+                            <svg aria-hidden="true" className="-rotate-90" width="18" height="18" viewBox="0 0 24 24">
+                              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity=".22" strokeWidth="2" />
+                              <circle
+                                cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"
+                                strokeDasharray={`${2 * Math.PI * 9 * (roomGraceSecondsRemaining / GRACE_PERIOD_SECONDS)} ${2 * Math.PI * 9}`}
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </>
+                        : <><X size={15} /> Desistir da sessão</>}
                   </button>
                 )}
               </>
@@ -1673,7 +1741,7 @@ export default function FocusRoomsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <motion.button
                     onClick={handleTogglePause}
-                    disabled={loadingAction === "pausing" || loadingAction === "resuming"}
+                    disabled={roomGracePeriod || loadingAction === "pausing" || loadingAction === "resuming"}
                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                     className="w-full rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
                     style={{
@@ -1692,11 +1760,15 @@ export default function FocusRoomsPage() {
                   </motion.button>
                   <button
                     type="button"
-                    onClick={() => setShowStopConfirm(true)}
+                    onClick={() => roomGracePeriod ? void handleCancelRoomGrace() : setShowStopConfirm(true)}
                     disabled={loadingAction !== null}
                     className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400 font-medium flex items-center justify-center gap-2 transition-colors hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loadingAction === "stopping" ? <Loader2 size={15} className="animate-spin" /> : <><Square size={14} /> Parar sessão</>}
+                    {loadingAction === "stopping" || loadingAction === "cancelling"
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : roomGracePeriod
+                        ? <><X size={14} /> Cancelar ({roomGraceSecondsRemaining}s)</>
+                        : <><Square size={14} /> Desistir</>}
                   </button>
                 </div>
                 <p className="text-center text-[10px] text-[var(--text-faint)]">
@@ -1797,18 +1869,21 @@ export default function FocusRoomsPage() {
         {showStopConfirm && currentRoom && (
           <Modal onClose={() => setShowStopConfirm(false)}>
             <div className="glass-card w-full max-w-sm p-6">
-              <h3 className="font-display text-lg mb-2">Parar sessão?</h3>
+              <h3 className="font-display text-lg mb-2 text-center">
+                Tem certeza que quer desistir? Sua energia vai se apagar. 💔
+              </h3>
               <p className="text-sm text-[var(--text-muted)] mb-6">
-                Se você parar agora, sua energia será perdida, mas a sessão continua para os outros participantes. Tem certeza?
+                A sala continua para os outros participantes, mas esta sessão ficará registrada como desistência sem recompensas.
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setShowStopConfirm(false)}
-                  className="flex-1 rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-surface-hover)] transition-colors">
-                  Cancelar
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--bg-primary)] transition-colors"
+                  style={{ background: "var(--accent)" }}>
+                  Continuar focando
                 </button>
-                <button onClick={handleStopRoom} disabled={loadingAction === "stopping"}
+                <button onClick={currentRoom.hostProfileId === myProfileId ? handleStopRoom : confirmGiveUp} disabled={loadingAction === "stopping" || loadingAction === "givingup"}
                   className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
-                  {loadingAction === "stopping" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Parar"}
+                  {loadingAction === "stopping" || loadingAction === "givingup" ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Desistir"}
                 </button>
               </div>
             </div>

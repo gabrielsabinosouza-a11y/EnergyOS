@@ -12,9 +12,14 @@ export async function GET(request: NextRequest) {
   return handleRoute(async (context) => {
     const { profileId } = await requireAuth(request);
     context.profileId = profileId;
-    await runWeeklyLeagueReset();
-    const results = await getPendingLeagueWeeklyResults(profileId);
-    return jsonOk({ results });
+    try {
+      await runWeeklyLeagueReset();
+      const results = await getPendingLeagueWeeklyResults(profileId);
+      return jsonOk({ results });
+    } catch (error) {
+      console.error("[league-new/results] FAILED:", error);
+      throw error;
+    }
   }, routeContext(request, "/api/league-new/results"));
 }
 

@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { StatusBar } from 'expo-status-bar';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import {
   AchievementMedal,
@@ -26,6 +27,7 @@ import { colors, radii, spacing, typography } from '@/theme';
 export default function UiPlaygroundScreen() {
   const [sheetVisible, setSheetVisible] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
+  const reducedMotion = useReducedMotion();
   const dismissToast = useCallback(() => setToastVisible(false), []);
   const showToast = useCallback(() => setToastVisible(true), []);
 
@@ -42,11 +44,11 @@ export default function UiPlaygroundScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         <MotiView
-          from={{ opacity: 0, translateY: 10 }}
+          from={reducedMotion ? undefined : { opacity: 0, translateY: 10 }}
           animate={{ opacity: 1, translateY: 0 }}
-          transition={{ type: 'timing', duration: 300 }}>
+          transition={{ type: 'timing', duration: reducedMotion ? 0 : 300 }}>
           <Text style={styles.eyebrow}>ENERGYOS · SISTEMA VISUAL</Text>
-          <Text style={styles.title}>UI Playground</Text>
+          <Text style={styles.title}>Playground da interface</Text>
           <Text style={styles.subtitle}>Componentes compartilhados para a experiência mobile.</Text>
         </MotiView>
 
@@ -64,8 +66,8 @@ export default function UiPlaygroundScreen() {
             <Chip label="NÍVEL 12" color={colors.purple} backgroundColor={colors.purpleBg} />
           </View>
           <View style={styles.heroStats}>
-            <StatCard label="SEQUÊNCIA" value="12 dias" color={colors.amber} icon={<Text>🔥</Text>} index={0} />
-            <StatCard label="FOCO NA SEMANA" value="8h 40min" color={colors.purple} icon={<Text>✦</Text>} index={1} />
+            <StatCard label="SEQUÊNCIA" value={12} suffix=" dias" color={colors.amber} icon={<Text>🔥</Text>} index={0} />
+            <StatCard label="FOCO NA SEMANA" value={8} suffix="h" color={colors.purple} icon={<Text>✦</Text>} index={1} />
           </View>
         </GlassCard>
 

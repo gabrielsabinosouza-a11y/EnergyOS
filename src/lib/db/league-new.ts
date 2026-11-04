@@ -20,10 +20,10 @@ export function tierRank(tier: NewLeagueTier): number {
 
 async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeagueTier): Promise<void> {
   await db.query(
-    `update profiles set highest_league_tier = $2
+    `update profiles set highest_league_tier = $2::league_tier
      where id = $1
         and (highest_league_tier is null
-             or array_position($3::text[], highest_league_tier)
+             or array_position($3::text[], highest_league_tier::text)
                 < array_position($3::text[], $2::text))`,
     [profileId, tier, NEW_TIER_ORDER],
   );

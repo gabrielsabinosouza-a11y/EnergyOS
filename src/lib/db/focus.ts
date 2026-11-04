@@ -299,7 +299,8 @@ export async function startFocusSession(
     await client.query(`select id from profiles where id = $1 for update`, [profileId]);
     if (roomId !== undefined) {
       const participant = await client.query(
-        `select 1 from room_participants where room_id = $1 and profile_id = $2`,
+        `select 1 from room_participants where room_id = $1 and profile_id = $2
+          and session_status = 'focusing' for update`,
         [roomId, profileId],
       );
       if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
@@ -561,6 +562,7 @@ export async function endFocusSession(
       [profileId, sessionId],
     );
     const row = stored.rows[0];
+    if (!row) throw new NotFoundError("Sessão não encontrada.");
     return {
       session: mapFocus(row),
       xpAwarded: Number(row.xp_earned) || 0,

@@ -58,9 +58,7 @@ export async function persistLeagueWeeklyResultOnce(
 
   if (
     result.tier === "LEGENDS" &&
-    result.rank === 1 &&
-    result.groupSize >= 2 &&
-    result.weeklyXP > 0
+    result.rank === 1
   ) {
     const firstUnlock = await writer.recordTop1GlobalFinish(result.profileId, result.weekStart);
     if (firstUnlock) {
