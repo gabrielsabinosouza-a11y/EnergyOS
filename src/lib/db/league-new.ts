@@ -183,19 +183,19 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
 
 // ─── Weekly reset + promotion/demotion ───────────────────────────────────────
 
-export async function runWeeklyLeagueReset(): Promise<void> {
-  const { start: newWeekStart } = getCurrentWeekDates();
-  
-  // Find ALL overdue weeks that haven't been reset, ordered chronologically
+ export async function runWeeklyLeagueReset(): Promise<void> {
+  const { start: currentWeekStart } = getCurrentWeekDates();
+
   const overdueWeeks = await pool.query<{ week_start_date: string }>(
-    `select distinct week_start_date 
-     from league_groups 
-     where week_start_date < $1::date 
-       and reset_at is null 
+    `select distinct to_char(week_start_date, 'YYYY-MM-DD') as week_start_date
+     from league_groups
+     where week_start_date < $1::date
+       and reset_at is null
      order by week_start_date asc`,
-    [newWeekStart]
+    [currentWeekStart]
   );
-  
+
+  if (!overdueWeeks.rows.length) return;
   if (!overdueWeeks.rows.length) return;
 
   const client = await pool.connect();
@@ -370,7 +370,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
 
           // Ensure member is in the correct group for the next week
           if (targetTier !== "LEGENDS") {
-            await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
+            ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, nextWeekStart);
           }
         }
         await client.query(`update league_groups set reset_at = now() where id = $1`, [group.id]);
@@ -384,14 +384,15 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           || a.profileId.localeCompare(b.profileId));
       
       if (uniqueCandidates.length > 0) {
-        const legendsWeekEnd = new Date(newWeekStart);
+        const legendsWeekEnd = new Date(`${nextWeekStart}T12:00:00Z`);
+legendsWeekEnd.setUTCDate(legendsWeekEnd.getUTCDate() + 6);
         legendsWeekEnd.setDate(legendsWeekEnd.getDate() + 6);
         const legendsGroup = await client.query<LeagueGroupRow>(
           `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
            values ('LEGENDS', $1, $2, true)
            on conflict (tier, week_start_date) do update set tier = 'LEGENDS'
            returning *`,
-          [newWeekStart, legendsWeekEnd.toISOString().slice(0, 10)]
+          [nextWeekStart, legendsWeekEnd.toISOString().slice(0, 10)]
         );
         const legendsGroupId = Number(legendsGroup.rows[0].id);
 
@@ -400,7 +401,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
           const targetTier = isLegend ? "LEGENDS" : "OBSIDIAN";
           await recordHighestTier(client, candidate.profileId, targetTier);
           if (!isLegend) {
-            await ensureMemberInNewWeekGroup(client, candidate.profileId, targetTier, newWeekStart);
+            await ensureMemberInNewWeekGroup(client, candidate.profileId, targetTier, nextWeekStart);
             continue;
           }
           await client.query(
@@ -416,7 +417,8 @@ export async function runWeeklyLeagueReset(): Promise<void> {
                   select lg.id from league_groups lg
                    where lg.week_start_date = $2 and lg.id <> $3
                 )`,
-            [candidate.profileId, newWeekStart, legendsGroupId]
+                [candidate.profileId, nextWeekStart, legendsGroupId]
+
           );
         }
       }
@@ -515,13 +517,14 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
   const member = await addMemberToGroup(group.id, profileId);
   return { group, member };
 }
-
 export async function getLeagueGroupById(id: number): Promise<LeagueGroup | null> {
   const result = await pool.query<LeagueGroupRow>(
     `select id, tier, week_start_date, week_end_date, is_legends_group, created_at
-     from league_groups where id = $1`,
+     from league_groups
+     where id = $1`,
     [id]
   );
+
   return result.rows[0] ? mapLeagueGroup(result.rows[0]) : null;
 }
 

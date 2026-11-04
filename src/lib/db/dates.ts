@@ -29,6 +29,8 @@ export function addDaysIso(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+
+
 /** Segunda-feira da semana da data informada. */
 export function weekStartIso(isoDate: string): string {
   const date = toUtcNoon(isoDate);
