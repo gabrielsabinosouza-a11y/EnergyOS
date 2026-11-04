@@ -7,14 +7,35 @@ import {
   runWeeklyLeagueReset,
 } from "@/lib/db/league-new";
 
+
 export async function GET(request: NextRequest) {
   return handleRoute(async (context) => {
     const { profileId } = await requireAuth(request);
     context.profileId = profileId;
-    await runWeeklyLeagueReset();
-    const snapshot = await getUserLeagueSnapshot(profileId);
-    const cohort = await getLiveCohort(profileId);
-    return jsonOk({ ...snapshot, liveCohort: { members: cohort } });
+
+    try {
+      console.log("[league-new] Starting weekly reset");
+
+      await runWeeklyLeagueReset();
+
+      console.log("[league-new] Reset completed");
+
+      const snapshot = await getUserLeagueSnapshot(profileId);
+
+      console.log("[league-new] Snapshot completed");
+
+      const cohort = await getLiveCohort(profileId);
+
+      console.log("[league-new] Cohort completed");
+
+      return jsonOk({
+        ...snapshot,
+        liveCohort: { members: cohort },
+      });
+    } catch (error) {
+      console.error("[league-new] GET FAILED:", error);
+      throw error;
+    }
   }, routeContext(request, "/api/league-new"));
 }
 

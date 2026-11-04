@@ -8,7 +8,9 @@ import {
   LEAGUE_REWARDS,
   LEGENDS_MAX_SIZE,
   NEW_TIER_ORDER,
-  PROMOTION_TOP,
+  LEAGUE_PROMOTION_CUTOFFS,
+  REWARD_ZONE_SIZE,
+  resolveNewTier,
   getLeagueZone,
   tierAfterWeeklyRank,
 } from "@/lib/league-new-meta";
@@ -94,9 +96,13 @@ async function getRankedGroupMembers(
 }
 
 function mapLeagueGroup(row: LeagueGroupRow): LeagueGroup {
+  // `league_groups.tier` is a text column that kept the pre-rename labels
+  // (PRATA/OURO/DIAMANTE/LEGENDS) while the canonical order lives in
+  // NEW_TIER_ORDER. Resolve legacy aliases so reward lookups never miss.
+  const tier = resolveNewTier(row.tier) ?? row.tier;
   return {
     id: Number(row.id),
-    tier: row.tier,
+    tier,
     weekStartDate: typeof row.week_start_date === "string" ? row.week_start_date : row.week_start_date.toISOString().slice(0, 10),
     weekEndDate: typeof row.week_end_date === "string" ? row.week_end_date : row.week_end_date.toISOString().slice(0, 10),
     isLegendsGroup: row.is_legends_group,
@@ -179,221 +185,240 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
 
 export async function runWeeklyLeagueReset(): Promise<void> {
   const { start: newWeekStart } = getCurrentWeekDates();
-  const prevWeekStart = new Date(newWeekStart);
-  prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-  const oldWeekStart = prevWeekStart.toISOString().slice(0, 10);
-
-  // Check if old week groups exist and haven't been processed
-  const oldGroups = await pool.query<LeagueGroupRow>(
-    `select * from league_groups where week_start_date = $1 and reset_at is null order by id`,
-    [oldWeekStart]
+  
+  // Find ALL overdue weeks that haven't been reset, ordered chronologically
+  const overdueWeeks = await pool.query<{ week_start_date: string }>(
+    `select distinct week_start_date 
+     from league_groups 
+     where week_start_date < $1::date 
+       and reset_at is null 
+     order by week_start_date asc`,
+    [newWeekStart]
   );
-  if (!oldGroups.rows.length) return;
+  
+  if (!overdueWeeks.rows.length) return;
 
   const client = await pool.connect();
   try {
     await client.query("begin");
 
-    const legendsCandidates: Array<{
-      profileId: string;
-      weeklyXP: number;
-      returningLegend: boolean;
-      reachedAt: Date | string | null | undefined;
-    }> = [];
-
-    for (const groupRow of oldGroups.rows) {
-      const group = mapLeagueGroup(groupRow);
-      const reset = await client.query<{ reset_at: Date | string | null }>(
-        `select reset_at from league_groups where id = $1 for update`,
-        [group.id],
+    // Process each overdue week in chronological order
+    for (const weekRow of overdueWeeks.rows) {
+      const oldWeekStart = weekRow.week_start_date;
+      const nextWeekStart = addDaysIso(oldWeekStart, 7);
+      
+      // Get all groups for this specific week that haven't been processed
+      const oldGroups = await client.query<LeagueGroupRow>(
+        `select * from league_groups 
+         where week_start_date = $1 and reset_at is null 
+         order by id`,
+        [oldWeekStart]
       );
-      if (!reset.rows[0] || reset.rows[0].reset_at) continue;
+      
+      if (!oldGroups.rows.length) continue;
 
-      await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
-      const members = await getRankedGroupMembers(client, group.id, oldWeekStart);
-      const n = members.length;
+      // Collect Legends candidates for this week
+      const legendsCandidates: Array<{
+        profileId: string;
+        weeklyXP: number;
+        reachedAt: Date | string | null | undefined;
+      }> = [];
 
-      for (let i = 0; i < n; i++) {
-        const member = members[i];
-        const rank = i + 1;
-        const targetTier = tierAfterWeeklyRank(group.tier, rank, n, member.weekly_xp);
+      // Process each group within this week
+      for (const groupRow of oldGroups.rows) {
+        const group = mapLeagueGroup(groupRow);
+        const reset = await client.query<{ reset_at: Date | string | null }>(
+          `select reset_at from league_groups where id = $1 for update`,
+          [group.id],
+        );
+        if (!reset.rows[0] || reset.rows[0].reset_at) continue;
 
-        if (group.tier === "OBSIDIAN" && targetTier === "LEGENDS") {
-          legendsCandidates.push({
+        await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
+        const members = await getRankedGroupMembers(client, group.id, oldWeekStart);
+        const n = members.length;
+
+        for (let i = 0; i < n; i++) {
+          const member = members[i];
+          const rank = i + 1;
+          const targetTier = tierAfterWeeklyRank(group.tier, rank, n, member.weekly_xp);
+
+          // Track Obsidian members who qualified for Legends
+          if (group.tier === "OBSIDIAN" && targetTier === "LEGENDS") {
+            legendsCandidates.push({
+              profileId: member.profile_id,
+              weeklyXP: member.weekly_xp,
+              reachedAt: member.weekly_xp_reached_at,
+            });
+          }
+          // Track Legends members who stayed in Legends
+          else if (group.tier === "LEGENDS" && targetTier === "LEGENDS") {
+            legendsCandidates.push({
+              profileId: member.profile_id,
+              weeklyXP: member.weekly_xp,
+              reachedAt: member.weekly_xp_reached_at,
+            });
+          }
+
+          const zone = getLeagueZone(group.tier, rank, n);
+          const coinsAwarded = member.weekly_xp > 0 && (zone === "promotion" || zone === "reward")
+    ? (LEAGUE_REWARDS[group.tier][rank - 1] ?? 0)
+    : 0;
+          const result = targetTier === group.tier
+            ? "stayed"
+            : NEW_TIER_ORDER.indexOf(targetTier) > NEW_TIER_ORDER.indexOf(group.tier)
+              ? "promoted"
+              : "demoted";
+
+          await persistLeagueWeeklyResultOnce({
+            recordResultIfAbsent: async (weeklyResult) => {
+              const inserted = await client.query(
+                `insert into league_weekly_results
+                   (profile_id, league_group_id, week_start_date, tier, rank, weekly_xp,
+                    result, resulting_tier, coins_awarded, zone)
+                 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 on conflict (league_group_id, profile_id) do nothing
+                 returning id`,
+                [
+                  weeklyResult.profileId,
+                  weeklyResult.groupId,
+                  weeklyResult.weekStart,
+                  weeklyResult.tier,
+                  weeklyResult.rank,
+                  weeklyResult.weeklyXP,
+                  weeklyResult.result,
+                  weeklyResult.resultingTier,
+                  weeklyResult.coinsAwarded ?? 0,
+                  zone,
+                ],
+              );
+              return Boolean(inserted.rows[0]);
+            },
+            awardCoins: async (payout) => {
+              const inserted = await client.query(
+                `insert into coin_transactions
+                   (profile_id, amount, reason, tier, rank, week_start_date, league_group_id, reference_key, reward_kind)
+                 values ($1, $2, 'league_reward', $3, $4, $5, $6, $7, $8)
+                 on conflict (reference_key) do nothing
+                 returning id`,
+                [
+                  payout.profileId,
+                  payout.amount,
+                  payout.tier,
+                  payout.rank,
+                  payout.weekStart,
+                  group.id,
+                  payout.referenceKey,
+                  payout.rewardKind,
+                ],
+              );
+              if (inserted.rows[0]) await addCoins(payout.profileId, payout.amount, client);
+            },
+            recordTop1GlobalFinish: async (profileId, weekStart) => {
+              const previous = await client.query<{ unlocked_tier: number }>(
+                `select unlocked_tier from user_achievement_progress
+                 where profile_id = $1 and achievement_id = 'top_1_global'
+                 for update`,
+                [profileId],
+              );
+              const firstUnlock = (previous.rows[0]?.unlocked_tier ?? 0) === 0;
+              await client.query(
+                `update profiles
+                 set times_top_1_global = times_top_1_global + 1,
+                     last_top_1_global_week = $2
+                 where id = $1`,
+                [profileId, weekStart],
+              );
+              await client.query(
+                `insert into user_achievement_progress
+                   (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
+                 select $1, 'top_1_global', times_top_1_global, 1, now(), null
+                 from profiles where id = $1
+                 on conflict (profile_id, achievement_id) do update set
+                   current_value = excluded.current_value,
+                   unlocked_tier = 1,
+                   unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
+                   seen_at = case
+                     when user_achievement_progress.unlocked_tier = 0 then null
+                     else user_achievement_progress.seen_at
+                   end`,
+                [profileId],
+              );
+              return firstUnlock;
+            },
+            addFirstUnlockBonusToResult: async (profileId, groupId, amount) => {
+              await client.query(
+                `update league_weekly_results
+                 set coins_awarded = coins_awarded + $3
+                 where profile_id = $1 and league_group_id = $2`,
+                [profileId, groupId, amount],
+              );
+            },
+          }, {
             profileId: member.profile_id,
+            groupId: group.id,
+            weekStart: oldWeekStart,
+            tier: group.tier,
+            rank,
+            groupSize: n,
             weeklyXP: member.weekly_xp,
-            returningLegend: false,
-            reachedAt: member.weekly_xp_reached_at,
+            coinsAwarded,
+            result,
+            resultingTier: targetTier,
           });
-        } else if (group.tier === "LEGENDS" && targetTier === "LEGENDS") {
-          legendsCandidates.push({
-            profileId: member.profile_id,
-            weeklyXP: member.weekly_xp,
-            returningLegend: true,
-            reachedAt: member.weekly_xp_reached_at,
-          });
+
+          if (targetTier !== "LEGENDS") await recordHighestTier(client, member.profile_id, targetTier);
+
+          // Ensure member is in the correct group for the next week
+          if (targetTier !== "LEGENDS") {
+            await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
+          }
         }
-
-        const zone = getLeagueZone(group.tier, rank, n);
-        const coinsAwarded = member.weekly_xp > 0 &&
-          (zone === "promotion" || zone === "reward")
-          ? LEAGUE_REWARDS[group.tier][rank - 1]
-          : 0;
-        const result = targetTier === group.tier
-          ? "stayed"
-          : NEW_TIER_ORDER.indexOf(targetTier) > NEW_TIER_ORDER.indexOf(group.tier)
-            ? "promoted"
-            : "demoted";
-
-        await persistLeagueWeeklyResultOnce({
-          recordResultIfAbsent: async (weeklyResult) => {
-            const inserted = await client.query(
-              `insert into league_weekly_results
-                 (profile_id, league_group_id, week_start_date, tier, rank, weekly_xp,
-                  result, resulting_tier, coins_awarded, zone)
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-               on conflict (league_group_id, profile_id) do nothing
-               returning id`,
-              [
-                weeklyResult.profileId,
-                weeklyResult.groupId,
-                weeklyResult.weekStart,
-                weeklyResult.tier,
-                weeklyResult.rank,
-                weeklyResult.weeklyXP,
-                weeklyResult.result,
-                weeklyResult.resultingTier,
-                weeklyResult.coinsAwarded,
-                zone,
-              ],
-            );
-            return Boolean(inserted.rows[0]);
-          },
-          awardCoins: async (payout) => {
-            const inserted = await client.query(
-              `insert into coin_transactions
-                 (profile_id, amount, reason, tier, rank, week_start_date, league_group_id, reference_key, reward_kind)
-               values ($1, $2, 'league_reward', $3, $4, $5, $6, $7, $8)
-               on conflict (reference_key) do nothing
-               returning id`,
-              [
-                payout.profileId,
-                payout.amount,
-                payout.tier,
-                payout.rank,
-                payout.weekStart,
-                group.id,
-                payout.referenceKey,
-                payout.rewardKind,
-              ],
-            );
-            if (inserted.rows[0]) await addCoins(payout.profileId, payout.amount, client);
-          },
-          recordTop1GlobalFinish: async (profileId, weekStart) => {
-            const previous = await client.query<{ unlocked_tier: number }>(
-              `select unlocked_tier from user_achievement_progress
-               where profile_id = $1 and achievement_id = 'top_1_global'
-               for update`,
-              [profileId],
-            );
-            const firstUnlock = (previous.rows[0]?.unlocked_tier ?? 0) === 0;
-            await client.query(
-              `update profiles
-               set times_top_1_global = times_top_1_global + 1,
-                   last_top_1_global_week = $2
-               where id = $1`,
-              [profileId, weekStart],
-            );
-            await client.query(
-              `insert into user_achievement_progress
-                 (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
-               select $1, 'top_1_global', times_top_1_global, 1, now(), null
-               from profiles where id = $1
-               on conflict (profile_id, achievement_id) do update set
-                 current_value = excluded.current_value,
-                 unlocked_tier = 1,
-                 unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
-                 seen_at = case
-                   when user_achievement_progress.unlocked_tier = 0 then null
-                   else user_achievement_progress.seen_at
-                 end`,
-              [profileId],
-            );
-            return firstUnlock;
-          },
-          addFirstUnlockBonusToResult: async (profileId, groupId, amount) => {
-            await client.query(
-              `update league_weekly_results
-               set coins_awarded = coins_awarded + $3
-               where profile_id = $1 and league_group_id = $2`,
-              [profileId, groupId, amount],
-            );
-          },
-        }, {
-          profileId: member.profile_id,
-          groupId: group.id,
-          weekStart: oldWeekStart,
-          tier: group.tier,
-          rank,
-          groupSize: n,
-          weeklyXP: member.weekly_xp,
-          coinsAwarded,
-          result,
-          resultingTier: targetTier,
-        });
-
-        if (targetTier !== "LEGENDS") await recordHighestTier(client, member.profile_id, targetTier);
-
-        // Ensure member is in the correct group for the new week
-        if (targetTier !== "LEGENDS") {
-          await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
-        }
-
+        await client.query(`update league_groups set reset_at = now() where id = $1`, [group.id]);
       }
-      await client.query(`update league_groups set reset_at = now() where id = $1`, [group.id]);
-    }
 
-    // Keep eligible Legends and admit the highest-ranked Obsidian qualifiers.
-    const uniqueCandidates = [...new Map(legendsCandidates.map((candidate) => [candidate.profileId, candidate])).values()]
-      .sort((a, b) => b.weeklyXP - a.weeklyXP
-        || Number(b.returningLegend) - Number(a.returningLegend)
-        || compareReachedAt(a.reachedAt, b.reachedAt)
-        || a.profileId.localeCompare(b.profileId));
-    if (uniqueCandidates.length > 0) {
-      const legendsWeekEnd = new Date(newWeekStart);
-      legendsWeekEnd.setDate(legendsWeekEnd.getDate() + 6);
-      const legendsGroup = await client.query<LeagueGroupRow>(
-        `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
-         values ('LEGENDS', $1, $2, true)
-         on conflict (tier, week_start_date) do update set tier = 'LEGENDS'
-         returning *`,
-        [newWeekStart, legendsWeekEnd.toISOString().slice(0, 10)]
-      );
-      const legendsGroupId = Number(legendsGroup.rows[0].id);
+      // Process Legends qualification for this week's new week
+      // Remove returningLegend flag - all candidates compete equally
+      const uniqueCandidates = [...new Map(legendsCandidates.map((candidate) => [candidate.profileId, candidate])).values()]
+        .sort((a, b) => b.weeklyXP - a.weeklyXP
+          || compareReachedAt(a.reachedAt, b.reachedAt)
+          || a.profileId.localeCompare(b.profileId));
+      
+      if (uniqueCandidates.length > 0) {
+        const legendsWeekEnd = new Date(newWeekStart);
+        legendsWeekEnd.setDate(legendsWeekEnd.getDate() + 6);
+        const legendsGroup = await client.query<LeagueGroupRow>(
+          `insert into league_groups (tier, week_start_date, week_end_date, is_legends_group)
+           values ('LEGENDS', $1, $2, true)
+           on conflict (tier, week_start_date) do update set tier = 'LEGENDS'
+           returning *`,
+          [newWeekStart, legendsWeekEnd.toISOString().slice(0, 10)]
+        );
+        const legendsGroupId = Number(legendsGroup.rows[0].id);
 
-      for (const candidate of uniqueCandidates) {
-        const isLegend = uniqueCandidates.indexOf(candidate) < LEGENDS_MAX_SIZE;
-        const targetTier = isLegend ? "LEGENDS" : "OBSIDIAN";
-        await recordHighestTier(client, candidate.profileId, targetTier);
-        if (!isLegend) {
-          await ensureMemberInNewWeekGroup(client, candidate.profileId, targetTier, newWeekStart);
-          continue;
+        for (const candidate of uniqueCandidates) {
+          const isLegend = uniqueCandidates.indexOf(candidate) < LEGENDS_MAX_SIZE;
+          const targetTier = isLegend ? "LEGENDS" : "OBSIDIAN";
+          await recordHighestTier(client, candidate.profileId, targetTier);
+          if (!isLegend) {
+            await ensureMemberInNewWeekGroup(client, candidate.profileId, targetTier, newWeekStart);
+            continue;
+          }
+          await client.query(
+            `insert into league_group_members (league_group_id, profile_id, weekly_xp)
+             values ($1, $2, 0) on conflict (league_group_id, profile_id) do nothing`,
+            [legendsGroupId, candidate.profileId]
+          );
+          // Remove any stale same-week membership so qualifiers aren't listed twice
+          await client.query(
+            `delete from league_group_members
+              where profile_id = $1
+                and league_group_id in (
+                  select lg.id from league_groups lg
+                   where lg.week_start_date = $2 and lg.id <> $3
+                )`,
+            [candidate.profileId, newWeekStart, legendsGroupId]
+          );
         }
-        await client.query(
-          `insert into league_group_members (league_group_id, profile_id, weekly_xp)
-           values ($1, $2, 0) on conflict (league_group_id, profile_id) do nothing`,
-          [legendsGroupId, candidate.profileId]
-        );
-        // Remove any stale same-week membership so qualifiers aren't listed twice
-        await client.query(
-          `delete from league_group_members
-            where profile_id = $1
-              and league_group_id in (
-                select lg.id from league_groups lg
-                 where lg.week_start_date = $2 and lg.id <> $3
-              )`,
-          [candidate.profileId, newWeekStart, legendsGroupId]
-        );
       }
     }
 
@@ -635,6 +660,7 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
   weekEnd: string;
   isLegendsGroup: boolean;
   promotionZoneEnd: number;
+  rewardZoneEnd: number;
   demotionZoneStart: number;
 }> {
   const { start, end } = getCurrentWeekDates();
@@ -646,6 +672,9 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
   const members = await getLeagueGroupMembers(group.id);
   const updatedMember = await getLeagueGroupMember(group.id, profileId);
 
+  const isRewardOnlyTier = group.tier === "OBSIDIAN" || group.tier === "LEGENDS";
+  const zoneEnd = isRewardOnlyTier ? REWARD_ZONE_SIZE : LEAGUE_PROMOTION_CUTOFFS[group.tier];
+
   return {
     currentTier: group.tier,
     currentGroup: group,
@@ -654,7 +683,8 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
     weekStart: start,
     weekEnd: end,
     isLegendsGroup: group.isLegendsGroup,
-    promotionZoneEnd: group.tier === "LEGENDS" ? 0 : PROMOTION_TOP,
+    promotionZoneEnd: zoneEnd,
+    rewardZoneEnd: isRewardOnlyTier ? REWARD_ZONE_SIZE : 0,
     demotionZoneStart: group.tier !== "BRONZE" && members.length >= DEMOTION_START_RANK
       ? DEMOTION_START_RANK
       : 0,

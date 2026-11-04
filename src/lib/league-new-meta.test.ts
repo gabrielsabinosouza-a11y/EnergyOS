@@ -54,33 +54,56 @@ test("each league has its own identity and increasing podium rewards", () => {
   const rewards = NEW_TIER_ORDER.map((tier) => LEAGUE_REWARDS[tier][0]);
   assert.deepEqual(rewards, [...rewards].sort((a, b) => a - b));
   assert.equal(LEAGUE_REWARDS.LEGENDS[0], Math.max(...rewards));
-  assert.equal(LEAGUE_PROMOTION_CUTOFFS.OBSIDIAN, PROMOTION_TOP);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.OBSIDIAN, 0);
   assert.equal(LEAGUE_PROMOTION_CUTOFFS.LEGENDS, 0);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.BRONZE, 10);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.SILVER, 7);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.GOLD, 5);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.EMERALD, 5);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.DIAMOND, 5);
 });
 
-test("league zones use the shared promotion and demotion boundaries for every tier", () => {
-  const groupSizes = [1, 2, 3, 10, 11, 30];
-  for (const tier of NEW_TIER_ORDER) {
-    for (const groupSize of groupSizes) {
-      const topZone = tier === "LEGENDS" ? "reward" : "promotion";
-      for (let rank = 1; rank <= Math.min(PROMOTION_TOP, groupSize); rank += 1) {
-        assert.equal(getLeagueZone(tier, rank, groupSize), topZone, `${tier} #${rank}/${groupSize}`);
-      }
-
-      if (groupSize === 10) assert.equal(getLeagueZone(tier, 10, groupSize), "safe");
-      if (groupSize > 10) {
-        assert.equal(
-          getLeagueZone(tier, DEMOTION_START_RANK, groupSize),
-          tier === "BRONZE" ? "safe" : "demotion",
-          `${tier} demotion boundary in group of ${groupSize}`,
-        );
-      }
-      if (groupSize < PROMOTION_TOP) {
-        assert.equal(getLeagueZone(tier, groupSize, groupSize), topZone);
-      }
-    }
+test("league zones use per-tier promotion and reward boundaries", () => {
+  // Test promotion zones for each tier
+  // Bronze: Top 10
+  assert.equal(getLeagueZone("BRONZE", 1, 20), "promotion");
+  assert.equal(getLeagueZone("BRONZE", 10, 20), "promotion");
+  assert.equal(getLeagueZone("BRONZE", 11, 20), "safe");
+  
+  // Silver: Top 7
+  assert.equal(getLeagueZone("SILVER", 1, 20), "promotion");
+  assert.equal(getLeagueZone("SILVER", 7, 20), "promotion");
+  assert.equal(getLeagueZone("SILVER", 8, 20), "safe");
+  
+  // Gold, Emerald, Diamond: Top 5
+  for (const tier of ["GOLD", "EMERALD", "DIAMOND"] as NewLeagueTier[]) {
+    assert.equal(getLeagueZone(tier, 1, 20), "promotion");
+    assert.equal(getLeagueZone(tier, 5, 20), "promotion");
+    assert.equal(getLeagueZone(tier, 6, 20), "safe");
   }
-  assert.equal(getLeagueZone("GOLD", 31, 30), "safe");
+  
+  // Obsidian and Legends: Top 3 (reward zone, not promotion)
+  for (const tier of ["OBSIDIAN", "LEGENDS"] as NewLeagueTier[]) {
+    assert.equal(getLeagueZone(tier, 1, 20), "reward");
+    assert.equal(getLeagueZone(tier, 3, 20), "reward");
+    assert.equal(getLeagueZone(tier, 4, 20), "safe");
+  }
+  
+  // Test demotion zones (same for all non-Bronze tiers)
+  const groupSize = 30;
+  for (const tier of NEW_TIER_ORDER.slice(1)) { // Skip BRONZE
+    assert.equal(
+      getLeagueZone(tier, DEMOTION_START_RANK, groupSize),
+      "demotion",
+      `${tier} demotion boundary`,
+    );
+  }
+  assert.equal(getLeagueZone("BRONZE", DEMOTION_START_RANK, groupSize), "safe");
+  
+  // Edge case: group smaller than cutoff
+  assert.equal(getLeagueZone("BRONZE", 5, 5), "promotion"); // All 5 are in top 10
+  assert.equal(getLeagueZone("SILVER", 5, 5), "promotion"); // All 5 are in top 7
+  assert.equal(getLeagueZone("OBSIDIAN", 3, 3), "reward"); // All 3 are in top 3
 });
 
 test("initial placement thresholds are defined for every non-Legends league", () => {

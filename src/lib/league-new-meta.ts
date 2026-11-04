@@ -11,11 +11,26 @@ export const NEW_TIER_ORDER = [
 
 export type NewLeagueTier = typeof NEW_TIER_ORDER[number];
 
-export const PROMOTION_TOP = 3;
 export const DEMOTION_START_RANK = 11;
 export const TOP1_GLOBAL_FIRST_UNLOCK_BONUS = 1_000;
+export const REWARD_ZONE_SIZE = 3;
+
+// Legacy constant for backwards compatibility - use LEAGUE_PROMOTION_CUTOFFS for new code
+export const PROMOTION_TOP = 3;
 
 export type LeagueZone = "promotion" | "reward" | "safe" | "demotion";
+
+/** Per-league promotion cutoffs: how many top positions get promoted from each tier. */
+export const LEAGUE_PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
+  BRONZE: 10,
+  SILVER: 7,
+  GOLD: 5,
+  EMERALD: 5,
+  DIAMOND: 5,
+  OBSIDIAN: 0,  // No automatic promotion from Obsidian
+  LEGENDS: 0,   // No automatic promotion from Legends
+};
+
 const LEGACY_TIER_ALIASES: Record<string, NewLeagueTier> = {
   PRATA: "SILVER",
   OURO: "GOLD",
@@ -91,16 +106,6 @@ export const NEW_TIER_META: Record<NewLeagueTier, NewTierMeta> = {
   },
 };
 
-export const LEAGUE_PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
-  BRONZE: PROMOTION_TOP,
-  SILVER: PROMOTION_TOP,
-  GOLD: PROMOTION_TOP,
-  EMERALD: PROMOTION_TOP,
-  DIAMOND: PROMOTION_TOP,
-  OBSIDIAN: PROMOTION_TOP,
-  LEGENDS: 0,
-};
-
 export const LEGENDS_MAX_SIZE = 20;
 
 export const LEAGUE_REWARDS: Record<NewLeagueTier, readonly [number, number, number]> = {
@@ -137,12 +142,25 @@ export function getLeagueZone(tier: NewLeagueTier, rank: number, groupSize: numb
     groupSize < 1 ||
     rank > groupSize
   ) return "safe";
-  if (rank <= PROMOTION_TOP) return tier === "LEGENDS" ? "reward" : "promotion";
+  
+  const promotionCutoff = LEAGUE_PROMOTION_CUTOFFS[tier];
+  const rewardCutoff = REWARD_ZONE_SIZE;
+  
+  // Obsidian and Legends have reward zones, not promotion zones
+  if (tier === "OBSIDIAN" || tier === "LEGENDS") {
+    if (rank <= rewardCutoff) return "reward";
+  } else {
+    // For other tiers, check promotion zone
+    if (rank <= promotionCutoff) return "promotion";
+  }
+  
+  // Check demotion zone (same for all non-Bronze tiers)
   if (
     tier !== "BRONZE" &&
     groupSize >= DEMOTION_START_RANK &&
     rank >= DEMOTION_START_RANK
   ) return "demotion";
+  
   return "safe";
 }
 
@@ -158,8 +176,13 @@ export function tierAfterWeeklyRank(
   const next = nextLeagueTier(tier);
   const zone = getLeagueZone(tier, rank, groupSize);
 
+  // Only promote if in promotion zone, there's a next tier, and user has positive XP
   if (zone === "promotion" && next && weeklyXP > 0) return next;
+  
+  // Obsidian can promote to Legends via special qualification
+  // Legends and Obsidian don't have automatic promotion via zone
   if (zone === "demotion" && previous) return previous;
+  
   return tier;
 }
 

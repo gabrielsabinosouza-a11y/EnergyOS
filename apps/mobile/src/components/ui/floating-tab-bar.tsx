@@ -26,7 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { navigationItems } from '../../../../../src/shared/navigation-config';
+import { navigationItems } from '@/shared/navigation-config';
 import { colors, motion, radii, shadows } from '@/theme';
 import { NavIcon } from '@/shared/components';
 import { supportsBlur } from './platform';

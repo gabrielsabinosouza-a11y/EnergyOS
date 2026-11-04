@@ -21,7 +21,8 @@ import {
   NEW_TIER_META,
   NEW_TIER_ORDER,
   DEMOTION_START_RANK,
-  PROMOTION_TOP,
+  LEAGUE_PROMOTION_CUTOFFS,
+  REWARD_ZONE_SIZE,
   getLeagueZone,
   nextLeagueTier,
 } from "@/lib/league-new-meta";
@@ -164,6 +165,7 @@ export default function LigaPage() {
   const nextTier = nextLeagueTier(snapshot.currentTier);
   const isLegends = snapshot.currentTier === "LEGENDS";
   const isObsidian = snapshot.currentTier === "OBSIDIAN";
+  const isRewardOnlyTier = isLegends || isObsidian;
   const rewards = LEAGUE_REWARDS[snapshot.currentTier];
   const userMember = snapshot.members.find((m) => m.profileId === user.uid);
   const displayRank = snapshot.userRank > 0 ? snapshot.userRank : null;
@@ -171,9 +173,15 @@ export default function LigaPage() {
   const userZone = displayRank !== null
     ? getLeagueZone(snapshot.currentTier, displayRank, groupSize)
     : null;
+  
+  // Get per-league zone cutoffs
+  const zoneCutoff = isRewardOnlyTier ? REWARD_ZONE_SIZE : LEAGUE_PROMOTION_CUTOFFS[snapshot.currentTier];
+  
   const promotionText = nextTier
-    ? `Fique no Top ${PROMOTION_TOP} para avançar para ${TIER_CONFIG[nextTier].label}.`
-    : "Lendas é o tier mais alto. Os três primeiros recebem as maiores recompensas da liga.";
+    ? `Fique no Top ${zoneCutoff} para avançar para ${TIER_CONFIG[nextTier].label}.`
+    : isRewardOnlyTier
+      ? `Os ${REWARD_ZONE_SIZE} primeiros recebem as maiores recompensas da liga.`
+      : "Lendas é o tier mais alto. Os três primeiros recebem as maiores recompensas da liga.";
   const heroBackground = isObsidian
     ? "linear-gradient(135deg, #12071F 0%, #211038 52%, #12071F 100%)"
     : isLegends
@@ -399,11 +407,11 @@ export default function LigaPage() {
                       )}
                     </div>
                     </motion.button>
-                    {displayMemberRank === PROMOTION_TOP && groupSize >= PROMOTION_TOP && (
+                    {displayMemberRank === zoneCutoff && groupSize >= zoneCutoff && (
                       <div className="flex items-center gap-2 px-4 py-2">
                         <div className="h-px flex-1 bg-green-400/30" />
                         <span className="text-[10px] text-green-400 whitespace-nowrap">
-                          {isLegends ? `Recompensa (Top ${PROMOTION_TOP})` : `Promoção (Top ${PROMOTION_TOP})`}
+                          {isRewardOnlyTier ? `Zona de Recompensa (Top ${REWARD_ZONE_SIZE})` : `Zona de Promoção (Top ${zoneCutoff})`}
                         </span>
                       </div>
                     )}
@@ -424,10 +432,12 @@ export default function LigaPage() {
           </div>
 
           {/* Zone legend */}
-          {isLegends && (
+          {isRewardOnlyTier && (
             <div className="mt-3 flex items-center gap-2 px-1">
               <div className="h-px flex-1 bg-amber-400/30" />
-              <span className="text-[10px] text-amber-400 whitespace-nowrap">Sem promoção — Lendas é o topo</span>
+              <span className="text-[10px] text-amber-400 whitespace-nowrap">
+                {isLegends ? "Sem promoção — Lendas é o topo" : "Zona de Recompensa: Top " + REWARD_ZONE_SIZE}
+              </span>
             </div>
           )}
         </motion.section>
