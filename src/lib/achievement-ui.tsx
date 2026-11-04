@@ -252,10 +252,6 @@ export function AchievementTile({
           width: inner,
           height: inner,
           filter: !isEarned ? "grayscale(1) opacity(0.65)" : undefined,
-          borderRadius: isTop1Global ? "1rem" : undefined,
-          border: isTop1Global ? "1px solid rgba(252,211,77,.38)" : undefined,
-          background: isTop1Global ? "radial-gradient(circle, rgba(252,211,77,.2), rgba(124,58,237,.08) 72%)" : undefined,
-          boxShadow: isTop1Global && isEarned ? "0 0 28px rgba(252,211,77,.28)" : undefined,
         }}
       >
         {/* progress ring (behind icon) */}
