@@ -21,8 +21,8 @@ async function recordHighestTier(db: Queryable, profileId: string, tier: NewLeag
     `update profiles set highest_league_tier = $2
      where id = $1
         and (highest_league_tier is null
-             or array_position($3::league_tier[], highest_league_tier)
-                < array_position($3::league_tier[], $2::league_tier))`,
+             or array_position($3::text[], highest_league_tier)
+                < array_position($3::text[], $2::text))`,
     [profileId, tier, NEW_TIER_ORDER],
   );
 }
@@ -280,7 +280,7 @@ export async function getOrCreateUserLeagueGroup(profileId: string): Promise<{ g
     `select lg.id as lg_id, lg.tier, lg.is_legends_group as is_legends
      from league_groups lg join league_group_members lgm on lg.id = lgm.league_group_id
      where lgm.profile_id = $1 and lg.week_start_date = $2
-     order by array_position($3::league_tier[], lg.tier) desc
+     order by array_position($3::text[], lg.tier) desc
      limit 1`,
     [profileId, start, NEW_TIER_ORDER]
   );

@@ -57,7 +57,7 @@ export const NEW_TIER_META: Record<NewLeagueTier, NewTierMeta> = {
     color: "#22C55E",
     glow: "rgba(34,197,94,0.4)",
     description: "Energia rara, lapidada pela consistência",
-    iconPath: "/leaderboard/emerald.svg",
+    iconPath: "/leaderboard/esmerald.png",
   },
   DIAMOND: {
     label: "Diamante",
@@ -73,7 +73,7 @@ export const NEW_TIER_META: Record<NewLeagueTier, NewTierMeta> = {
     color: "#A855F7",
     glow: "rgba(124,58,237,0.5)",
     description: "Cristal mítico à beira da elite",
-    iconPath: "/leaderboard/obsidian.svg",
+    iconPath: "/leaderboard/obisidian.png",
   },
   LEGENDS: {
     label: "Lendas",

@@ -481,6 +481,7 @@ const styles = StyleSheet.create({
   },
   row: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   task: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, paddingTop: 12 },
+  taskCopy: { flex: 1, gap: 4 },
   createHabit: { gap: 10 },
   habitInput: { borderRadius: 10, borderWidth: 1, minHeight: 48, paddingHorizontal: 14 },
   complete: { alignItems: 'center', borderRadius: 10, borderWidth: 1, justifyContent: 'center', minHeight: 44, minWidth: 80, paddingHorizontal: 10 },
