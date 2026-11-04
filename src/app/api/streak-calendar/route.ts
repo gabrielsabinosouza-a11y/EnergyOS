@@ -50,9 +50,20 @@ async function isStreakStale(profileId: string, today: string): Promise<boolean>
 }
 
 export async function GET(request: NextRequest) {
+  const started = Date.now();
+
+  const mark = (stage: string) => {
+    console.info(`[streak-calendar] ${stage}: ${Date.now() - started}ms`);
+  };
+
   return handleRoute(async () => {
+    mark("Request started");
+
     const { profileId } = await requireAuth(request);
+    mark("Authentication completed");
+
     await ensureUserBootstrap(profileId);
+    mark("Bootstrap completed");
 
     const url = new URL(request.url);
     const rawYear = url.searchParams.get("year");
@@ -64,18 +75,27 @@ export async function GET(request: NextRequest) {
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
       throw new ValidationError("Ano inválido.");
     }
+
     if (!Number.isInteger(month) || month < 0 || month > 11) {
       throw new ValidationError("Mês inválido.");
     }
 
     const today = todayIso();
-    
+
+    mark("Checking streak reconciliation");
     const needsReconciliation = await isStreakStale(profileId, today);
+    mark(`Reconciliation check completed: ${needsReconciliation}`);
+
     if (needsReconciliation) {
+      mark("Starting computeStreak");
       await computeStreak(profileId, today);
+      mark("computeStreak completed");
     }
 
+    mark("Starting getStreakCalendar");
     const byDate = await getStreakCalendar(profileId, year, month);
+    mark("getStreakCalendar completed");
+
     return jsonOk({ year, month, days: byDate });
   }, routeContext(request, "/api/streak-calendar"));
 }

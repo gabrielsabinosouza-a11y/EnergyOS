@@ -290,36 +290,33 @@ export async function computeStreak(profileId: string, today: string): Promise<S
         }
       }
     }
-
-    // streak_day_log: single source of truth for calendar rendering.
-    // Priority: success > protected > lost — never downgrade a better status.
-    for (const day of focusDays) {
-      await client.query(
-        `insert into streak_day_log (profile_id, log_date, status)
-         values ($1, $2, 'success')
-         on conflict (profile_id, log_date) do update set status = 'success'`,
-        [profileId, day],
-      );
-    }
-    // Only write 'protected' when the day has no focus session (never downgrade success → protected).
-    for (const day of [...protectedDays, ...newProtectedDays]) {
-      await client.query(
-        `insert into streak_day_log (profile_id, log_date, status)
-         values ($1, $2, 'protected')
-         on conflict (profile_id, log_date)
-         do update set status = case when streak_day_log.status = 'success' then 'success' else 'protected' end`,
-        [profileId, day],
-      );
-    }
+// Only write 'protected' when the day has no focus session (never downgrade success → protected).
+for (const day of [...protectedDays, ...newProtectedDays]) {
+  await client.query(
+    `insert into streak_day_log (profile_id, log_date, status)
+     values ($1, $2, 'protected'::streak_day_status)
+     on conflict (profile_id, log_date)
+     do update set status = case
+       when streak_day_log.status = 'success'::streak_day_status
+       then 'success'::streak_day_status
+       else 'protected'::streak_day_status
+     end`,
+    [profileId, day],
+  );
+}
     for (const day of lostDays) {
       await client.query(
         `insert into streak_day_log (profile_id, log_date, status)
-         values ($1, $2, 'lost')
-         on conflict (profile_id, log_date)
-         do update set status = case
-           when streak_day_log.status in ('success', 'protected') then streak_day_log.status
-           else 'lost'
-         end`,
+ values ($1, $2, 'lost'::streak_day_status)
+ on conflict (profile_id, log_date)
+ do update set status = case
+   when streak_day_log.status in (
+     'success'::streak_day_status,
+     'protected'::streak_day_status
+   )
+   then streak_day_log.status
+   else 'lost'::streak_day_status
+ end`,
         [profileId, day],
       );
     }
