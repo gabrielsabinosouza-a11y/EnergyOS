@@ -3,14 +3,16 @@ import type { NewLeagueTier, LeagueGroup, LeagueGroupMember, CohortMember } from
 import { addCoins } from "./settings";
 import { addDaysIso, todayIso, weekStartIso } from "./dates";
 import {
+  DEMOTION_START_RANK,
   INITIAL_TIER_XP,
-  LEAGUE_DEMOTION_COUNT,
-  LEAGUE_PROMOTION_CUTOFFS,
   LEAGUE_REWARDS,
   LEGENDS_MAX_SIZE,
   NEW_TIER_ORDER,
+  PROMOTION_TOP,
+  getLeagueZone,
   tierAfterWeeklyRank,
 } from "@/lib/league-new-meta";
+import { persistLeagueWeeklyResultOnce } from "@/lib/league-reset";
 
 export function tierRank(tier: NewLeagueTier): number {
   return NEW_TIER_ORDER.indexOf(tier);
@@ -43,6 +45,52 @@ interface LeagueGroupMemberRow {
   weekly_xp: number;
   rank: number | null;
   joined_at: Date | string;
+  weekly_xp_reached_at?: Date | string | null;
+  times_top_1_global?: number;
+}
+
+function compareReachedAt(
+  left: Date | string | null | undefined,
+  right: Date | string | null | undefined,
+): number {
+  const leftTime = left ? new Date(left).getTime() : Number.POSITIVE_INFINITY;
+  const rightTime = right ? new Date(right).getTime() : Number.POSITIVE_INFINITY;
+  return leftTime - rightTime;
+}
+
+async function getRankedGroupMembers(
+  db: Queryable,
+  groupId: number,
+  weekStart: string,
+): Promise<LeagueGroupMemberRow[]> {
+  const result = await db.query<LeagueGroupMemberRow>(
+    `select lgm.*, reached.reached_at as weekly_xp_reached_at,
+            p.times_top_1_global
+     from league_group_members lgm
+     left join profiles p on p.id = lgm.profile_id
+     left join lateral (
+       select min(events.created_at) as reached_at
+       from (
+         select created_at,
+                sum(xp_amount) over (order by created_at, id) as cumulative_xp
+         from xp_ledger
+         where profile_id = lgm.profile_id
+           and created_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
+           and created_at < (($2::date + 7))::timestamp at time zone 'America/Sao_Paulo'
+       ) events
+       where events.cumulative_xp >= lgm.weekly_xp
+     ) reached on lgm.weekly_xp > 0
+     where lgm.league_group_id = $1
+     order by lgm.weekly_xp desc, reached.reached_at asc nulls last, lgm.joined_at, lgm.id`,
+    [groupId, weekStart],
+  );
+  for (let index = 0; index < result.rows.length; index += 1) {
+    await db.query(`update league_group_members set rank = $1 where id = $2`, [
+      index + 1,
+      result.rows[index].id,
+    ]);
+  }
+  return result.rows;
 }
 
 function mapLeagueGroup(row: LeagueGroupRow): LeagueGroup {
@@ -72,6 +120,7 @@ function mapLeagueGroupMember(row: LeagueGroupMemberRow & { display_name?: strin
     weeklyXP: row.weekly_xp,
     rank: row.rank ?? 0,
     joinedAt: typeof row.joined_at === "string" ? row.joined_at : row.joined_at.toISOString(),
+    timesTop1Global: Number(row.times_top_1_global ?? 0),
   };
 }
 
@@ -136,7 +185,7 @@ export async function runWeeklyLeagueReset(): Promise<void> {
 
   // Check if old week groups exist and haven't been processed
   const oldGroups = await pool.query<LeagueGroupRow>(
-    `select * from league_groups where week_start_date = $1`,
+    `select * from league_groups where week_start_date = $1 and reset_at is null order by id`,
     [oldWeekStart]
   );
   if (!oldGroups.rows.length) return;
@@ -145,35 +194,152 @@ export async function runWeeklyLeagueReset(): Promise<void> {
   try {
     await client.query("begin");
 
-    const legendsCandidates: Array<{ profileId: string; weeklyXP: number; returningLegend: boolean }> = [];
+    const legendsCandidates: Array<{
+      profileId: string;
+      weeklyXP: number;
+      returningLegend: boolean;
+      reachedAt: Date | string | null | undefined;
+    }> = [];
 
     for (const groupRow of oldGroups.rows) {
       const group = mapLeagueGroup(groupRow);
-      await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
-      const members = await client.query<LeagueGroupMemberRow>(
-        `select * from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at, id`,
-        [group.id]
+      const reset = await client.query<{ reset_at: Date | string | null }>(
+        `select reset_at from league_groups where id = $1 for update`,
+        [group.id],
       );
-      const n = members.rows.length;
-      if (n === 0) continue;
+      if (!reset.rows[0] || reset.rows[0].reset_at) continue;
+
+      await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
+      const members = await getRankedGroupMembers(client, group.id, oldWeekStart);
+      const n = members.length;
 
       for (let i = 0; i < n; i++) {
-        const member = members.rows[i];
+        const member = members[i];
         const rank = i + 1;
-        const targetTier = tierAfterWeeklyRank(group.tier, rank, n);
+        const targetTier = tierAfterWeeklyRank(group.tier, rank, n, member.weekly_xp);
 
         if (group.tier === "OBSIDIAN" && targetTier === "LEGENDS") {
-          legendsCandidates.push({ profileId: member.profile_id, weeklyXP: member.weekly_xp, returningLegend: false });
+          legendsCandidates.push({
+            profileId: member.profile_id,
+            weeklyXP: member.weekly_xp,
+            returningLegend: false,
+            reachedAt: member.weekly_xp_reached_at,
+          });
         } else if (group.tier === "LEGENDS" && targetTier === "LEGENDS") {
-          legendsCandidates.push({ profileId: member.profile_id, weeklyXP: member.weekly_xp, returningLegend: true });
+          legendsCandidates.push({
+            profileId: member.profile_id,
+            weeklyXP: member.weekly_xp,
+            returningLegend: true,
+            reachedAt: member.weekly_xp_reached_at,
+          });
         }
 
-        if (rank <= 3) {
-          const coins = LEAGUE_REWARDS[group.tier][rank - 1];
-          if (coins > 0) {
-            await addCoins(member.profile_id, coins, client);
-          }
-        }
+        const coinsAwarded = member.weekly_xp > 0 && rank <= 3
+          ? LEAGUE_REWARDS[group.tier][rank - 1]
+          : 0;
+        const zone = getLeagueZone(group.tier, rank, n);
+        const result = targetTier === group.tier
+          ? "stayed"
+          : NEW_TIER_ORDER.indexOf(targetTier) > NEW_TIER_ORDER.indexOf(group.tier)
+            ? "promoted"
+            : "demoted";
+
+        await persistLeagueWeeklyResultOnce({
+          recordResultIfAbsent: async (weeklyResult) => {
+            const inserted = await client.query(
+              `insert into league_weekly_results
+                 (profile_id, league_group_id, week_start_date, tier, rank, weekly_xp,
+                  result, resulting_tier, coins_awarded, zone)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               on conflict (league_group_id, profile_id) do nothing
+               returning id`,
+              [
+                weeklyResult.profileId,
+                weeklyResult.groupId,
+                weeklyResult.weekStart,
+                weeklyResult.tier,
+                weeklyResult.rank,
+                weeklyResult.weeklyXP,
+                weeklyResult.result,
+                weeklyResult.resultingTier,
+                weeklyResult.coinsAwarded,
+                zone,
+              ],
+            );
+            return Boolean(inserted.rows[0]);
+          },
+          awardCoins: async (payout) => {
+            const inserted = await client.query(
+              `insert into coin_transactions
+                 (profile_id, amount, reason, tier, rank, week_start_date, league_group_id, reference_key, reward_kind)
+               values ($1, $2, 'league_reward', $3, $4, $5, $6, $7, $8)
+               on conflict (reference_key) do nothing
+               returning id`,
+              [
+                payout.profileId,
+                payout.amount,
+                payout.tier,
+                payout.rank,
+                payout.weekStart,
+                group.id,
+                payout.referenceKey,
+                payout.rewardKind,
+              ],
+            );
+            if (inserted.rows[0]) await addCoins(payout.profileId, payout.amount, client);
+          },
+          recordTop1GlobalFinish: async (profileId, weekStart) => {
+            const previous = await client.query<{ unlocked_tier: number }>(
+              `select unlocked_tier from user_achievement_progress
+               where profile_id = $1 and achievement_id = 'top_1_global'
+               for update`,
+              [profileId],
+            );
+            const firstUnlock = (previous.rows[0]?.unlocked_tier ?? 0) === 0;
+            await client.query(
+              `update profiles
+               set times_top_1_global = times_top_1_global + 1,
+                   last_top_1_global_week = $2
+               where id = $1`,
+              [profileId, weekStart],
+            );
+            await client.query(
+              `insert into user_achievement_progress
+                 (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
+               select $1, 'top_1_global', times_top_1_global, 1, now(), null
+               from profiles where id = $1
+               on conflict (profile_id, achievement_id) do update set
+                 current_value = excluded.current_value,
+                 unlocked_tier = 1,
+                 unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
+                 seen_at = case
+                   when user_achievement_progress.unlocked_tier = 0 then null
+                   else user_achievement_progress.seen_at
+                 end`,
+              [profileId],
+            );
+            return firstUnlock;
+          },
+          addFirstUnlockBonusToResult: async (profileId, groupId, amount) => {
+            await client.query(
+              `update league_weekly_results
+               set coins_awarded = coins_awarded + $3
+               where profile_id = $1 and league_group_id = $2`,
+              [profileId, groupId, amount],
+            );
+          },
+        }, {
+          profileId: member.profile_id,
+          groupId: group.id,
+          weekStart: oldWeekStart,
+          tier: group.tier,
+          rank,
+          groupSize: n,
+          weeklyXP: member.weekly_xp,
+          coinsAwarded,
+          result,
+          resultingTier: targetTier,
+        });
 
         if (targetTier !== "LEGENDS") await recordHighestTier(client, member.profile_id, targetTier);
 
@@ -181,13 +347,16 @@ export async function runWeeklyLeagueReset(): Promise<void> {
         if (targetTier !== "LEGENDS") {
           await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, newWeekStart);
         }
+
       }
+      await client.query(`update league_groups set reset_at = now() where id = $1`, [group.id]);
     }
 
     // Keep eligible Legends and admit the highest-ranked Obsidian qualifiers.
     const uniqueCandidates = [...new Map(legendsCandidates.map((candidate) => [candidate.profileId, candidate])).values()]
       .sort((a, b) => b.weeklyXP - a.weeklyXP
         || Number(b.returningLegend) - Number(a.returningLegend)
+        || compareReachedAt(a.reachedAt, b.reachedAt)
         || a.profileId.localeCompare(b.profileId));
     if (uniqueCandidates.length > 0) {
       const legendsWeekEnd = new Date(newWeekStart);
@@ -362,9 +531,10 @@ export async function addMemberToGroup(groupId: number, profileId: string): Prom
 
 export async function getLeagueGroupMembers(groupId: number): Promise<LeagueGroupMember[]> {
   const result = await pool.query<LeagueGroupMemberRow & { display_name?: string; photo_url?: string; username?: string }>(
-    `select lgm.*, p.display_name, p.photo_url, p.username, p.equipped_decoration_id
+    `select lgm.*, p.display_name, p.photo_url, p.username, p.equipped_decoration_id,
+            p.times_top_1_global
      from league_group_members lgm left join profiles p on lgm.profile_id = p.id
-     where lgm.league_group_id = $1 order by lgm.weekly_xp desc, lgm.joined_at, lgm.id`,
+     where lgm.league_group_id = $1 order by lgm.rank asc nulls last, lgm.weekly_xp desc, lgm.joined_at, lgm.id`,
     [groupId]
   );
   return result.rows.map(mapLeagueGroupMember);
@@ -388,18 +558,68 @@ export async function updateMemberWeeklyXP(groupId: number, profileId: string, x
 }
 
 export async function calculateGroupRanks(groupId: number): Promise<void> {
-  const result = await pool.query<{ id: string | number; weekly_xp: number }>(
-    `select id, weekly_xp from league_group_members where league_group_id = $1 order by weekly_xp desc, joined_at, id`,
+  const group = await pool.query<{ week_start_date: Date | string }>(
+    `select week_start_date from league_groups where id = $1`,
     [groupId]
   );
-  for (let i = 0; i < result.rows.length; i++) {
-    await pool.query(`update league_group_members set rank = $1 where id = $2`, [i + 1, result.rows[i].id]);
-  }
+  const weekStart = group.rows[0]?.week_start_date;
+  if (!weekStart) return;
+  await getRankedGroupMembers(
+    pool,
+    groupId,
+    typeof weekStart === "string" ? weekStart.slice(0, 10) : weekStart.toISOString().slice(0, 10),
+  );
 }
 
 export type LeagueNewSnapshot = Awaited<ReturnType<typeof getUserLeagueSnapshot>> & {
   liveCohort: { members: CohortMember[] };
 };
+
+export interface LeagueWeeklyResultNotification {
+  weekStart: string;
+  tier: NewLeagueTier;
+  rank: number;
+  result: "promoted" | "demoted" | "stayed";
+  resultingTier: NewLeagueTier;
+  coinsAwarded: number;
+}
+
+export async function getPendingLeagueWeeklyResults(profileId: string): Promise<LeagueWeeklyResultNotification[]> {
+  const result = await pool.query<{
+    week_start_date: Date | string;
+    tier: NewLeagueTier;
+    rank: number;
+    result: LeagueWeeklyResultNotification["result"];
+    resulting_tier: NewLeagueTier;
+    coins_awarded: number;
+  }>(
+    `select week_start_date, tier, rank, result, resulting_tier, coins_awarded
+     from league_weekly_results
+     where profile_id = $1 and notified_at is null
+     order by week_start_date desc, rank asc
+     limit 10`,
+    [profileId],
+  );
+  return result.rows.map((row) => ({
+    weekStart: typeof row.week_start_date === "string"
+      ? row.week_start_date.slice(0, 10)
+      : row.week_start_date.toISOString().slice(0, 10),
+    tier: row.tier,
+    rank: row.rank,
+    result: row.result,
+    resultingTier: row.resulting_tier,
+    coinsAwarded: row.coins_awarded,
+  })).sort((a, b) => b.weekStart.localeCompare(a.weekStart) || a.rank - b.rank);
+}
+
+export async function acknowledgeLeagueWeeklyResults(profileId: string): Promise<void> {
+  await pool.query(
+    `update league_weekly_results
+     set notified_at = now()
+     where profile_id = $1 and notified_at is null`,
+    [profileId],
+  );
+}
 
 export async function getUserLeagueSnapshot(profileId: string): Promise<{
   currentTier: NewLeagueTier;
@@ -429,8 +649,8 @@ export async function getUserLeagueSnapshot(profileId: string): Promise<{
     weekStart: start,
     weekEnd: end,
     isLegendsGroup: group.isLegendsGroup,
-    promotionZoneEnd: LEAGUE_PROMOTION_CUTOFFS[group.tier],
-    demotionZoneStart: Math.max(1, members.length - LEAGUE_DEMOTION_COUNT + 1),
+    promotionZoneEnd: group.tier === "LEGENDS" ? 0 : PROMOTION_TOP,
+    demotionZoneStart: group.tier !== "BRONZE" && members.length > 10 ? DEMOTION_START_RANK : 0,
   };
 }
 

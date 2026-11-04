@@ -3,6 +3,7 @@ import '@/global.css';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/auth/context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -10,11 +11,13 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <AppNavigator />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -37,6 +40,7 @@ function AppNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={status === 'ready' && user !== null}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="ui-playground" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

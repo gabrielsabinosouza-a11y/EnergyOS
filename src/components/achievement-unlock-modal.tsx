@@ -4,6 +4,7 @@ import { useReducedMotion, AnimatePresence, motion } from "framer-motion";
 import { Sparkles, X } from "lucide-react";
 import { Modal } from "@/components/modal";
 import { AchievementIcon, CATEGORY_COLORS } from "@/lib/achievement-ui";
+import { TOP1_GLOBAL_FIRST_UNLOCK_BONUS } from "@/lib/league-new-meta";
 import type { AchievementProgress } from "@/types";
 
 export function AchievementUnlockModal({
@@ -107,6 +108,18 @@ export function AchievementUnlockModal({
             <p className="mt-1.5 text-sm leading-relaxed text-[var(--text-secondary)]">
               {achievement.description}
             </p>
+            {achievement.id === "top_1_global" && (
+              <>
+                <p className="mt-2 text-xs font-semibold text-amber-300">
+                  #1 global {achievement.currentValue} vez(es)
+                </p>
+                {achievement.previousTier === 0 && (
+                  <p className="mt-1 text-xs text-amber-200">
+                    Bônus único: +{TOP1_GLOBAL_FIRST_UNLOCK_BONUS} moedas
+                  </p>
+                )}
+              </>
+            )}
 
             <button
               type="button"

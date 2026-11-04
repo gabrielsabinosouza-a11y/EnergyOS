@@ -8,6 +8,8 @@ import { registerServiceWorker } from "@/lib/sw-register";
 import { startReminders, stopReminders, type ReminderConfig } from "@/lib/reminders";
 import { OnboardingTour } from "./onboarding-tour";
 import { AchievementUnlockModal } from "./achievement-unlock-modal";
+import { RewardToast, type RewardToastData } from "./reward-toast";
+import { NEW_TIER_META } from "@/lib/league-new-meta";
 
 function toReminderConfig(s: UserSettings): ReminderConfig {
   return {
@@ -101,6 +103,38 @@ function useAchievementUnlocks(active: boolean) {
 export function AppExtras() {
   const { user, loading } = useAuth();
   const { current, dismiss } = useAchievementUnlocks(!!user && !loading);
+  const [leagueToast, setLeagueToast] = useState<RewardToastData | null>(null);
+  const [leagueToastNeedsAcknowledgement, setLeagueToastNeedsAcknowledgement] = useState(false);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    let active = true;
+    api.getLeagueWeeklyResults()
+      .then(({ results }) => {
+        if (!active || results.length === 0) return;
+        const latest = [...results].sort((a, b) =>
+          b.weekStart.localeCompare(a.weekStart) || a.rank - b.rank,
+        )[0];
+        const tierName = NEW_TIER_META[latest.resultingTier].label;
+        const resultMessage = latest.result === "promoted"
+          ? `Você subiu para ${tierName}.`
+          : latest.result === "demoted"
+            ? `Você voltou para ${tierName}.`
+            : `Você permaneceu em ${tierName}.`;
+        setLeagueToast({
+          amount: results.reduce((sum, result) => sum + result.coinsAwarded, 0),
+          message: results.length > 1
+            ? `Resultado da Liga (${results.length} semanas): ${resultMessage}`
+            : resultMessage,
+        });
+        setLeagueToastNeedsAcknowledgement(true);
+        window.dispatchEvent(new Event("energyos:achievements-changed"));
+      })
+      .catch((error) => {
+        console.error("[league] Falha ao carregar o resultado semanal:", error);
+      });
+    return () => { active = false; };
+  }, [loading, user]);
 
   useEffect(() => {
     registerServiceWorker();
@@ -130,10 +164,20 @@ export function AppExtras() {
     };
   }, [user, loading]);
 
+  const dismissLeagueToast = useCallback(() => {
+    setLeagueToast(null);
+    if (!leagueToastNeedsAcknowledgement) return;
+    setLeagueToastNeedsAcknowledgement(false);
+    void api.acknowledgeLeagueWeeklyResults().catch((error) => {
+      console.error("[league] Falha ao confirmar a notificação semanal:", error);
+    });
+  }, [leagueToastNeedsAcknowledgement]);
+
   return (
     <>
       <OnboardingTour />
       <AchievementUnlockModal achievement={current} onClose={dismiss} />
+      <RewardToast toast={leagueToast} onDone={dismissLeagueToast} />
     </>
   );
 }

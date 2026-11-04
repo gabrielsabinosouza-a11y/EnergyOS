@@ -2,8 +2,12 @@ create table if not exists profiles (
   id text primary key,
   display_name text not null,
   email text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  times_top_1_global integer not null default 0,
+  last_top_1_global_week date
 );
+alter table profiles add column if not exists times_top_1_global integer not null default 0;
+alter table profiles add column if not exists last_top_1_global_week date;
 
 -- ── Unified category system (metas + tarefas + Kanban + plano semanal) ──────
 -- user_id null = categoria padrão do sistema, disponível para todos.
@@ -260,9 +264,11 @@ create table if not exists league_groups (
   week_start_date date not null,
   week_end_date date not null,
   is_legends_group boolean not null default false,
+  reset_at timestamptz,
   created_at timestamptz not null default now(),
   unique (tier, week_start_date)
 );
+alter table league_groups add column if not exists reset_at timestamptz;
 
 create index if not exists league_groups_tier_week_idx on league_groups(tier, week_start_date);
 create index if not exists league_groups_is_legends_idx on league_groups(is_legends_group);
@@ -280,6 +286,44 @@ create table if not exists league_group_members (
 create index if not exists league_group_members_group_idx on league_group_members(league_group_id);
 create index if not exists league_group_members_profile_idx on league_group_members(profile_id);
 create index if not exists league_group_members_week_idx on league_group_members(league_group_id, weekly_xp desc);
+
+create table if not exists league_weekly_results (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  league_group_id bigint not null references league_groups(id) on delete cascade,
+  week_start_date date not null,
+  tier league_tier not null,
+  rank integer not null check (rank > 0),
+  weekly_xp integer not null default 0,
+  result text not null check (result in ('promoted', 'demoted', 'stayed')),
+  resulting_tier league_tier not null,
+  coins_awarded integer not null default 0 check (coins_awarded >= 0),
+  zone text not null check (zone in ('promotion', 'reward', 'safe', 'demotion')),
+  notified_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (league_group_id, profile_id)
+);
+
+create index if not exists league_weekly_results_pending_idx
+  on league_weekly_results(profile_id, week_start_date desc)
+  where notified_at is null;
+
+create table if not exists coin_transactions (
+  id bigserial primary key,
+  profile_id text not null references profiles(id) on delete cascade,
+  amount integer not null check (amount > 0),
+  reason text not null,
+  tier league_tier not null,
+  rank integer not null check (rank > 0),
+  week_start_date date not null,
+  league_group_id bigint not null references league_groups(id) on delete cascade,
+  reference_key text not null unique,
+  reward_kind text not null check (reward_kind in ('podium', 'top1_global_unlock')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists coin_transactions_profile_idx
+  on coin_transactions(profile_id, created_at desc);
 
 create table if not exists weekly_plans (
   id bigserial primary key,
@@ -358,6 +402,13 @@ create table if not exists focus_sessions (
 alter table focus_sessions add column if not exists room_id bigint references focus_rooms(id) on delete set null;
 alter table focus_sessions add column if not exists energy_type text;
 alter table focus_sessions add column if not exists paused_count integer;
+alter table focus_sessions add column if not exists end_reason text;
+alter table focus_sessions add column if not exists focused_seconds integer not null default 0;
+alter table focus_sessions add column if not exists paused_at timestamptz;
+alter table focus_sessions add column if not exists total_paused_seconds integer not null default 0;
+alter table focus_sessions drop constraint if exists focus_sessions_end_reason_check;
+alter table focus_sessions add constraint focus_sessions_end_reason_check
+  check (end_reason is null or end_reason in ('completed', 'gave_up'));
 
 create index if not exists focus_sessions_profile_idx on focus_sessions(profile_id, started_at desc);
 create index if not exists focus_sessions_room_idx on focus_sessions(room_id);
@@ -840,7 +891,8 @@ insert into achievements (id, title, description, category) values
   ('consistency_king', 'Rei da Consistência',  'Semanas perfeitas de foco',                'checkin'),
   ('xp_olympian',      'Olimpiano de XP',      'Acumule minutos de foco ao longo da vida',      'focus'),
   ('social_spark',     'Faísca Social',        'Faça amigos e entre em grupos',                 'social'),
-  ('rarest_aura',      'Top 1 Global',         'Termine no topo da Liga Lendários',                'league'),
+  ('rarest_aura',      'Líder do Núcleo',       'Lidere a antiga liga Núcleo',                    'league'),
+  ('top_1_global',     'Top 1 Global',          'Termine em 1º lugar na Liga Lendas',              'league'),
   ('squad_leader',     'Líder de Esquadrão',   'Tenha o maior grupo onde você é dono',             'social'),
   ('focus_companion',  'Companheiro de Foco', 'Conclua sessões focando com outras pessoas',  'focus'),
   ('flow_state',       'Estado de Fluxo',     'Complete uma sessão de foco ininterrupta',      'focus'),

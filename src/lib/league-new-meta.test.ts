@@ -6,6 +6,9 @@ import {
   LEAGUE_REWARDS,
   NEW_TIER_META,
   NEW_TIER_ORDER,
+  DEMOTION_START_RANK,
+  PROMOTION_TOP,
+  getLeagueZone,
   nextLeagueTier,
   resolveNewTier,
   tierAfterWeeklyRank,
@@ -39,6 +42,7 @@ test("weekly promotion and relegation follow the full league hierarchy", () => {
   assert.equal(tierAfterWeeklyRank("EMERALD", 20, 20), "GOLD");
   assert.equal(tierAfterWeeklyRank("BRONZE", 20, 20), "BRONZE");
   assert.equal(tierAfterWeeklyRank("GOLD", 1, 2), "EMERALD");
+  assert.equal(tierAfterWeeklyRank("SILVER", 1, 2, 0), "SILVER");
 });
 
 test("each league has its own identity and increasing podium rewards", () => {
@@ -50,8 +54,33 @@ test("each league has its own identity and increasing podium rewards", () => {
   const rewards = NEW_TIER_ORDER.map((tier) => LEAGUE_REWARDS[tier][0]);
   assert.deepEqual(rewards, [...rewards].sort((a, b) => a - b));
   assert.equal(LEAGUE_REWARDS.LEGENDS[0], Math.max(...rewards));
-  assert.equal(LEAGUE_PROMOTION_CUTOFFS.OBSIDIAN, 5);
+  assert.equal(LEAGUE_PROMOTION_CUTOFFS.OBSIDIAN, PROMOTION_TOP);
   assert.equal(LEAGUE_PROMOTION_CUTOFFS.LEGENDS, 0);
+});
+
+test("league zones use the shared promotion and demotion boundaries for every tier", () => {
+  const groupSizes = [1, 2, 3, 10, 11, 30];
+  for (const tier of NEW_TIER_ORDER) {
+    for (const groupSize of groupSizes) {
+      const topZone = tier === "LEGENDS" ? "reward" : "promotion";
+      for (let rank = 1; rank <= Math.min(PROMOTION_TOP, groupSize); rank += 1) {
+        assert.equal(getLeagueZone(tier, rank, groupSize), topZone, `${tier} #${rank}/${groupSize}`);
+      }
+
+      if (groupSize === 10) assert.equal(getLeagueZone(tier, 10, groupSize), "safe");
+      if (groupSize > 10) {
+        assert.equal(
+          getLeagueZone(tier, DEMOTION_START_RANK, groupSize),
+          tier === "BRONZE" ? "safe" : "demotion",
+          `${tier} demotion boundary in group of ${groupSize}`,
+        );
+      }
+      if (groupSize < PROMOTION_TOP) {
+        assert.equal(getLeagueZone(tier, groupSize, groupSize), topZone);
+      }
+    }
+  }
+  assert.equal(getLeagueZone("GOLD", 31, 30), "safe");
 });
 
 test("initial placement thresholds are defined for every non-Legends league", () => {

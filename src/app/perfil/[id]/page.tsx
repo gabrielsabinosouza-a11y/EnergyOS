@@ -23,7 +23,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { CATEGORY_COLORS, AchievementIcon, AchievementTile, achievementThresholds } from "@/lib/achievement-ui";
+import { CATEGORY_COLORS, AchievementIcon, AchievementTile, achievementThresholds, Top1GlobalBadge } from "@/lib/achievement-ui";
 
 /* ------------------------------------------------------------------ */
 /*  Animation variants                                                */
@@ -89,6 +89,14 @@ function AchievementModal({
 
           <h3 className="font-display text-lg text-[var(--text)]">{achievement.title}</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">{achievement.description}</p>
+          {achievement.id === "top_1_global" && isEarned && (
+            <p className="mt-2 text-xs font-semibold text-amber-300">
+              #1 global {achievement.currentValue} vez(es)
+              {achievement.lastTop1GlobalWeek && (
+                <> · última semana: {new Date(`${achievement.lastTop1GlobalWeek}T12:00:00`).toLocaleDateString("pt-BR")}</>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="mb-4">
@@ -342,6 +350,9 @@ export default function FriendProfilePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-display text-2xl tracking-[-0.03em]">{displayName}</h2>
+                    {(profile.timesTop1Global ?? 0) > 0 && (
+                      <Top1GlobalBadge count={profile.timesTop1Global ?? 0} compact />
+                    )}
                     {profile.role === "admin" && (
                       <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
                         Admin

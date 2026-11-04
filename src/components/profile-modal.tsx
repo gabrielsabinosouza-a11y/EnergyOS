@@ -11,7 +11,7 @@ import type { PublicProfile } from "@/types";
 import { Modal } from "@/components/modal";
 import { Avatar } from "@/components/avatar";
 import { ProfileBanner } from "@/components/profile-banner";
-import { AchievementBadge } from "@/lib/achievement-ui";
+import { AchievementBadge, Top1GlobalBadge } from "@/lib/achievement-ui";
 
 interface ProfileModalProps {
   profileId: string;
@@ -109,6 +109,9 @@ export function ProfileModal({ profileId, onClose }: ProfileModalProps) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-display text-lg tracking-tight">{profile.displayName}</h3>
+                    {(profile.timesTop1Global ?? 0) > 0 && (
+                      <Top1GlobalBadge count={profile.timesTop1Global ?? 0} compact />
+                    )}
                     {profile.role === "admin" && (
                       <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
                         Admin

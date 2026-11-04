@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthRedirect } from "@/lib/auth-context";
 import {
@@ -15,11 +15,14 @@ import { AppShell } from "@/components/app-shell";
 import { api } from "@/lib/api-client";
 import { ProfileModal } from "@/components/profile-modal";
 import { AvatarWithFrame } from "@/components/avatar";
+import { Top1GlobalBadge } from "@/lib/achievement-ui";
 import {
-  LEAGUE_PROMOTION_CUTOFFS,
   LEAGUE_REWARDS,
   NEW_TIER_META,
   NEW_TIER_ORDER,
+  DEMOTION_START_RANK,
+  PROMOTION_TOP,
+  getLeagueZone,
   nextLeagueTier,
 } from "@/lib/league-new-meta";
 import type { LeagueNewSnapshot } from "@/lib/db/league-new";
@@ -164,26 +167,12 @@ export default function LigaPage() {
   const rewards = LEAGUE_REWARDS[snapshot.currentTier];
   const userMember = snapshot.members.find((m) => m.profileId === user.uid);
   const displayRank = snapshot.userRank > 0 ? snapshot.userRank : null;
-
-  // Zone logic shared by every row + the user's own position card.
-  // Bronze is the floor tier — no demotion is possible there.
-  // Lendas has no tier above it — no promotion zone (`promotionZoneEnd` = 0).
-  // When promotion and demotion cutoffs overlap (small groups), promotion wins,
-  // matching the weekly-reset job which checks promotion before demotion.
-  const canDemote = snapshot.currentTier !== "BRONZE";
-  const promoEnd = snapshot.promotionZoneEnd;
-  const demoteStart = canDemote ? snapshot.demotionZoneStart : Number.POSITIVE_INFINITY;
-  const zoneForRank = (rank: number): "promo" | "demote" | "middle" => {
-    if (promoEnd > 0 && rank <= promoEnd) return "promo";
-    if (canDemote && rank >= demoteStart) return "demote";
-    return "middle";
-  };
-
-  const userZone = displayRank !== null ? zoneForRank(displayRank) : null;
-  const isInPromo = userZone === "promo";
-  const isInDemo = userZone === "demote";
+  const groupSize = snapshot.members.length;
+  const userZone = displayRank !== null
+    ? getLeagueZone(snapshot.currentTier, displayRank, groupSize)
+    : null;
   const promotionText = nextTier
-    ? `Fique no Top ${LEAGUE_PROMOTION_CUTOFFS[snapshot.currentTier]} para avançar para ${TIER_CONFIG[nextTier].label}.`
+    ? `Fique no Top ${PROMOTION_TOP} para avançar para ${TIER_CONFIG[nextTier].label}.`
     : "Lendas é o tier mais alto. Os três primeiros recebem as maiores recompensas da liga.";
   const heroBackground = isObsidian
     ? "linear-gradient(135deg, #12071F 0%, #211038 52%, #12071F 100%)"
@@ -347,27 +336,27 @@ export default function LigaPage() {
                 // rank from DB is 1-indexed (calculateGroupRanks uses i+1)
                 // but guard against legacy 0 values
                 const displayMemberRank = member.rank > 0 ? member.rank : index + 1;
-                const zone = zoneForRank(displayMemberRank);
+                const zone = getLeagueZone(snapshot.currentTier, displayMemberRank, groupSize);
                 const photoUrl = member.profile?.photoUrl;
                 const name = member.profile?.displayName ?? member.displayName ?? "Anônimo";
 
                 const zoneClass =
-                  zone === "promo"
+                  zone === "promotion" || zone === "reward"
                     ? "bg-green-500/5 shadow-[inset_3px_0_0_0_rgba(74,222,128,0.45)]"
-                    : zone === "demote"
+                    : zone === "demotion"
                       ? "bg-red-500/5 shadow-[inset_3px_0_0_0_rgba(248,113,113,0.45)]"
                       : isMe
                         ? "bg-[var(--bg-surface-hover)]"
                         : "";
 
                 return (
-                  <motion.button
-                    key={member.id}
-                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.02 }}
-                    onClick={() => setSelectedProfileId(member.profileId)}
-                    className={`grid w-full grid-cols-[56px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${zoneClass}`}
-                  >
+                  <Fragment key={member.id}>
+                    <motion.button
+                      initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.02 }}
+                      onClick={() => setSelectedProfileId(member.profileId)}
+                      className={`grid w-full grid-cols-[56px_1fr_80px_32px] gap-2 px-4 py-3 items-center text-left transition-colors hover:bg-[var(--bg-surface-hover)] ${zoneClass}`}
+                    >
                     {/* Rank */}
                     <div className="flex items-center justify-center">
                       <MedalBadge rank={displayMemberRank} />
@@ -377,7 +366,12 @@ export default function LigaPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <Avatar photoUrl={photoUrl} name={name} size={32} equippedDecorationId={member.profile?.equippedDecorationId} />
                       <div className="min-w-0">
-                        <p className="truncate text-[11px] font-medium text-[var(--text)]">{name}</p>
+                        <p className="flex items-center gap-1 truncate text-[11px] font-medium text-[var(--text)]">
+                          <span className="truncate">{name}</span>
+                          {member.timesTop1Global > 0 && (
+                            <Top1GlobalBadge count={member.timesTop1Global} compact />
+                          )}
+                        </p>
                         {isMe && <p className="text-[8px] text-amber-400">você</p>}
                       </div>
                     </div>
@@ -390,47 +384,52 @@ export default function LigaPage() {
 
                     {/* Zone indicator */}
                     <div className="flex items-center justify-center">
-                      {zone === "promo" && (
+                      {(zone === "promotion" || zone === "reward") && (
                         <motion.div animate={{ y: [-2, 0, -2] }} transition={{ duration: 1.5, repeat: Infinity }}>
                           <ArrowUp size={13} className="text-green-400" />
                         </motion.div>
                       )}
-                      {zone === "demote" && (
+                      {zone === "demotion" && (
                         <motion.div animate={{ y: [2, 0, 2] }} transition={{ duration: 1.5, repeat: Infinity }}>
                           <ArrowDown size={13} className="text-red-400" />
                         </motion.div>
                       )}
-                      {zone === "middle" && (
+                      {zone === "safe" && (
                         <Minus size={13} className="text-[var(--text-faint)]" />
                       )}
                     </div>
-                  </motion.button>
+                    </motion.button>
+                    {displayMemberRank === PROMOTION_TOP && groupSize >= PROMOTION_TOP && (
+                      <div className="flex items-center gap-2 px-4 py-2">
+                        <div className="h-px flex-1 bg-green-400/30" />
+                        <span className="text-[10px] text-green-400 whitespace-nowrap">
+                          {isLegends ? `Recompensa (Top ${PROMOTION_TOP})` : `Promoção (Top ${PROMOTION_TOP})`}
+                        </span>
+                      </div>
+                    )}
+                    {displayMemberRank === DEMOTION_START_RANK - 1 &&
+                      groupSize > 10 &&
+                      snapshot.currentTier !== "BRONZE" && (
+                        <div className="flex items-center gap-2 px-4 py-2">
+                          <span className="text-[10px] text-red-400 whitespace-nowrap">
+                            Rebaixamento (#{DEMOTION_START_RANK}+)
+                          </span>
+                          <div className="h-px flex-1 bg-red-400/30" />
+                        </div>
+                      )}
+                  </Fragment>
                 );
               })}
             </div>
           </div>
 
           {/* Zone legend */}
-          <div className="mt-3 space-y-1.5 px-1">
-            {promoEnd > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-green-400/30" />
-                <span className="text-[10px] text-green-400 whitespace-nowrap">Promoção (Top {promoEnd})</span>
-              </div>
-            )}
-            {canDemote && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-red-400 whitespace-nowrap">Rebaixamento (#{demoteStart}+)</span>
-                <div className="h-px flex-1 bg-red-400/30" />
-              </div>
-            )}
-            {isLegends && (
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-amber-400/30" />
-                <span className="text-[10px] text-amber-400 whitespace-nowrap">Sem promoção — Lendas é o topo</span>
-              </div>
-            )}
-          </div>
+          {isLegends && (
+            <div className="mt-3 flex items-center gap-2 px-1">
+              <div className="h-px flex-1 bg-amber-400/30" />
+              <span className="text-[10px] text-amber-400 whitespace-nowrap">Sem promoção — Lendas é o topo</span>
+            </div>
+          )}
         </motion.section>
 
         {/* Info cards */}
@@ -502,14 +501,28 @@ export default function LigaPage() {
                 <span className="text-[10px] text-[var(--text-faint)]">Membros no grupo</span>
                 <span className="font-mono text-sm">{snapshot.members.length}</span>
               </div>
-              {isInPromo && (
+              {userZone === "promotion" && (
                 <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-3">
                   <p className="flex items-center gap-1 text-[10px] font-medium text-green-400">
-                    <ArrowUp size={11} /> Você está na zona de promoção!
+                    <ArrowUp size={11} /> Zona de promoção
                   </p>
                 </div>
               )}
-              {isInDemo && (
+              {userZone === "reward" && (
+                <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-3">
+                  <p className="flex items-center gap-1 text-[10px] font-medium text-green-400">
+                    <ArrowUp size={11} /> Zona de recompensa
+                  </p>
+                </div>
+              )}
+              {userZone === "safe" && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="flex items-center gap-1 text-[10px] font-medium text-[var(--text-muted)]">
+                    <Minus size={11} /> Zona segura
+                  </p>
+                </div>
+              )}
+              {userZone === "demotion" && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3">
                   <p className="flex items-center gap-1 text-[10px] font-medium text-red-400">
                     <ArrowDown size={11} /> Cuidado: zona de rebaixamento

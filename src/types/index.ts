@@ -68,6 +68,7 @@ export interface LeagueGroupMember {
   weeklyXP: number;
   rank: number;
   joinedAt: string;
+  timesTop1Global: number;
 }
 
 export interface NewLeagueSnapshot {
@@ -110,6 +111,7 @@ export interface PublicProfile {
   longestStreak: number;
   weeklyFocusMinutes: number;
   equippedDecorationId?: string;
+  timesTop1Global?: number;
   hasCustomBanner?: boolean;
   bannerImageUrl?: string;
   achievements: AchievementProgress[];
@@ -446,6 +448,7 @@ export interface AchievementProgress {
   unlockedAt?: string;
   isFeatured: boolean;
   featuredOrder?: number;
+  lastTop1GlobalWeek?: string;
 }
 
 export interface Task {
@@ -663,6 +666,8 @@ export interface FocusSession {
   endedAt?: string;
   taskId?: number;
   xpEarned: number;
+  endReason?: "completed" | "gave_up";
+  focusedSeconds?: number;
 }
 
 export interface UserXP {

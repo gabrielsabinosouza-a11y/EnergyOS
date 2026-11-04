@@ -20,6 +20,7 @@ export const ACHIEVEMENT_THRESHOLDS: Record<string, number[]> = {
   xp_olympian: [1000, 10000, 50000],
   social_spark: [1, 5, 20],
   rarest_aura: [1],
+  top_1_global: [1],
   squad_leader: [3, 10, 20, 35],
   focus_companion: [1, 5, 10, 30],
   flow_state: [90, 120],
@@ -33,7 +34,8 @@ const META: Record<string, { title: string; description: string; category: strin
   consistency_king: { title: "Rei da Consistência", description: "Semanas perfeitas de foco", category: "checkin" },
   xp_olympian: { title: "Olimpiano de XP", description: "Acumule XP ao longo da vida", category: "focus" },
   social_spark: { title: "Faísca Social", description: "Faça amigos e entre em grupos", category: "social" },
-  rarest_aura: { title: "Top 1 Global", description: "Termine no topo da Liga Lendários", category: "league" },
+  rarest_aura: { title: "Líder do Núcleo", description: "Lidere a antiga liga Núcleo", category: "league" },
+  top_1_global: { title: "Top 1 Global", description: "Termine em 1º lugar na Liga Lendas", category: "league" },
   squad_leader: { title: "Líder de Esquadrão", description: "Tenha o maior grupo onde você é dono", category: "social" },
   focus_companion: { title: "Companheiro de Foco", description: "Conclua sessões focando com outras pessoas", category: "focus" },
   flow_state: { title: "Estado de Fluxo", description: "Complete uma sessão de foco ininterrupta", category: "focus" },
@@ -99,6 +101,7 @@ export async function awardAchievementRewards(
     const claimedKeys = new Set(claimed.rows.map((r) => `${r.achievement_id}:${r.tier}`));
 
     for (const id of ALL_ACHIEVEMENT_IDS) {
+      if (id === "top_1_global") continue;
       const unlockedTier = tierFor(values[id] ?? 0, thresholdsFor(id));
       for (let tier = 1; tier <= unlockedTier; tier += 1) {
         if (claimedKeys.has(`${id}:${tier}`)) continue;
@@ -163,6 +166,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     focusCompanion,
     flowState,
     ownedAuras,
+    top1Global,
   ] = await Promise.all([
     safeQuery("streak_master", () =>
       pool.query<{ current_streak: number; longest_streak: number; saved_best_streak: number }>(
@@ -286,6 +290,12 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
       ),
     ),
     safeQuery("aura_collector", () => getOwnedAuras(profileId)),
+    safeQuery("top_1_global", () =>
+      pool.query<{ times_top_1_global: number }>(
+        `select times_top_1_global from profiles where id = $1`,
+        [profileId],
+      ),
+    ),
   ]);
 
   const longestStreak = Math.max(
@@ -305,6 +315,7 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
     xp_olympian: userXP?.totalXP ?? 0,
     social_spark: Number(social?.rows[0]?.friends ?? 0) + Number(social?.rows[0]?.groups ?? 0),
     rarest_aura: rarest?.rows[0]?.unlocked_tier ? 1 : 0,
+    top_1_global: Number(top1Global?.rows[0]?.times_top_1_global ?? 0),
     squad_leader: Number(squadLeader?.rows[0]?.largest ?? 0),
     focus_companion: Number(focusCompanion?.rows[0]?.current_value ?? 0),
     flow_state: Number(flowState?.rows[0]?.longest ?? 0),
@@ -314,7 +325,16 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
 
 export async function listAchievementProgress(profileId: string): Promise<AchievementProgress[]> {
   parseProfileId(profileId);
-  const values = await computeValues(profileId);
+  const [values, top1GlobalWeek] = await Promise.all([
+    computeValues(profileId),
+    safeQuery("top_1_global_week", () =>
+      pool.query<{ last_top_1_global_week: Date | string | null }>(
+        `select last_top_1_global_week from profiles where id = $1`,
+        [profileId],
+      ),
+    ),
+  ]);
+  const lastTop1GlobalWeek = top1GlobalWeek?.rows[0]?.last_top_1_global_week;
 
   // Award coin + XP rewards for any unlocked tiers not yet claimed (incl.
   // retroactive backfill for previously-reached requirements).
@@ -359,7 +379,7 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
     const prev = byId.get(id);
     // Event-backed achievements are append-only. Never let a stale runtime
     // calculation lower a value already persisted in the progress row.
-    const currentValue = ["focus_companion", "deep_focus", "flow_state"].includes(id)
+    const currentValue = ["focus_companion", "deep_focus", "flow_state", "top_1_global"].includes(id)
       ? Math.max(values[id] ?? 0, prev?.current_value ?? 0)
       : values[id] ?? 0;
     const unlockedTier = id === "streak_master"
@@ -381,8 +401,16 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
            (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
          values ($1, $2, $3, $4, case when $4 > 0 then now() else null end, $5)
          on conflict (profile_id, achievement_id) do update set
-           current_value = excluded.current_value,
-           unlocked_tier = excluded.unlocked_tier,
+           current_value = case
+             when excluded.achievement_id = 'top_1_global'
+               then greatest(user_achievement_progress.current_value, excluded.current_value)
+             else excluded.current_value
+           end,
+           unlocked_tier = case
+             when excluded.achievement_id = 'top_1_global'
+               then greatest(user_achievement_progress.unlocked_tier, excluded.unlocked_tier)
+             else excluded.unlocked_tier
+           end,
            unlocked_at = case
              when user_achievement_progress.unlocked_tier = 0 and excluded.unlocked_tier > 0 then now()
              when excluded.unlocked_tier > user_achievement_progress.unlocked_tier then now()
@@ -404,7 +432,9 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
       thresholds,
       currentValue,
       unlockedTier,
-      previousTier: prev?.unlocked_tier ?? 0,
+      previousTier: id === "top_1_global" && !prev?.seen_at
+        ? 0
+        : prev?.unlocked_tier ?? 0,
       justUnlocked: Boolean(justUnlocked && unlockedTier > 0),
       unlockedAt: prev?.unlocked_at
         ? new Date(prev.unlocked_at).toISOString()
@@ -413,6 +443,11 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
           : undefined,
       isFeatured: prev?.is_featured ?? false,
       featuredOrder: prev?.featured_order ?? undefined,
+      lastTop1GlobalWeek: id === "top_1_global" && lastTop1GlobalWeek
+        ? typeof lastTop1GlobalWeek === "string"
+          ? lastTop1GlobalWeek.slice(0, 10)
+          : lastTop1GlobalWeek.toISOString().slice(0, 10)
+        : undefined,
     });
   }
 

@@ -38,6 +38,7 @@ import {
   AchievementTile,
   AchievementAddSlot,
   achievementThresholds,
+  Top1GlobalBadge,
 } from "@/lib/achievement-ui";
 import { MonthlyRecapPremium } from "@/components/dashboard/monthly-recap-premium";
 // Keep the old import for fallback if needed
@@ -134,6 +135,14 @@ function AchievementModal({
 
           <h3 className="font-display text-lg text-[var(--text)]">{achievement.title}</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">{achievement.description}</p>
+          {achievement.id === "top_1_global" && isEarned && (
+            <p className="mt-2 text-xs font-semibold text-amber-300">
+              #1 global {achievement.currentValue} vez(es)
+              {achievement.lastTop1GlobalWeek && (
+                <> · última semana: {new Date(`${achievement.lastTop1GlobalWeek}T12:00:00`).toLocaleDateString("pt-BR")}</>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="mb-4">
@@ -345,6 +354,7 @@ export default function PerfilPage() {
   const featuredIds = new Set(featuredAchievementIds);
   const unlocked = achievements.filter((a) => a.unlockedTier > 0);
   const locked = achievements.filter((a) => a.unlockedTier === 0);
+  const top1GlobalCount = achievements.find((a) => a.id === "top_1_global")?.currentValue ?? 0;
   const sorted = [...unlocked, ...locked];
 
   function startEdit() {
@@ -682,6 +692,7 @@ export default function PerfilPage() {
                   ) : (
                     <div className="flex items-center justify-center gap-2 sm:justify-start">
                       <h2 className="font-display text-2xl tracking-[-0.03em]">{displayName}</h2>
+                      {top1GlobalCount > 0 && <Top1GlobalBadge count={top1GlobalCount} compact />}
                       {dashboard?.user?.role === 'admin' && (
                         <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[var(--accent)] text-[var(--bg-primary)] rounded-full">
                           Admin

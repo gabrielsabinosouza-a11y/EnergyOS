@@ -1,6 +1,6 @@
 "use client";
 
-import { Trophy, Lock, X, Plus, Users, Sparkles } from "lucide-react";
+import { Trophy, Lock, X, Plus, Users, Sparkles, Crown } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import type { AchievementProgress } from "@/types";
@@ -25,7 +25,7 @@ export const CATEGORY_COLORS: Record<string, { primary: string; bg: string; glow
  * Tier-based icon assets (one image per unlock tier, 1-indexed), keyed by
  * achievement id. The icon shown for an achievement reflects its unlockedTier.
  * Some achievements have fewer images than tiers; the last image is reused for
- * higher tiers. `rarest_aura` has no asset yet and falls back to a lucide icon.
+ * higher tiers. `rarest_aura` has no asset and falls back to a lucide icon.
  */
 export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
   streak_master: [
@@ -63,7 +63,7 @@ export const ACHIEVEMENT_IMAGES: Record<string, string[]> = {
     "/achievements/social_spark/social_spark1.png",
     "/achievements/social_spark/social_spark2.png",
   ],
-  rarest_aura: ["/achievements/Top_1/top1.png"],
+  top_1_global: ["/achievements/Top_1/top1.png"],
   focus_companion: [
     "/achievements/focus_parser/focus_parser1.png",
     "/achievements/focus_parser/focus_parser2.png",
@@ -94,6 +94,18 @@ export const ACHIEVEMENT_BADGE_ICONS: Record<string, LucideIcon> = {
 };
 
 export const DEFAULT_ICON = Trophy;
+
+export function Top1GlobalBadge({ count, compact = false }: { count: number; compact?: boolean }) {
+  return (
+    <span
+      title={`Top 1 Global: ${count} vez(es)`}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/35 bg-amber-300/10 px-2 py-0.5 text-[9px] font-bold text-amber-300"
+    >
+      <Crown size={10} />
+      {compact ? "TOP 1" : "Top 1 Global"}
+    </span>
+  );
+}
 
 /**
  * Renders an achievement's tier-matched icon: the PNG for the current
@@ -225,6 +237,7 @@ export function AchievementTile({
   const inner = size;
   const radius = (inner / 2) - 2; // small padding for progress ring
   const firstThreshold = thresholds[0] ?? 1;
+  const isTop1Global = achievement.id === "top_1_global";
   const progress = Math.min((achievement.currentValue ?? 0) / firstThreshold, 1);
   const pct = Math.round(progress * 100);
   const circumference = 2 * Math.PI * radius;
@@ -239,6 +252,10 @@ export function AchievementTile({
           width: inner,
           height: inner,
           filter: !isEarned ? "grayscale(1) opacity(0.65)" : undefined,
+          borderRadius: isTop1Global ? "1rem" : undefined,
+          border: isTop1Global ? "1px solid rgba(252,211,77,.38)" : undefined,
+          background: isTop1Global ? "radial-gradient(circle, rgba(252,211,77,.2), rgba(124,58,237,.08) 72%)" : undefined,
+          boxShadow: isTop1Global && isEarned ? "0 0 28px rgba(252,211,77,.28)" : undefined,
         }}
       >
         {/* progress ring (behind icon) */}
@@ -277,6 +294,12 @@ export function AchievementTile({
           <AchievementIcon id={achievement.id} tier={1} size={inner} fill />
         )}
       </span>
+
+      {isTop1Global && isEarned && (
+        <span className="mt-1 text-[9px] font-bold text-amber-300">
+          {achievement.currentValue}× #1
+        </span>
+      )}
 
       {/* tier dots */}
       {isEarned && thresholds.length > 1 && (

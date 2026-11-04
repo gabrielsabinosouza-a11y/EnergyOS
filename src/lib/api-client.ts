@@ -348,8 +348,14 @@ export const api = {
   getFocusData: () => request<{ history: FocusSession[]; todayStats: { minutesFocused: number; coinsEarned: number }; xp: UserXP; lifetimeFocusMinutes: number }>("/api/focus"),
   startFocus: (targetDurationMinutes: number, taskId?: number, energyType?: string, roomId?: number) =>
     request<{ session: FocusSession }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "start", targetDurationMinutes, taskId, energyType, roomId }) }),
-  endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false, pausedCount: number = 0, endedAt?: string) =>
-    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak?: { previousStreak: number; currentStreak: number } | null; unlockedGroupAchievements: GroupAchievementUnlock[] }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
+  endFocus: (sessionId: number, focusedSeconds: number, isRoomSession: boolean = false, pausedCount: number = 0, endedAt?: string, endReason?: "completed" | "gave_up") =>
+    request<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak?: { previousStreak: number; currentStreak: number } | null; unlockedGroupAchievements: GroupAchievementUnlock[] }>("/api/focus", { method: "POST", body: JSON.stringify({ action: endReason ?? "end", sessionId, focusedSeconds, isRoomSession, pausedCount, endedAt: endedAt ?? undefined }) }),
+  cancelFocus: (sessionId: number) =>
+    request<{ cancelled: true }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "cancel", sessionId }) }),
+  pauseFocus: (sessionId: number) =>
+    request<{ paused: true }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "pause", sessionId }) }),
+  resumeFocus: (sessionId: number) =>
+    request<{ paused: false }>("/api/focus", { method: "POST", body: JSON.stringify({ action: "resume", sessionId }) }),
 
   // Garden (Meu Jardim)
   getGarden: () => request<{ entries: import("@/lib/db/focus").GardenEntry[] }>("/api/garden"),
@@ -559,6 +565,10 @@ export const api = {
   // League
   getLeague: () => request<{ snapshot: LeagueSnapshot }>("/api/league"),
   getLeagueNew: () => request<import("@/lib/db/league-new").LeagueNewSnapshot>("/api/league-new"),
+  getLeagueWeeklyResults: () =>
+    request<{ results: import("@/lib/db/league-new").LeagueWeeklyResultNotification[] }>("/api/league-new/results"),
+  acknowledgeLeagueWeeklyResults: () =>
+    request<{ ok: true }>("/api/league-new/results", { method: "POST", body: JSON.stringify({}) }),
 
   // Achievements
   getAchievements: () => request<{ achievements: AchievementProgress[] }>("/api/achievements"),

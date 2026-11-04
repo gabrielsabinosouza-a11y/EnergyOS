@@ -19,15 +19,16 @@ export type NavIconName = keyof typeof icons;
 type NavIconProps = {
   name: NavIconName;
   size?: number;
+  color?: string;
 };
 
-export function NavIcon({ name, size = 24 }: NavIconProps) {
+export function NavIcon({ color, name, size = 24 }: NavIconProps) {
   return (
     <Image
       accessible={false}
       resizeMode="contain"
       source={icons[name]}
-      style={[styles.icon, { height: size, width: size }]}
+      style={[styles.icon, { height: size, tintColor: color, width: size }]}
     />
   );
 }

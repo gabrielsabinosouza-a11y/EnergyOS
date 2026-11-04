@@ -7,6 +7,7 @@ import { CoinIcon } from "@/components/coin-icon";
 export interface RewardToastData {
   amount: number;
   balance?: number;
+  message?: string;
 }
 
 const BURST_COUNT = 4;
@@ -71,14 +72,16 @@ export function RewardToast({ toast, onDone }: {
           transition={{ duration: 0.3 }}
         >
           {/* Arco de moeda voando em direção ao canto (saldo) */}
-          <motion.div
-            className="absolute -left-16 -top-3"
-            initial={{ x: -40, y: 30, opacity: 0, rotate: -120 }}
-            animate={{ x: -8, y: 2, opacity: [0, 1, 0], rotate: 0 }}
-            transition={{ duration: 0.9, delay: 0.15 }}
-          >
-            <CoinIcon size={20} />
-          </motion.div>
+          {amount > 0 && (
+            <motion.div
+              className="absolute -left-16 -top-3"
+              initial={{ x: -40, y: 30, opacity: 0, rotate: -120 }}
+              animate={{ x: -8, y: 2, opacity: [0, 1, 0], rotate: 0 }}
+              transition={{ duration: 0.9, delay: 0.15 }}
+            >
+              <CoinIcon size={20} />
+            </motion.div>
+          )}
 
           <motion.div
             initial={{ scale: 0, rotate: -12 }}
@@ -95,46 +98,51 @@ export function RewardToast({ toast, onDone }: {
                 filter: "blur(2px)",
               }}
             />
-            <div className="relative">
-              <motion.div
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              >
-                <CoinIcon size={40} />
-              </motion.div>
-
-              {/* Explosão de mini-moedas */}
-              {Array.from({ length: BURST_COUNT }).map((_, i) => {
-                const angle = (i / BURST_COUNT) * Math.PI * 2;
-                const dist = 34;
-                return (
-                  <motion.div
-                    key={i}
-                    className="absolute left-1/2 top-1/2"
-                    initial={{ x: 0, y: 0, opacity: 1, scale: 0.4 }}
-                    animate={{
-                      x: Math.cos(angle) * dist,
-                      y: Math.sin(angle) * dist - 10,
-                      opacity: 0,
-                      scale: 0.7,
-                    }}
-                    transition={{ duration: 0.7, ease: "easeOut" }}
-                  >
-                    <CoinIcon size={12} />
-                  </motion.div>
-                );
-              })}
-            </div>
+            {amount > 0 && (
+              <div className="relative">
+                <motion.div
+                  animate={{ y: [0, -3, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <CoinIcon size={40} />
+                </motion.div>
+                {Array.from({ length: BURST_COUNT }).map((_, i) => {
+                  const angle = (i / BURST_COUNT) * Math.PI * 2;
+                  const dist = 34;
+                  return (
+                    <motion.div
+                      key={i}
+                      className="absolute left-1/2 top-1/2"
+                      initial={{ x: 0, y: 0, opacity: 1, scale: 0.4 }}
+                      animate={{
+                        x: Math.cos(angle) * dist,
+                        y: Math.sin(angle) * dist - 10,
+                        opacity: 0,
+                        scale: 0.7,
+                      }}
+                      transition={{ duration: 0.7, ease: "easeOut" }}
+                    >
+                      <CoinIcon size={12} />
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="relative flex flex-col">
-              <motion.span
-                initial={{ opacity: 0, scale: 0.7, x: -6 }}
-                animate={{ opacity: 1, scale: 1, x: 0 }}
-                transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.05 }}
-                className="font-display text-lg leading-none font-bold text-amber-300"
-              >
-                +{amount} moedas
-              </motion.span>
+              {amount > 0 && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.7, x: -6 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.05 }}
+                  className="font-display text-lg leading-none font-bold text-amber-300"
+                >
+                  +{amount} moedas
+                </motion.span>
+              )}
+              {toast.message && (
+                <span className="text-xs font-medium text-[var(--text)]">{toast.message}</span>
+              )}
               {toast.balance !== undefined && (
                 <motion.span
                   initial={{ opacity: 0 }}

@@ -1,8 +1,15 @@
 import pool from "../db";
 import type { FocusSession } from "@/types";
-import { NotFoundError } from "../errors";
+import { ConflictError, NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE, dayInTz } from "./dates";
+import {
+  canCancelFocusSession,
+  focusSessionEffects,
+  focusedSecondsAt,
+  focusPhaseAt,
+  type FocusSessionEndReason,
+} from "../focus-session-state";
 import { recordMissionProgress } from "./daily-quests";
 import { onFocusSessionCompleted } from "./tasks";
 import { addCoins } from "./settings";
@@ -233,6 +240,12 @@ interface FocusRow {
   task_id: string | number | null;
   xp_earned: number;
   energy_type?: string | null;
+  end_reason?: FocusSessionEndReason | null;
+  focused_seconds?: number;
+  paused_at?: Date | string | null;
+  total_paused_seconds?: number;
+  paused_count?: number | null;
+  server_now?: Date | string;
 }
 
 function mapFocus(row: FocusRow): FocusSession {
@@ -246,6 +259,8 @@ function mapFocus(row: FocusRow): FocusSession {
     endedAt: row.ended_at ? (typeof row.ended_at === "string" ? row.ended_at : row.ended_at.toISOString()) : undefined,
     taskId: row.task_id ? Number(row.task_id) : undefined,
     xpEarned: row.xp_earned,
+    endReason: row.end_reason ?? undefined,
+    focusedSeconds: row.focused_seconds,
   };
 }
 
@@ -268,20 +283,127 @@ export async function startFocusSession(
     );
     if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
   }
-  const result = await pool.query<FocusRow>(
-    `insert into focus_sessions (profile_id, room_id, task_id, duration_minutes, target_duration_minutes, energy_type) values ($1, $2, $3, 0, $4, $5)
-     returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, roomId ?? null, taskId ?? null, targetDurationMinutes, energy],
-  );
-  const session = mapFocus(result.rows[0]);
+  const client = await pool.connect();
+  let session: FocusSession;
+  let created = false;
+  try {
+    await client.query("begin");
+    await client.query(`select id from profiles where id = $1 for update`, [profileId]);
+    if (roomId !== undefined) {
+      const participant = await client.query(
+        `select 1 from room_participants where room_id = $1 and profile_id = $2`,
+        [roomId, profileId],
+      );
+      if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
+    }
+
+    const active = await client.query<FocusRow>(
+      `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+       from focus_sessions where profile_id = $1 and ended_at is null limit 1`,
+      [profileId],
+    );
+    if (active.rows[0]) {
+      const existing = active.rows[0];
+      if (roomId !== undefined && Number(existing.room_id) === roomId) {
+        await client.query("commit");
+        session = mapFocus(existing);
+      } else {
+        throw new ConflictError("Você já tem uma sessão de foco em andamento.");
+      }
+    } else {
+      const result = await client.query<FocusRow>(
+        `insert into focus_sessions (profile_id, room_id, task_id, duration_minutes, target_duration_minutes, energy_type)
+         values ($1, $2, $3, 0, $4, $5)
+         returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
+        [profileId, roomId ?? null, taskId ?? null, targetDurationMinutes, energy],
+      );
+      session = mapFocus(result.rows[0]);
+      created = true;
+      await client.query("commit");
+    }
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 
   // Plant a seed in the garden immediately when session starts (if >= 10 min session)
-  if (energy && targetDurationMinutes >= 10) {
+  if (created && energy && targetDurationMinutes >= 10) {
     // Use the target duration for initial planting, will be updated on completion
     await plantGardenEntries(profileId, session.id, energy, targetDurationMinutes, "growing");
   }
 
   return session;
+}
+
+export async function cancelFocusSession(profileId: string, sessionId: number): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
+  const result = await pool.query<{ id: number }>(
+    `delete from focus_sessions
+      where profile_id = $1 and id = $2 and ended_at is null
+        and started_at >= now() - make_interval(secs => $3)
+      returning id`,
+    [profileId, sessionId, 17],
+  );
+  if (result.rows[0]) return;
+
+  const active = await pool.query<{ started_at: Date | string; ended_at: Date | string | null }>(
+    `select started_at, ended_at from focus_sessions where profile_id = $1 and id = $2`,
+    [profileId, sessionId],
+  );
+  if (!active.rows[0] || active.rows[0].ended_at) return;
+  const startedAt = typeof active.rows[0].started_at === "string"
+    ? new Date(active.rows[0].started_at).getTime()
+    : active.rows[0].started_at.getTime();
+  if (!canCancelFocusSession(startedAt, Date.now())) {
+    throw new ConflictError("O período de cancelamento terminou. Você pode desistir da sessão.");
+  }
+  throw new ConflictError("Não foi possível cancelar a sessão. Tente novamente.");
+}
+
+export async function updateFocusSessionPause(
+  profileId: string,
+  sessionId: number,
+  action: "pause" | "resume",
+): Promise<void> {
+  parseProfileId(profileId);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
+  const result = await pool.query<FocusRow>(
+    `select started_at, ended_at, paused_at, total_paused_seconds, now() as server_now
+       from focus_sessions where profile_id = $1 and id = $2 for update`,
+    [profileId, sessionId],
+  );
+  const row = result.rows[0];
+  if (!row || row.ended_at) throw new ConflictError("Esta sessão não está mais em andamento.");
+  const startedAtMs = new Date(row.started_at).getTime();
+  const serverNowMs = new Date(row.server_now!).getTime();
+  if (action === "pause") {
+    if (focusPhaseAt(startedAtMs, serverNowMs) !== "focusing") {
+      throw new ConflictError("A pausa estará disponível após o período de cancelamento.");
+    }
+    if (row.paused_at) return;
+    const updated = await pool.query(
+      `update focus_sessions set paused_at = now(), paused_count = coalesce(paused_count, 0) + 1
+        where profile_id = $1 and id = $2 and ended_at is null and paused_at is null
+        returning id`,
+      [profileId, sessionId],
+    );
+    if (!updated.rows[0]) throw new ConflictError("Esta sessão não está mais em andamento.");
+    return;
+  }
+  if (!row.paused_at) return;
+  const updated = await pool.query(
+    `update focus_sessions
+        set total_paused_seconds = coalesce(total_paused_seconds, 0)
+              + greatest(0, floor(extract(epoch from (now() - paused_at)))::int),
+            paused_at = null
+      where profile_id = $1 and id = $2 and ended_at is null and paused_at is not null
+      returning id`,
+    [profileId, sessionId],
+  );
+  if (!updated.rows[0]) throw new ConflictError("Esta sessão não está mais em andamento.");
 }
 
 export async function endFocusSession(
@@ -291,6 +413,7 @@ export async function endFocusSession(
   isRoomSession: boolean = false,
   pausedCount: number = 0,
   endedAt?: string | Date,
+  endReason: FocusSessionEndReason = "completed",
 ): Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; questsUpdated: number; streak: { previousStreak: number; currentStreak: number } | null; unlockedGroupAchievements: GroupAchievementUnlock[] }> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
@@ -298,8 +421,9 @@ export async function endFocusSession(
   if (!Number.isFinite(pausedCount) || pausedCount < 0) pausedCount = 0;
 
   const session = await pool.query<FocusRow>(
-    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type
-     from focus_sessions where profile_id = $1 and id = $2`,
+    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type,
+            end_reason, focused_seconds, paused_at, total_paused_seconds, now() as server_now
+       from focus_sessions where profile_id = $1 and id = $2`,
     [profileId, sessionId],
   );
   if (!session.rows[0]) throw new NotFoundError("Sessão não encontrada.");
@@ -309,7 +433,7 @@ export async function endFocusSession(
   // session) is not an error. Reward the already-finalized values exactly once.
   if (session.rows[0].ended_at) {
     const storedDuration = Math.max(0, Number(session.rows[0].duration_minutes) || 0);
-    const coinsAwarded = focusCoinsForDuration(storedDuration);
+    const coinsAwarded = session.rows[0].end_reason === "gave_up" ? 0 : focusCoinsForDuration(storedDuration);
     return {
       session: mapFocus(session.rows[0]),
       xpAwarded: Number(session.rows[0].xp_earned) || 0,
@@ -328,10 +452,23 @@ export async function endFocusSession(
     ? Math.round(session.rows[0].target_duration_minutes)
     : FOCUS_DURATION_MAX_MINUTES;
   const targetCap = Math.max(1, Math.min(rawTarget, FOCUS_DURATION_MAX_MINUTES));
-  if (focusedSeconds > FOCUS_DURATION_MAX_MINUTES * 60) {
-    console.warn(`[focus] clamped impossible reported duration for session ${sessionId} (${profileId})`, focusedSeconds);
+  const serverNow = session.rows[0].server_now!;
+  const startedAtMs = new Date(session.rows[0].started_at).getTime();
+  const endTimeMs = endedAt ? new Date(endedAt).getTime() : new Date(serverNow).getTime();
+  if (endReason === "gave_up" && focusPhaseAt(startedAtMs, new Date(serverNow).getTime()) === "grace_period") {
+    throw new ConflictError("O período de cancelamento ainda está ativo.");
   }
-  const durationMinutes = Math.min(finalizedFocusMinutes(focusedSeconds), targetCap);
+  const actualFocusedSeconds = focusedSecondsAt(
+    startedAtMs,
+    endTimeMs,
+    Number(session.rows[0].total_paused_seconds) || 0,
+    session.rows[0].paused_at ? new Date(session.rows[0].paused_at).getTime() : null,
+  );
+  const targetSeconds = targetCap * 60;
+  if (endReason === "completed" && actualFocusedSeconds < targetSeconds - 3) {
+    throw new ConflictError("A sessão ainda não atingiu a duração planejada.");
+  }
+  const durationMinutes = Math.min(finalizedFocusMinutes(actualFocusedSeconds), targetCap);
   const baseXP = Math.round(durationMinutes * FOCUS_XP_PER_MIN);
   // Coins are a pure function of focused time and are NEVER scaled by the 2x XP
   // boost. The XP potion multiplies only XP (via creditXP → calculateXPWithBoost);
@@ -348,14 +485,18 @@ export async function endFocusSession(
   // happened, not on the day the user finally came back to claim it.
   const updated = await pool.query<FocusRow>(
     `update focus_sessions
-        set duration_minutes = $3, ended_at = coalesce($5::timestamptz, now()), xp_earned = 0, paused_count = $4
+        set duration_minutes = $3, focused_seconds = $6,
+            ended_at = coalesce($5::timestamptz, now()), xp_earned = 0,
+            paused_count = coalesce(paused_count, $4),
+            end_reason = $7, paused_at = null
       where profile_id = $1 and id = $2 and ended_at is null
-      returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
-    [profileId, sessionId, durationMinutes, pausedCount, endedAt ? new Date(endedAt).toISOString() : null],
+      returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned,
+                end_reason, focused_seconds`,
+    [profileId, sessionId, durationMinutes, pausedCount, endedAt ? new Date(endedAt).toISOString() : null, actualFocusedSeconds, endReason],
   );
   if (!updated.rows[0]) {
     const stored = await pool.query<FocusRow>(
-      `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+      `      select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, end_reason
        from focus_sessions where profile_id = $1 and id = $2`,
       [profileId, sessionId],
     );
@@ -363,7 +504,7 @@ export async function endFocusSession(
     return {
       session: mapFocus(row),
       xpAwarded: Number(row.xp_earned) || 0,
-      coinsAwarded: focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
+      coinsAwarded: row.end_reason === "gave_up" ? 0 : focusCoinsForDuration(Math.max(0, Number(row.duration_minutes) || 0)),
       questsUpdated: 0,
       streak: null,
       unlockedGroupAchievements: [],
@@ -372,8 +513,8 @@ export async function endFocusSession(
 
   // Record a zero-duration give-up idempotently, but do not award XP, coins,
   // quests, streak progress, group credit, or a completed focus event.
-  if (durationMinutes === 0) {
-    await finalizeGardenEntries(profileId, sessionId, false, 0);
+  if (!focusSessionEffects(endReason).awardRewards || durationMinutes === 0) {
+    await finalizeGardenEntries(profileId, sessionId, false, durationMinutes);
     if (session.rows[0].room_id) await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
     return {
       session: mapFocus(updated.rows[0]),
@@ -540,7 +681,7 @@ export async function endFocusSession(
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {
   parseProfileId(profileId);
   const result = await pool.query<FocusRow>(
-    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned
+    `    select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, end_reason, focused_seconds
      from focus_sessions where profile_id = $1 and ended_at is not null
      order by started_at desc limit 30`,
     [profileId],

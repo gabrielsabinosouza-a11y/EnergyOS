@@ -3,7 +3,15 @@ import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { rateLimitForProfile } from "@/lib/rate-limit";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { startFocusSession, endFocusSession, getFocusHistory, getTodayFocusStats, getLifetimeFocusMinutes } from "@/lib/db/focus";
+import {
+  cancelFocusSession,
+  endFocusSession,
+  getFocusHistory,
+  getLifetimeFocusMinutes,
+  getTodayFocusStats,
+  startFocusSession,
+  updateFocusSessionPause,
+} from "@/lib/db/focus";
 import { getUserXP } from "@/lib/db/xp";
 
 export async function GET(request: NextRequest) {
@@ -35,17 +43,31 @@ export async function POST(request: NextRequest) {
       return jsonOk({ session }, 201);
     }
 
-    if (action === "end") {
+    if (action === "cancel") {
+      await cancelFocusSession(profileId, Number(body.sessionId));
+      return jsonOk({ cancelled: true });
+    }
+
+    if (action === "pause" || action === "resume") {
+      await updateFocusSessionPause(profileId, Number(body.sessionId), action);
+      return jsonOk({ paused: action === "pause" });
+    }
+
+    if (action === "complete" || action === "give_up" || action === "end") {
       const focusedSeconds = Number(body.focusedSeconds) || 0;
       const isRoomSession = body.isRoomSession === true;
       const pausedCount = Number(body.pausedCount);
+      const endReason = action === "give_up" || (action === "end" && focusedSeconds === 0)
+        ? "gave_up"
+        : "completed";
       const { session, xpAwarded, coinsAwarded, questsUpdated, streak } = await endFocusSession(
         profileId,
         Number(body.sessionId),
         focusedSeconds,
         isRoomSession,
         Number.isFinite(pausedCount) && pausedCount >= 0 ? pausedCount : 0,
-        typeof body.endedAt === "string" && body.endedAt ? new Date(body.endedAt).toISOString() : undefined,
+        undefined,
+        endReason,
       );
       return jsonOk({ session, xpAwarded, coinsAwarded, questsUpdated, streak });
     }

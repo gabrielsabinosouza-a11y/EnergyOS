@@ -10,6 +10,12 @@ export const NEW_TIER_ORDER = [
 ] as const;
 
 export type NewLeagueTier = typeof NEW_TIER_ORDER[number];
+
+export const PROMOTION_TOP = 3;
+export const DEMOTION_START_RANK = 11;
+export const TOP1_GLOBAL_FIRST_UNLOCK_BONUS = 1_000;
+
+export type LeagueZone = "promotion" | "reward" | "safe" | "demotion";
 const LEGACY_TIER_ALIASES: Record<string, NewLeagueTier> = {
   PRATA: "SILVER",
   OURO: "GOLD",
@@ -86,16 +92,15 @@ export const NEW_TIER_META: Record<NewLeagueTier, NewTierMeta> = {
 };
 
 export const LEAGUE_PROMOTION_CUTOFFS: Record<NewLeagueTier, number> = {
-  BRONZE: 10,
-  SILVER: 10,
-  GOLD: 7,
-  EMERALD: 7,
-  DIAMOND: 5,
-  OBSIDIAN: 5,
+  BRONZE: PROMOTION_TOP,
+  SILVER: PROMOTION_TOP,
+  GOLD: PROMOTION_TOP,
+  EMERALD: PROMOTION_TOP,
+  DIAMOND: PROMOTION_TOP,
+  OBSIDIAN: PROMOTION_TOP,
   LEGENDS: 0,
 };
 
-export const LEAGUE_DEMOTION_COUNT = 3;
 export const LEGENDS_MAX_SIZE = 20;
 
 export const LEAGUE_REWARDS: Record<NewLeagueTier, readonly [number, number, number]> = {
@@ -123,14 +128,34 @@ export function nextLeagueTier(tier: NewLeagueTier): NewLeagueTier | null {
   return NEW_TIER_ORDER[index + 1] ?? null;
 }
 
-/** Applies the promotion/demotion boundaries for one member's final rank. */
-export function tierAfterWeeklyRank(tier: NewLeagueTier, rank: number, groupSize: number): NewLeagueTier {
+/** Resolves the weekly zone for a rank; callers must not duplicate league thresholds. */
+export function getLeagueZone(tier: NewLeagueTier, rank: number, groupSize: number): LeagueZone {
+  if (
+    !Number.isInteger(rank) ||
+    !Number.isInteger(groupSize) ||
+    rank < 1 ||
+    groupSize < 1 ||
+    rank > groupSize
+  ) return "safe";
+  if (rank <= PROMOTION_TOP) return tier === "LEGENDS" ? "reward" : "promotion";
+  if (tier !== "BRONZE" && groupSize > 10 && rank >= DEMOTION_START_RANK) return "demotion";
+  return "safe";
+}
+
+/** Applies the zone outcome for a final rank; inactive members cannot be promoted. */
+export function tierAfterWeeklyRank(
+  tier: NewLeagueTier,
+  rank: number,
+  groupSize: number,
+  weeklyXP = 1,
+): NewLeagueTier {
   const index = NEW_TIER_ORDER.indexOf(tier);
   const previous = index > 0 ? NEW_TIER_ORDER[index - 1] : null;
   const next = nextLeagueTier(tier);
+  const zone = getLeagueZone(tier, rank, groupSize);
 
-  if (next && rank <= LEAGUE_PROMOTION_CUTOFFS[tier]) return next;
-  if (previous && rank > groupSize - LEAGUE_DEMOTION_COUNT) return previous;
+  if (zone === "promotion" && next && weeklyXP > 0) return next;
+  if (zone === "demotion" && previous) return previous;
   return tier;
 }
 

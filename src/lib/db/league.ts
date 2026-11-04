@@ -6,22 +6,24 @@ import { getWeeklyFocusMinutesForProfiles } from "./focus";
 import { acceptedFriendIds } from "./social";
 import { unlockRarestAura } from "./achievements";
 import { LEAGUE_TIERS, TIER_META } from "@/lib/league-meta";
+import {
+  DEMOTION_START_RANK,
+  PROMOTION_TOP,
+  getLeagueZone,
+  type NewLeagueTier,
+} from "@/lib/league-new-meta";
 
 export { LEAGUE_TIERS, TIER_META } from "@/lib/league-meta";
+const LEGACY_ZONE_TIER: Record<LeagueTier, NewLeagueTier> = {
+  faisca: "BRONZE",
+  chama: "SILVER",
+  aura: "GOLD",
+  nucleo: "LEGENDS",
+};
 
 export function xpFromMinutes(minutes: number, streak: number): number {
   const multiplier = 1 + Math.min(Math.max(streak, 0), 30) * 0.02;
   return Math.round(Math.max(0, minutes) * multiplier);
-}
-
-function zoneCounts(n: number): { promo: number; demo: number } {
-  if (n <= 2) return { promo: 0, demo: 0 };
-  if (n < 10) {
-    const promo = n >= 3 ? 1 : 0;
-    const demo = n >= 5 ? 1 : 0;
-    return { promo, demo };
-  }
-  return { promo: 5, demo: 5 };
 }
 
 async function ensureStanding(profileId: string): Promise<LeagueTier> {
@@ -99,19 +101,19 @@ async function finalizeWeek(oldWeek: string, newWeek: string): Promise<void> {
       );
 
       const n = ranked.rows.length;
-      const { promo, demo } = zoneCounts(n);
       const meta = TIER_META[tier];
 
       for (let i = 0; i < n; i += 1) {
         const profileId = ranked.rows[i].profile_id;
         const rank = i + 1;
+        const zone = getLeagueZone(LEGACY_ZONE_TIER[tier], rank, n);
         let result: LeagueResult = "stayed";
         let nextTier: LeagueTier = tier;
 
-        if (promo > 0 && rank <= promo && meta.next) {
+        if (zone === "promotion" && ranked.rows[i].xp > 0 && meta.next) {
           result = "promoted";
           nextTier = meta.next;
-        } else if (demo > 0 && rank > n - demo && meta.prev) {
+        } else if (zone === "demotion" && meta.prev) {
           result = "demoted";
           nextTier = meta.prev;
         }
@@ -200,10 +202,9 @@ export async function getLeagueSnapshot(profileId: string): Promise<LeagueSnapsh
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
   const n = ranked.length;
-  const { promo, demo } = zoneCounts(n);
   const meta = TIER_META[currentTier];
-  const promotionUntilRank = meta.next && promo > 0 ? promo : null;
-  const demotionFromRank = meta.prev && demo > 0 ? n - demo + 1 : null;
+  const promotionUntilRank = meta.next ? PROMOTION_TOP : null;
+  const demotionFromRank = meta.prev && n > 10 ? DEMOTION_START_RANK : null;
 
   return {
     tier: currentTier,
