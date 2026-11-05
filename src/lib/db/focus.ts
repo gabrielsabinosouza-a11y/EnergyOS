@@ -271,7 +271,6 @@ function mapFocus(row: FocusRow): FocusSession {
     focusedSeconds: row.focused_seconds,
   };
 }
-
 export async function startFocusSession(
   profileId: string,
   targetDurationMinutes: number,
@@ -307,13 +306,14 @@ export async function startFocusSession(
       if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
     }
 
-    // Close abandoned solo sessions (far past their target length) as
-    // zero-minute give-ups, so they can't block a new start forever.
+    // Close abandoned sessions (far past their target length) as zero-minute
+    // give-ups, so they can't block a new start forever.
     const stale = await client.query<{ id: string | number }>(
       `update focus_sessions
           set ended_at = now(), end_reason = 'gave_up', duration_minutes = 0, focused_seconds = 0,
               paused_at = null, away_started_at = null
-        where profile_id = $1 and ended_at is null and (room_id is null or started_at < now() - interval '24 hours')
+        where profile_id = $1 and ended_at is null
+          and (room_id is null or started_at < now() - interval '24 hours')
           and (
             (paused_at is null
               and started_at < now()
@@ -388,15 +388,41 @@ export async function startFocusSession(
 export async function cancelFocusSession(profileId: string, sessionId: number): Promise<void> {
   parseProfileId(profileId);
   if (!Number.isInteger(sessionId) || sessionId <= 0) throw new ValidationError("Sessão inválida.");
-  const result = await pool.query<{ id: number }>(
-    `delete from focus_sessions
-      where profile_id = $1 and id = $2 and ended_at is null
-        and started_at >= now() - make_interval(secs => $3)
-      returning id`,
-    [profileId, sessionId, GRACE_PERIOD_SECONDS + CANCEL_LATENCY_TOLERANCE_SECONDS],
-  );
-  if (result.rows[0]) return;
+  const windowSecs = GRACE_PERIOD_SECONDS + CANCEL_LATENCY_TOLERANCE_SECONDS;
 
+  const client = await pool.connect();
+  let cancelled = false;
+  try {
+    await client.query("begin");
+    // Seeds first (they may reference the session), only if the session is still cancellable
+    await client.query(
+      `delete from garden_entries
+        where profile_id = $1 and session_id = $2
+          and exists (
+            select 1 from focus_sessions
+             where id = $2 and profile_id = $1 and ended_at is null
+               and started_at >= now() - make_interval(secs => $3)
+          )`,
+      [profileId, sessionId, windowSecs],
+    );
+    const result = await client.query<{ id: number }>(
+      `delete from focus_sessions
+        where profile_id = $1 and id = $2 and ended_at is null
+          and started_at >= now() - make_interval(secs => $3)
+        returning id`,
+      [profileId, sessionId, windowSecs],
+    );
+    cancelled = Boolean(result.rows[0]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (cancelled) return;
+
+  // Not cancellable: explain why
   const active = await pool.query<{ started_at: Date | string; ended_at: Date | string | null; server_now: Date | string }>(
     `select started_at, ended_at, now() as server_now from focus_sessions where profile_id = $1 and id = $2`,
     [profileId, sessionId],

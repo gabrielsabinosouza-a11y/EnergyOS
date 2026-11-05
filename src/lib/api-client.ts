@@ -158,7 +158,7 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
       const message = body.error || "Autenticação necessária";
       throw createApiRequestError(message, 401, body);
     }
-    if (!isRetryableStatus(lastStatus) || attempt >= maxRetries) {
+    if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
   const message =
     body.error ||
     `Não foi possível concluir a solicitação. (status ${response.status})`;
