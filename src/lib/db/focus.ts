@@ -294,6 +294,7 @@ export async function startFocusSession(
   const client = await pool.connect();
   let session: FocusSession;
   let created = false;
+  let staleIds: number[] = [];
   try {
     await client.query("begin");
     await client.query(`select id from profiles where id = $1 for update`, [profileId]);
@@ -305,6 +306,25 @@ export async function startFocusSession(
       );
       if (!participant.rows[0]) throw new ValidationError("Você não participa desta sala.");
     }
+
+    // Close abandoned solo sessions (far past their target length) as
+    // zero-minute give-ups, so they can't block a new start forever.
+    const stale = await client.query<{ id: string | number }>(
+      `update focus_sessions
+          set ended_at = now(), end_reason = 'gave_up', duration_minutes = 0, focused_seconds = 0,
+              paused_at = null, away_started_at = null
+        where profile_id = $1 and ended_at is null and (room_id is null or started_at < now() - interval '24 hours')
+          and (
+            (paused_at is null
+              and started_at < now()
+                  - make_interval(mins => target_duration_minutes + 15)
+                  - make_interval(secs => coalesce(total_paused_seconds, 0)))
+            or paused_at < now() - interval '3 hours'
+          )
+        returning id`,
+      [profileId],
+    );
+    staleIds = stale.rows.map((r) => Number(r.id));
 
     const active = await client.query<FocusRow>(
       `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned,
@@ -318,6 +338,12 @@ export async function startFocusSession(
         await client.query("commit");
         session = mapFocus(existing);
       } else {
+        console.error("[focus] 409 blocking session:", {
+          id: existing.id,
+          roomId: existing.room_id,
+          startedAt: existing.started_at,
+          target: existing.target_duration_minutes,
+        });
         throw new ConflictError("Você já tem uma sessão de foco em andamento.");
       }
     } else {
@@ -338,10 +364,22 @@ export async function startFocusSession(
     client.release();
   }
 
+  // Wither the garden entries of the sessions we just closed
+  for (const id of staleIds) {
+    try {
+      await finalizeGardenEntries(profileId, id, false, 0);
+    } catch (error) {
+      console.error("[focus] failed to finalize garden for stale session", id, error);
+    }
+  }
+
   // Plant a seed in the garden immediately when session starts (if >= 10 min session)
   if (created && energy && targetDurationMinutes >= 10) {
-    // Use the target duration for initial planting, will be updated on completion
-    await plantGardenEntries(profileId, session.id, energy, targetDurationMinutes, "growing");
+    try {
+      await plantGardenEntries(profileId, session.id, energy, targetDurationMinutes, "growing");
+    } catch (error) {
+      console.error("[focus] failed to plant garden entries", error);
+    }
   }
 
   return session;
