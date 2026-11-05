@@ -26,12 +26,15 @@ export async function GET(request: NextRequest) {
     return jsonOk(await listWeeklyPlans(profileId, weekStart));
     });
 }
-
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     await ensureUserBootstrap(profileId);
+
     const body = await readJsonBody(request);
+
+    const description = body.description ?? body.note ?? null;
+
     const plan = await createWeeklyPlan(profileId, {
       planDate: body.planDate as string | null | undefined,
       title: body.title as string,
@@ -40,8 +43,9 @@ export async function POST(request: NextRequest) {
       startTime: body.startTime as string | undefined,
       endTime: body.endTime as string | undefined,
       allDay: body.allDay as boolean | undefined,
-      note: body.note as string | null | undefined,
+      note: description as string | null,
     });
+
     return jsonOk({ plan }, 201);
   });
 }
