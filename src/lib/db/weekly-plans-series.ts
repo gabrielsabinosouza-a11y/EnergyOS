@@ -177,6 +177,7 @@ export interface CreateWeeklyPlanSeriesInput {
   repeatDays?: number[] | null;
   repeatInterval?: number | null;
   startTime?: string | null;
+  endTime?: string | null;
   durationMinutes?: number | null;
   startDate: string;
   endType?: PlanEndType;

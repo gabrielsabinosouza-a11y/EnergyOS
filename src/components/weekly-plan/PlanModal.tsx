@@ -67,7 +67,8 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
     : repeatType === "once" ? [] : [JS_DAY_TO_UI_INDEX[new Date().getDay()]];
   const [repeatDays, setRepeatDays] = useState<number[]>(initRepeatDays);
   const [repeatInterval, setRepeatInterval] = useState(series?.repeatInterval ?? 2);
-  const [startTime, setStartTime] = useState((useOccurrenceDefaults ? occurrence?.startTime : series?.startTime) ?? series?.startTime ?? "");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(series?.durationMinutes?.toString() ?? "");
   const [startDate, setStartDate] = useState(series?.startDate ?? prefillDate ?? todayIso());
   const [endType, setEndType] = useState<PlanEndType>(series?.endType ?? "never");
@@ -330,7 +331,10 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
                 ))}
               </div>
             </div>
-
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+  Crie uma janela de execução para esta atividade. Defina quando ela começa
+  e quando termina para que ela apareça corretamente na sua programação.
+</p>
             {/* Section 4: Weekday Selector (animated) */}
             <AnimatePresence>
               {isRecurring && (
@@ -518,35 +522,56 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
                   )}
 
                   {/* Time & Duration */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <label>
-                      <span className={labelClass}>Horário</span>
-                      <input
-                        lang="pt-BR"
-                        type="time"
-                        step={60}
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className={inputClass}
-                        style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClass}>Duração (min)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={480}
-                        value={durationMinutes}
-                        onChange={(e) => setDurationMinutes(e.target.value)}
-                        className={inputClass}
-                        placeholder="25"
-                        style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
-                      />
-                    </label>
-                  </div>
+                 
+                 <div className="space-y-3">
+  <span className={labelClass}>Agenda</span>
 
-                  {/* Note */}
+  <p className="text-xs text-[var(--text-muted)]">
+    Defina o horário de início e término desta atividade.
+  </p>
+
+  <div className="grid grid-cols-2 gap-3">
+    <button
+      type="button"
+      onClick={() => setStartPickerOpen(true)}
+      className="group rounded-xl border border-[var(--glass-border)]
+      bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all
+      hover:border-[var(--accent)]"
+    >
+      <div className="flex items-center gap-2">
+        <Clock size={14}/>
+        <span className="text-xs text-[var(--text-muted)]">
+          Início
+        </span>
+      </div>
+
+      <div className="mt-2 text-lg font-semibold">
+        {startTime || "Selecionar"}
+      </div>
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setEndPickerOpen(true)}
+      className="group rounded-xl border border-[var(--glass-border)]
+      bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all
+      hover:border-[var(--accent)]"
+    >
+      <div className="flex items-center gap-2">
+        <Clock size={14}/>
+        <span className="text-xs text-[var(--text-muted)]">
+          Fim
+        </span>
+      </div>
+
+      <div className="mt-2 text-lg font-semibold">
+        {endTime || "Selecionar"}
+      </div>
+    </button>
+  </div>
+</div>
+                
+                {/* Note */}
                   <label>
                     <span className={labelClass}>Nota</span>
                     <input

@@ -333,6 +333,7 @@ create table if not exists weekly_plans (
   category_id bigint references categories(id),
   task_id bigint references tasks(id) on delete set null,
   completed_at timestamptz,
+  note text,
   created_at timestamptz not null default now()
 );
 

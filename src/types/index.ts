@@ -583,6 +583,7 @@ export interface WeeklyPlan {
   endTime?: string | null;
   allDay: boolean;
   reminderOffsetMin: number | null;
+  note: string | null;
 }
 
 // ── Recurring weekly plan series ─────────────────────────────────────────
