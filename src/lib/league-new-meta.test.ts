@@ -1,3 +1,4 @@
+import type { NewLeagueTier } from "@/types";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

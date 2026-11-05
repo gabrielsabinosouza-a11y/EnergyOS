@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { APP_TOAST_EVENT, navigateToActiveFocus } from "@/lib/focus-conflict";
