@@ -350,7 +350,7 @@ export async function initializeUserDailyQuests(
 
   // First, ensure the mission pool exists
   await ensureDailyQuestsExist();
-
+  
   // All active missions in the pool
   const quests = await listDailyQuests();
 

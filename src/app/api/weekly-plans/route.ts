@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     const body = await readJsonBody(request);
 
-    const description = body.description ?? body.note ?? null;
+    const note = (body.note ?? body.description ?? null) as string | null;
 
     const plan = await createWeeklyPlan(profileId, {
       planDate: body.planDate as string | null | undefined,
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       startTime: body.startTime as string | undefined,
       endTime: body.endTime as string | undefined,
       allDay: body.allDay as boolean | undefined,
-      note: description as string | null,
+      note: note as string | null,
     });
 
     return jsonOk({ plan }, 201);

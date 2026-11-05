@@ -44,7 +44,6 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     "target_value",
     "unit",
     "current_progress",
-    "description",
     "category",
     "start_date",
     "reminder_time",
