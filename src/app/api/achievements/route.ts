@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
     const achievements = await listAchievementProgress(profileId);
     return NextResponse.json({ achievements });
   } catch (error) {
-  if (error instanceof AppError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("[achievements] unhandled error:", error);
+    return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
-  console.error("[achievements] unhandled error:", error);
-  return NextResponse.json({ error: "Erro interno." }, { status: 500 });
-}
 }
 
 export async function POST(request: NextRequest) {
@@ -27,12 +27,12 @@ export async function POST(request: NextRequest) {
     await markAchievementSeen(profileId, body.achievementId as string);
     return NextResponse.json({ ok: true });
   } catch (error) {
-  if (error instanceof AppError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("[achievements] unhandled error:", error);
+    return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
-  console.error("[achievements] unhandled error:", error);
-  return NextResponse.json({ error: "Erro interno." }, { status: 500 });
-}
 }
 
 export async function PATCH(request: NextRequest) {

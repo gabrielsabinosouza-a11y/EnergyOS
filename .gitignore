@@ -53,3 +53,4 @@ next-env.d.ts
 .stakpak/session*
 .aider*
 energyos-neon.sql
+.env*
