@@ -182,6 +182,8 @@ export function tierAfterWeeklyRank(
   // Obsidian can promote to Legends via special qualification
   // Legends and Obsidian don't have automatic promotion via zone
   if (zone === "demotion" && previous) return previous;
+  // Obsidian rank 1 can promote to Legends via special qualification
+  if (tier === "OBSIDIAN" && rank === 1 && next && weeklyXP > 0) return next;
   
   return tier;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { WeeklyPlanItem } from "@/types";
-import { Check, X } from "lucide-react";
+import { Check, X, Clock } from "lucide-react";
 import { IconButton } from "@/components/ui";
 
 interface TaskCardProps {
@@ -17,9 +17,15 @@ export function TaskCard({ plan, onToggle, onDelete, alwaysVisible = false }: Ta
   const color = plan.color || plan.category.color;
   const title = plan.title || "(sem título)";
 
+  const formatTime = (time: string | null) => {
+    if (!time) return null;
+    const [hours, minutes] = time.split(":");
+    return `${hours}:${minutes}`;
+  };
+
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border p-2.5 transition-colors ${
+      className={`flex items-center gap-2 rounded-lg border p-2.5 transition-colors {
         isCompleted
           ? "border-[var(--text-muted)]/40 bg-white/[0.02]"
           : "border-[var(--border-subtle)] bg-[var(--bg-surface)]"
@@ -34,8 +40,14 @@ export function TaskCard({ plan, onToggle, onDelete, alwaysVisible = false }: Ta
         >
           {title}
         </span>
+        {plan.note && (
+          <p className="text-[10px] text-[var(--text-faint)] leading-none truncate max-w-full">{plan.note}</p>
+        )}
         {plan.startTime && (
-          <span className="text-[11px] text-[var(--text-faint)] leading-none">{plan.startTime}</span>
+          <div className="flex items-center gap-1 mt-1">
+            <Clock className="h-3 w-3 text-[var(--primary)]" />
+            <span className="text-[11px] text-[var(--text-faint)] leading-none">{plan.startTime}</span>
+          </div>
         )}
       </div>
 
@@ -44,7 +56,7 @@ export function TaskCard({ plan, onToggle, onDelete, alwaysVisible = false }: Ta
           size="sm"
           variant="ghost"
           aria-label={isCompleted ? "Desmarcar plano" : "Concluir plano"}
-          className={`
+          className={`{
             rounded-full border transition-opacity duration-200
             ${alwaysVisible ? "" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100 group-focus-within:opacity-100"}
             ${isCompleted
@@ -60,7 +72,7 @@ export function TaskCard({ plan, onToggle, onDelete, alwaysVisible = false }: Ta
           size="sm"
           variant="ghost"
           aria-label="Excluir plano"
-          className={`
+          className={`{
             rounded-full transition-opacity duration-200
             ${alwaysVisible ? "" : "opacity-0 group-hover:opacity-100 group-focus:opacity-100 group-focus-within:opacity-100"}
             text-[var(--text-faint)] hover:text-[var(--red)] hover:bg-[var(--red-bg)]

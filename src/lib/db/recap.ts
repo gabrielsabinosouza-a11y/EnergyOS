@@ -439,10 +439,10 @@ async function buildRecapSummary(
 
   const [focusRow, streakResult, leagueStart, leagueEnd, xpResult, coinsResult, missionsResult, goalsResult, achievementsResult, topCategoryResult] = await Promise.all([
     pool.query<{ minutes: string | number }>(
-      `select coalesce(sum(duration_minutes), 0) as minutes
+      `select coalesce(sum(extract(epoch from least(ended_at, $3::timestamptz) - greatest(started_at, $2::timestamptz)) / 60)), 0) as minutes
        from focus_sessions
        where profile_id = $1 and ended_at is not null
-         and started_at >= $2::timestamptz and started_at < $3::timestamptz`,
+         AND ended_at > $2::timestamptz AND started_at < $3::timestamptz`,
       [profileId, monthStartIso, monthEndIso],
     ),
     computeLongestStreakForMonth(profileId, monthStart, monthEnd),
