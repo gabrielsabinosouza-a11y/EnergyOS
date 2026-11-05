@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       startTime: body.startTime as string | undefined,
       endTime: body.endTime as string | undefined,
       allDay: body.allDay as boolean | undefined,
+      note: body.note as string | null | undefined,
     });
     return jsonOk({ plan }, 201);
   });

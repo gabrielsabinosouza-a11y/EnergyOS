@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Repeat } from "lucide-react";
+import { Bell, Clock, Repeat } from "lucide-react";
 import type { Category, PlanEndType, PlanRepeatType, WeeklyPlanItem } from "@/types";
 import { PLAN_NAME_MAX } from "@/lib/daily-limits";
 import { SHORT_WEEKDAYS, todayIso } from "@/lib/planning/dates";
 import { recurrenceInitialDate, syncInitialWeekday, validateWeeklyRecurrence, weeklyRecurrenceSummary, type RecurrenceFormErrors } from "@/lib/planning/recurrence-form";
-import { formatTimeInput, isValidTime24 } from "@/lib/planning/time";
+import { isValidTime24 } from "@/lib/planning/time";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/ui";
 import { PlannerDatePicker } from "./PlannerDatePicker";
@@ -22,6 +22,7 @@ type PlanFormValues = {
    */
   planDate?: string | null;
   title: string;
+  description: string;
   categoryId?: number;
   startTime: string | null;
   endTime: string | null;
@@ -79,6 +80,7 @@ export function PlanDialog({
 }: PlanDialogProps) {
   // State for form fields
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [planDate, setPlanDate] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export function PlanDialog({
     // o que o usuário já digitou seria apagado no meio da digitação.
     if (open && !wasOpenRef.current) {
       setTitle(plan?.title ?? "");
+      setDescription((plan as (WeeklyPlanItem & { description?: string }) | null)?.description ?? "");
       setCategoryId(plan?.categoryId?.toString() ?? null);
       const nextDate = plan
         ? plan.seriesId !== null ? plan.seriesStartDate ?? plan.planDate ?? null : plan.planDate ?? null
@@ -239,6 +242,7 @@ export function PlanDialog({
       // "null" como limpar a data e "undefined" como "não mexer".
       planDate: planDate ?? null,
       title: trimmedTitle,
+      description: description.trim(),
       categoryId: selectedCategoryId ? parsedCategoryId : undefined,
       startTime: startTime || null,
       endTime: recurringOccurrence ? null : endTime || null,
@@ -353,6 +357,23 @@ export function PlanDialog({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <label htmlFor="planner-plan-description" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              Descrição
+              <span className="ml-1.5 rounded-full border border-[var(--border-subtle)] px-1.5 py-px text-[9px] font-medium normal-case tracking-normal text-[var(--text-faint)]">opcional</span>
+            </label>
+            <textarea
+              id="planner-plan-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Adicione detalhes para lembrar o que precisa ser feito..."
+              maxLength={1000}
+              rows={3}
+              className="glass-field min-h-[88px] resize-y"
+            />
+            <p className="text-right text-[10px] text-[var(--text-faint)]">{description.length}/1000</p>
+          </div>
+
           <div className="space-y-2">
             <label htmlFor="planner-plan-category" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
               Categoria
@@ -398,18 +419,19 @@ export function PlanDialog({
                   opcional
                 </span>
               </label>
-              <input
-                id="planner-plan-start-time"
-                type="text"
-                inputMode="numeric"
-                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                maxLength={5}
-                value={startTime ?? ""}
-                onChange={(event) => setStartTime(formatTimeInput(event.target.value) || null)}
-                placeholder="Sem horário"
-                aria-label="Horário de início, formato 24 horas"
-                className="glass-field tabular-nums"
-              />
+              <div className="relative">
+                <input
+                  id="planner-plan-start-time"
+                  type="time"
+                  step={300}
+                  value={startTime ?? ""}
+                  onChange={(event) => setStartTime(event.target.value || null)}
+                  aria-label="Escolher horário de início"
+                  className="glass-field tabular-nums pr-10"
+                />
+                <Clock size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              </div>
+              <p className="text-[10px] text-[var(--text-faint)]">Toque no campo para abrir o seletor de horário.</p>
             </div>
             {!recurringOccurrence ? (
               <div className="space-y-1.5">
@@ -419,18 +441,19 @@ export function PlanDialog({
                     opcional
                   </span>
                 </label>
-                <input
-                  id="planner-plan-end-time"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                  maxLength={5}
-                  value={endTime ?? ""}
-                  onChange={(event) => setEndTime(formatTimeInput(event.target.value) || null)}
-                  placeholder="Sem horário"
-                  aria-label="Horário de fim, formato 24 horas"
-                  className="glass-field tabular-nums"
-                />
+                <div className="relative">
+                  <input
+                    id="planner-plan-end-time"
+                    type="time"
+                    step={300}
+                    value={endTime ?? ""}
+                    onChange={(event) => setEndTime(event.target.value || null)}
+                    aria-label="Escolher horário de fim"
+                    className="glass-field tabular-nums pr-10"
+                  />
+                  <Clock size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                </div>
+                <p className="text-[10px] text-[var(--text-faint)]">Toque no campo para abrir o seletor de horário.</p>
               </div>
             ) : null}
           </div>

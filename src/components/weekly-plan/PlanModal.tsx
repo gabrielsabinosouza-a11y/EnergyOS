@@ -8,6 +8,7 @@ import type { WeeklyPlanSeries, WeeklyPlanItem, Category, PlanRepeatType, PlanEn
 import { ColorPalette, HABIT_COLORS } from "../dashboard/color-palette";
 import { PLAN_NAME_MAX } from "../dashboard/plan-name-input";
 import { WeeklyPlanInputCard } from "../dashboard/weekly-plan-input-card";
+import { TimePickerModal } from "../schedule/TimePickerModal";
 import { todayIso } from "@/lib/db/dates";
 
 const DAY_NAMES_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -35,6 +36,7 @@ export interface CreateSeriesPayload {
   iconValue: string | null;
   color: string | null;
   note: string | null;
+  description: string | null;
   repeatType: PlanRepeatType;
   repeatDays: number[] | null;
   repeatInterval: number | null;
@@ -67,9 +69,12 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
     : repeatType === "once" ? [] : [JS_DAY_TO_UI_INDEX[new Date().getDay()]];
   const [repeatDays, setRepeatDays] = useState<number[]>(initRepeatDays);
   const [repeatInterval, setRepeatInterval] = useState(series?.repeatInterval ?? 2);
-  const [startTime, setStartTime] = useState("");
+  const [startTime, setStartTime] = useState(series?.startTime ?? "");
   const [endTime, setEndTime] = useState("");
+  const [description, setDescription] = useState(series?.note ?? "");
   const [durationMinutes, setDurationMinutes] = useState(series?.durationMinutes?.toString() ?? "");
+  const [startPickerOpen, setStartPickerOpen] = useState(false);
+  const [endPickerOpen, setEndPickerOpen] = useState(false);
   const [startDate, setStartDate] = useState(series?.startDate ?? prefillDate ?? todayIso());
   const [endType, setEndType] = useState<PlanEndType>(series?.endType ?? "never");
   const [endDate, setEndDate] = useState(series?.endDate ?? "");
@@ -176,6 +181,7 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
           iconValue: null,
           color,
           note: note.trim() || null,
+          description: description.trim() || null,
           repeatType,
           repeatDays: isRecurring ? jsRepeatDays : null,
           repeatInterval: repeatType === "interval" ? repeatInterval : null,
@@ -302,6 +308,19 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSave(); } }}
                 placeholder="Ex.: Ir à igreja, #trabalho, Treino..."
                 aria-label="Nome ou tag do plano"
+              />
+            </div>
+
+            {/* Section 2: Descrição */}
+            <div>
+              <span className={labelClass}>Descrição</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className={`${inputClass} resize-none`}
+                placeholder="Descreva o que você vai fazer nesta atividade..."
+                rows={3}
+                style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
               />
             </div>
 
@@ -523,53 +542,40 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
 
                   {/* Time & Duration */}
                  
-                 <div className="space-y-3">
-  <span className={labelClass}>Agenda</span>
+                  {/* Time & Duration */}
+                  <div className="space-y-3">
+                    <span className={labelClass}>Agenda</span>
 
-  <p className="text-xs text-[var(--text-muted)]">
-    Defina o horário de início e término desta atividade.
-  </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Defina o horário de início e término desta atividade.
+                    </p>
 
-  <div className="grid grid-cols-2 gap-3">
-    <button
-      type="button"
-      onClick={() => setStartPickerOpen(true)}
-      className="group rounded-xl border border-[var(--glass-border)]
-      bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all
-      hover:border-[var(--accent)]"
-    >
-      <div className="flex items-center gap-2">
-        <Clock size={14}/>
-        <span className="text-xs text-[var(--text-muted)]">
-          Início
-        </span>
-      </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setStartPickerOpen(true)}
+                        className="group rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all hover:border-[var(--accent)]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} />
+                          <span className="text-xs text-[var(--text-muted)]">Início</span>
+                        </div>
+                        <div className="mt-2 text-lg font-semibold">{startTime || "Selecionar"}</div>
+                      </button>
 
-      <div className="mt-2 text-lg font-semibold">
-        {startTime || "Selecionar"}
-      </div>
-    </button>
-
-    <button
-      type="button"
-      onClick={() => setEndPickerOpen(true)}
-      className="group rounded-xl border border-[var(--glass-border)]
-      bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all
-      hover:border-[var(--accent)]"
-    >
-      <div className="flex items-center gap-2">
-        <Clock size={14}/>
-        <span className="text-xs text-[var(--text-muted)]">
-          Fim
-        </span>
-      </div>
-
-      <div className="mt-2 text-lg font-semibold">
-        {endTime || "Selecionar"}
-      </div>
-    </button>
-  </div>
-</div>
+                      <button
+                        type="button"
+                        onClick={() => setEndPickerOpen(true)}
+                        className="group rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg-hover)] px-4 py-4 text-left transition-all hover:border-[var(--accent)]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} />
+                          <span className="text-xs text-[var(--text-muted)]">Fim</span>
+                        </div>
+                        <div className="mt-2 text-lg font-semibold">{endTime || "Selecionar"}</div>
+                      </button>
+                    </div>
+                  </div>
                 
                 {/* Note */}
                   <label>
@@ -650,6 +656,23 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
           </button>
         </div>
       </motion.div>
+
+      {/* Time Picker Modals */}
+      <TimePickerModal
+        open={startPickerOpen}
+        title="Horário de início"
+        value={startTime}
+        onChange={setStartTime}
+        onClose={() => setStartPickerOpen(false)}
+      />
+
+      <TimePickerModal
+        open={endPickerOpen}
+        title="Horário de término"
+        value={endTime}
+        onChange={setEndTime}
+        onClose={() => setEndPickerOpen(false)}
+      />
     </motion.div>
   );
 
