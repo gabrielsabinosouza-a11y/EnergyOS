@@ -233,13 +233,8 @@ async function computeValues(profileId: string): Promise<Record<string, number>>
         [profileId],
       ),
     ),
-    safeQuery("rarest_aura", () =>
-      pool.query<{ unlocked_tier: number }>(
-        `select unlocked_tier from user_achievement_progress
-         where profile_id = $1 and achievement_id = 'rarest_aura'`,
-        [profileId],
-      ),
-    ),
+    
+    
     safeQuery("squad_leader", () =>
       pool.query<{ largest: string | number }>(
         `select max(cnt) as largest from (
