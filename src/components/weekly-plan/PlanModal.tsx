@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X, Check, Loader2, Repeat, Hash, ChevronDown, Trash2 } from "lucide-react";
+import { X, Check, Loader2, Repeat, Hash, ChevronDown, Trash2, Clock, FileText } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { WeeklyPlanSeries, WeeklyPlanItem, Category, PlanRepeatType, PlanEndType } from "@/types";
 import { ColorPalette, HABIT_COLORS } from "../dashboard/color-palette";
@@ -417,7 +417,96 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
                 />
               </label>
             )}
+        {/* Description */}
+{scope !== "occurrence" && (
+  <div>
+    <label htmlFor="plan-description" className={labelClass}>
+      <span className="inline-flex items-center gap-2">
+        <FileText size={13} />
+        Descrição
+      </span>
+    </label>
 
+    <textarea
+      id="plan-description"
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      rows={3}
+      maxLength={1000}
+      placeholder="Descreva seu plano, adicione detalhes ou lembretes..."
+      className={`${inputClass} resize-none py-3`}
+      style={{
+        backgroundColor: "var(--glass-bg-hover)",
+        borderColor: "var(--glass-border)",
+      }}
+    />
+
+    <div className="mt-1 flex justify-end">
+      <span className="text-[10px] text-[var(--text-faint)]">
+        {note.length}/1000
+      </span>
+    </div>
+  </div>
+)}
+
+{/* Schedule */}
+<div>
+  <span className={labelClass}>
+    <span className="inline-flex items-center gap-2">
+      <Clock size={13} />
+      Horário e duração
+    </span>
+  </span>
+
+  <div className="grid grid-cols-2 gap-3">
+    <label>
+      <span className="mb-2 block text-xs text-[var(--text-secondary)]">
+        Horário de início
+      </span>
+
+      <input
+        lang="pt-BR"
+        type="time"
+        step={60}
+        value={startTime}
+        onChange={(e) => setStartTime(e.target.value)}
+        className={inputClass}
+        style={{
+          backgroundColor: "var(--glass-bg-hover)",
+          borderColor: "var(--glass-border)",
+        }}
+      />
+    </label>
+
+    {scope !== "occurrence" && (
+      <label>
+        <span className="mb-2 block text-xs text-[var(--text-secondary)]">
+          Duração (min)
+        </span>
+
+        <input
+          type="number"
+          min={1}
+          max={1440}
+          value={durationMinutes}
+          onChange={(e) => setDurationMinutes(e.target.value)}
+          className={inputClass}
+          placeholder="Ex.: 60"
+          style={{
+            backgroundColor: "var(--glass-bg-hover)",
+            borderColor: "var(--glass-border)",
+          }}
+        />
+      </label>
+    )}
+  </div>
+
+  <p className="mt-2 text-[10px] text-[var(--text-faint)]">
+    {startTime
+      ? `Seu plano está programado para começar às ${startTime}.`
+      : "Defina um horário ou deixe em branco para não agendar."}
+  </p>
+</div>
             {/* Repeat summary */}
             {getRepeatSummary() && (
               <div className="flex items-center gap-2 rounded-xl border border-[var(--glass-border)] px-4 py-3" style={{ backgroundColor: "var(--glass-bg-hover)" }}>
@@ -441,7 +530,7 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
               {showAdvanced ? "Ocultar" : "Opções avançadas"}
               <ChevronDown size={14} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
             </button>
-
+            
             <AnimatePresence>
               {showAdvanced && (
                 <motion.div
@@ -517,46 +606,9 @@ export function PlanModal({ series, occurrence, categories, prefillDate, default
                     </label>
                   )}
 
-                  {/* Time & Duration */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <label>
-                      <span className={labelClass}>Horário</span>
-                      <input
-                        lang="pt-BR"
-                        type="time"
-                        step={60}
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className={inputClass}
-                        style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClass}>Duração (min)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={480}
-                        value={durationMinutes}
-                        onChange={(e) => setDurationMinutes(e.target.value)}
-                        className={inputClass}
-                        placeholder="25"
-                        style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
-                      />
-                    </label>
-                  </div>
 
                   {/* Note */}
-                  <label>
-                    <span className={labelClass}>Nota</span>
-                    <input
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      className={inputClass}
-                      placeholder="Lembrete ou detalhe..."
-                      style={{ backgroundColor: "var(--glass-bg-hover)", borderColor: "var(--glass-border)" }}
-                    />
-                  </label>
+                 
                 </motion.div>
               )}
             </AnimatePresence>
