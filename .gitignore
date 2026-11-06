@@ -54,3 +54,4 @@ next-env.d.ts
 .aider*
 energyos-neon.sql
 .env*
+.env.vercel
