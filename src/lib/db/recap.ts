@@ -13,9 +13,7 @@ import pool from "../db";
 
 /**
  * Versão do algoritmo de geração. Snapshots gravados com `schema_version`
- * menor que a atual são recalculados UMA vez no próximo `getRecaps`
- * (caminho de upgrade que corrige os dados antigos: XP zerado e a mesma
- * sequência duplicada entre dois meses).
+ * menor que a atual são recalculados UMA vez no próximo `getRecaps`.
  */
 export const RECAP_SCHEMA_VERSION = 2;
 
@@ -31,9 +29,7 @@ export function spMonthStartIso(monthStart: string): string {
 
 /**
  * Primeiro instante do mês seguinte (fim EXCLUSIVO do mês) em America/Sao_Paulo,
- * expresso como UTC ISO. Filtros de atividade devem usar
- * `started_at/created_at >= monthStart AND < monthEnd`, de forma que o último
- * dia do mês e o primeiro dia do próximo nunca se percam nem se dupliquem.
+ * expresso como UTC ISO. Filtros devem usar `>= monthStart AND < monthEnd`.
  */
 export function spMonthEndIso(monthStart: string): string {
   const next = new Date(`${monthStart.slice(0, 7)}-01T12:00:00Z`);
@@ -41,7 +37,7 @@ export function spMonthEndIso(monthStart: string): string {
   return spUtcIso(next.toISOString().slice(0, 10));
 }
 
-/** Last calendar day of a month, for league snapshots stored by week start. */
+/** Último dia calendário do mês, para snapshots de liga guardados pelo início da semana. */
 export function recapLeagueEndDate(monthStart: string): string {
   const next = new Date(`${monthStart.slice(0, 7)}-01T12:00:00Z`);
   next.setUTCMonth(next.getUTCMonth() + 1);
@@ -54,6 +50,32 @@ function monthEndDate(monthStart: string): string {
   const d = new Date(`${monthStart}T12:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + 1);
   return d.toISOString().slice(0, 10);
+}
+
+// ─── Helpers de data / comparação ────────────────────────────────────────────
+
+function toDateKey(value: Date | string): string {
+  return typeof value === "string"
+    ? value.slice(0, 10)
+    : value.toISOString().slice(0, 10);
+}
+
+/** Aceita null/undefined e devolve null; caso contrário YYYY-MM-DD. */
+function recapDateKey(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return toDateKey(value);
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 // ─── Row mapping ─────────────────────────────────────────────────────────────
@@ -94,11 +116,11 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
   return {
     id: row.id,
     profileId,
-    recapMonth: typeof row.recap_month === "string" ? row.recap_month : row.recap_month.toISOString().slice(0, 10),
+    recapMonth: toDateKey(row.recap_month),
     totalFocusMinutes: row.total_focus_minutes,
     longestStreak: row.longest_streak,
-    streakStartDate: row.streak_start_date ? (typeof row.streak_start_date === "string" ? row.streak_start_date : row.streak_start_date.toISOString().slice(0, 10)) : undefined,
-    streakEndDate: row.streak_end_date ? (typeof row.streak_end_date === "string" ? row.streak_end_date : row.streak_end_date.toISOString().slice(0, 10)) : undefined,
+    streakStartDate: row.streak_start_date ? toDateKey(row.streak_start_date) : undefined,
+    streakEndDate: row.streak_end_date ? toDateKey(row.streak_end_date) : undefined,
     streakIsAlive: row.streak_is_alive ?? false,
     leagueTier: resolveNewTier(row.league_tier) ?? row.league_tier ?? undefined,
     leagueAtStart: resolveNewTier(row.league_at_start) ?? row.league_at_start ?? undefined,
@@ -120,7 +142,7 @@ function mapRecap(profileId: string, row: RecapRow): MonthlyRecap {
   };
 }
 
-// ─── Month helpers ────────────────────────────────────────────────────────────
+// ─── Month helpers ───────────────────────────────────────────────────────────
 
 function resolveMonthStart(monthDate: string): string {
   if (!/^\d{4}-\d{2}/.test(monthDate)) {
@@ -140,12 +162,16 @@ function resolveTag(totalMinutes: number): string {
   return "Explorador";
 }
 
+function currentMonthStart(): string {
+  return todayIso().slice(0, 7) + "-01";
+}
+
 // ─── Longest streak for a month ──────────────────────────────────────────────
 
 /**
- * Melhor sequência DENTRO do mês (recortada na fronteira — nunca reaproveita
- * o mesmo run para dois meses consecutivos). Dias vivos = sessão de foco que
- * atingiu a duração-alvo OU dia protegido por escudo, sempre em America/Sao_Paulo.
+ * Melhor sequência DENTRO do mês (recortada na fronteira). Dias vivos = sessão
+ * de foco que atingiu a duração-alvo OU dia protegido por escudo, sempre em
+ * America/Sao_Paulo.
  */
 async function computeLongestStreakForMonth(
   profileId: string,
@@ -154,39 +180,39 @@ async function computeLongestStreakForMonth(
 ): Promise<{ best: number; startDate?: string; endDate?: string; isAliveAtEnd: boolean }> {
   const today = todayIso();
 
-  // Dias com sessão de foco qualificada dentro do mês (fuso do produto).
   const focus = await pool.query<{ day: string }>(
-    `select distinct to_char((ended_at at time zone $1)::date, 'YYYY-MM-DD') as day
-       from focus_sessions
-      where profile_id = $2
-        and ended_at is not null
-        and duration_minutes * 1.0 >= target_duration_minutes * $3
-        and ended_at >= $4::timestamptz
-        and ended_at < $5::timestamptz`,
-    [APP_TIMEZONE, profileId, STREAK_COMPLETION_THRESHOLD, spMonthStartIso(monthStart), spMonthEndIso(monthStart)],
+    `SELECT DISTINCT to_char((ended_at AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS day
+       FROM focus_sessions
+      WHERE profile_id = $2
+        AND ended_at IS NOT NULL
+        AND (end_reason IS NULL OR end_reason = 'completed')
+        AND duration_minutes * 1.0 >= target_duration_minutes * $3
+        AND ended_at >= $4::timestamptz
+        AND ended_at < $5::timestamptz`,
+    [
+      APP_TIMEZONE,
+      profileId,
+      STREAK_COMPLETION_THRESHOLD,
+      spMonthStartIso(monthStart),
+      spMonthEndIso(monthStart),
+    ],
   );
   const alive = new Set<string>(focus.rows.map((r) => r.day));
 
-  // Dias protegidos por escudo também mantêm o streak vivo.
   const protectedDays = await pool.query<{ day: string }>(
-    `select distinct to_char(used_on_date, 'YYYY-MM-DD') as day
-       from streak_shield_usage
-      where profile_id = $1
-        and used_on_date >= $2::date
-        and used_on_date < $3::date`,
+    `SELECT DISTINCT to_char(used_on_date, 'YYYY-MM-DD') AS day
+       FROM streak_shield_usage
+      WHERE profile_id = $1
+        AND used_on_date >= $2::date
+        AND used_on_date < $3::date`,
     [profileId, monthStart, monthEnd],
   );
   for (const row of protectedDays.rows) alive.add(row.day);
 
-  // longestRunInMonth itera por dias (YYYY-MM-DD), então passa o limite como data.
   return longestRunInMonth(alive, monthStart, monthEndDate(monthStart), today);
 }
 
-// ─── Queries ─────────────────────────────────────────────────────────────────
-
-function currentMonthStart(): string {
-  return todayIso().slice(0, 7) + "-01";
-}
+// ─── Métricas do mês ─────────────────────────────────────────────────────────
 
 interface RecapSummary {
   totalFocusMinutes: number;
@@ -208,34 +234,29 @@ interface RecapSummary {
   topFocusCategory?: string;
 }
 
-/**
- * Computes coins gained in the month from xp_ledger.coins_amount.
- */
 async function computeCoinsForMonth(
   profileId: string,
   monthStartIso: string,
   monthEndIso: string,
 ): Promise<{ gained: number; spent: number }> {
   const result = await pool.query<{ coins: string }>(
-    `SELECT COALESCE(SUM(coins_amount), 0) as coins
-     FROM xp_ledger
-     WHERE profile_id = $1
-       AND coins_amount > 0
-       AND created_at >= $2::timestamptz
-       AND created_at < $3::timestamptz`,
+    `SELECT COALESCE(SUM(coins_amount), 0) AS coins
+       FROM xp_ledger
+      WHERE profile_id = $1
+        AND coins_amount > 0
+        AND created_at >= $2::timestamptz
+        AND created_at < $3::timestamptz`,
     [profileId, monthStartIso, monthEndIso],
   );
   const gained = Number(result.rows[0]?.coins ?? 0);
 
-  // Coins spent: from store purchases (coin_balance delta would be complex to track)
-  // For simplicity, we can look at negative coins_amount if any, or sum purchases
   const spentResult = await pool.query<{ total: string }>(
-    `SELECT COALESCE(SUM(-coins_amount), 0) as total
-     FROM xp_ledger
-     WHERE profile_id = $1
-       AND coins_amount < 0
-       AND created_at >= $2::timestamptz
-       AND created_at < $3::timestamptz`,
+    `SELECT COALESCE(SUM(-coins_amount), 0) AS total
+       FROM xp_ledger
+      WHERE profile_id = $1
+        AND coins_amount < 0
+        AND created_at >= $2::timestamptz
+        AND created_at < $3::timestamptz`,
     [profileId, monthStartIso, monthEndIso],
   );
   const spent = Number(spentResult.rows[0]?.total ?? 0);
@@ -243,28 +264,23 @@ async function computeCoinsForMonth(
   return { gained, spent };
 }
 
-/**
- * Computes daily quests completed in the month.
- */
 async function computeMissionsCompleted(
   profileId: string,
   monthStartIso: string,
   monthEndIso: string,
 ): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    `SELECT COALESCE(COUNT(*), 0) as count
-     FROM user_quest_progress uqp
-     JOIN daily_quests dq ON uqp.quest_id = dq.id
-     WHERE uqp.profile_id = $1
-       AND uqp.is_completed = true
-       AND uqp.quest_date >= $2::date
-       AND uqp.quest_date < $3::date`,
+    `SELECT COALESCE(COUNT(*), 0) AS count
+       FROM user_quest_progress uqp
+       JOIN daily_quests dq ON uqp.quest_id = dq.id
+      WHERE uqp.profile_id = $1
+        AND uqp.is_completed = true
+        AND uqp.quest_date >= $2::date
+        AND uqp.quest_date < $3::date`,
     [profileId, monthStartIso.slice(0, 10), monthEndIso.slice(0, 10)],
   );
   return Number(result.rows[0]?.count ?? 0);
 }
-
-
 
 export const GOALS_COMPLETED_QUERY = `
   SELECT COUNT(*) AS count
@@ -281,8 +297,8 @@ type RecapCountQuery = (
 ) => Promise<{ rows: Array<{ count: string | number }> }>;
 
 /**
- * Counts goals whose persisted completion state was completed within the
- * month. A progress log alone is not proof that the target was reached.
+ * Conta metas cujo estado persistido de conclusão caiu dentro do mês.
+ * Um log de progresso sozinho não prova que a meta foi atingida.
  */
 export async function computeGoalsCompleted(
   profileId: string,
@@ -290,79 +306,75 @@ export async function computeGoalsCompleted(
   monthEndIso: string,
   query: RecapCountQuery = (sql, values) => pool.query(sql, values),
 ): Promise<number> {
-  const result = await query(
-    GOALS_COMPLETED_QUERY,
-    [profileId, monthStartIso, monthEndIso],
-  );
+  const result = await query(GOALS_COMPLETED_QUERY, [profileId, monthStartIso, monthEndIso]);
   return Number(result.rows[0]?.count ?? 0);
 }
 
-/**
- * Computes achievements unlocked in the month.
- */
 async function computeAchievementsUnlocked(
   profileId: string,
   monthStartIso: string,
   monthEndIso: string,
 ): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    `SELECT COALESCE(COUNT(*), 0) as count
-     FROM user_achievement_progress
-     WHERE profile_id = $1
-       AND unlocked_at IS NOT NULL
-       AND unlocked_at >= $2::timestamptz
-       AND unlocked_at < $3::timestamptz`,
+    `SELECT COALESCE(COUNT(*), 0) AS count
+       FROM user_achievement_progress
+      WHERE profile_id = $1
+        AND unlocked_at IS NOT NULL
+        AND unlocked_at >= $2::timestamptz
+        AND unlocked_at < $3::timestamptz`,
     [profileId, monthStartIso, monthEndIso],
   );
   return Number(result.rows[0]?.count ?? 0);
 }
 
-/**
- * Computes the top focus category for the month.
- */
 async function computeTopFocusCategory(
   profileId: string,
   monthStartIso: string,
   monthEndIso: string,
 ): Promise<string | undefined> {
   const result = await pool.query<{ name: string; total: string }>(
-    `SELECT c.name, SUM(fs.duration_minutes) as total
-     FROM focus_sessions fs
-     JOIN tasks t ON fs.task_id = t.id
-     JOIN categories c ON t.category_id = c.id
-     WHERE fs.profile_id = $1
-       AND fs.ended_at IS NOT NULL
-       AND fs.started_at >= $2::timestamptz
-       AND fs.started_at < $3::timestamptz
-     GROUP BY c.id, c.name
-     ORDER BY total DESC
-     LIMIT 1`,
+    `SELECT c.name,
+            SUM(
+              LEAST(
+                GREATEST(fs.duration_minutes, 0),
+                GREATEST(CEIL(COALESCE(NULLIF(fs.target_duration_minutes, 0), 120) * 1.05), 1)
+              )
+            ) AS total
+       FROM focus_sessions fs
+       JOIN tasks t ON fs.task_id = t.id
+       JOIN categories c ON t.category_id = c.id
+      WHERE fs.profile_id = $1
+        AND fs.ended_at IS NOT NULL
+        AND fs.ended_at >= $2::timestamptz
+        AND fs.ended_at < $3::timestamptz
+        AND (fs.end_reason IS NULL OR fs.end_reason = 'completed')
+        AND fs.duration_minutes > 0
+      GROUP BY c.id, c.name
+      ORDER BY total DESC
+      LIMIT 1`,
     [profileId, monthStartIso, monthEndIso],
   );
-
   return result.rows[0]?.name ?? undefined;
 }
 
 /**
- * Computes XP gained IN THIS MONTH from the xp_ledger table.
- * Janela em America/Sao_Paulo: [primeiro instante do mês, primeiro instante do mês seguinte).
- * Usa ISO timestamps com offset de fuso para garantir que os filtros estejam no horário de São Paulo.
+ * XP ganho NESTE mês a partir de xp_ledger. Janela em America/Sao_Paulo:
+ * [primeiro instante do mês, primeiro instante do mês seguinte).
  */
 async function computeXpForMonth(
   profileId: string,
   monthStart: string,
 ): Promise<{ totalXp: number; breakdown: Record<string, number> }> {
-  // Convert to ISO timestamps with São Paulo timezone offset
   const monthStartIso = spMonthStartIso(monthStart);
   const monthEndIso = spMonthEndIso(monthStart);
 
   const result = await pool.query<{ source: string; xp: number }>(
-    `SELECT source, SUM(xp_amount) as xp
-     FROM xp_ledger
-     WHERE profile_id = $1
-       AND created_at >= $2::timestamptz
-       AND created_at < $3::timestamptz
-     GROUP BY source`,
+    `SELECT source, SUM(xp_amount) AS xp
+       FROM xp_ledger
+      WHERE profile_id = $1
+        AND created_at >= $2::timestamptz
+        AND created_at < $3::timestamptz
+      GROUP BY source`,
     [profileId, monthStartIso, monthEndIso],
   );
 
@@ -378,21 +390,20 @@ async function computeXpForMonth(
   return { totalXp, breakdown };
 }
 
-/**
- * Gets the league at a specific point in time for a profile.
- */
+// ─── Liga ────────────────────────────────────────────────────────────────────
+
 async function getLeagueAtPoint(
   profileId: string,
   pointDate: string,
 ): Promise<{ tier: string | null } | null> {
   const result = await pool.query<{ tier: string }>(
     `SELECT lg.tier
-     FROM league_group_members lgm
-     JOIN league_groups lg ON lgm.league_group_id = lg.id
-     WHERE lgm.profile_id = $1
-       AND lg.week_start_date <= $2::date
-     ORDER BY lg.week_start_date DESC
-     LIMIT 1`,
+       FROM league_group_members lgm
+       JOIN league_groups lg ON lgm.league_group_id = lg.id
+      WHERE lgm.profile_id = $1
+        AND lg.week_start_date <= $2::date
+      ORDER BY lg.week_start_date DESC
+      LIMIT 1`,
     [profileId, pointDate],
   );
 
@@ -427,22 +438,52 @@ async function withRecapLeagueBadge(profileId: string, recap: MonthlyRecap): Pro
   return { ...recap, leagueTier: "BRONZE" };
 }
 
+// ─── Summary ─────────────────────────────────────────────────────────────────
+
 async function buildRecapSummary(
   profileId: string,
   monthStart: string,
   monthEnd: string,
   isCurrentMonth: boolean = false,
 ): Promise<RecapSummary> {
-  // Convert to ISO timestamps with São Paulo timezone offset
   const monthStartIso = spMonthStartIso(monthStart);
   const monthEndIso = spMonthEndIso(monthStart);
 
-  const [focusRow, streakResult, leagueStart, leagueEnd, xpResult, coinsResult, missionsResult, goalsResult, achievementsResult, topCategoryResult] = await Promise.all([
+  const [
+    focusRow,
+    streakResult,
+    leagueStart,
+    leagueEnd,
+    xpResult,
+    coinsResult,
+    missionsResult,
+    goalsResult,
+    achievementsResult,
+    topCategoryResult,
+  ] = await Promise.all([
+    // Focused time = real focused minutes saved by the timer (duration_minutes),
+    // NOT wall-clock ended_at-started_at (which includes pauses/breaks and stale
+    // sessions closed long after they started). Each session is capped at its
+    // target duration plus a small tolerance. Only completed sessions count;
+    // gave_up/cancelled/abandoned carry no focus credit. Uses end_reason for
+    // compatibility with databases where focus_sessions.status is not yet applied.
     pool.query<{ minutes: string | number }>(
-      `select coalesce(sum(extract(epoch from least(ended_at, $3::timestamptz) - greatest(started_at, $2::timestamptz)) / 60)), 0) as minutes
-       from focus_sessions
-       where profile_id = $1 and ended_at is not null
-         AND ended_at > $2::timestamptz AND started_at < $3::timestamptz`,
+      `SELECT COALESCE(
+                SUM(
+                  LEAST(
+                    GREATEST(duration_minutes, 0),
+                    GREATEST(CEIL(COALESCE(NULLIF(target_duration_minutes, 0), 120) * 1.05), 1)
+                  )
+                ),
+                0
+              ) AS minutes
+         FROM focus_sessions
+        WHERE profile_id = $1
+          AND ended_at IS NOT NULL
+          AND ended_at >= $2::timestamptz
+          AND ended_at < $3::timestamptz
+          AND (end_reason IS NULL OR end_reason = 'completed')
+          AND duration_minutes > 0`,
       [profileId, monthStartIso, monthEndIso],
     ),
     computeLongestStreakForMonth(profileId, monthStart, monthEnd),
@@ -455,13 +496,20 @@ async function buildRecapSummary(
     computeAchievementsUnlocked(profileId, monthStartIso, monthEndIso),
     computeTopFocusCategory(profileId, monthStartIso, monthEndIso),
   ]);
-
-  const totalMinutes = Number(focusRow.rows[0]?.minutes ?? 0);
+ 
+  const maxMinutesInMonth = Math.round(
+    (new Date(monthEndIso).getTime() - new Date(monthStartIso).getTime()) / 60_000,
+  );
+  const totalMinutes = Math.min(
+    Math.max(0, Math.round(Number(focusRow.rows[0]?.minutes ?? 0))),
+    maxMinutesInMonth,
+  );
   const bestStreak = streakResult.best;
-
+ 
+ 
   const today = todayIso();
-  const streakIsAlive = isCurrentMonth ||
-    (monthStart <= today && today < monthEnd && bestStreak > 0);
+  const streakIsAlive =
+    isCurrentMonth || (monthStart <= today && today < monthEnd && bestStreak > 0);
 
   const endTier = leagueEnd?.tier ?? undefined;
   const startTier = leagueStart?.tier ?? undefined;
@@ -471,7 +519,8 @@ async function buildRecapSummary(
   const promoted =
     normalizedStartTier !== undefined &&
     normalizedEndTier !== undefined &&
-    NEW_TIER_ORDER.indexOf(normalizedEndTier as NewLeagueTier) > NEW_TIER_ORDER.indexOf(normalizedStartTier as NewLeagueTier);
+    NEW_TIER_ORDER.indexOf(normalizedEndTier as NewLeagueTier) >
+      NEW_TIER_ORDER.indexOf(normalizedStartTier as NewLeagueTier);
 
   return {
     totalFocusMinutes: totalMinutes,
@@ -483,15 +532,49 @@ async function buildRecapSummary(
     leagueAtStart: normalizedStartTier ?? undefined,
     promoted,
     productivityTag: resolveTag(totalMinutes),
-    totalXp: xpResult.totalXp,
+    totalXp: Math.round(xpResult.totalXp),
+    coinsGained: Math.round(coinsResult.gained),
+    coinsSpent: Math.round(coinsResult.spent),
     xpSources: xpResult.breakdown,
-    coinsGained: coinsResult.gained,
-    coinsSpent: coinsResult.spent,
     missionsCompleted: missionsResult,
     goalsCompleted: goalsResult,
     achievementsUnlocked: achievementsResult,
     topFocusCategory: topCategoryResult ?? undefined,
   };
+}
+
+// ─── Upsert ──────────────────────────────────────────────────────────────────
+
+/** Tier gravado no banco (mesma regra usada no INSERT, para comparar igual). */
+function storedLeagueTier(summary: RecapSummary): string {
+  return summary.leagueTier ?? summary.leagueAtStart ?? "BRONZE";
+}
+
+function recapMatchesSummary(
+  row: RecapRow,
+  summary: RecapSummary,
+  status: RecapStatus,
+): boolean {
+  return (
+    row.status === status &&
+    Number(row.total_focus_minutes) === summary.totalFocusMinutes &&
+    Number(row.longest_streak) === summary.longestStreak &&
+    recapDateKey(row.streak_start_date) === (summary.streakStartDate ?? null) &&
+    recapDateKey(row.streak_end_date) === (summary.streakEndDate ?? null) &&
+    row.streak_is_alive === summary.streakIsAlive &&
+    row.league_tier === storedLeagueTier(summary) &&
+    row.league_at_start === (summary.leagueAtStart ?? null) &&
+    row.league_promoted === summary.promoted &&
+    row.productivity_tag === summary.productivityTag &&
+    Number(row.total_xp) === summary.totalXp &&
+    stableJson(row.xp_sources) === stableJson(summary.xpSources) &&
+    Number(row.coins_gained ?? 0) === summary.coinsGained &&
+    Number(row.coins_spent ?? 0) === summary.coinsSpent &&
+    Number(row.missions_completed ?? 0) === summary.missionsCompleted &&
+    Number(row.goals_completed ?? 0) === summary.goalsCompleted &&
+    Number(row.achievements_unlocked ?? 0) === summary.achievementsUnlocked &&
+    row.top_focus_category === (summary.topFocusCategory ?? null)
+  );
 }
 
 async function upsertRecap(
@@ -503,19 +586,18 @@ async function upsertRecap(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-      [`${profileId}:${monthStart}`],
-    );
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+      `${profileId}:${monthStart}`,
+    ]);
 
     const existing = await client.query<RecapRow>(
       `SELECT r.*,
               (SELECT COUNT(*) FROM garden_entries g
-               WHERE g.profile_id = r.profile_id
-                 AND DATE_TRUNC('year', g.planted_at) = DATE_TRUNC('year', r.recap_month)) AS garden_count
-       FROM monthly_recaps r
-       WHERE r.profile_id = $1 AND r.recap_month = $2
-       FOR UPDATE OF r`,
+                WHERE g.profile_id = r.profile_id
+                  AND DATE_TRUNC('year', g.planted_at) = DATE_TRUNC('year', r.recap_month)) AS garden_count
+         FROM monthly_recaps r
+        WHERE r.profile_id = $1 AND r.recap_month = $2
+          FOR UPDATE OF r`,
       [profileId, monthStart],
     );
     const old = existing.rows[0];
@@ -528,38 +610,39 @@ async function upsertRecap(
     const finalizedAt = status === "final" ? new Date().toISOString() : null;
     const result = await client.query<RecapRow>(
       `INSERT INTO monthly_recaps (
-        profile_id, recap_month, total_focus_minutes, longest_streak, streak_start_date,
-        streak_end_date, streak_is_alive, league_tier, league_at_start, league_promoted,
-        productivity_tag, total_xp, xp_sources, coins_gained, coins_spent,
-        missions_completed, goals_completed, achievements_unlocked, top_focus_category,
-        generation_number, status, finalized_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19, 1, $20, $21
-      ) ON CONFLICT (profile_id, recap_month)
-         DO UPDATE SET
-           total_focus_minutes = excluded.total_focus_minutes,
-           longest_streak = excluded.longest_streak,
-           streak_start_date = excluded.streak_start_date,
-           streak_end_date = excluded.streak_end_date,
-           streak_is_alive = excluded.streak_is_alive,
-           league_tier = excluded.league_tier,
-           league_at_start = excluded.league_at_start,
-           league_promoted = excluded.league_promoted,
-           productivity_tag = excluded.productivity_tag,
-           total_xp = excluded.total_xp,
-           xp_sources = excluded.xp_sources,
-           coins_gained = excluded.coins_gained,
-           coins_spent = excluded.coins_spent,
-           missions_completed = excluded.missions_completed,
-           goals_completed = excluded.goals_completed,
-           achievements_unlocked = excluded.achievements_unlocked,
-           top_focus_category = excluded.top_focus_category,
-           generation_number = monthly_recaps.generation_number + 1,
-           status = excluded.status,
-           finalized_at = COALESCE(monthly_recaps.finalized_at, excluded.finalized_at),
-           generated_at = now()
-      RETURNING *`,
+         profile_id, recap_month, total_focus_minutes, longest_streak, streak_start_date,
+         streak_end_date, streak_is_alive, league_tier, league_at_start, league_promoted,
+         productivity_tag, total_xp, xp_sources, coins_gained, coins_spent,
+         missions_completed, goals_completed, achievements_unlocked, top_focus_category,
+         generation_number, status, finalized_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+         $16, $17, $18, $19, 1, $20, $21
+       )
+       ON CONFLICT (profile_id, recap_month)
+       DO UPDATE SET
+         total_focus_minutes = EXCLUDED.total_focus_minutes,
+         longest_streak = EXCLUDED.longest_streak,
+         streak_start_date = EXCLUDED.streak_start_date,
+         streak_end_date = EXCLUDED.streak_end_date,
+         streak_is_alive = EXCLUDED.streak_is_alive,
+         league_tier = EXCLUDED.league_tier,
+         league_at_start = EXCLUDED.league_at_start,
+         league_promoted = EXCLUDED.league_promoted,
+         productivity_tag = EXCLUDED.productivity_tag,
+         total_xp = EXCLUDED.total_xp,
+         xp_sources = EXCLUDED.xp_sources,
+         coins_gained = EXCLUDED.coins_gained,
+         coins_spent = EXCLUDED.coins_spent,
+         missions_completed = EXCLUDED.missions_completed,
+         goals_completed = EXCLUDED.goals_completed,
+         achievements_unlocked = EXCLUDED.achievements_unlocked,
+         top_focus_category = EXCLUDED.top_focus_category,
+         generation_number = monthly_recaps.generation_number + 1,
+         status = EXCLUDED.status,
+         finalized_at = COALESCE(monthly_recaps.finalized_at, EXCLUDED.finalized_at),
+         generated_at = now()
+       RETURNING *`,
       [
         profileId,
         monthStart,
@@ -568,7 +651,7 @@ async function upsertRecap(
         summary.streakStartDate ?? null,
         summary.streakEndDate ?? null,
         summary.streakIsAlive,
-        summary.leagueTier ?? summary.leagueAtStart ?? "BRONZE",
+        storedLeagueTier(summary),
         summary.leagueAtStart ?? null,
         summary.promoted,
         summary.productivityTag,
@@ -588,15 +671,15 @@ async function upsertRecap(
     if (old) {
       await client.query(
         `INSERT INTO monthly_recap_history (
-          recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
-          streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
-          league_promoted, productivity_tag, total_xp, xp_sources, generation_number,
-          generation_count, garden_count, coins_gained, coins_spent, missions_completed, goals_completed,
-          achievements_unlocked, top_focus_category, generated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-          $15, $16, $17, $18, $19, $20, $21, $22, $23
-        )`,
+           recap_id, profile_id, recap_month, total_focus_minutes, longest_streak,
+           streak_start_date, streak_end_date, streak_is_alive, league_at_start, league_at_end,
+           league_promoted, productivity_tag, total_xp, xp_sources, generation_number,
+           generation_count, garden_count, coins_gained, coins_spent, missions_completed, goals_completed,
+           achievements_unlocked, top_focus_category, generated_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+           $15, $16, $17, $18, $19, $20, $21, $22, $23
+         )`,
         [
           old.id,
           old.profile_id,
@@ -627,9 +710,9 @@ async function upsertRecap(
 
     const gardenCount = await client.query<{ count: string | number }>(
       `SELECT COUNT(*) AS count
-       FROM garden_entries
-       WHERE profile_id = $1
-         AND DATE_TRUNC('year', planted_at) = DATE_TRUNC('year', $2::date)`,
+         FROM garden_entries
+        WHERE profile_id = $1
+          AND DATE_TRUNC('year', planted_at) = DATE_TRUNC('year', $2::date)`,
       [profileId, monthStart],
     );
 
@@ -646,49 +729,7 @@ async function upsertRecap(
   }
 }
 
-function recapMatchesSummary(
-  row: RecapRow,
-  summary: RecapSummary,
-  status: RecapStatus,
-): boolean {
-  return row.status === status
-    && Number(row.total_focus_minutes) === summary.totalFocusMinutes
-    && Number(row.longest_streak) === summary.longestStreak
-    && recapDateKey(row.streak_start_date) === (summary.streakStartDate ?? null)
-    && recapDateKey(row.streak_end_date) === (summary.streakEndDate ?? null)
-    && row.streak_is_alive === summary.streakIsAlive
-    && row.league_tier === (summary.leagueTier ?? null)
-    && row.league_at_start === (summary.leagueAtStart ?? null)
-    && row.league_promoted === summary.promoted
-    && row.productivity_tag === summary.productivityTag
-    && Number(row.total_xp) === summary.totalXp
-    && stableJson(row.xp_sources) === stableJson(summary.xpSources)
-    && Number(row.coins_gained ?? 0) === summary.coinsGained
-    && Number(row.coins_spent ?? 0) === summary.coinsSpent
-    && Number(row.missions_completed ?? 0) === summary.missionsCompleted
-    && Number(row.goals_completed ?? 0) === summary.goalsCompleted
-    && Number(row.achievements_unlocked ?? 0) === summary.achievementsUnlocked
-    && row.top_focus_category === (summary.topFocusCategory ?? null);
-}
-
-function stableJson(value: unknown): string {
-  if (value === null || value === undefined) return "null";
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`);
-    return `{${entries.join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function recapDateKey(value: Date | string | null): string | null {
-  if (value === null) return null;
-  return typeof value === "string"
-    ? value.slice(0, 10)
-    : value.toISOString().slice(0, 10);
-}
+// ─── API pública ─────────────────────────────────────────────────────────────
 
 export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   parseProfileId(profileId);
@@ -701,11 +742,11 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
             r.achievements_unlocked, r.top_focus_category,
             r.generation_number, r.has_been_shared, r.status, r.finalized_at,
             (SELECT COUNT(*) FROM garden_entries g
-             WHERE g.profile_id = r.profile_id
-               AND DATE_TRUNC('year', g.planted_at) = DATE_TRUNC('year', r.recap_month)) as garden_count
-     FROM monthly_recaps r
-     WHERE r.profile_id = $1 AND r.recap_month >= $2::date
-     ORDER BY r.recap_month DESC`,
+              WHERE g.profile_id = r.profile_id
+                AND DATE_TRUNC('year', g.planted_at) = DATE_TRUNC('year', r.recap_month)) AS garden_count
+       FROM monthly_recaps r
+      WHERE r.profile_id = $1 AND r.recap_month >= $2::date
+      ORDER BY r.recap_month DESC`,
     [profileId, ENERGYOS_LAUNCH_MONTH],
   );
 
@@ -713,32 +754,31 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
   const output: MonthlyRecap[] = [];
 
   for (const row of result.rows) {
-    const monthStart = typeof row.recap_month === "string"
-      ? row.recap_month.slice(0, 10)
-      : row.recap_month.toISOString().slice(0, 10);
+    const monthStart = toDateKey(row.recap_month);
 
     if (monthStart === currentMonth) {
-      // Mês em andamento: atualiza os dados ao vivo a partir da fonte,
-      // mantendo o mesmo registro (status "live").
-      const monthEnd = spMonthEndIso(monthStart);
-      const summary = await buildRecapSummary(profileId, monthStart, monthEnd, true);
-      output.push(await withRecapLeagueBadge(
-        profileId,
-        await upsertRecap(profileId, monthStart, summary, "live"),
-      ));
+      // Mês em andamento: atualiza ao vivo, mantendo o mesmo registro ("live").
+      const summary = await buildRecapSummary(profileId, monthStart, monthEndDate(monthStart), true);
+      output.push(
+        await withRecapLeagueBadge(
+          profileId,
+          await upsertRecap(profileId, monthStart, summary, "live"),
+        ),
+      );
     } else if (row.status !== "final" && monthStart < currentMonth) {
-      // Mês encerrado ainda não finalizado: calcula uma última vez com os
-      // totais completos do mês e grava como "final" (lazy finalize na leitura).
-      const monthEnd = spMonthEndIso(monthStart);
-      const summary = await buildRecapSummary(profileId, monthStart, monthEnd, false);
-      output.push(await withRecapLeagueBadge(
-        profileId,
-        await upsertRecap(profileId, monthStart, summary, "final"),
-      ));
+      // Mês encerrado ainda não finalizado: calcula uma última vez e grava "final".
+      const summary = await buildRecapSummary(profileId, monthStart, monthEndDate(monthStart), false);
+      output.push(
+        await withRecapLeagueBadge(
+          profileId,
+          await upsertRecap(profileId, monthStart, summary, "final"),
+        ),
+      );
     } else {
       output.push(await withRecapLeagueBadge(profileId, mapRecap(profileId, row)));
     }
   }
+
   return output;
 }
 
@@ -748,29 +788,30 @@ export async function generateRecap(
 ): Promise<MonthlyRecap> {
   parseProfileId(profileId);
   const monthStart = resolveMonthStart(monthDate);
-  const monthEnd = spMonthEndIso(monthStart);
 
-  const today = todayIso();
-  const currentMonth = today.slice(0, 7) + "-01";
+  const currentMonth = currentMonthStart();
   if (monthStart > currentMonth) {
     throw new BadRequestError("Não é possível gerar recap para meses futuros.");
   }
 
-  // Check if account is old enough
   const accountAge = await pool.query<{ created_at: Date | string }>(
-    'SELECT created_at FROM profiles WHERE id = $1',
+    "SELECT created_at FROM profiles WHERE id = $1",
     [profileId],
   );
   if (accountAge.rows[0]) {
-    const created = accountAge.rows[0].created_at;
-    const createdDate = typeof created === "string" ? created.slice(0, 10) : created.toISOString().slice(0, 10);
+    const createdDate = toDateKey(accountAge.rows[0].created_at);
     if (createdDate > monthStart) {
       throw new BadRequestError("O energyOS ainda não existia neste mês.");
     }
   }
 
   const isCurrentMonth = monthStart === currentMonth;
-  const summary = await buildRecapSummary(profileId, monthStart, monthEnd, isCurrentMonth);
+  const summary = await buildRecapSummary(
+    profileId,
+    monthStart,
+    monthEndDate(monthStart),
+    isCurrentMonth,
+  );
   return withRecapLeagueBadge(
     profileId,
     await upsertRecap(profileId, monthStart, summary, isCurrentMonth ? "live" : "final"),
@@ -779,14 +820,17 @@ export async function generateRecap(
 
 const SHARE_REWARD_COINS = 50;
 
-export async function markRecapShared(profileId: string, recapId: number): Promise<{ newBalance: number; wasFirstShare: boolean }> {
+export async function markRecapShared(
+  profileId: string,
+  recapId: number,
+): Promise<{ newBalance: number; wasFirstShare: boolean }> {
   parseProfileId(profileId);
 
-  const result = await pool.query<{ has_been_shared: boolean | null; }>(
+  const result = await pool.query<{ has_been_shared: boolean | null }>(
     `UPDATE monthly_recaps
-     SET has_been_shared = true
-     WHERE id = $1 AND profile_id = $2 AND has_been_shared = false
-     RETURNING has_been_shared`,
+        SET has_been_shared = true
+      WHERE id = $1 AND profile_id = $2 AND has_been_shared = false
+      RETURNING has_been_shared`,
     [recapId, profileId],
   );
 

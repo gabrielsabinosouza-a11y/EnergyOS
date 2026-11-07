@@ -26,9 +26,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (isDbError(error)) {
-      console.error("[api/recap] GET DB error:", { code: error.code, message: error.message, detail: error.detail, hint: error.hint });
+      const e = error as {
+        code: string;
+        message: string;
+        detail?: string;
+        hint?: string;
+        position?: string;
+        where?: string;
+      };
+      console.error("[api/recap] GET DB error:", {
+        code: e.code,
+        message: e.message,
+        detail: e.detail,
+        hint: e.hint,
+        position: e.position,
+        where: e.where,
+      });
       return NextResponse.json(
-        { error: `Erro no banco de dados: ${error.message}` },
+        { error: `Erro no banco de dados: ${e.message}` },
         { status: 500 },
       );
     }

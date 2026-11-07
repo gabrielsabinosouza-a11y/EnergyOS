@@ -310,7 +310,8 @@ export async function startFocusSession(
     // give-ups, so they can't block a new start forever.
     const stale = await client.query<{ id: string | number }>(
       `update focus_sessions
-          set ended_at = now(), end_reason = 'gave_up', duration_minutes = 0, focused_seconds = 0,
+          set ended_at = now(), end_reason = 'gave_up', status = 'abandoned'::focus_session_status,
+              duration_minutes = 0, focused_seconds = 0,
               paused_at = null, away_started_at = null
         where profile_id = $1 and ended_at is null
           and (room_id is null or started_at < now() - interval '24 hours')
@@ -394,7 +395,7 @@ export async function cancelFocusSession(profileId: string, sessionId: number): 
   let cancelled = false;
   try {
     await client.query("begin");
-    // Seeds first (they may reference the session), only if the session is still cancellable
+    // Delete garden entries for the cancelled session
     await client.query(
       `delete from garden_entries
         where profile_id = $1 and session_id = $2
@@ -405,8 +406,11 @@ export async function cancelFocusSession(profileId: string, sessionId: number): 
           )`,
       [profileId, sessionId, windowSecs],
     );
+    // Mark session as cancelled instead of deleting
     const result = await client.query<{ id: number }>(
-      `delete from focus_sessions
+      `update focus_sessions
+        set status = 'cancelled'::focus_session_status, ended_at = now(), duration_minutes = 0, focused_seconds = 0,
+            paused_at = null, away_started_at = null
         where profile_id = $1 and id = $2 and ended_at is null
           and started_at >= now() - make_interval(secs => $3)
         returning id`,
@@ -640,6 +644,15 @@ export async function endFocusSession(
   // Record a zero-duration give-up idempotently, but do not award XP, coins,
   // quests, streak progress, group credit, or a completed focus event.
   if (!focusSessionEffects(endReason).awardRewards || durationMinutes === 0) {
+    // Update status to reflect the end reason
+    const statusMap: Record<FocusSessionEndReason, string> = {
+      'completed': 'completed',
+      'gave_up': 'gave_up',
+    };
+    await pool.query(
+      `update focus_sessions set status = $3::focus_session_status where profile_id = $1 and id = $2`,
+      [profileId, sessionId, statusMap[endReason] || 'gave_up'],
+    );
     await finalizeGardenEntries(profileId, sessionId, false, durationMinutes);
     if (session.rows[0].room_id) await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
     return {

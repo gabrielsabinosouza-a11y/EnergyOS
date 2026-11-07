@@ -53,9 +53,8 @@ if (process.env.NODE_ENV !== "production") {
   console.log("[db] Database pool created");
 }
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.energyosPgPool = pool;
-}
+// Always store on globalThis to survive Next.js hot reload
+globalThis.energyosPgPool = pool;
 
 export default pool;
 
