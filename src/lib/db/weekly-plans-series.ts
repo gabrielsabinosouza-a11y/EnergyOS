@@ -51,10 +51,11 @@ export async function ensureWeeklyPlanSeriesSchema() {
       unique (series_id, occurrence_date)
     )
   `);
-  await pool.query(`
-    alter table weekly_plan_occurrences
-    add column if not exists reminder_offset_min int
-  `);
+  // Idempotent self-heal for databases created before these columns existed.
+  // (CREATE TABLE IF NOT EXISTS does not add columns to existing tables.)
+  await pool.query(`alter table weekly_plan_series add column if not exists reminder_offset_min int`);
+  await pool.query(`alter table weekly_plan_occurrences add column if not exists reminder_offset_min int`);
+  await pool.query(`alter table weekly_plan_occurrences add column if not exists override_category_id int references categories(id) on delete set null`);
   // Ensure the xp_ledger source CHECK constraint exists with the complete
   // list of valid sources (centralised — see ensureXpLedgerSourceCheck).
   await ensureXpLedgerSourceCheck();
@@ -75,7 +76,7 @@ await pool.query(`
 const SERIES_SELECT = `
   select s.id, s.profile_id, s.title, s.category_id, s.icon_type, s.icon_value,
          s.color, s.note, s.repeat_type, s.repeat_days, s.repeat_interval,
-         s.start_time, s.duration_minutes, null::int as reminder_offset_min, s.start_date::text as start_date, s.end_type, s.end_date::text as end_date,
+         s.start_time, s.duration_minutes, s.reminder_offset_min, s.start_date::text as start_date, s.end_type, s.end_date::text as end_date,
          s.end_count, s.timezone, s.archived, s.created_at,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
@@ -423,7 +424,11 @@ export async function convertWeeklyPlanToSeries(
     await client.query("commit");
     return { series: mapSeries(result.rows[0]), preservedPlanId };
   } catch (error) {
-    await client.query("rollback").catch(() => {});
+    try {
+      await client.query("rollback");
+    } catch (rollbackError) {
+      console.error("[weekly-plans] Failed to rollback convertWeeklyPlanToSeries:", rollbackError);
+    }
     throw error;
   } finally {
     client.release();
@@ -814,7 +819,7 @@ function mapLegacyPlanRow(row: LegacyPlanRow): WeeklyPlanItem {
 }
 
 const LEGACY_PLAN_SELECT = `
-  select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time, null::int as reminder_offset_min,
+  select w.id, w.plan_date::text as plan_date, w.title, w.category_id, w.completed_at, w.start_time, w.end_time, w.reminder_offset_min,
          c.id as category_id, c.user_id as category_user_id, c.name as category_name,
          c.color as category_color, c.icon as category_icon, c.is_custom as category_is_custom,
          c.created_at as category_created_at

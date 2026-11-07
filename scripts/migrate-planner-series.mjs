@@ -5,6 +5,7 @@
  *   - weekly_plan_series      (regra de repetição)
  *   - weekly_plan_occurrences (estado por ocorrência)
  *   - colunas reminder_offset_min em weekly_plans / série / ocorrência
+ *   - coluna override_category_id em weekly_plan_occurrences
  *   - índices de consulta
  *
  * Não apaga nem altera dados existentes. Idempotente: rodar várias vezes é
@@ -79,12 +80,14 @@ const statements = [
      skipped             boolean not null default false,
      override_title      text,
      override_start_time time,
+     override_category_id int references categories(id) on delete set null,
      reminder_offset_min int,
      unique (series_id, occurrence_date)
    )`,
   `alter table weekly_plans add column if not exists reminder_offset_min int`,
   `alter table weekly_plan_series add column if not exists reminder_offset_min int`,
   `alter table weekly_plan_occurrences add column if not exists reminder_offset_min int`,
+  `alter table weekly_plan_occurrences add column if not exists override_category_id int references categories(id) on delete set null`,
   `create index if not exists idx_wps_profile on weekly_plan_series(profile_id, archived)`,
   `create index if not exists idx_wpo_series_date on weekly_plan_occurrences(series_id, occurrence_date)`,
 ];

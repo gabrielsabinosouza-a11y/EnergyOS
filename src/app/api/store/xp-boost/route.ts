@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { AppError, BadRequestError } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { getActiveBoost, getUserPotionInventory, purchaseXpBoost } from "@/lib/db/xp-boost";
 import { XP_BOOST_ITEM_TYPE, XP_BOOST_MAX_HELD } from "@/lib/xp-boost";
 import { assertObject, parseNumber, ValidationError } from "@/lib/db/validation";
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const result = await purchaseXpBoost(profileId, quantity, payload.idempotencyKey);
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof AppError || error instanceof BadRequestError) {
+    if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (error instanceof ValidationError) {

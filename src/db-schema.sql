@@ -380,12 +380,18 @@ create table if not exists weekly_plan_occurrences (
   skipped             boolean not null default false,
   override_title      text,
   override_start_time time,
+  override_category_id int references categories(id) on delete set null,
   reminder_offset_min int,
   unique (series_id, occurrence_date)
 );
 
 create index if not exists idx_wps_profile on weekly_plan_series(profile_id, archived);
 create index if not exists idx_wpo_series_date on weekly_plan_occurrences(series_id, occurrence_date);
+
+-- Planner schema self-heal (idempotent). Covers DBs created before these columns.
+ALTER TABLE weekly_plan_series ADD COLUMN IF NOT EXISTS reminder_offset_min int;
+ALTER TABLE weekly_plan_occurrences ADD COLUMN IF NOT EXISTS reminder_offset_min int;
+ALTER TABLE weekly_plan_occurrences ADD COLUMN IF NOT EXISTS override_category_id int references categories(id) on delete set null;
 
 create table if not exists focus_sessions (
   id bigserial primary key,
