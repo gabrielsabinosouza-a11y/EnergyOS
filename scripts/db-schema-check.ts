@@ -34,7 +34,7 @@ async function getActualSchema(): Promise<{
   columns: Map<string, ColumnInfo[]>;
 }> {
   const tablesResult = await pool.query<TableInfo>(
-    `SELECT table_name FROM information_schema.tables 
+    `SELECT table_name FROM information_schema.tables
      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
      ORDER BY table_name`
   );
@@ -62,6 +62,19 @@ async function getActualSchema(): Promise<{
 async function main() {
   try {
     console.log("Connecting to database...");
+    const dbInfo = await pool.query(`
+      SELECT
+        current_database() AS database,
+        current_schema() AS schema,
+        current_user AS db_user,
+        inet_server_addr()::text AS server_address,
+        inet_server_port() AS server_port,
+        current_setting('search_path') AS search_path,
+        current_setting('server_version') AS postgres_version
+    `);
+
+    console.log("\n=== DATABASE CONNECTION INFO ===");
+    console.log(dbInfo.rows[0]);
     const { tables, columns } = await getActualSchema();
 
     console.log("\n=== SCHEMA DRIFT REPORT ===\n");
