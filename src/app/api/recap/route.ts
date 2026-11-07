@@ -42,14 +42,19 @@ function handleError(label: string, error: unknown) {
       position: error.position,
       where: error.where,
       constraint: error.constraint,
+      table: (error as { table?: string }).table,
+      column: (error as { column?: string }).column,
     });
+    const isProd = process.env.NODE_ENV === "production";
     return NextResponse.json(
-      { error: `Erro no banco de dados: ${error.message}` },
+      { error: isProd ? "Erro interno." : `Erro no banco de dados: ${error.message}` },
       { status: 500 },
     );
   }
-  console.error(`[api/recap] ${label} error:`, error);
-  return NextResponse.json({ error: "Erro interno." }, { status: 500 });
+  const isProd = process.env.NODE_ENV === "production";
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error(`[api/recap] ${label} error:`, { message: detail, stack: error instanceof Error ? error.stack : undefined });
+  return NextResponse.json({ error: isProd ? "Erro interno." : detail }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {

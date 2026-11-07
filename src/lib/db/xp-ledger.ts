@@ -41,6 +41,11 @@ const SOURCES_SQL = XP_LEDGER_VALID_SOURCES.map((s) => `'${s}'`).join(",");
 
 const CONSTRAINT_NAME = "xp_ledger_source_check";
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __energyosXpLedgerSourceCheckEnsured: Promise<void> | undefined;
+}
+
 /**
  * Ensures the `xp_ledger_source_check` CHECK constraint exists and allows
  * every source value the application may write — including the new
@@ -57,9 +62,19 @@ const CONSTRAINT_NAME = "xp_ledger_source_check";
  * row mirrors these too, in `daily_task_log`, so a future refund path never
  * refunds the wrong amount after a rule change).
  *
- * Idempotent — safe to call on every request.
+ * Idempotent — memoized per process to avoid DDL/catalog queries on every request.
  */
 export async function ensureXpLedgerSourceCheck(): Promise<void> {
+  if (!globalThis.__energyosXpLedgerSourceCheckEnsured) {
+    globalThis.__energyosXpLedgerSourceCheckEnsured = ensureXpLedgerSourceCheckImpl().catch((error) => {
+      globalThis.__energyosXpLedgerSourceCheckEnsured = undefined;
+      throw error;
+    });
+  }
+  return globalThis.__energyosXpLedgerSourceCheckEnsured;
+}
+
+async function ensureXpLedgerSourceCheckImpl(): Promise<void> {
   // coins_amount: nullable-safe additive column (default 0 for all sources).
   await pool.query(`alter table xp_ledger add column if not exists coins_amount integer not null default 0`);
 

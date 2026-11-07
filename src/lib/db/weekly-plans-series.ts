@@ -11,7 +11,24 @@ import { mergeCompletedOccurrenceDates } from "@/lib/planning/recurrence-form";
 
 // ── Schema ──────────────────────────────────────────────────────────────────────
 
-export async function ensureWeeklyPlanSeriesSchema() {
+declare global {
+  // eslint-disable-next-line no-var
+  var __energyosWeeklyPlanSeriesSchemaEnsured: Promise<void> | undefined;
+}
+
+/** Idempotent runtime schema ensure, memoized per process to avoid running DDL on every request. */
+export async function ensureWeeklyPlanSeriesSchema(): Promise<void> {
+  if (!globalThis.__energyosWeeklyPlanSeriesSchemaEnsured) {
+    globalThis.__energyosWeeklyPlanSeriesSchemaEnsured = ensureWeeklyPlanSeriesSchemaImpl().catch((error) => {
+      // Allow retry on next request if the ensure failed (transient/permission/partial).
+      globalThis.__energyosWeeklyPlanSeriesSchemaEnsured = undefined;
+      throw error;
+    });
+  }
+  return globalThis.__energyosWeeklyPlanSeriesSchemaEnsured;
+}
+
+async function ensureWeeklyPlanSeriesSchemaImpl() {
   await pool.query(`
     create table if not exists weekly_plan_series (
       id              serial primary key,

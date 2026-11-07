@@ -206,15 +206,15 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
     for (const weekRow of overdueWeeks.rows) {
       const oldWeekStart = weekRow.week_start_date;
       const nextWeekStart = addDaysIso(oldWeekStart, 7);
-      
+
       // Get all groups for this specific week that haven't been processed
       const oldGroups = await client.query<LeagueGroupRow>(
-        `select * from league_groups 
-         where week_start_date = $1 and reset_at is null 
+        `select * from league_groups
+         where week_start_date = $1 and reset_at is null
          order by id`,
         [oldWeekStart]
       );
-      
+
       if (!oldGroups.rows.length) continue;
 
       // Collect Legends candidates for this week
@@ -387,7 +387,7 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
 
           // Ensure member is in the correct group for the next week
           if (targetTier !== "LEGENDS") {
-            ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, nextWeekStart);
+           await ensureMemberInNewWeekGroup(client, member.profile_id, targetTier, nextWeekStart);
           }
         }
         await client.query(`update league_groups set reset_at = now() where id = $1`, [group.id]);
@@ -399,7 +399,7 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
         .sort((a, b) => b.weeklyXP - a.weeklyXP
           || compareReachedAt(a.reachedAt, b.reachedAt)
           || a.profileId.localeCompare(b.profileId));
-      
+
       if (uniqueCandidates.length > 0) {
         const legendsWeekEnd = new Date(`${nextWeekStart}T12:00:00Z`);
 legendsWeekEnd.setUTCDate(legendsWeekEnd.getUTCDate() + 6);
