@@ -784,27 +784,43 @@ export async function endFocusSession(
     );
     participantCount = Number(pc.rows[0]?.count ?? 1);
   }
-  await pool.query(
-    `insert into focus_session_events
-       (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, is_completed, completed_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
-     on conflict (profile_id, session_id) do nothing`,
-    [
-      profileId,
-      sessionId,
-      session.rows[0].room_id ?? null,
-      participantCount,
-      durationMinutes,
-      pausedCount,
-      completed,
-      updated.rows[0].ended_at ?? new Date(),
-    ],
-  );
+  // Best-effort observability/audit: missing auxiliary tables (schema drift in a
+  // connected DB) must not 500 a session whose core completion/XP/coins were saved.
+  try {
+    await pool.query(
+      `insert into focus_session_events
+         (profile_id, session_id, room_id, participant_count, duration_minutes, paused_count, is_completed, completed_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (profile_id, session_id) do nothing`,
+      [
+        profileId,
+        sessionId,
+        session.rows[0].room_id ?? null,
+        participantCount,
+        durationMinutes,
+        pausedCount,
+        completed,
+        updated.rows[0].ended_at ?? new Date(),
+      ],
+    );
+  } catch (error) {
+    const pg = error as { code?: string; message?: string; table?: string };
+    console.error("[focus] falha ao registrar focus_session_events (sessão concluída preservada):", {
+      sessionId, profileId, code: pg.code, table: pg.table, message: pg.message,
+    });
+  }
 
   // Co-focus credit is append-only and independent of the room's later
   // deletion. Count participants while the room record is still available.
   if (completed && participantCount >= 2) {
-    await recordFocusCompanionProgress(profileId, sessionId);
+    try {
+      await recordFocusCompanionProgress(profileId, sessionId);
+    } catch (error) {
+      const pg = error as { code?: string; message?: string; table?: string };
+      console.error("[focus] falha ao registrar progresso focus_companion (sessão preservada):", {
+        sessionId, profileId, code: pg.code, table: pg.table, message: pg.message,
+      });
+    }
   }
 
   const unlockedGroupAchievements: GroupAchievementUnlock[] = [];

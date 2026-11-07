@@ -15,7 +15,16 @@ export async function GET(request: NextRequest) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error("[achievements] unhandled error:", error);
+    const err = error as { code?: string; detail?: string; table?: string; column?: string; constraint?: string } | null | undefined;
+    console.error("[achievements GET] unhandled error:", {
+      message: error instanceof Error ? error.message : String(error),
+      code: err?.code,
+      detail: err?.detail,
+      table: err?.table,
+      column: err?.column,
+      constraint: err?.constraint,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

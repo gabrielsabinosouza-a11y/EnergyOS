@@ -106,20 +106,33 @@ export async function awardAchievementRewards(
         const { xp, coins } = rewardForTier(tier);
         if (xp <= 0 && coins <= 0) continue;
 
-        const inserted = await client.query(
-          `insert into achievement_rewards (profile_id, achievement_id, tier, coins_awarded, xp_awarded)
-           values ($1, $2, $3, $4, $5)
-           on conflict (profile_id, achievement_id, tier) do nothing
-           returning id`,
-          [profileId, id, tier, coins, xp],
-        );
-        if (!inserted.rows[0]) continue; // claimed concurrently — skip
+        try {
+          const inserted = await client.query(
+            `insert into achievement_rewards (profile_id, achievement_id, tier, coins_awarded, xp_awarded)
+             values ($1, $2, $3, $4, $5)
+             on conflict (profile_id, achievement_id, tier) do nothing
+             returning id`,
+            [profileId, id, tier, coins, xp],
+          );
+          if (!inserted.rows[0]) continue; // claimed concurrently — skip
 
-        if (xp > 0) {
-          await creditXP(profileId, "achievement", `${id}:${tier}`, xp, { db: client });
-        }
-        if (coins > 0) {
-          await addCoins(profileId, coins, client);
+          if (xp > 0) {
+            await creditXP(profileId, "achievement", `${id}:${tier}`, xp, { db: client });
+          }
+          if (coins > 0) {
+            await addCoins(profileId, coins, client);
+          }
+        } catch (error) {
+          // Missing achievement_rewards table (42P01), missing FK target row
+          // (23503), or schema drift must not abort rewarding other tiers.
+          const pg = error as { code?: string; message?: string; constraint?: string };
+          const ignorable = pg.code === "42P01" || pg.code === "23503" || pg.code === "42703"
+            || (pg.message?.includes("column") && pg.message?.includes("does not exist"));
+          if (ignorable) {
+            console.error(`[achievements] Recompensa ignorada para "${id}" tier ${tier}:`, pg.message ?? pg.code);
+            continue;
+          }
+          throw error;
         }
       }
     }
@@ -328,8 +341,21 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
   const lastTop1GlobalWeek = top1GlobalWeek?.rows[0]?.last_top_1_global_week;
 
   // Award coin + XP rewards for any unlocked tiers not yet claimed (incl.
-  // retroactive backfill for previously-reached requirements).
-  await awardAchievementRewards(profileId, values);
+  // retroactive backfill for previously-reached requirements). Best-effort:
+  // a missing achievement_rewards table / FK drift must not 500 the whole
+  // achievements response (progress is the primary data).
+  try {
+    await awardAchievementRewards(profileId, values);
+  } catch (error) {
+    const pg = error as { message?: string; code?: string; detail?: string; table?: string; constraint?: string };
+    console.error("[achievements] Falha ao creditar recompensas (progresso preservado):", {
+      message: pg.message ?? (error instanceof Error ? error.message : String(error)),
+      code: pg.code,
+      detail: pg.detail,
+      table: pg.table,
+      constraint: pg.constraint,
+    });
+  }
 
   const lockedIds = ALL_ACHIEVEMENT_IDS.filter(
     (id) =>

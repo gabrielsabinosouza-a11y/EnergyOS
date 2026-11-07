@@ -314,13 +314,9 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
               if (inserted.rows[0]) await addCoins(payout.profileId, payout.amount, client);
             },
             recordTop1GlobalFinish: async (profileId, weekStart) => {
-              const previous = await client.query<{ unlocked_tier: number }>(
-                `select unlocked_tier from user_achievement_progress
-                 where profile_id = $1 and achievement_id = 'top_1_global'
-                 for update`,
-                [profileId],
-              );
-              const firstUnlock = (previous.rows[0]?.unlocked_tier ?? 0) === 0;
+              // Source-of-truth counters live on profiles; persist them even if the
+              // achievement progress row cannot be written (e.g. missing achievements
+              // seed row / FK in a drifted production DB).
               await client.query(
                 `update profiles
                  set times_top_1_global = times_top_1_global + 1,
@@ -328,21 +324,42 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
                  where id = $1`,
                 [profileId, weekStart],
               );
-              await client.query(
-                `insert into user_achievement_progress
-                   (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
-                 select $1, 'top_1_global', times_top_1_global, 1, now(), null
-                 from profiles where id = $1
-                 on conflict (profile_id, achievement_id) do update set
-                   current_value = excluded.current_value,
-                   unlocked_tier = 1,
-                   unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
-                   seen_at = case
-                     when user_achievement_progress.unlocked_tier = 0 then null
-                     else user_achievement_progress.seen_at
-                   end`,
-                [profileId],
-              );
+              let firstUnlock = true;
+              try {
+                const previous = await client.query<{ unlocked_tier: number }>(
+                  `select unlocked_tier from user_achievement_progress
+                   where profile_id = $1 and achievement_id = 'top_1_global'
+                   for update`,
+                  [profileId],
+                );
+                firstUnlock = (previous.rows[0]?.unlocked_tier ?? 0) === 0;
+                await client.query(
+                  `insert into user_achievement_progress
+                     (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
+                   select $1, 'top_1_global', times_top_1_global, 1, now(), null
+                   from profiles where id = $1
+                   on conflict (profile_id, achievement_id) do update set
+                     current_value = excluded.current_value,
+                     unlocked_tier = 1,
+                     unlocked_at = coalesce(user_achievement_progress.unlocked_at, now()),
+                     seen_at = case
+                       when user_achievement_progress.unlocked_tier = 0 then null
+                       else user_achievement_progress.seen_at
+                     end`,
+                  [profileId],
+                );
+              } catch (error) {
+                const pg = error as { code?: string; message?: string; constraint?: string };
+                const ignorable = pg.code === "23503" || pg.code === "42703" || pg.code === "42P01"
+                  || pg.constraint === "user_achievement_progress_achievement_id_fkey";
+                if (ignorable) {
+                  console.error("[league-new] top_1_global progress persistido parcialmente (perfil atualizado):", {
+                    code: pg.code, message: pg.message, constraint: pg.constraint,
+                  });
+                } else {
+                  throw error;
+                }
+              }
               return firstUnlock;
             },
             addFirstUnlockBonusToResult: async (profileId, groupId, amount) => {
