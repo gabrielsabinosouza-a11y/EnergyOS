@@ -7,8 +7,18 @@ import { ArrowRight, Sparkles, Zap } from "lucide-react";
 import { ACCENT, RECAP_PALETTE } from "@/components/dashboard/recap-theme";
 
 const MONTH_FILES: Record<number, string> = {
-  0: "janeiro", 1: "fevereiro", 2: "marco", 3: "abril", 4: "maio", 5: "junho",
-  6: "julho", 7: "agosto", 8: "setembro", 9: "outubro", 11: "dezembro",
+  0: "janeiro",
+  1: "fevereiro",
+  2: "marco",
+  3: "abril",
+  4: "maio",
+  5: "junho",
+  6: "julho",
+  7: "agosto",
+  8: "setembro",
+  9: "outubro",
+  10: "novembro",
+  11: "dezembro",
 };
 const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const MONTH_ACCENTS = [ACCENT.focus, ACCENT.focus, ACCENT.xp, ACCENT.garden, ACCENT.streak, ACCENT.streak, ACCENT.xp, ACCENT.focus, ACCENT.xp, ACCENT.focus, ACCENT.xp, ACCENT.garden];

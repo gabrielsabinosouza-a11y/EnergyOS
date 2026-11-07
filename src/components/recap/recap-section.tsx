@@ -259,7 +259,7 @@ export function RecapSection({ userName, userPhotoUrl, favoriteCategory }: Recap
                   // Mini stats for generated months
                   <div className="flex flex-col items-center gap-0.5">
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold text-[var(--accent)]">{card.recap.totalFocusMinutes > 60 ? `${Math.floor(card.recap.totalFocusMinutes/60)}h` : card.recap.totalFocusMinutes}min</span>
+                      <span className="text-[10px] font-bold text-[var(--accent)]">{card.recap.totalFocusMinutes >= 60 ? `${Math.floor(card.recap.totalFocusMinutes / 60)}h ${card.recap.totalFocusMinutes % 60}min` : `${card.recap.totalFocusMinutes}min`}</span>
                       <span className="text-[10px] text-[var(--text-muted)]">•</span>
                       <span className="text-[10px] font-bold text-[#ffb86b]">{card.recap.longestStreak}d</span>
                     </div>

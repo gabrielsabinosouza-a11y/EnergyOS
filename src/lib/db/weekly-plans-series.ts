@@ -53,6 +53,7 @@ export async function ensureWeeklyPlanSeriesSchema() {
   `);
   // Idempotent self-heal for databases created before these columns existed.
   // (CREATE TABLE IF NOT EXISTS does not add columns to existing tables.)
+  await pool.query(`alter table weekly_plans add column if not exists reminder_offset_min int`);
   await pool.query(`alter table weekly_plan_series add column if not exists reminder_offset_min int`);
   await pool.query(`alter table weekly_plan_occurrences add column if not exists reminder_offset_min int`);
   await pool.query(`alter table weekly_plan_occurrences add column if not exists override_category_id int references categories(id) on delete set null`);

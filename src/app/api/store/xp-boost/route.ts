@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { AppError } from "@/lib/errors";
+import { AppError, BadRequestError } from "@/lib/errors";
 import { getActiveBoost, getUserPotionInventory, purchaseXpBoost } from "@/lib/db/xp-boost";
 import { XP_BOOST_ITEM_TYPE, XP_BOOST_MAX_HELD } from "@/lib/xp-boost";
 import { assertObject, parseNumber, ValidationError } from "@/lib/db/validation";
@@ -20,10 +20,20 @@ export async function GET(request: NextRequest) {
       boost,
     });
   } catch (error) {
-    console.error("[xp-boost GET] Failed to load boost status:", error);
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    const err = error as Record<string, unknown> | null | undefined;
+    console.error("[xp-boost GET] Unexpected error:", {
+      message: error instanceof Error ? error.message : String(error),
+      code: typeof err?.code === "string" || typeof err?.code === "number" ? err.code : undefined,
+      detail: typeof err?.detail === "string" ? err.detail : undefined,
+      hint: typeof err?.hint === "string" ? err.hint : undefined,
+      constraint: typeof err?.constraint === "string" ? err.constraint : undefined,
+      table: typeof err?.table === "string" ? err.table : undefined,
+      where: typeof err?.where === "string" ? err.where : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }

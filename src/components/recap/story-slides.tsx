@@ -28,7 +28,7 @@ function formatMinutes(total: number): string {
   if (total < 60) return `${total}min`;
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  return `${h}h ${m}min`;
 }
 
 // Format number with pt-BR locale
