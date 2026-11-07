@@ -387,32 +387,51 @@ export async function listAchievementProgress(profileId: string): Promise<Achiev
     const justUnlocked = unlockedTier > 0 && (newlyUnlocked || !prev?.seen_at);
 
     if (!prev || prev.current_value !== currentValue || newlyUnlocked) {
-      await pool.query(
-        `insert into user_achievement_progress
-           (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
-         values ($1, $2, $3, $4, case when $4 > 0 then now() else null end, $5)
-         on conflict (profile_id, achievement_id) do update set
-           current_value = case
-             when excluded.achievement_id = 'top_1_global'
-               then greatest(user_achievement_progress.current_value, excluded.current_value)
-             else excluded.current_value
-           end,
-           unlocked_tier = case
-             when excluded.achievement_id = 'top_1_global'
-               then greatest(user_achievement_progress.unlocked_tier, excluded.unlocked_tier)
-             else excluded.unlocked_tier
-           end,
-           unlocked_at = case
-             when user_achievement_progress.unlocked_tier = 0 and excluded.unlocked_tier > 0 then now()
-             when excluded.unlocked_tier > user_achievement_progress.unlocked_tier then now()
-             else user_achievement_progress.unlocked_at
-           end,
-           seen_at = case
-             when excluded.unlocked_tier > user_achievement_progress.unlocked_tier then null
-             else user_achievement_progress.seen_at
-           end`,
-        [profileId, id, currentValue, unlockedTier, prev?.seen_at ?? null],
-      );
+      try {
+        await pool.query(
+          `insert into user_achievement_progress
+             (profile_id, achievement_id, current_value, unlocked_tier, unlocked_at, seen_at)
+           values ($1, $2, $3, $4, case when $4 > 0 then now() else null end, $5)
+           on conflict (profile_id, achievement_id) do update set
+             current_value = case
+               when excluded.achievement_id = 'top_1_global'
+                 then greatest(user_achievement_progress.current_value, excluded.current_value)
+               else excluded.current_value
+             end,
+             unlocked_tier = case
+               when excluded.achievement_id = 'top_1_global'
+                 then greatest(user_achievement_progress.unlocked_tier, excluded.unlocked_tier)
+               else excluded.unlocked_tier
+             end,
+             unlocked_at = case
+               when user_achievement_progress.unlocked_tier = 0 and excluded.unlocked_tier > 0 then now()
+               when excluded.unlocked_tier > user_achievement_progress.unlocked_tier then now()
+               else user_achievement_progress.unlocked_at
+             end,
+             seen_at = case
+               when excluded.unlocked_tier > user_achievement_progress.unlocked_tier then null
+               else user_achievement_progress.seen_at
+             end`,
+          [profileId, id, currentValue, unlockedTier, prev?.seen_at ?? null],
+        );
+      } catch (error) {
+        // One broken achievement (e.g. missing achievements FK row / schema drift)
+        // must not fail the whole request — skip it and return the rest.
+        // This includes FK errors (achievement_id not in achievements table) and
+        // schema drift errors (missing columns in user_achievement_progress).
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isFKError = errorMsg.includes("user_achievement_progress_achievement_id_fkey") ||
+                          errorMsg.includes("23503");
+        const isSchemaError = errorMsg.includes("column") && errorMsg.includes("does not exist");
+        if (isFKError || isSchemaError) {
+          console.error(
+            `[achievements] Falha ao persistir progresso "${id}" (ignorado): ${errorMsg}`,
+          );
+          continue;
+        }
+        // Re-throw unexpected errors
+        throw error;
+      }
     }
 
     items.push({
