@@ -310,7 +310,7 @@ export async function startFocusSession(
     // give-ups, so they can't block a new start forever.
     const stale = await client.query<{ id: string | number }>(
       `update focus_sessions
-          set ended_at = now(), end_reason = 'gave_up', status = 'abandoned'::focus_session_status,
+          set ended_at = now(), end_reason = 'gave_up',
               duration_minutes = 0, focused_seconds = 0,
               paused_at = null, away_started_at = null
         where profile_id = $1 and ended_at is null
@@ -395,7 +395,8 @@ export async function cancelFocusSession(profileId: string, sessionId: number): 
   let cancelled = false;
   try {
     await client.query("begin");
-    // Delete garden entries for the cancelled session
+    // Seeds/garden entries for a session cancelled in the grace period should
+    // not remain as growing artifacts.
     await client.query(
       `delete from garden_entries
         where profile_id = $1 and session_id = $2
@@ -406,17 +407,37 @@ export async function cancelFocusSession(profileId: string, sessionId: number): 
           )`,
       [profileId, sessionId, windowSecs],
     );
-    // Mark session as cancelled instead of deleting
-    const result = await client.query<{ id: number }>(
-      `update focus_sessions
-        set status = 'cancelled'::focus_session_status, ended_at = now(), duration_minutes = 0, focused_seconds = 0,
-            paused_at = null, away_started_at = null
-        where profile_id = $1 and id = $2 and ended_at is null
-          and started_at >= now() - make_interval(secs => $3)
-        returning id`,
-      [profileId, sessionId, windowSecs],
-    );
-    cancelled = Boolean(result.rows[0]);
+
+    // Preferred (post-migration): persist the session as cancelled so it is
+    // auditable and excluded from all focus statistics. Before the status
+    // migration exists, fall back to deleting the row (legacy behavior).
+    try {
+      const result = await client.query<{ id: number }>(
+        `update focus_sessions
+            set status = 'cancelled'::focus_session_status,
+                ended_at = now(), duration_minutes = 0, focused_seconds = 0,
+                paused_at = null, away_started_at = null
+          where profile_id = $1 and id = $2 and ended_at is null
+            and started_at >= now() - make_interval(secs => $3)
+          returning id`,
+        [profileId, sessionId, windowSecs],
+      );
+      cancelled = Boolean(result.rows[0]);
+    } catch (error) {
+      const pgError = error as { code?: string };
+      if (pgError.code !== "42703" && pgError.code !== "42704" && pgError.code !== "22P02") {
+        throw error;
+      }
+      const deleted = await client.query<{ id: number }>(
+        `delete from focus_sessions
+          where profile_id = $1 and id = $2 and ended_at is null
+            and started_at >= now() - make_interval(secs => $3)
+          returning id`,
+        [profileId, sessionId, windowSecs],
+      );
+      cancelled = Boolean(deleted.rows[0]);
+    }
+
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
@@ -644,15 +665,20 @@ export async function endFocusSession(
   // Record a zero-duration give-up idempotently, but do not award XP, coins,
   // quests, streak progress, group credit, or a completed focus event.
   if (!focusSessionEffects(endReason).awardRewards || durationMinutes === 0) {
-    // Update status to reflect the end reason
-    const statusMap: Record<FocusSessionEndReason, string> = {
-      'completed': 'completed',
-      'gave_up': 'gave_up',
-    };
-    await pool.query(
-      `update focus_sessions set status = $3::focus_session_status where profile_id = $1 and id = $2`,
-      [profileId, sessionId, statusMap[endReason] || 'gave_up'],
-    );
+    // Post-migration: mark status for accurate exclusion/audit. Safe to ignore
+    // when the status column/type has not been applied yet.
+    try {
+      const statusValue = endReason === "completed" ? "completed" : "gave_up";
+      await pool.query(
+        `update focus_sessions set status = $3::focus_session_status where profile_id = $1 and id = $2`,
+        [profileId, sessionId, statusValue],
+      );
+    } catch (error) {
+      const pgError = error as { code?: string };
+      if (pgError.code !== "42703" && pgError.code !== "42704" && pgError.code !== "22P02") {
+        throw error;
+      }
+    }
     await finalizeGardenEntries(profileId, sessionId, false, durationMinutes);
     if (session.rows[0].room_id) await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
     return {
@@ -672,6 +698,20 @@ export async function endFocusSession(
     `update focus_sessions set xp_earned = $3 where profile_id = $1 and id = $2`,
     [profileId, sessionId, xpAwarded],
   );
+
+  // Post-migration: mark completed sessions for accurate stats/auditing.
+  // Ignored safely when the status column/type has not been applied yet.
+  try {
+    await pool.query(
+      `update focus_sessions set status = 'completed'::focus_session_status where profile_id = $1 and id = $2`,
+      [profileId, sessionId],
+    );
+  } catch (error) {
+    const pgError = error as { code?: string };
+    if (pgError.code !== "42703" && pgError.code !== "42704" && pgError.code !== "22P02") {
+      throw error;
+    }
+  }
 
   if (coins > 0) {
     await addCoins(profileId, coins);
@@ -820,9 +860,12 @@ export async function endFocusSession(
 export async function getFocusHistory(profileId: string): Promise<FocusSession[]> {
   parseProfileId(profileId);
   const result = await pool.query<FocusRow>(
-    `    select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, end_reason, focused_seconds
-     from focus_sessions where profile_id = $1 and ended_at is not null
-     order by started_at desc limit 30`,
+    `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, end_reason, focused_seconds
+       from focus_sessions
+      where profile_id = $1
+        and ended_at is not null
+        and (end_reason is null or end_reason = 'completed')
+      order by started_at desc limit 30`,
     [profileId],
   );
   return result.rows.map(mapFocus);
@@ -839,6 +882,8 @@ export async function getWeeklyFocusMinutesForProfiles(
      from focus_sessions
      where profile_id = any($1::text[])
        and ended_at is not null
+       and (end_reason is null or end_reason = 'completed')
+       and duration_minutes > 0
        and started_at >= ($2::date)::timestamp at time zone 'America/Sao_Paulo'
        and started_at < (($2::date + 7))::timestamp at time zone 'America/Sao_Paulo'
      group by profile_id`,
@@ -853,7 +898,11 @@ export async function getLifetimeFocusMinutes(profileId: string): Promise<number
   parseProfileId(profileId);
   const result = await pool.query<{ minutes: string | number }>(
     `select coalesce(sum(duration_minutes), 0) as minutes
-     from focus_sessions where profile_id = $1 and ended_at is not null`,
+       from focus_sessions
+      where profile_id = $1
+        and ended_at is not null
+        and (end_reason is null or end_reason = 'completed')
+        and duration_minutes > 0`,
     [profileId],
   );
   return Number(result.rows[0]?.minutes ?? 0);
@@ -863,7 +912,11 @@ export async function getLongestFocusSession(profileId: string): Promise<number>
   parseProfileId(profileId);
   const result = await pool.query<{ minutes: string | number | null }>(
     `select max(duration_minutes) as minutes
-     from focus_sessions where profile_id = $1 and ended_at is not null`,
+       from focus_sessions
+      where profile_id = $1
+        and ended_at is not null
+        and (end_reason is null or end_reason = 'completed')
+        and duration_minutes > 0`,
     [profileId],
   );
   return Number(result.rows[0]?.minutes ?? 0);
@@ -873,8 +926,9 @@ export async function getTodayFocusStats(profileId: string): Promise<{ minutesFo
   parseProfileId(profileId);
   const today = todayIso();
   const result = await pool.query<{ minutes: string | number; coins: string | number }>(
-    `select coalesce(sum(duration_minutes), 0) as minutes,
-            coalesce(sum(case when coalesce(end_reason, 'completed') = 'completed'
+    `select coalesce(sum(case when (end_reason is null or end_reason = 'completed') and duration_minutes > 0
+                            then duration_minutes else 0 end), 0) as minutes,
+            coalesce(sum(case when coalesce(end_reason, 'completed') = 'completed' and duration_minutes > 0
               then least($4, greatest(round(duration_minutes * $5 / 60),
                             case when duration_minutes >= $6 then $3 else 0 end))
               else 0 end), 0) as coins

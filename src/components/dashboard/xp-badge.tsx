@@ -103,7 +103,8 @@ export function XPBadge({
       onCoinsChange(balance);
       setPotionQuantity(quantity);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao comprar a poção.");
+      const errorMessage = e instanceof Error ? e.message : "Erro ao comprar a poção.";
+      setError(errorMessage);
     } finally {
       buyLockRef.current = false;
       setProcessing(null);

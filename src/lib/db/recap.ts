@@ -757,14 +757,31 @@ export async function getRecaps(profileId: string): Promise<MonthlyRecap[]> {
     const monthStart = toDateKey(row.recap_month);
 
     if (monthStart === currentMonth) {
-      // Mês em andamento: atualiza ao vivo, mantendo o mesmo registro ("live").
+      // Mês em andamento: computa ao vivo a partir de focus_sessions para
+      // refletir o acumulado mês-a-dia sem escrever no banco a cada GET.
       const summary = await buildRecapSummary(profileId, monthStart, monthEndDate(monthStart), true);
-      output.push(
-        await withRecapLeagueBadge(
-          profileId,
-          await upsertRecap(profileId, monthStart, summary, "live"),
-        ),
-      );
+      const liveRecap: MonthlyRecap = {
+        ...mapRecap(profileId, row),
+        totalFocusMinutes: summary.totalFocusMinutes,
+        longestStreak: summary.longestStreak,
+        streakStartDate: summary.streakStartDate,
+        streakEndDate: summary.streakEndDate,
+        streakIsAlive: summary.streakIsAlive,
+        leagueAtStart: summary.leagueAtStart,
+        leaguePromoted: summary.promoted,
+        productivityTag: summary.productivityTag,
+        totalXp: summary.totalXp,
+        xpSources: summary.xpSources as MonthlyRecap["xpSources"],
+        coinsGained: summary.coinsGained,
+        coinsSpent: summary.coinsSpent,
+        missionsCompleted: summary.missionsCompleted,
+        goalsCompleted: summary.goalsCompleted,
+        achievementsUnlocked: summary.achievementsUnlocked,
+        topFocusCategory: summary.topFocusCategory,
+        status: "live",
+        generatedAt: new Date().toISOString(),
+      };
+      output.push(await withRecapLeagueBadge(profileId, liveRecap));
     } else if (row.status !== "final" && monthStart < currentMonth) {
       // Mês encerrado ainda não finalizado: calcula uma última vez e grava "final".
       const summary = await buildRecapSummary(profileId, monthStart, monthEndDate(monthStart), false);

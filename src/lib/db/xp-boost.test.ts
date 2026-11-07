@@ -58,7 +58,7 @@ function usePurchaseState(state: PurchaseState) {
         return { rows: [{ coins: state.coins }] };
       }
       if (statement.startsWith("insert into user_potions")) {
-        state.potionQuantity += Number(params[2]);
+        state.potionQuantity = Number(params[2]);
         return { rows: [{ quantity: state.potionQuantity }] };
       }
       if (statement.startsWith("insert into xp_boost_purchase_requests")) {
@@ -106,8 +106,8 @@ describe("purchaseXpBoost", () => {
     await assert.rejects(
       purchaseXpBoost(PROFILE_ID, 1, "f64f9772-7df8-4a10-8624-c82ee238f9bd"),
       (error: unknown) => error instanceof AppError
-        && error.status === 400
-        && error.message.includes("inventário está cheio"),
+        && error.status === 409
+        && error.message === "Você já possui o máximo de poções.",
     );
 
     assert.equal(db.coins, 500);
@@ -123,11 +123,27 @@ describe("purchaseXpBoost", () => {
       purchaseXpBoost(PROFILE_ID, 1, FIRST_KEY),
       (error: unknown) => error instanceof AppError
         && error.status === 400
-        && error.message.includes("Moedas insuficientes"),
+        && error.message === "Moedas insuficientes.",
     );
 
     assert.equal(db.coins, 249);
     assert.equal(db.potionQuantity, 0);
+    assert.equal(db.transactionOpen, false);
+  });
+
+  it("rejeita compra que ultrapassaria o limite sem alterar saldo nem inventário", async () => {
+    const db = state(1000, 1);
+    usePurchaseState(db);
+
+    await assert.rejects(
+      purchaseXpBoost(PROFILE_ID, 2, FIRST_KEY),
+      (error: unknown) => error instanceof AppError
+        && error.status === 409
+        && error.message === "Você já possui o máximo de poções.",
+    );
+
+    assert.equal(db.coins, 1000);
+    assert.equal(db.potionQuantity, 1);
     assert.equal(db.transactionOpen, false);
   });
 

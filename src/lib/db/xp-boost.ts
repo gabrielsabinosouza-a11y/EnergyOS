@@ -94,30 +94,39 @@ export async function purchaseXpBoost(
       [profileId, XP_BOOST_ITEM_TYPE],
     );
     const currentQuantity = inventory.rows[0]?.quantity ?? 0;
-    if (currentQuantity + quantity > XP_BOOST_MAX_HELD) {
-      throw new BadRequestError(`Seu inventário está cheio (${XP_BOOST_MAX_HELD}/${XP_BOOST_MAX_HELD}).`);
+
+    // Reject when the requested purchase would exceed the cap. Both branches
+    // use the exact message/status the UI and tests rely on.
+    if (currentQuantity >= XP_BOOST_MAX_HELD || currentQuantity + quantity > XP_BOOST_MAX_HELD) {
+      console.log("[xp-boost] Cap check failed:", { currentQuantity, quantity, XP_BOOST_MAX_HELD });
+      throw new ConflictError("Você já possui o máximo de poções.");
     }
 
     const totalPrice = XP_BOOST_COST * quantity;
     if (settings.rows[0].coins < totalPrice) {
-      throw new BadRequestError(`Moedas insuficientes. São necessárias ${totalPrice} moedas.`);
+      throw new BadRequestError("Moedas insuficientes.");
     }
 
+    // Guarded deduction: even though settings are locked above, the WHERE
+    // clause makes the balance check atomic with the write.
     const deduct = await client.query<{ coins: number }>(
-      `update user_settings set coins = coins - $1 where profile_id = $2 returning coins`,
+      `update user_settings set coins = coins - $1 where profile_id = $2 and coins >= $1 returning coins`,
       [totalPrice, profileId],
     );
     const balance = deduct.rows[0]?.coins;
-    if (balance === undefined) throw new NotFoundError("Configurações do usuário não encontradas.");
+    if (balance === undefined) throw new BadRequestError("Moedas insuficientes.");
 
+    const targetQuantity = currentQuantity + quantity;
+    console.log("[xp-boost] Upserting potion inventory:", { profileId, currentQuantity, quantity, targetQuantity });
     const upserted = await client.query<{ quantity: number }>(
       `insert into user_potions (profile_id, item_type, quantity, updated_at)
        values ($1, $2, $3, now())
        on conflict (profile_id, item_type)
-       do update set quantity = user_potions.quantity + excluded.quantity, updated_at = now()
+       do update set quantity = $3, updated_at = now()
        returning quantity`,
-      [profileId, XP_BOOST_ITEM_TYPE, quantity],
+      [profileId, XP_BOOST_ITEM_TYPE, targetQuantity],
     );
+    console.log("[xp-boost] Upsert result:", { rows: upserted.rows.length, quantity: upserted.rows[0]?.quantity });
     if (!upserted.rows[0]) throw new ConflictError("Não foi possível atualizar o inventário de poções.");
 
     await client.query(
@@ -131,7 +140,13 @@ export async function purchaseXpBoost(
 
     return { balance, quantity: upserted.rows[0].quantity };
   } catch (error) {
-    if (transactionStarted) await client.query("rollback");
+    if (transactionStarted) {
+      try {
+        await client.query("rollback");
+      } catch (rollbackError) {
+        console.error("[xp-boost] Failed to rollback purchase transaction:", rollbackError);
+      }
+    }
     throw error;
   } finally {
     client.release();
@@ -175,8 +190,10 @@ export async function activateXpBoost(profileId: string): Promise<{
   parseProfileId(profileId);
 
   const client = await pool.connect();
+  let transactionStarted = false;
   try {
     await client.query("begin");
+    transactionStarted = true;
 
     // Serialize activations per user so a double-submit cannot consume two potions.
     const potionRes = await client.query<{ quantity: number }>(
@@ -223,6 +240,7 @@ export async function activateXpBoost(profileId: string): Promise<{
     );
 
     await client.query("commit");
+    transactionStarted = false;
 
     return {
       boost: {
@@ -236,7 +254,13 @@ export async function activateXpBoost(profileId: string): Promise<{
       quantity: quantity - 1,
     };
   } catch (error) {
-    await client.query("rollback");
+    if (transactionStarted) {
+      try {
+        await client.query("rollback");
+      } catch (rollbackError) {
+        console.error("[xp-boost] Failed to rollback activate transaction:", rollbackError);
+      }
+    }
     throw error;
   } finally {
     client.release();
