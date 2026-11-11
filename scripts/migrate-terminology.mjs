@@ -109,7 +109,12 @@ const DDL = [
      profile_id text not null references profiles(id) on delete cascade,
      completed_date date not null,
      completed_at timestamptz not null default now(),
-     doc_id text generated always as (item_id::text || '_' || completed_date::text) stored,
+     doc_id text generated always as (
+       item_id::text || '_' ||
+       lpad(extract(year from completed_date)::text, 4, '0') || '-' ||
+       lpad(extract(month from completed_date)::text, 2, '0') || '-' ||
+       lpad(extract(day from completed_date)::text, 2, '0')
+     ) stored,
      primary key (item_id, completed_date)
    )`,
   `create index if not exists planner_completions_profile_date_idx on planner_completions(profile_id, completed_date)`,

@@ -61,20 +61,25 @@ async function getActualSchema(): Promise<{
 
 async function main() {
   try {
-    console.log("Connecting to database...");
+    console.log("Connecting to database (read-only schema check)...\n");
     const dbInfo = await pool.query(`
       SELECT
         current_database() AS database,
         current_schema() AS schema,
         current_user AS db_user,
-        inet_server_addr()::text AS server_address,
-        inet_server_port() AS server_port,
         current_setting('search_path') AS search_path,
         current_setting('server_version') AS postgres_version
     `);
 
-    console.log("\n=== DATABASE CONNECTION INFO ===");
-    console.log(dbInfo.rows[0]);
+    console.log("=== DATABASE CONNECTION INFO (redacted) ===");
+    const info = dbInfo.rows[0] ?? {};
+    console.log({
+      database: info.database,
+      schema: info.schema,
+      db_user: info.db_user,
+      search_path: info.search_path,
+      postgres_version: info.postgres_version,
+    });
     const { tables, columns } = await getActualSchema();
 
     console.log("\n=== SCHEMA DRIFT REPORT ===\n");
@@ -272,3 +277,4 @@ async function main() {
 }
 
 main();
+

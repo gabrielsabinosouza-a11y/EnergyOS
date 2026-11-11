@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run db:schema-check && next build",
+    "build": "next build",
+    "build:check": "npm run db:schema-check && next build",
     "start": "next start",
     "db:init": "node scripts/init-db.mjs",
     "db:migrate-group-invites": "node scripts/migrate-group-invites.mjs",
