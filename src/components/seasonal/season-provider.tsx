@@ -134,10 +134,19 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     const themeKey = value.isActive && value.themesEnabled ? value.season!.theme : null;
-    if (themeKey) {
-      root.setAttribute("data-season", themeKey);
+    const apply = () => {
+      if (themeKey) {
+        root.setAttribute("data-season", themeKey);
+      } else {
+        root.removeAttribute("data-season");
+      }
+    };
+    // Cross-fade the palette swap when the View Transitions API is available;
+    // otherwise the attribute change applies instantly (CSS fallback).
+    if (typeof document.startViewTransition === "function") {
+      document.startViewTransition(apply);
     } else {
-      root.removeAttribute("data-season");
+      apply();
     }
     return () => root.removeAttribute("data-season");
   }, [value.isActive, value.themesEnabled, value.season]);

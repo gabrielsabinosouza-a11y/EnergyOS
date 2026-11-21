@@ -1,54 +1,65 @@
-// Load /dashboard as an authenticated user (seeded Firebase auth state),
-// then dump: dev overlay badge state, dev buttons presence, focus card layout.
+// Load /dashboard as an authenticated user:
+//  - seed Firebase auth state in IndexedDB (real app API key)
+//  - intercept identitytoolkit lookups with a fake response so user.reload() succeeds
+// Then dump: dev overlay badge state, dev buttons presence, focus card layout.
 import { chromium } from "playwright";
 import fs from "node:fs";
 
-// Extract the app's Firebase apiKey from the served dashboard HTML (public NEXT_PUBLIC value).
-const res = await fetch("http://localhost:3000/dashboard", { headers: { "x-dev-profile-id": readEnvValue(".env.local", "DEV_PROFILE_ID") } });
-const html = await res.text();
-const apiKeys = [...new Set([...html.matchAll(/["'`]?apiKey["'`]?\s*[:=]\s*["'`](AIza[A-Za-z0-9_-]{20,})["'`]/g)].map((m) => m[1]))];
-function readEnvValue(file, key) {
+const readEnvValue = (file, key) => {
   const text = fs.readFileSync(file, "utf8");
   return new RegExp(`^${key}=(.+)$`, "m").exec(text)?.[1];
-}
-console.log("apiKeys found in page:", apiKeys.map((k) => `${k.slice(0, 6)}...(${k.length})`));
+};
+const devProfileId = readEnvValue(".env.local", "DEV_PROFILE_ID");
+const apiKey = readEnvValue(".env", "NEXT_PUBLIC_FIREBASE_API_KEY");
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-if (readEnvValue(".env.local", "DEV_PROFILE_ID")) await context.setExtraHTTPHeaders({ "x-dev-profile-id": readEnvValue(".env.local", "DEV_PROFILE_ID") });
+if (devProfileId) await context.setExtraHTTPHeaders({ "x-dev-profile-id": devProfileId });
 const page = await context.newPage();
 page.on("console", (m) => { if (m.type() === "error") console.log("[console.error]", m.text().slice(0, 150)); });
 page.on("pageerror", (e) => console.log("[pageerror]", String(e).slice(0, 150)));
 
-for (const apiKey of apiKeys) {
-  await page.addInitScript((key) => {
-    const open = indexedDB.open("firebaseLocalStorageDb", 1);
-    open.onupgradeneeded = () => open.result.createObjectStore("firebaseLocalStorage", { keyPath: "fbase_key" });
-    open.onsuccess = () => {
-      const db = open.result;
-      const tx = db.transaction("firebaseLocalStorage", "readwrite");
-      tx.objectStore("firebaseLocalStorage").put({
-        fbase_key: `firebase:authUser:${key}:[DEFAULT]`,
-        value: {
-          uid: "seed-dev-user-1",
-          email: "dev@example.com",
-          displayName: "Dev User",
-          emailVerified: true,
-          isAnonymous: false,
-          providerData: [],
-          stsTokenManager: { refreshToken: "fake-refresh-token", accessToken: "fake-access-token", expirationTime: Date.now() + 3600_000 },
-        },
-      });
-      tx.oncomplete = () => db.close();
-    };
-  }, apiKey);
-}
+await page.route("**/identitytoolkit.googleapis.com/**", (route) => {
+  const url = route.request().url();
+  if (url.includes("accounts:lookup")) {
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        users: [{ localId: "seed-dev-user-1", displayName: "Dev User", email: "dev@example.com", emailVerified: true, photoUrl: "", providerUserInfo: [] }],
+      }),
+    });
+  }
+  return route.abort();
+});
 
-await page.goto("http://localhost:3000/dashboard", { waitUntil: "networkidle", timeout: 90000 }).catch(() => {});
-await page.waitForTimeout(8000);
+await page.addInitScript((key) => {
+  const open = indexedDB.open("firebaseLocalStorageDb", 1);
+  open.onupgradeneeded = () => open.result.createObjectStore("firebaseLocalStorage", { keyPath: "fbase_key" });
+  open.onsuccess = () => {
+    const db = open.result;
+    const tx = db.transaction("firebaseLocalStorage", "readwrite");
+    tx.objectStore("firebaseLocalStorage").put({
+      fbase_key: `firebase:authUser:${key}:[DEFAULT]`,
+      value: {
+        uid: "seed-dev-user-1",
+        email: "dev@example.com",
+        displayName: "Dev User",
+        emailVerified: true,
+        isAnonymous: false,
+        providerData: [],
+        stsTokenManager: { refreshToken: "fake-refresh-token", accessToken: "fake-access-token", expirationTime: Date.now() + 3600_000 },
+      },
+    });
+    tx.oncomplete = () => db.close();
+  };
+}, apiKey);
+
+await page.goto("http://localhost:3000/dashboard", { waitUntil: "networkidle", timeout: 90000 }).catch((e) => console.log("goto:", e.message));
+await page.waitForTimeout(10000);
 
 const dump = await page.evaluate(() => {
-  const out = { url: location.pathname, badge: null, issuesOpen: [], devButtons: [], focusCard: null, bodySnippet: "" };
+  const out = { url: location.pathname, badge: null, issuesOpen: [], devButtons: [], focusCard: null, startBtn: null, statsGrid: [] };
   const portal = document.querySelector("nextjs-portal");
   const sr = portal?.shadowRoot;
   if (sr) {
@@ -67,10 +78,10 @@ const dump = await page.evaluate(() => {
   const startBtn = [...document.querySelectorAll("button")].find((b) => /iniciar foco/i.test(b.innerText));
   if (startBtn) {
     const r = startBtn.getBoundingClientRect();
-    out.focusCard = { startBtn: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
-      statsGrid: [...document.querySelectorAll("div.grid.grid-cols-2")].slice(0, 2).map((g) => { const r = g.getBoundingClientRect(); return { y: Math.round(r.y), h: Math.round(r.height) }; }) };
+    out.startBtn = { text: startBtn.innerText.trim(), rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
+    out.focusCard = { startBtnY: Math.round(r.y) };
   }
-  out.bodySnippet = document.body.innerText.slice(0, 200);
+  out.statsGrid = [...document.querySelectorAll("div.grid.grid-cols-2")].slice(0, 2).map((g) => { const r = g.getBoundingClientRect(); return { y: Math.round(r.y), h: Math.round(r.height), children: g.children.length }; });
   return out;
 });
 console.log(JSON.stringify(dump, null, 1));

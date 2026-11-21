@@ -77,50 +77,51 @@ function ChristmasLights() {
           strokeWidth="1.2"
         />
       </svg>
-      {xs.map((x, i) => {
-        const twDur = 0.8 + (i % 5) * 0.1; // 0.8s–1.2s
-        const swayDur = 3.2 + (i % 4) * 0.45;
-        return (
-          <motion.div
-            key={i}
-            className="xmas-bulb"
-            style={{ left: x, transformOrigin: "50% 0" }}
-            initial={reduced ? false : { opacity: 0, scale: 0.3, y: -3 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{
-              delay: 0.15 + i * 0.04,
-              type: "spring",
-              stiffness: 260,
-              damping: 20,
-            }}
-            whileHover={reduced ? undefined : { rotate: [0, 15, -9, 4, 0] }}
-          >
-            <div
-              className="xmas-sway"
-              style={
-                {
-                  "--sway-dur": `${swayDur}s`,
-                  "--sway-delay": `${-(i * 0.61) % swayDur}s`,
-                } as CSSProperties
-              }
+      {width > 0 &&
+        xs.map((x, i) => {
+          const twDur = 0.8 + (i % 5) * 0.1; // 0.8s–1.2s
+          const swayDur = 3.2 + (i % 4) * 0.45;
+          return (
+            <motion.div
+              key={i}
+              className="xmas-bulb"
+              style={{ left: x, transformOrigin: "50% 0" }}
+              initial={reduced ? false : { opacity: 0, scale: 0.3, y: -3 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{
+                delay: 0.15 + i * 0.04,
+                type: "spring",
+                stiffness: 260,
+                damping: 20,
+              }}
+              whileHover={reduced ? undefined : { rotate: [0, 15, -9, 4, 0] }}
             >
-              <div className="xmas-socket" />
               <div
-                className="xmas-glass"
+                className="xmas-sway"
                 style={
                   {
-                    "--c": `var(--xmas-${(i % 4) + 1})`,
-                    "--tw-dur": `${twDur}s`,
-                    // Stepped ripple (one bulb after another) + per-bulb
-                    // duration so the string never blinks in sync.
-                    "--tw-delay": `${-(((i % 9) * 0.12) % twDur)}s`,
+                    "--sway-dur": `${swayDur}s`,
+                    "--sway-delay": `${-(i * 0.61) % swayDur}s`,
                   } as CSSProperties
                 }
-              />
-            </div>
-          </motion.div>
-        );
-      })}
+              >
+                <div className="xmas-socket" />
+                <div
+                  className="xmas-glass"
+                  style={
+                    {
+                      "--c": `var(--xmas-${(i % 4) + 1})`,
+                      "--tw-dur": `${twDur}s`,
+                      // Stepped ripple (one bulb after another) + per-bulb
+                      // duration so the string never blinks in sync.
+                      "--tw-delay": `${-(((i % 9) * 0.12) % twDur)}s`,
+                    } as CSSProperties
+                  }
+                />
+              </div>
+            </motion.div>
+          );
+        })}
     </div>
   );
 }
@@ -168,10 +169,6 @@ export function ChristmasLightsInjector() {
   }, []);
 
   return (
-    <>
-      {cards.map((el, i) =>
-        createPortal(<ChristmasLights key={i} />, el),
-      )}
-    </>
+    <>{cards.map((el, i) => createPortal(<ChristmasLights key={i} />, el))}</>
   );
 }

@@ -81,3 +81,26 @@ test("clearPendingCelebration removes the flag without claiming", () => {
   clearPendingCelebration(store);
   assert.equal(claimPendingCelebration(store), null);
 });
+
+test("dev-button-shaped celebration data (10/75/500, xp = 0.6×coins) round-trips once", () => {
+  // Same data shape the old "DEV: +10 / +75 / +500" buttons wrote via presentCelebration().
+  for (const coins of [10, 75, 500]) {
+    const store = fakeStore();
+    markCelebrationPending({
+      sessionId: Date.now(),
+      coins,
+      xp: Math.round(coins * 0.6),
+      durationMinutes: 25,
+      auraId: "flame",
+    }, store);
+    const claimed = claimPendingCelebration(store);
+    assert.ok(claimed, `celebration with ${coins} coins should be claimable`);
+    assert.equal(claimed.coins, coins);
+    assert.equal(claimed.xp, Math.round(coins * 0.6));
+    assert.equal(claimed.durationMinutes, 25);
+    assert.equal(claimed.auraId, "flame");
+    assert.equal(typeof claimed.createdAt, "number");
+    // A second claim (reload / second tab) never replays the same session.
+    assert.equal(claimPendingCelebration(store), null);
+  }
+});

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { PartyPopper } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { useSeason } from "./season-provider";
 import type { SeasonId } from "@/config/seasons";
@@ -15,24 +16,36 @@ function seeded(seed: number) {
   };
 }
 
-const SNOW_COUNT = 34; // extras beyond the first 14 are hidden <640px via CSS
+const SNOW_COUNT = 20; // a few snowflakes on small screens and below
+const SNOW_DESKTOP = 40; // more snowflakes on desktop
 const FLUSH_COUNT = 14;
 const CONFETTI_COUNT = 90;
 const BAT_COUNT = 3;
 
-const CONFETTI_COLORS = ["#ffd76b", "#ff5a5a", "#71d4ff", "#b69cff", "#4ade80", "#ff8a3d"];
+const CONFETTI_COLORS = [
+  "#ffd76b",
+  "#ff5a5a",
+  "#71d4ff",
+  "#b69cff",
+  "#4ade80",
+  "#ff8a3d",
+];
 
 function Snowfall() {
   const flakes = useMemo(() => {
     const rand = seeded(7);
-    return Array.from({ length: SNOW_COUNT }, (_, i) => ({
+    // Fewer snowflakes on small screens, a few more on desktop.
+    const count = typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+      ? SNOW_DESKTOP
+      : SNOW_COUNT;
+    return Array.from({ length: count }, (_, i) => ({
       id: i,
       left: rand() * 100,
-      size: 2 + rand() * 4,
+      size: 2 + rand() * 3,
       duration: 9 + rand() * 14,
       delay: -rand() * 20,
       sway: (rand() - 0.5) * 120,
-      opacity: 0.35 + rand() * 0.55,
+      opacity: 0.15 + rand() * 0.1,
     }));
   }, []);
   return (
@@ -40,7 +53,7 @@ function Snowfall() {
       {flakes.map((f) => (
         <span
           key={f.id}
-          className={`season-particle season-snow rounded-full bg-white${f.id >= 14 ? " max-sm:hidden" : ""}`}
+          className="season-particle season-snow rounded-full bg-white"
           style={{
             left: `${f.left}%`,
             top: 0,
@@ -104,9 +117,170 @@ function Bats() {
   );
 }
 
+/* ── New Year ─────────────────────────────────────────────────────────── */
+
+/* Starfield: 3 depth layers of CSS-gradient stars with pointer parallax.
+   transform-only, paused via .season-paused, off under reduced-motion. */
+function Starfield() {
+  const layerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = layerRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    let tx = 0;
+    let ty = 0;
+    const onMove = (e: PointerEvent) => {
+      tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      ty = (e.clientY / window.innerHeight - 0.5) * 2;
+      if (!raf) {
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          el.style.setProperty("--px", `${tx}`);
+          el.style.setProperty("--py", `${ty}`);
+        });
+      }
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <div ref={layerRef} className="ny-sky" aria-hidden>
+      <div className="ny-stars ny-stars-1" />
+      <div className="ny-stars ny-stars-2" />
+      <div className="ny-stars ny-stars-3" />
+    </div>
+  );
+}
+
+/* Continuous gold confetti rain for New Year (the burst variant above is
+   celebration-triggered; this one loops gently all season). */
+const RAIN_COLORS = ["#ffd76b", "#fff3c4", "#f4e3b2", "#ffffff"];
+
+function ConfettiRain() {
+  const pieces = useMemo(() => {
+    const rand = seeded(99);
+    return Array.from({ length: 26 }, (_, i) => ({
+      id: i,
+      left: rand() * 100,
+      size: 3 + rand() * 5,
+      duration: 8 + rand() * 7,
+      delay: -rand() * 15,
+      drift: (rand() - 0.5) * 160,
+      color: RAIN_COLORS[i % RAIN_COLORS.length],
+      round: rand() > 0.6,
+    }));
+  }, []);
+  return (
+    <>
+      {pieces.map((p) => (
+        <span
+          key={p.id}
+          className="season-particle ny-rain-piece"
+          style={{
+            left: `${p.left}%`,
+            width: p.size,
+            height: p.size * (p.round ? 1 : 1.6),
+            background: p.color,
+            borderRadius: p.round ? "50%" : "2px",
+            opacity: 0.85,
+            animationDuration: `${p.duration}s`,
+            animationDelay: `${p.delay}s`,
+            ["--drift" as string]: `${p.drift}px`,
+            ["--spin" as string]: `${300 + (p.id % 5) * 120}deg`,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+/* Champagne bubbles rising from the bottom edge. */
+function Bubbles() {
+  const bubbles = useMemo(() => {
+    const rand = seeded(55);
+    return Array.from({ length: 12 }, (_, i) => ({
+      id: i,
+      left: 4 + rand() * 92,
+      size: 4 + rand() * 9,
+      duration: 9 + rand() * 8,
+      delay: -rand() * 17,
+      sway: (rand() - 0.5) * 60,
+      opacity: 0.25 + rand() * 0.4,
+    }));
+  }, []);
+  return (
+    <>
+      {bubbles.map((b) => (
+        <span
+          key={b.id}
+          className="season-particle ny-bubble"
+          style={
+            {
+              left: `${b.left}%`,
+              width: b.size,
+              height: b.size,
+              opacity: b.opacity,
+              animationDuration: `${b.duration}s`,
+              animationDelay: `${b.delay}s`,
+              "--sway": `${b.sway}px`,
+            } as CSSProperties
+          }
+          aria-hidden
+        />
+      ))}
+    </>
+  );
+}
+
+/* Countdown chip to the next midnight (America/Sao_Paulo = UTC-3 fixed). */
+function NewYearCountdown() {
+  const [label, setLabel] = useState("--:--:--");
+
+  useEffect(() => {
+    const SP_OFFSET = -3 * 60 * 60 * 1000;
+    const tick = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      const sp = new Date(now + SP_OFFSET);
+      const nextMidnightUtc = Date.UTC(
+        sp.getUTCFullYear(),
+        sp.getUTCMonth(),
+        sp.getUTCDate() + 1,
+        3, 0, 0, 0,
+      ); // 00:00 SP == 03:00 UTC
+      const diff = Math.max(0, nextMidnightUtc - now);
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setLabel(
+        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
+      );
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="ny-countdown" aria-label={`Virada do ano em ${label}`}>
+      <PartyPopper size={14} aria-hidden />
+      <span>
+        Virada em <strong>{label}</strong>
+      </span>
+    </div>
+  );
+}
+
 /* Lightweight fireworks: a single canvas, capped particle count, paused when
-   the tab is hidden. Skipped entirely under prefers-reduced-motion. */
-function Fireworks({ reduced }: { reduced: boolean }) {
+   the tab is hidden. Skipped entirely under prefers-reduced-motion.
+   `interactive` enables click/tap bursts at the pointer position. */
+function Fireworks({ reduced, interactive }: { reduced: boolean; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -118,7 +292,15 @@ function Fireworks({ reduced }: { reduced: boolean }) {
 
     let raf = 0;
     let hidden = document.hidden;
-    const particles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
+    const particles: {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      life: number;
+      color: string;
+      size: number;
+    }[] = [];
     const COLORS = ["#ffd76b", "#ff5a5a", "#71d4ff", "#b69cff", "#ffffff"];
     const rand = seeded(42);
 
@@ -129,16 +311,17 @@ function Fireworks({ reduced }: { reduced: boolean }) {
     resize();
     window.addEventListener("resize", resize);
 
-    function spawn() {
-      const x = canvas!.width * (0.15 + rand() * 0.7);
-      const y = canvas!.height * (0.12 + rand() * 0.3);
+    function spawn(x?: number, y?: number) {
+      const bx = x ?? canvas!.width * (0.15 + rand() * 0.7);
+      const by = y ?? canvas!.height * (0.12 + rand() * 0.3);
       const color = COLORS[Math.floor(rand() * COLORS.length)];
       const count = 26 + Math.floor(rand() * 18);
-      for (let i = 0; i < count && particles.length < 220; i++) {
+      for (let i = 0; i < count && particles.length < 260; i++) {
         const angle = (i / count) * Math.PI * 2 + rand() * 0.3;
         const speed = 1.4 + rand() * 2.6;
         particles.push({
-          x, y,
+          x: bx,
+          y: by,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
           life: 1,
@@ -181,21 +364,48 @@ function Fireworks({ reduced }: { reduced: boolean }) {
     }
     raf = requestAnimationFrame(frame);
 
-    const onVisibility = () => { hidden = document.hidden; };
+    const onVisibility = () => {
+      hidden = document.hidden;
+    };
     document.addEventListener("visibilitychange", onVisibility);
+
+    // Click/tap bursts — pointer events pass through the layer, we just
+    // listen globally and burst where the user touched.
+    const onPointer = interactive
+      ? (e: PointerEvent) => {
+          if (e.button !== undefined && e.button !== 0) return;
+          spawn(e.clientX, e.clientY);
+        }
+      : null;
+    if (onPointer) {
+      window.addEventListener("pointerdown", onPointer, { passive: true });
+    }
+
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
+      if (onPointer) window.removeEventListener("pointerdown", onPointer);
     };
-  }, [reduced]);
+  }, [reduced, interactive]);
 
   if (reduced) return null;
   return <canvas ref={canvasRef} className="season-particle" aria-hidden />;
 }
 
 function ConfettiBurst() {
-  const [pieces, setPieces] = useState<{ id: number; left: number; color: string; delay: number; drift: number; spin: number; w: number; h: number }[]>([]);
+  const [pieces, setPieces] = useState<
+    {
+      id: number;
+      left: number;
+      color: string;
+      delay: number;
+      drift: number;
+      spin: number;
+      w: number;
+      h: number;
+    }[]
+  >([]);
   const idRef = useRef(0);
 
   useEffect(() => {
@@ -218,7 +428,8 @@ function ConfettiBurst() {
       window.setTimeout(() => setPieces([]), 3600);
     }
     window.addEventListener("energyos:seasonal-celebration", burst);
-    return () => window.removeEventListener("energyos:seasonal-celebration", burst);
+    return () =>
+      window.removeEventListener("energyos:seasonal-celebration", burst);
   }, []);
 
   if (!pieces.length) return null;
@@ -244,7 +455,14 @@ function ConfettiBurst() {
   );
 }
 
-const PASTELS = ["#f0a6c8", "#b79ced", "#b7e4c7", "#ffd166", "#f5c6d6", "#a8d8ea"];
+const PASTELS = [
+  "#f0a6c8",
+  "#b79ced",
+  "#b7e4c7",
+  "#ffd166",
+  "#f5c6d6",
+  "#a8d8ea",
+];
 
 function Floaters() {
   const items = useMemo(() => {
@@ -288,14 +506,42 @@ function Floaters() {
 function Pumpkin({ style }: { style: React.CSSProperties }) {
   return (
     <svg width="30" height="26" viewBox="0 0 30 26" style={style} aria-hidden>
-      <path d="M15 4 Q13 1 15 0 Q17 1 15 4" stroke="#4ade80" strokeWidth="1.6" fill="none" />
+      <path
+        d="M15 4 Q13 1 15 0 Q17 1 15 4"
+        stroke="#4ade80"
+        strokeWidth="1.6"
+        fill="none"
+      />
       <ellipse cx="10" cy="15" rx="7" ry="9" fill="#ff8a3d" />
       <ellipse cx="20" cy="15" rx="7" ry="9" fill="#ff8a3d" />
       <ellipse cx="15" cy="15" rx="5" ry="10" fill="#ff8a3d" />
-      <path d="M8 8 Q15 5 22 8" stroke="#e06f1f" strokeWidth="1.2" fill="none" opacity=".6" />
-      <path d="M7 18 Q15 21 23 18" stroke="#e06f1f" strokeWidth="1.2" fill="none" opacity=".6" />
-      <path d="M11 11 l2 2 M17 10 l-2 2 M13 16 l2 2" stroke="#3a1c00" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M11 19 Q15 22 19 19" stroke="#3a1c00" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path
+        d="M8 8 Q15 5 22 8"
+        stroke="#e06f1f"
+        strokeWidth="1.2"
+        fill="none"
+        opacity=".6"
+      />
+      <path
+        d="M7 18 Q15 21 23 18"
+        stroke="#e06f1f"
+        strokeWidth="1.2"
+        fill="none"
+        opacity=".6"
+      />
+      <path
+        d="M11 11 l2 2 M17 10 l-2 2 M13 16 l2 2"
+        stroke="#3a1c00"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M11 19 Q15 22 19 19"
+        stroke="#3a1c00"
+        strokeWidth="1.4"
+        fill="none"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -303,8 +549,23 @@ function Pumpkin({ style }: { style: React.CSSProperties }) {
 function HalloweenAccents() {
   return (
     <>
-      <Pumpkin style={{ position: "absolute", left: "4vw", bottom: "6vh", opacity: 0.5 }} />
-      <Pumpkin style={{ position: "absolute", right: "6vw", bottom: "10vh", opacity: 0.35, transform: "scale(.8)" }} />
+      <Pumpkin
+        style={{
+          position: "absolute",
+          left: "4vw",
+          bottom: "6vh",
+          opacity: 0.5,
+        }}
+      />
+      <Pumpkin
+        style={{
+          position: "absolute",
+          right: "6vw",
+          bottom: "10vh",
+          opacity: 0.35,
+          transform: "scale(.8)",
+        }}
+      />
     </>
   );
 }
@@ -325,24 +586,37 @@ export function SeasonalDecorations() {
   const id: SeasonId = season.id;
 
   return (
-    <div className={`season-layer${tabHidden ? " season-paused" : ""}`} aria-hidden>
-      {id === "christmas" && (
-        <>
-          <LightString />
-          <Snowfall />
-          <ChristmasLightsInjector />
-        </>
-      )}
-      {id === "halloween" && (
-        <>
-          <Bats />
-          <HalloweenAccents />
-        </>
-      )}
-      {id === "newyear" && <Fireworks reduced={!!reduced} />}
-      {id === "newyear" && <ConfettiBurst />}
-      {id === "easter" && <Floaters />}
-    </div>
+    <>
+      <div
+        className={`season-layer${tabHidden ? " season-paused" : ""}`}
+        aria-hidden
+      >
+        {id === "christmas" && (
+          <>
+            <LightString />
+            <Snowfall />
+            <ChristmasLightsInjector />
+          </>
+        )}
+        {id === "halloween" && (
+          <>
+            <Bats />
+            <HalloweenAccents />
+          </>
+        )}
+        {id === "newyear" && (
+          <>
+            <Starfield />
+            <Fireworks reduced={!!reduced} interactive />
+            <ConfettiRain />
+            <Bubbles />
+            <ConfettiBurst />
+          </>
+        )}
+        {id === "easter" && <Floaters />}
+      </div>
+      {id === "newyear" && <NewYearCountdown />}
+    </>
   );
 }
 
@@ -353,7 +627,13 @@ export function SeasonalLogoAccessory() {
 
   if (season.id === "christmas") {
     return (
-      <svg className="season-logo-accessory" width="22" height="16" viewBox="0 0 22 16" aria-hidden>
+      <svg
+        className="season-logo-accessory"
+        width="22"
+        height="16"
+        viewBox="0 0 22 16"
+        aria-hidden
+      >
         <path d="M3 9 L11 1 L19 9 Q11 12 3 9 Z" fill="#e63946" />
         <rect x="1" y="8" width="20" height="4" rx="2" fill="#fff" />
         <circle cx="11" cy="2" r="2.6" fill="#fff" />
@@ -362,11 +642,45 @@ export function SeasonalLogoAccessory() {
   }
   if (season.id === "easter") {
     return (
-      <svg className="season-logo-accessory" width="24" height="18" viewBox="0 0 24 18" aria-hidden>
-        <ellipse cx="7" cy="5" rx="3" ry="5" fill="#f5c6d6" transform="rotate(-14 7 5)" />
-        <ellipse cx="17" cy="5" rx="3" ry="5" fill="#f5c6d6" transform="rotate(14 17 5)" />
-        <ellipse cx="7" cy="5" rx="1.4" ry="3" fill="#fff" transform="rotate(-14 7 5)" />
-        <ellipse cx="17" cy="5" rx="1.4" ry="3" fill="#fff" transform="rotate(14 17 5)" />
+      <svg
+        className="season-logo-accessory"
+        width="24"
+        height="18"
+        viewBox="0 0 24 18"
+        aria-hidden
+      >
+        <ellipse
+          cx="7"
+          cy="5"
+          rx="3"
+          ry="5"
+          fill="#f5c6d6"
+          transform="rotate(-14 7 5)"
+        />
+        <ellipse
+          cx="17"
+          cy="5"
+          rx="3"
+          ry="5"
+          fill="#f5c6d6"
+          transform="rotate(14 17 5)"
+        />
+        <ellipse
+          cx="7"
+          cy="5"
+          rx="1.4"
+          ry="3"
+          fill="#fff"
+          transform="rotate(-14 7 5)"
+        />
+        <ellipse
+          cx="17"
+          cy="5"
+          rx="1.4"
+          ry="3"
+          fill="#fff"
+          transform="rotate(14 17 5)"
+        />
       </svg>
     );
   }

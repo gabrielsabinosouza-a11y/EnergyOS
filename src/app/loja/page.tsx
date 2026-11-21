@@ -396,6 +396,7 @@ function StoreItemCard({
           <span
             className="relative rounded-full px-2 py-0.5 text-[10px] font-semibold"
             style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+            data-rarity={rarityOf(item.rarity)}
           >
             {c.label}
           </span>
@@ -556,6 +557,7 @@ function DecorationModal({
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-medium"
               style={{ background: c.bg, color: c.border }}
+              data-rarity={rarityOf(item.rarity)}
             >
               {c.label}
             </span>
@@ -814,6 +816,7 @@ function SeasonalAuraCard({
           <span
             className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
             style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+            data-rarity={info?.rarity ?? "epic"}
           >
             {info ? AURA_RARITY_LABELS[info.rarity] : "Épica"}
           </span>
@@ -937,6 +940,7 @@ function SeasonalFrameCard({
           <span
             className="relative rounded-full px-2 py-0.5 text-[10px] font-semibold"
             style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+            data-rarity={rarityOf(item.rarity)}
           >
             {c.label}
           </span>
@@ -1929,6 +1933,7 @@ export default function LojaPage() {
                         <span
                           className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                           style={{ background: storedRarity.bg, color: storedRarity.border, border: `1px solid ${storedRarity.border}33` }}
+                          data-rarity={info.rarity}
                         >
                           {AURA_RARITY_LABELS[info.rarity]}
                         </span>
