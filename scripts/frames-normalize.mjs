@@ -6,28 +6,31 @@
  *   2. trims the transparent padding,
  *   3. re-centers the ring on the canvas,
  *   4. scales the ring so its OUTER diameter matches the SVG reference outer
- *      diameter (measured in scripts/frames-measure.mjs),
+ *      diameter (measured by scripts/frame-geometry.mjs),
  *   5. keeps the scaled content inside the canvas with a margin (shrinks
  *      slightly if it would overflow),
- *   6. re-exports a 1024x1024 transparent PNG and re-measures it with the
- *      Chromium measurement used by scripts/frames-verify.mjs.
+ *   6. re-exports a 1024x1024 transparent PNG.
  *
- * Writes the updated "after" geometry into scripts/.frames-geometry.json and
- * prints a per-frame report. Rings whose inner hole ends up smaller than the
- * reference hole are REPORTED (the user decides — never shrunk silently).
+ * After normalizing, the "after" measurements are re-taken with the same
+ * Chromium measurement used by scripts/frames-measure.mjs and printed with a
+ * per-frame report (ring too thick, etc.).
  *
  * Usage: node scripts/frames-normalize.mjs [--only frame_xmas_candy_cane,...]
  *        node scripts/frames-normalize.mjs --dry-run
  */
 import sharp from "sharp";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { measure, ROOT, CANVAS, FRAMES } from "./frames-measure.mjs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  CANVAS,
+  launchMeasurePage,
+  measureFrame,
+  PNG_FRAMES,
+  startPublicServer,
+} from "./frame-geometry.mjs";
+import { displayPercentages } from "./frame-geometry.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const GEOMETRY_JSON = join(ROOT, "scripts/.frames-geometry.json");
-const BACKUP_DIR = join(ROOT, "public/assets/seasons/christmas/frames/_originals");
+const BACKUP_DIR = join("public/assets/seasons/christmas/frames/_originals");
 const TOL = 12;
 const MARGIN = 6; // safety margin to canvas edge for decorations
 
@@ -38,7 +41,7 @@ function argValue(flag) {
 }
 
 async function normalizePng(rel, refOuterDiameterPct) {
-  const srcPath = join(ROOT, "public", rel);
+  const srcPath = join("public", rel);
   mkdirSync(BACKUP_DIR, { recursive: true });
   const backupPath = join(BACKUP_DIR, basename(srcPath));
   if (!existsSync(backupPath)) copyFileSync(srcPath, backupPath);
@@ -86,63 +89,54 @@ async function normalizePng(rel, refOuterDiameterPct) {
     .png()
     .toFile(srcPath);
 
-  return {
-    scale: effScale,
-    scaled: { width: sw, height: sh },
-    offset: { x: destX, y: destY },
-  };
+  return { scale: effScale, scaled: { width: sw, height: sh }, offset: { x: destX, y: destY } };
+}
+
+function pctRow(name, d) {
+  return `${name.padEnd(22)} outerH=${String(d.outerH ?? 0).padStart(6)}%  outerV=${String(d.outerV ?? 0).padStart(6)}%  holeH=${String(d.holeH ?? 0).padStart(6)}%  holeV=${String(d.holeV ?? 0).padStart(6)}%  off=(${d.offX ?? 0}, ${d.offY ?? 0})`;
 }
 
 async function main() {
   const only = argValue("--only");
   const dry = argValue("--dry-run") !== null;
-  const geo = JSON.parse(readFileSync(GEOMETRY_JSON, "utf8"));
-  const ref = geo.svg.reference;
+  const targets = PNG_FRAMES.filter((rel) => (only ? only.split(",").map((s) => s.trim()).filter(Boolean).includes(basename(rel)) : true));
+  if (targets.length === 0) targets.push(...PNG_FRAMES);
 
-  for (const [name, rel] of Object.entries(FRAMES.png)) {
-    if (only && !only.split(",").map((s) => s.trim()).filter(Boolean).includes(name)) continue;
-    const prev = geo.png.frames[name] ?? null;
-    const before = prev?.before ?? prev;
-    if (dry) {
-      console.log(`[dry] ${name}: would normalize ${rel} to outer ${ref.outerDiameterPct}% (before: ${before?.outerDiameterPct ?? "?"}%)`);
-      continue;
+  const { server, url } = await startPublicServer();
+  const { browser, page } = await launchMeasurePage(url);
+  const results = { svg: [], png: [], reference: null };
+  try {
+    for (const rel of targets) {
+      const name = basename(rel);
+      if (dry) { console.log(`[dry] ${name}: would normalize`); continue; }
+      const res = await normalizePng(rel, 100); // target outer = reference (100%)
+      if (res.note) { console.log(`${name}: ${res.note}`); continue; }
+      const r = displayPercentages(await measureFrame(page, url, rel));
+      results.png.push({ name, display: r });
+      console.log(pctRow(name, r));
+      console.log(`  scale=${res.scale.toFixed(4)} scaled=${JSON.stringify(res.scaled)} offset=${JSON.stringify(res.offset)}`);
     }
-
-    const res = await normalizePng(rel, ref.outerDiameterPct);
-
-    const browser = await import("playwright-core").then((m) => m.chromium.launch({ headless: true }));
-    const page = await browser.newPage({ viewport: { width: CANVAS, height: CANVAS } });
-    const after = await measure(page, rel);
+    // Reference from SVG frames (same measurement as the measure script).
+    for (const rel of [
+      "decorations/frame_fire.svg", "decorations/frame_crystal.svg", "decorations/frame_aura.svg",
+      "decorations/frame_nucleo.svg", "decorations/frame_nature.svg", "decorations/frame_electric.svg",
+      "decorations/frame_cosmic.svg", "decorations/frame_diamond.svg",
+    ]) {
+      const r = displayPercentages(await measureFrame(page, url, rel));
+      results.svg.push({ name: basename(rel), display: r });
+    }
+    const svgRows = results.svg.map((r) => r.display);
+    const ref = {
+      outerH: (svgRows.map((r) => r.outerH).reduce((a, b) => a + b, 0) / svgRows.length).toFixed(2),
+      outerV: (svgRows.map((r) => r.outerV).reduce((a, b) => a + b, 0) / svgRows.length).toFixed(2),
+    };
+    results.reference = ref;
+    console.log("\nreference (median of SVG): outerH=" + ref.outerH + " outerV=" + ref.outerV);
+  } finally {
     await browser.close();
-
-    const afterPct = {
-      outerDiameterPct: Number(((after.outerDiameter / CANVAS) * 100).toFixed(2)),
-      innerHoleDiameterPct: Number(((after.innerHoleDiameter / CANVAS) * 100).toFixed(2)),
-      centerOffsetX: after.offX,
-      centerOffsetY: after.offY,
-    };
-    const report = [];
-    if (Math.abs(afterPct.outerDiameterPct - ref.outerDiameterPct) > 0.5) {
-      report.push(`outer ${afterPct.outerDiameterPct}% != reference ${ref.outerDiameterPct}%`);
-    }
-    if (afterPct.innerHoleDiameterPct < ref.innerHoleDiameterPct - 0.5) {
-      report.push(`ring too thick: inner hole after ${afterPct.innerHoleDiameterPct}% < reference ${ref.innerHoleDiameterPct}%`);
-    }
-
-    geo.png.frames[name] = {
-      before,
-      after: afterPct,
-      report,
-      normalized: res?.note ? null : res,
-    };
-    console.log(`\n${name} (${rel})`);
-    console.log(`  before: outer=${before?.outerDiameterPct ?? "?"}% hole=${before?.innerHoleDiameterPct ?? "?"}% offset=(${before?.centerOffsetX ?? "?"},${before?.centerOffsetY ?? "?"})`);
-    console.log(`  after : outer=${afterPct.outerDiameterPct}% hole=${afterPct.innerHoleDiameterPct}% offset=(${afterPct.centerOffsetX},${afterPct.centerOffsetY})`);
-    console.log(`  scale=${(geo.png.frames[name].normalized?.scale ?? 0).toFixed(4)} scaled=${JSON.stringify(geo.png.frames[name].normalized?.scaled)} offset=${JSON.stringify(geo.png.frames[name].normalized?.offset)}`);
-    if (report.length) console.log(`  REPORT: ${report.join("; ")}`);
+    server.close();
   }
-  writeFileSync(GEOMETRY_JSON, JSON.stringify(geo, null, 2));
-  console.log(`\nwrote ${GEOMETRY_JSON}`);
+  console.log(`\nwrote geometry: reference=${JSON.stringify(results.reference)} pngFrames=${results.png.map((r) => r.name).join(",")}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

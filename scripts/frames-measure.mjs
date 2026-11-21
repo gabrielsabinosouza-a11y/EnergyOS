@@ -27,47 +27,48 @@ import {
   startPublicServer,
 } from "./frame-geometry.mjs";
 
-async function main() {
-  const args = process.argv.slice(2);
-  const jsonIndex = args.indexOf("--json");
-  const jsonPath = jsonIndex >= 0 ? args[jsonIndex + 1] : null;
-
+async function measureAll() {
   const { server, url } = await startPublicServer();
   const { browser, page } = await launchMeasurePage(url);
   const results = { svg: [], png: [], reference: null };
   try {
     const svgRows = [];
     for (const rel of SVG_FRAMES) {
-      const display = displayPercentages(await measureFrame(page, url, rel));
+      const raw = await measureFrame(page, url, rel);
+      if (!raw) { console.error("DEBUG: measureFrame returned undefined for", rel, "url:", url); }
+      const display = displayPercentages(raw);
       const row = { name: frameNameFromPath(rel), path: rel, display };
       svgRows.push(row);
       results.svg.push(row);
     }
-    const ref = referencePercentages(svgRows.map((r) => r.display));
-    results.reference = ref;
-
-    const pngRows = [];
+    results.reference = referencePercentages(svgRows.map((r) => r.display));
     for (const rel of PNG_FRAMES) {
       if (!existsSync(join(PUBLIC_DIR, rel))) {
         console.log(`# ${rel}: MISSING (no such file)`);
         continue;
       }
       const display = displayPercentages(await measureFrame(page, url, rel));
-      const row = { name: frameNameFromPath(rel), path: rel, display };
-      pngRows.push(row);
-      results.png.push(row);
-    }
-
-    printTable(pngRows, ref);
-
-    if (jsonPath) {
-      const target = join(ROOT, jsonPath);
-      writeFileSync(target, JSON.stringify(results, null, 2));
-      console.log(`\nwrote ${target}`);
+      results.png.push({ name: frameNameFromPath(rel), path: rel, display });
     }
   } finally {
     await browser.close();
     server.close();
+  }
+  return results;
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const jsonIndex = args.indexOf("--json");
+  const jsonPath = jsonIndex >= 0 ? args[jsonIndex + 1] : null;
+
+  const results = await measureAll();
+  printTable(results.png, results.reference);
+
+  if (jsonPath) {
+    const target = join(ROOT, jsonPath);
+    writeFileSync(target, JSON.stringify(results, null, 2));
+    console.log(`\nwrote ${target}`);
   }
 }
 
@@ -75,3 +76,6 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+// Exported for the normalize/verify scripts.
+export { measureAll };

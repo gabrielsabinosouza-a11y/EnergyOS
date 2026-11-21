@@ -48,7 +48,7 @@ const MEASURE_PAGE = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>fr
  * In-page measurement function. Draws `src` (same-origin URL) into a
  * 1024x1024 canvas and reads the alpha channel along the two center lines.
  */
-const MEASURE_FN = `(canvasSize, src) => new Promise((done, fail) => {
+const MEASURE_FN = ([canvasSize, src]) => new Promise((done, fail) => {
   const img = document.getElementById("f");
   img.onerror = () => fail(new Error("failed to load " + src));
   img.onload = () => {
@@ -128,7 +128,8 @@ const MEASURE_FN = `(canvasSize, src) => new Promise((done, fail) => {
       fail(e);
     }
   };
-})`;
+  img.src = src;
+});
 
 const CONTENT_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
@@ -184,15 +185,15 @@ export async function startPublicServer(dir = PUBLIC_DIR) {
       resolveReady();
     });
   });
-  return { server, url: `http://127.0.0.1:${server.address().port}/` };
+  return { server, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 let measureCounter = 0;
 
 /** Rasterizes `relPath` (relative to `public/`) to a 1024x1024 canvas and returns raw px metrics. */
 export async function measureFrame(page, baseUrl, relPath) {
-  const src = `${baseUrl}${relPath}?m=${Date.now()}-${measureCounter++}`;
-  return page.evaluate(MEASURE_FN, CANVAS, src);
+  const src = `${baseUrl}/${relPath}?m=${Date.now()}-${measureCounter++}`;
+  return page.evaluate(MEASURE_FN, [CANVAS, src]);
 }
 
 export function pct(px) {

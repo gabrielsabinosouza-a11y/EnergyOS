@@ -242,27 +242,31 @@ function FramePreview({
   rarity,
   size = 80,
   className = "",
+  frameScale = 1,
 }: {
   imageUrl: string;
   rarity: StoreRarity;
   size?: number;
   className?: string;
+  /** Extra render scale (see FrameAsset.frameScale). */
+  frameScale?: number;
 }) {
   const [errored, setErrored] = useState(false);
   if (!imageUrl || errored) {
     return <DecorationRing rarity={rarity} size={size} />;
   }
+  const renderSize = size * frameScale;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={imageUrl}
-      width={size}
-      height={size}
+      width={renderSize}
+      height={renderSize}
       alt=""
       draggable={false}
       onError={() => setErrored(true)}
       className={`select-none max-w-none ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: renderSize, height: renderSize }}
     />
   );
 }
@@ -374,7 +378,7 @@ function StoreItemCard({
           >
             <BreathingGlow color={c.glow} size={96} />
             <div className="relative z-10 flex items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10" style={{ width: 64, height: 64 }}>
-              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} className="relative" />
+              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} frameScale={FRAME_ASSETS[item.id]?.frameScale} className="relative" />
             </div>
             {justPurchased && (
               <motion.div
@@ -495,8 +499,9 @@ function DecorationModal({
   const isProcessing = processing === item.id;
   const avatarSize = 88;
   const frameAsset = FRAME_ASSETS[item.id];
-  const overscale = frameAsset?.overscale ?? 1.38;
-  const ringSize = Math.round(avatarSize * overscale);
+  const overscale = frameAsset?.overscale ?? 1.55;
+  const frameScale = frameAsset?.frameScale ?? 1;
+  const ringSize = Math.round(avatarSize * overscale * frameScale);
 
   return (
     <Modal onClose={onClose}>
@@ -517,6 +522,7 @@ function DecorationModal({
               imageUrl={item.imageUrl}
               rarity={rarityOf(item.rarity)}
               size={ringSize}
+              frameScale={frameScale}
               className="pointer-events-none absolute select-none z-0"
             />
             <div className="relative z-10 flex items-center justify-center">
@@ -913,7 +919,7 @@ function SeasonalFrameCard({
           >
             <BreathingGlow color={c.glow} size={96} />
             <div className="relative z-10 flex items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10" style={{ width: 64, height: 64 }}>
-              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} className="relative" />
+              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} frameScale={FRAME_ASSETS[item.id]?.frameScale} className="relative" />
             </div>
             {justPurchased && (
               <motion.div
