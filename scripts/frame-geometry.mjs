@@ -8,7 +8,6 @@
  *   - the ring's outer diameter (span of visible pixels on each center line),
  *   - the inner hole diameter (transparent run around the canvas center),
  *   - the center offset of the visible span from the canvas center.
- * All metrics are expressed as a percentage of the canvas width.
  *
  * A tiny in-process static file server serves `public/` so the images are
  * same-origin and canvas reads are not tainted (file:// images taint the
@@ -46,7 +45,7 @@ export const PNG_FRAMES = [
 const MEASURE_PAGE = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>frame measure</title></head><body><img id="f" alt="" style="display:block"></body></html>`;
 
 /**
- * In-page measurement function. Draws `src` (a URL, same-origin) into a
+ * In-page measurement function. Draws `src` (same-origin URL) into a
  * 1024x1024 canvas and reads the alpha channel along the two center lines.
  */
 const MEASURE_FN = `(canvasSize, src) => new Promise((done, fail) => {
@@ -134,8 +133,7 @@ const MEASURE_FN = `(canvasSize, src) => new Promise((done, fail) => {
 const CONTENT_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
 
 /**
- * Tiny static file server rooted at `public/`. Returns the server handle
- * (with a `url` and `close()`).
+ * Tiny static file server rooted at `public/`. Returns `{ server, url, close }`.
  */
 export async function startPublicServer(dir = PUBLIC_DIR) {
   const dirAbs = resolve(dir);
@@ -147,6 +145,11 @@ export async function startPublicServer(dir = PUBLIC_DIR) {
         res.end(MEASURE_PAGE);
         return;
       }
+      if (url === "/favicon.ico") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
       const path = normalize(join(dirAbs, url));
       const rel = relative(dirAbs, path);
       if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
@@ -154,13 +157,21 @@ export async function startPublicServer(dir = PUBLIC_DIR) {
         res.end();
         return;
       }
-      const file = createReadStream(path);
-      file.on("error", () => {
+      let st;
+      try {
+        st = statSync(path);
+      } catch {
         res.writeHead(404);
         res.end();
-      });
-      res.writeHead(200, { "Content-Type": CONTENT_TYPES[extname(path)] ?? "application/octet-stream" });
-      file.pipe(res);
+        return;
+      }
+      if (!st.isFile()) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": CONTENT_TYPES[extname(path)] ?? "application/octet-stream", "Content-Length": st.size });
+      createReadStream(path).pipe(res);
     } catch {
       res.writeHead(500);
       res.end();
@@ -173,16 +184,12 @@ export async function startPublicServer(dir = PUBLIC_DIR) {
       resolveReady();
     });
   });
-  const address = server.address();
-  return { server, url: `http://127.0.0.1:${address.port}/` };
+  return { server, url: `http://127.0.0.1:${server.address().port}/` };
 }
 
 let measureCounter = 0;
 
-/**
- * Rasterizes `relPath` (relative to `public/`) to a 1024x1024 canvas in
- * Chromium and returns the raw (display-canvas) metrics.
- */
+/** Rasterizes `relPath` (relative to `public/`) to a 1024x1024 canvas and returns raw px metrics. */
 export async function measureFrame(page, baseUrl, relPath) {
   const src = `${baseUrl}${relPath}?m=${Date.now()}-${measureCounter++}`;
   return page.evaluate(MEASURE_FN, CANVAS, src);
@@ -198,7 +205,7 @@ export function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-/** Convert raw display-canvas metrics to percentages of the canvas width. */
+/** Convert raw display-canvas metrics (px) to percentages of the canvas width. */
 export function displayPercentages(r) {
   const b = r.bbox;
   return {
@@ -221,92 +228,93 @@ export function displayPercentages(r) {
 }
 
 /**
- * Reference geometry from the SVG frames: median of the per-frame
- * outer-diameter and inner-hole-diameter means, and of the center offsets.
+ * Reference geometry from SVG-frame measurements (displayPercentages rows):
+ * medians of outer diameter, inner hole diameter and center offsets.
  */
-export function referenceGeometry(svgResults) {
-  const outer = svgResults.map((r) => (r.outerH + r.outerV) / 2);
-  const hole = svgResults.map((r) => (r.holeH + r.holeV) / 2);
-  const offX = svgResults.map((r) => r.offX);
-  const offY = svgResults.map((r) => r.offY);
-  return {
-    outerDiameterPx: median(outer),
-    innerHoleDiameterPx: median(hole),
-    centerOffsetXpx: median(offX),
-    centerOffsetYpx: median(offY),
-    outerDiameter: pct(median(outer)),
-    innerHoleDiameter: pct(median(hole)),
-    centerOffsetX: pct(median(offX)),
-    centerOffsetY: pct(median(offY)),
+export function referencePercentages(svgRows) {
+  const ref = {
+    outerDiameter: median(svgRows.map((r) => r.outerDiameter)),
+    innerHoleDiameter: median(svgRows.map((r) => r.innerHoleDiameter)),
+    centerOffsetX: median(svgRows.map((r) => r.offX)),
+    centerOffsetY: median(svgRows.map((r) => r.offY)),
+    outerH: median(svgRows.map((r) => r.outerH)),
+    outerV: median(svgRows.map((r) => r.outerV)),
+    holeH: median(svgRows.map((r) => r.holeH)),
+    holeV: median(svgRows.map((r) => r.holeV)),
   };
+  if (svgRows.some((r) => r.bbox)) {
+    ref.bbox = {
+      left: median(svgRows.map((r) => r.bbox.left)),
+      right: median(svgRows.map((r) => r.bbox.right)),
+      width: median(svgRows.map((r) => r.bbox.width)),
+      top: median(svgRows.map((r) => r.bbox.top)),
+      bottom: median(svgRows.map((r) => r.bbox.bottom)),
+      height: median(svgRows.map((r) => r.bbox.height)),
+    };
+  }
+  return ref;
 }
 
 export function frameNameFromPath(relPath) {
   return relPath.split("/").pop().replace(/\.(svg|png)$/, "");
 }
 
+const COLUMNS = [
+  { header: "frame", key: "name", get: (r) => r.name },
+  { header: "natural", key: "natural", get: (r) => r.display.natural ? `${r.display.natural.width}x${r.display.natural.height}` : "—" },
+  { header: "bboxL%", key: "bboxL", get: (r) => r.display.bbox?.left ?? "—" },
+  { header: "bboxR%", key: "bboxR", get: (r) => r.display.bbox?.right ?? "—" },
+  { header: "bboxW%", key: "bboxW", get: (r) => r.display.bbox?.width ?? "—" },
+  { header: "bboxT%", key: "bboxT", get: (r) => r.display.bbox?.top ?? "—" },
+  { header: "bboxB%", key: "bboxB", get: (r) => r.display.bbox?.bottom ?? "—" },
+  { header: "bboxH%", key: "bboxH", get: (r) => r.display.bbox?.height ?? "—" },
+  { header: "outerH%", key: "outerH", get: (r) => r.display.outerH },
+  { header: "outerV%", key: "outerV", get: (r) => r.display.outerV },
+  { header: "holeH%", key: "holeH", get: (r) => r.display.holeH },
+  { header: "holeV%", key: "holeV", get: (r) => r.display.holeV },
+  { header: "offX%", key: "offX", get: (r) => r.display.offX },
+  { header: "offY%", key: "offY", get: (r) => r.display.offY },
+];
+
 function padRight(str, width) {
   const s = String(str);
   return s + " ".repeat(Math.max(0, width - s.length));
 }
 
-function padLeft(str, width) {
-  const s = String(str);
-  return " ".repeat(Math.max(0, width - s.length)) + s;
-}
-
-/** Render a simple aligned table; `rows` is an array of { name, display }. */
+/** Render a table of `{ name, display }` rows; optionally append the reference row. */
 export function printTable(rows, ref) {
-  const cols = [
-    ["frame", (r) => r.name],
-    ["natural", (r) => r.display.natural ? `${r.display.natural.width}x${r.display.natural.height}` : "—"],
-    ["bboxL%", (r) => r.display.bbox ? r.display.bbox.left : "—"],
-    ["bboxR%", (r) => r.display.bbox ? r.display.bbox.right : "—"],
-    ["bboxW%", (r) => r.display.bbox ? r.display.bbox.width : "—"],
-    ["bboxT%", (r) => r.display.bbox ? r.display.bbox.top : "—"],
-    ["bboxB%", (r) => r.display.bbox ? r.display.bbox.bottom : "—"],
-    ["bboxH%", (r) => r.display.bbox ? r.display.bbox.height : "—"],
-    ["outerH%", (r) => r.display.outerH],
-    ["outerV%", (r) => r.display.outerV],
-    ["holeH%", (r) => r.display.holeH],
-    ["holeV%", (r) => r.display.holeV],
-    ["offX%", (r) => r.display.offX],
-    ["offY%", (r) => r.display.offY],
-  ];
-  const widths = cols.map(([header]) => [header, ...rows.map((r) => String(cols[cols.indexOf([header])].at(1)(r) ?? "").length)].reduce((a, b) => Math.max(a, b.length), header.length));
-  const headerLine = cols.map(([header], i) => padRight(header, widths[i])).join("  ");
-  console.log(headerLine);
-  console.log("-".repeat(headerLine.length));
-  for (const row of rows) {
-    console.log(cols.map(([, get], i) => padRight(get(row), widths[i])).join("  "));
-  }
+  const widths = COLUMNS.map((col) => Math.max(col.header.length, ...rows.map((r) => String(col.get(r)).length)));
+  const line = (values) => values.map((v, i) => padRight(String(v), widths[i])).join("  ");
+  const header = line(COLUMNS.map((c) => c.header));
+  console.log(header);
+  console.log("-".repeat(header.length));
+  for (const row of rows) console.log(line(COLUMNS.map((c) => c.get(row))));
   if (ref) {
-    const line = cols
-      .map(([header], i) => {
-        const key = ["frame", "natural", "bboxL%", "bboxR%", "bboxW%", "bboxT%", "bboxB%", "bboxH%", "outerH%", "outerV%", "holeH%", "holeV%", "offX%", "offY%"][i];
-        if (key === "frame") return padRight("REFERENCE (median of SVG)", widths[i]);
-        if (key === "natural") return padRight("—", widths[i]);
-        if (key === "bboxL%") return padRight(ref.bbox ? ref.bbox.left : "—", widths[i]);
-        if (key === "bboxR%") return padRight(ref.bbox ? ref.bbox.right : "—", widths[i]);
-        if (key === "bboxW%") return padRight(ref.bbox ? ref.bbox.width : "—", widths[i]);
-        if (key === "bboxT%") return padRight(ref.bbox ? ref.bbox.top : "—", widths[i]);
-        if (key === "bboxB%") return padRight(ref.bbox ? ref.bbox.bottom : "—", widths[i]);
-        if (key === "bboxH%") return padRight(ref.bbox ? ref.bbox.height : "—", widths[i]);
-        if (key === "outerH%") return padRight(ref.outerH, widths[i]);
-        if (key === "outerV%") return padRight(ref.outerV, widths[i]);
-        if (key === "holeH%") return padRight(ref.innerHoleH === undefined ? ref.holeH : ref.holeH, widths[i]);
-        if (key === "holeV%") return padRight(ref.holeV, widths[i]);
-        if (key === "offX%") return padRight(ref.centerOffsetX, widths[i]);
-        if (key === "offY%") return padRight(ref.centerOffsetY, widths[i]);
-        return padRight("", widths[i]);
-      })
-      .join("  ");
-    console.log("-".repeat(line.length));
-    console.log(line);
+    console.log("-".repeat(header.length));
+    const refRow = COLUMNS.map((col) => {
+      switch (col.key) {
+        case "name": return "REFERENCE (median of SVG)";
+        case "natural": return "—";
+        case "bboxL": return ref.bbox?.left ?? "—";
+        case "bboxR": return ref.bbox?.right ?? "—";
+        case "bboxW": return ref.bbox?.width ?? "—";
+        case "bboxT": return ref.bbox?.top ?? "—";
+        case "bboxB": return ref.bbox?.bottom ?? "—";
+        case "bboxH": return ref.bbox?.height ?? "—";
+        case "outerH": return ref.outerH;
+        case "outerV": return ref.outerV;
+        case "holeH": return ref.holeH;
+        case "holeV": return ref.holeV;
+        case "offX": return ref.centerOffsetX;
+        case "offY": return ref.centerOffsetY;
+        default: return "";
+      }
+    });
+    console.log(line(refRow));
   }
 }
 
-/** Launch Chromium and prepare a page bound to the static server. */
+/** Launch Chromium and return `{ browser, page }` bound to the static server. */
 export async function launchMeasurePage(baseUrl) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: CANVAS, height: CANVAS } });

@@ -7,73 +7,58 @@
  *   3. re-centers the ring on the canvas,
  *   4. scales the ring so its OUTER diameter matches the SVG reference outer
  *      diameter (measured in scripts/frames-measure.mjs),
- *   5. keeps decorations inside the canvas with a margin (shrinks slightly if
- *      they would overflow),
+ *   5. keeps the scaled content inside the canvas with a margin (shrinks
+ *      slightly if it would overflow),
  *   6. re-exports a 1024x1024 transparent PNG and re-measures it with the
  *      Chromium measurement used by scripts/frames-verify.mjs.
  *
  * Writes the updated "after" geometry into scripts/.frames-geometry.json and
- * prints a per-frame report (e.g. when a ring ends up too thick for its hole
- * — those are left as-is for manual decision, never shrunk).
+ * prints a per-frame report. Rings whose inner hole ends up smaller than the
+ * reference hole are REPORTED (the user decides — never shrunk silently).
  *
  * Usage: node scripts/frames-normalize.mjs [--only frame_xmas_candy_cane,...]
  *        node scripts/frames-normalize.mjs --dry-run
  */
 import sharp from "sharp";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { measure, ROOT, CANVAS, FRAMES } from "./frames-measure.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GEOMETRY_JSON = join(ROOT, "scripts/.frames-geometry.json");
-const BACKUP_DIR = "public/assets/seasons/christmas/frames/_originals";
+const BACKUP_DIR = join(ROOT, "public/assets/seasons/christmas/frames/_originals");
 const TOL = 12;
 const MARGIN = 6; // safety margin to canvas edge for decorations
 
 function basename(p) { return p.split("/").pop(); }
-
-function argValues(flag) {
+function argValue(flag) {
   const idx = process.argv.indexOf(flag);
   return idx >= 0 ? process.argv[idx + 1] : null;
 }
 
-function parseOnly() {
-  const v = argValues("--only");
-  return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : null;
-}
-
 async function normalizePng(rel, refOuterDiameterPct) {
   const srcPath = join(ROOT, "public", rel);
-  const backupDir = join(ROOT, BACKUP_DIR);
-  mkdirSync(backupDir, { recursive: true });
-  copyFileSync(srcPath, join(backupDir, basename(srcPath)));
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  const backupPath = join(BACKUP_DIR, basename(srcPath));
+  if (!existsSync(backupPath)) copyFileSync(srcPath, backupPath);
 
   const raw = readFileSync(srcPath);
-  const { data, info } = await sharp(raw)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+
+  // 1. Trim: alpha bbox of the ring (consistent with the measure script).
+  const alpha = await sharp(raw).extractChannel("alpha").raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = alpha;
   const W = info.width, H = info.height;
-
   let minX = W, minY = H, maxX = -1, maxY = -1;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (data[y * W + x] > TOL) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (data[y * W + x] > TOL) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
   }
-  if (maxX < 0) return { note: "no visible pixels", bbox: null };
-
+  if (maxX < 0) return { note: "no visible pixels" };
   const bw = maxX - minX + 1, bh = maxY - minY + 1;
-  const targetOuterPx = (refOuterDiameterPct / 100) * CANVAS;
-  const scale = targetOuterPx / Math.max(bw, bh);
 
-  // Recenter the scaled content: its bbox center must sit at canvas center.
+  // 2. Scale so the ring's outer diameter matches the reference.
+  const scale = (refOuterDiameterPct / 100) * CANVAS / Math.max(bw, bh);
   let effScale = scale;
   let sw, sh, destX, destY;
   for (let guard = 0; guard < 50; guard++) {
@@ -87,80 +72,74 @@ async function normalizePng(rel, refOuterDiameterPct) {
     effScale -= 0.01;
   }
 
-  const cropped = await sharp(raw)
+  // 3. Crop + resize with sharp (keeps alpha).
+  const resized = await sharp(raw)
     .extract({ left: minX, top: minY, width: bw, height: bh })
     .resize(sw, sh, { fit: "fill", kernel: "lanczos3" })
-    .raw()
+    .png()
     .toBuffer();
 
-  if (process.env.DEBUG_FRAMES_NORMALIZE) {
-    console.error("[dbg]", rel, JSON.stringify({ bw, bh, minX, minY, scale, sw, sh, destX, destY, croppedLen: cropped.length, expected: sw * sh * 4 }));
-  }
-
-  const canvasBuf = Buffer.alloc(CANVAS * CANVAS * 4, 0);
-  const rowBytes = sw * 4;
-  for (let y = 0; y < sh; y++) {
-    cropped.copy(canvasBuf, ((destY + y) * CANVAS + destX) * 4, y * rowBytes, y * rowBytes + rowBytes);
-  }
-  if (process.env.DEBUG_FRAMES_NORMALIZE) {
-    const b = canvasBuf;
-    let cMinX = CANVAS, cMinY = CANVAS, cMaxX = -1, cMaxY = -1;
-    for (let y = 0; y < CANVAS; y++) for (let x = 0; x < CANVAS; x++) if (b[(y * CANVAS + x) * 4 + 3] > 12) { cMinX = Math.min(cMinX, x); cMaxX = Math.max(cMaxX, x); cMinY = Math.min(cMinY, y); cMaxY = Math.max(cMaxY, y); }
-    console.error("[dbg-canvas]", rel, "bbox:", cMinX, cMinY, cMaxX, cMaxY);
-  }
-  await sharp(canvasBuf, { raw: { width: CANVAS, height: CANVAS, channels: 4 } })
+  // 4. Composite centered on a transparent canvas (safe against clipping).
+  const canvas = Buffer.alloc(CANVAS * CANVAS * 4, 0);
+  await sharp(canvas, { raw: { width: CANVAS, height: CANVAS, channels: 4 } })
+    .composite([{ input: resized, top: destY, left: destX }])
     .png()
     .toFile(srcPath);
 
   return {
-    bbox: { left: minX, top: minY, width: bw, height: bh },
-    scale,
+    scale: effScale,
     scaled: { width: sw, height: sh },
     offset: { x: destX, y: destY },
   };
 }
 
 async function main() {
-  const only = parseOnly();
-  const dry = argValues("--dry-run") !== null;
+  const only = argValue("--only");
+  const dry = argValue("--dry-run") !== null;
   const geo = JSON.parse(readFileSync(GEOMETRY_JSON, "utf8"));
   const ref = geo.svg.reference;
 
   for (const [name, rel] of Object.entries(FRAMES.png)) {
-    if (only && !only.includes(name)) continue;
-    const before = geo.png.frames[name]?.before ?? geo.png.frames[name] ?? null;
+    if (only && !only.split(",").map((s) => s.trim()).filter(Boolean).includes(name)) continue;
+    const prev = geo.png.frames[name] ?? null;
+    const before = prev?.before ?? prev;
     if (dry) {
-      console.log(`[dry] ${name}: would normalize ${rel} to outer ${ref.outerDiameterPct}% (before: ${before?.outerDiameterPct}%)`);
+      console.log(`[dry] ${name}: would normalize ${rel} to outer ${ref.outerDiameterPct}% (before: ${before?.outerDiameterPct ?? "?"}%)`);
       continue;
     }
+
     const res = await normalizePng(rel, ref.outerDiameterPct);
-    const entry = geo.png.frames[name] ??= {};
-    if (before) entry.before = before;
+
     const browser = await import("playwright-core").then((m) => m.chromium.launch({ headless: true }));
     const page = await browser.newPage({ viewport: { width: CANVAS, height: CANVAS } });
     const after = await measure(page, rel);
     await browser.close();
-    entry.after = {
+
+    const afterPct = {
       outerDiameterPct: Number(((after.outerDiameter / CANVAS) * 100).toFixed(2)),
       innerHoleDiameterPct: Number(((after.innerHoleDiameter / CANVAS) * 100).toFixed(2)),
       centerOffsetX: after.offX,
       centerOffsetY: after.offY,
     };
-    entry.report = [];
-    if (Math.abs(entry.after.outerDiameterPct - ref.outerDiameterPct) > 0.5) {
-      entry.report.push(`outer ${entry.after.outerDiameterPct}% != reference ${ref.outerDiameterPct}%`);
+    const report = [];
+    if (Math.abs(afterPct.outerDiameterPct - ref.outerDiameterPct) > 0.5) {
+      report.push(`outer ${afterPct.outerDiameterPct}% != reference ${ref.outerDiameterPct}%`);
     }
-    const holeAfter = entry.after.innerHoleDiameterPct;
-    const holeRef = ref.innerHoleDiameterPct;
-    if (holeAfter < holeRef - 0.5) {
-      entry.report.push(`ring too thick: inner hole after ${holeAfter}% < reference ${holeRef}%`);
+    if (afterPct.innerHoleDiameterPct < ref.innerHoleDiameterPct - 0.5) {
+      report.push(`ring too thick: inner hole after ${afterPct.innerHoleDiameterPct}% < reference ${ref.innerHoleDiameterPct}%`);
     }
-    entry.normalized = { scale: res.scale, scaled: res.scaled, offset: res.offset };
 
+    geo.png.frames[name] = {
+      before,
+      after: afterPct,
+      report,
+      normalized: res?.note ? null : res,
+    };
     console.log(`\n${name} (${rel})`);
-    console.log(`  before: outer=${entry.before?.outerDiameterPct ?? "?"}% hole=${entry.before?.innerHoleDiameterPct ?? "?"}% offset=(${entry.before?.centerOffsetX ?? "?"},${entry.before?.centerOffsetY ?? "?"})`);
-    console.log(`  after : outer=${entry.after.outerDiameterPct}% hole=${entry.after.innerHoleDiameterPct}% offset=(${entry.after.centerOffsetX},${entry.after.centerOffsetY})`);
-    console.log(`  scale=${res.scale.toFixed(4)} scaled=${JSON.stringify(res.scaled)} offset=${JSON.stringify(res.offset)}`);
+    console.log(`  before: outer=${before?.outerDiameterPct ?? "?"}% hole=${before?.innerHoleDiameterPct ?? "?"}% offset=(${before?.centerOffsetX ?? "?"},${before?.centerOffsetY ?? "?"})`);
+    console.log(`  after : outer=${afterPct.outerDiameterPct}% hole=${afterPct.innerHoleDiameterPct}% offset=(${afterPct.centerOffsetX},${afterPct.centerOffsetY})`);
+    console.log(`  scale=${(geo.png.frames[name].normalized?.scale ?? 0).toFixed(4)} scaled=${JSON.stringify(geo.png.frames[name].normalized?.scaled)} offset=${JSON.stringify(geo.png.frames[name].normalized?.offset)}`);
+    if (report.length) console.log(`  REPORT: ${report.join("; ")}`);
   }
   writeFileSync(GEOMETRY_JSON, JSON.stringify(geo, null, 2));
   console.log(`\nwrote ${GEOMETRY_JSON}`);

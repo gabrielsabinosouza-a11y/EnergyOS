@@ -60,28 +60,120 @@
   "png": {
     "frames": {
       "frame_xmas_candy_cane": {
-        "outerDiameterPct": 68.85,
-        "innerHoleDiameterPct": 42.87,
-        "centerOffsetX": -0.5,
-        "centerOffsetY": -1
+        "before": {
+          "outerDiameterPct": 68.85,
+          "innerHoleDiameterPct": 42.87,
+          "centerOffsetX": -0.5,
+          "centerOffsetY": -1
+        },
+        "after": {
+          "outerDiameterPct": 98.05,
+          "innerHoleDiameterPct": 61.23,
+          "centerOffsetX": 0,
+          "centerOffsetY": -0.5
+        },
+        "report": [
+          "outer 98.05% != reference 100%",
+          "ring too thick: inner hole after 61.23% < reference 85.55%"
+        ],
+        "normalized": {
+          "scale": 0.9948662041625371,
+          "scaled": {
+            "width": 1003,
+            "height": 1004
+          },
+          "offset": {
+            "x": 11,
+            "y": 10
+          }
+        }
       },
       "frame_xmas_snowflake": {
-        "outerDiameterPct": 76.27,
-        "innerHoleDiameterPct": 36.91,
-        "centerOffsetX": 0.5,
-        "centerOffsetY": -40
+        "before": {
+          "outerDiameterPct": 76.27,
+          "innerHoleDiameterPct": 36.91,
+          "centerOffsetX": 0.5,
+          "centerOffsetY": -40
+        },
+        "after": {
+          "outerDiameterPct": 94.73,
+          "innerHoleDiameterPct": 45.9,
+          "centerOffsetX": -1,
+          "centerOffsetY": -17.5
+        },
+        "report": [
+          "outer 94.73% != reference 100%",
+          "ring too thick: inner hole after 45.9% < reference 85.55%"
+        ],
+        "normalized": {
+          "scale": 0.9918577075098813,
+          "scaled": {
+            "width": 898,
+            "height": 1004
+          },
+          "offset": {
+            "x": 63,
+            "y": 10
+          }
+        }
       },
       "frame_xmas_holly": {
-        "outerDiameterPct": 70.31,
-        "innerHoleDiameterPct": 42.87,
-        "centerOffsetX": -0.5,
-        "centerOffsetY": 6.5
+        "before": {
+          "outerDiameterPct": 70.31,
+          "innerHoleDiameterPct": 42.87,
+          "centerOffsetX": -0.5,
+          "centerOffsetY": 6.5
+        },
+        "after": {
+          "outerDiameterPct": 91.41,
+          "innerHoleDiameterPct": 54.49,
+          "centerOffsetX": 0.5,
+          "centerOffsetY": -4.5
+        },
+        "report": [
+          "outer 91.41% != reference 100%",
+          "ring too thick: inner hole after 54.49% < reference 85.55%"
+        ],
+        "normalized": {
+          "scale": 0.9938613861386139,
+          "scaled": {
+            "width": 985,
+            "height": 1004
+          },
+          "offset": {
+            "x": 20,
+            "y": 10
+          }
+        }
       },
       "frame_xmas_lights": {
-        "outerDiameterPct": 81.74,
-        "innerHoleDiameterPct": 42.87,
-        "centerOffsetX": -3.5,
-        "centerOffsetY": -29
+        "before": {
+          "outerDiameterPct": 81.74,
+          "innerHoleDiameterPct": 42.87,
+          "centerOffsetX": -3.5,
+          "centerOffsetY": -29
+        },
+        "after": {
+          "outerDiameterPct": 97.85,
+          "innerHoleDiameterPct": 50.98,
+          "centerOffsetX": 0.5,
+          "centerOffsetY": 0.5
+        },
+        "report": [
+          "outer 97.85% != reference 100%",
+          "ring too thick: inner hole after 50.98% < reference 85.55%"
+        ],
+        "normalized": {
+          "scale": 0.9918577075098813,
+          "scaled": {
+            "width": 991,
+            "height": 1004
+          },
+          "offset": {
+            "x": 17,
+            "y": 10
+          }
+        }
       }
     },
     "reference": {
