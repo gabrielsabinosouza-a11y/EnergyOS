@@ -21,7 +21,7 @@ export type EnergyType =
   | "fireworks" | "champagne" | "midnight_clock"
   | "easter_egg" | "bunny" | "easter_basket";
 
-export type AuraRarity = "common" | "uncommon" | "rare" | "epic";
+export type AuraRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 export interface AuraInfo {
   rarity: AuraRarity;
@@ -34,6 +34,7 @@ export const AURA_RARITY_LABELS: Record<AuraRarity, string> = {
   uncommon: "Incomum",
   rare: "Rara",
   epic: "Épica",
+  legendary: "Lendária",
 };
 
 export const AURA_RARITY_COLORS: Record<AuraRarity, { border: string; bg: string; glow: string }> = {
@@ -41,6 +42,7 @@ export const AURA_RARITY_COLORS: Record<AuraRarity, { border: string; bg: string
   uncommon: { border: "#4ade80",   bg: "rgba(74,222,128,0.08)",   glow: "rgba(74,222,128,0.3)" },
   rare:     { border: "#b69cff",   bg: "rgba(182,156,255,0.08)",   glow: "rgba(182,156,255,0.3)" },
   epic:     { border: "#ffd76b",   bg: "rgba(255,215,107,0.08)",   glow: "rgba(255,215,107,0.3)" },
+  legendary:{ border: "#ff9e5e",   bg: "rgba(255,158,94,0.08)",   glow: "rgba(255,158,94,0.3)" },
 };
 
 export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
@@ -60,18 +62,18 @@ export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
   // Seasonal auras — price/label mirror src/config/seasons.ts (single source
   // of truth for names/prices lives there; these entries exist so the
   // Record<EnergyType, …> maps stay exhaustive).
-  jack_o_lantern: { rarity: "epic", price: 2000, label: "Abóbora" },
-  ghost:         { rarity: "epic", price: 2200, label: "Fantasma" },
-  witch_hat:     { rarity: "epic", price: 2500, label: "Chapéu de Bruxa" },
-  santa_hat:     { rarity: "epic", price: 2000, label: "Gorro de Natal" },
-  xmas_wreath:   { rarity: "epic", price: 2200, label: "Coroa de Natal" },
-  xmas_tree:     { rarity: "epic", price: 2500, label: "Árvore de Natal" },
-  fireworks:     { rarity: "epic", price: 2000, label: "Fogos de Artifício" },
-  champagne:     { rarity: "epic", price: 2200, label: "Champanhe" },
-  midnight_clock:{ rarity: "epic", price: 2500, label: "Relógio da Meia-Noite" },
-  easter_egg:    { rarity: "epic", price: 2000, label: "Ovo de Páscoa" },
-  bunny:         { rarity: "epic", price: 2200, label: "Coelhinho" },
-  easter_basket: { rarity: "epic", price: 2500, label: "Cesta de Páscoa" },
+  jack_o_lantern: { rarity: "legendary", price: 2000, label: "Abóbora" },
+  ghost:         { rarity: "legendary", price: 2200, label: "Fantasma" },
+  witch_hat:     { rarity: "legendary", price: 2500, label: "Chapéu de Bruxa" },
+  santa_hat:     { rarity: "legendary", price: 2000, label: "Gorro de Natal" },
+  xmas_wreath:   { rarity: "legendary", price: 2200, label: "Coroa de Natal" },
+  xmas_tree:     { rarity: "legendary", price: 2500, label: "Árvore de Natal" },
+  fireworks:     { rarity: "legendary", price: 2000, label: "Fogos de Artifício" },
+  champagne:     { rarity: "legendary", price: 2200, label: "Champanhe" },
+  midnight_clock:{ rarity: "legendary", price: 2500, label: "Relógio da Meia-Noite" },
+  easter_egg:    { rarity: "legendary", price: 2000, label: "Ovo de Páscoa" },
+  bunny:         { rarity: "legendary", price: 2200, label: "Coelhinho" },
+  easter_basket: { rarity: "legendary", price: 2500, label: "Cesta de Páscoa" },
 };
 
 /** Paleta de tema por energia — usada em anel, botões, glow e acentos. */

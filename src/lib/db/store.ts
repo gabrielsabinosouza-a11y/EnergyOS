@@ -8,6 +8,7 @@ import {
   getSeasonEndDate,
   getSeasonOverride,
   isSeasonPurchasableNow,
+  isSeasonalItemVisible,
   type SeasonId,
 } from "@/config/seasons";
 
@@ -83,7 +84,7 @@ export async function purchaseDecoration(
       NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
     })
   ) {
-    throw new ForbiddenError("Esta decoração só pode ser comprada durante a temporada.");
+    throw new ForbiddenError("Esta edição acabou.");
   }
 
   const client = await pool.connect();
@@ -379,6 +380,8 @@ export interface StoreState {
   banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
   shieldCount: number;
   ownedAuras: string[];
+  /** Seasonal aura ids visible to this user right now (active season + owned). */
+  seasonalAuraIds: string[];
   /** Active season computed on the server clock (null when no season / dev override off). */
   season: { id: SeasonId; name: string; endsAt: string } | null;
 }
@@ -451,12 +454,23 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
   });
   const activeSeason = getActiveSeason(now, override);
+
+  // Visibility rule: out-of-season seasonal items the user does NOT own are
+  // never sent to the client (devtools must not reveal them). Owned seasonal
+  // items stay visible/equippable forever (KEEP_OWNED_SEASONAL_VISIBLE).
+  const visibleItems = items.filter((it) =>
+    isSeasonalItemVisible(it.seasonId as SeasonId | null, it.owned, now, override),
+  );
+  const ownedAuraSet = new Set(auras.rows.map((row) => row.aura_type));
+  const seasonalAuraIds = SEASONAL_AURAS.filter((a) =>
+    isSeasonalItemVisible(a.seasonId, ownedAuraSet.has(a.id), now, override),
+  ).map((a) => a.id);
   const season = activeSeason
     ? { id: activeSeason.id, name: activeSeason.name, endsAt: getSeasonEndDate(activeSeason, now).toISOString() }
     : null;
 
   return {
-    items,
+    items: visibleItems,
     balance: Number(coins.rows[0]?.coins ?? 0),
     banner: {
       hasCustomBanner: profile?.has_custom_banner ?? false,
@@ -465,6 +479,7 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     },
     shieldCount: Number(profile?.streak_shield_count ?? 0),
     ownedAuras: auras.rows.map((row) => row.aura_type),
+    seasonalAuraIds,
     season,
   };
 }
@@ -487,7 +502,7 @@ export async function purchaseAura(
       NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
     })
   ) {
-    throw new ForbiddenError("Esta energia só pode ser comprada durante a temporada.");
+    throw new ForbiddenError("Esta edição acabou.");
   }
   const price = AURA_PRICES[auraType];
   if (price <= 0) throw new ConflictError("Esta energia já está disponível.");

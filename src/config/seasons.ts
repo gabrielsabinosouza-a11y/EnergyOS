@@ -51,8 +51,8 @@ export const SEASONS: readonly SeasonDef[] = [
     name: "Ano Novo",
     startMonth: 1,
     startDay: 1,
-    endMonth: 2,
-    endDay: 5,
+    endMonth: 1,
+    endDay: 31,
     theme: "newyear",
     accent: "#ffd76b",
     greeting: "Feliz Ano Novo",
@@ -238,7 +238,7 @@ const frame = (
   name: string,
   description: string,
   price: number,
-  rarity: "epic" | "legendary" = "epic",
+  rarity: "epic" | "legendary" = "legendary",
 ): SeasonalFrameDef => ({
   id,
   seasonId,
@@ -273,22 +273,22 @@ export const SEASONAL_FRAMES: readonly SeasonalFrameDef[] = [
   frame("halloween", "frame_halloween_cobweb", "Teia de Aranha", "Teias de aranha nos cantos do anel", 3000),
   frame("halloween", "frame_halloween_moon", "Lua Assombrada", "Lua cheia com brilho espectral", 3200),
   frame("halloween", "frame_halloween_bones", "Ossos", "Anel feito de ossinhos cruzados", 3300),
-  frame("halloween", "frame_halloween_flame", "Chama Roxa", "Chamas roxas animadas ao redor do avatar", 3500, "legendary"),
+  frame("halloween", "frame_halloween_flame", "Chama Roxa", "Chamas roxas animadas ao redor do avatar", 3500),
   // Christmas
   frame("christmas", "frame_xmas_candy_cane", "Bengala Doce", "Anel de bengalas doces vermelho e branco", 3000),
   frame("christmas", "frame_xmas_snowflake", "Flocos de Neve", "Flocos de neve crystalline no anel", 3200),
   frame("christmas", "frame_xmas_holly", "Azevinho", "Folhas de azevinho com bagas vermelhas", 3300),
-  frame("christmas", "frame_xmas_lights", "Pisca-Pisca", "Luzes douradas de Natal piscando no anel", 3500, "legendary"),
+  frame("christmas", "frame_xmas_lights", "Pisca-Pisca", "Luzes douradas de Natal piscando no anel", 3500),
   // New Year
   frame("newyear", "frame_newyear_confetti", "Confete Dourado", "Confetes dourados caindo no anel", 3000),
   frame("newyear", "frame_newyear_neon", "Neon Ano Novo", "Anel neon estilo festa de ano novo", 3200),
   frame("newyear", "frame_newyear_sparkler", "Estrelinha", "Vela de estrelinha brilhando", 3300),
-  frame("newyear", "frame_newyear_countdown", "Contagem Regressiva", "Números regressivos marcando a virada", 3500, "legendary"),
+  frame("newyear", "frame_newyear_countdown", "Contagem Regressiva", "Números regressivos marcando a virada", 3500),
   // Easter
   frame("easter", "frame_easter_flowers", "Coroa de Flores", "Coroa de flores primaveris", 3000),
   frame("easter", "frame_easter_eggs", "Ovos Pastel", "Ovos de páscoa em tons pastel", 3200),
   frame("easter", "frame_easter_ears", "Orelhas de Coelho", "Orelhas de coelho sobre o avatar", 3300),
-  frame("easter", "frame_easter_butterflies", "Borboletas", "Borboletas e vinhas primaveris animadas", 3500, "legendary"),
+  frame("easter", "frame_easter_butterflies", "Borboletas", "Borboletas e vinhas primaveris animadas", 3500),
 ] as const;
 
 const SEASONAL_AURA_BY_ID = new Map(SEASONAL_AURAS.map((a) => [a.id, a]));
@@ -314,4 +314,73 @@ export const SEASONAL_AURA_IDS = SEASONAL_AURAS.map((a) => a.id) as string[];
 
 export function isSeasonalAuraId(id: string): boolean {
   return SEASONAL_AURA_BY_ID.has(id);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Seasonal item visibility                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * When true, seasonal items the user already owns stay visible/equippable
+ * forever, even outside their season window. Flip to false to hide owned
+ * seasonal items too when the season is over.
+ */
+export const KEEP_OWNED_SEASONAL_VISIBLE = true;
+
+/**
+ * Whether a seasonal item may be shown to the user right now:
+ * - its season is ACTIVE → visible to everyone (purchasable);
+ * - otherwise → visible only to owners (when KEEP_OWNED_SEASONAL_VISIBLE).
+ * Out-of-season unowned items must be hidden completely — never rendered as
+ * locked, greyed out, or with a "volta em" hint.
+ */
+export function isSeasonalItemVisible(
+  seasonId: SeasonId | null | undefined,
+  owned: boolean,
+  now: Date = new Date(),
+  override?: SeasonId | null,
+): boolean {
+  if (!seasonId) return true; // not seasonal
+  const active = getActiveSeason(now, override ?? undefined);
+  if (active?.id === seasonId) return true;
+  return KEEP_OWNED_SEASONAL_VISIBLE && owned;
+}
+
+/** Milliseconds until the next season boundary (window start or end). */
+export function nextSeasonBoundaryMs(now: Date = new Date()): number {
+  const year = Number(spDateKey(now).split("-")[0]);
+  let next = Number.POSITIVE_INFINITY;
+  for (const s of SEASONS) {
+    for (const y of [year, year + 1]) {
+      const w = seasonWindowForYear(s, y);
+      if (w.end.getTime() >= now.getTime()) {
+        next = Math.min(next, w.end.getTime() + 1 - now.getTime());
+      }
+      if (w.start.getTime() > now.getTime()) {
+        next = Math.min(next, w.start.getTime() - now.getTime());
+      }
+    }
+  }
+  return Number.isFinite(next) ? next : 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Dev-only simulated "now" for testing season switches live:
+ * `?now=2026-12-31T23:59:50` (ISO date/datetime). Ignored in production.
+ * Affects client-side season resolution only — server enforcement and the
+ * store countdown keep using the real clock.
+ */
+export function getDevNow(
+  env: Record<string, string | undefined> = {},
+  search?: string,
+): Date | null {
+  if (env.NODE_ENV === "production") return null;
+  const raw = search
+    ? new URLSearchParams(search).get("now")
+    : typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("now")
+      : null;
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? new Date(t) : null;
 }

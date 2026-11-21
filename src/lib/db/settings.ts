@@ -2,6 +2,8 @@ import type { Pool, PoolClient } from "pg";
 import pool from "../db";
 import type { UserSettings } from "@/types";
 import { ensureProfile } from "./profiles";
+import { ensureDefaultAuras, getOwnedAuras } from "./store";
+import { ForbiddenError } from "../errors";
 import { ValidationError, parseBoolean, parseEnum, parseOptionalTime, parseProfileId } from "./validation";
 import { ENERGY_TYPES } from "@/lib/energy-assets";
 
@@ -148,6 +150,15 @@ export async function setLastSelectedAura(profileId: string, auraType: string | 
     throw new ValidationError("Energia inválida.");
   }
   await ensureProfile(profileId);
+  if (auraType !== null) {
+    // Equip requires ownership — a seasonal aura stays equippable forever once
+    // owned, but it can never be equipped without a user_auras row.
+    await ensureDefaultAuras(profileId);
+    const owned = await getOwnedAuras(profileId);
+    if (!owned.includes(auraType)) {
+      throw new ForbiddenError("Você não possui esta energia.");
+    }
+  }
   const result = await pool.query<SettingsRow>(
     `insert into user_settings (profile_id, last_selected_aura)
      values ($1, $2)
