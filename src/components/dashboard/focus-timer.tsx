@@ -18,7 +18,14 @@ import { focusCoinsForDuration } from "@/lib/daily-limits";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { AuraStageImage, StageBurst } from "@/components/aura-stage-image";
-import { RewardClaimModal } from "@/components/reward-claim-modal";
+import { SessionCelebration } from "@/components/dashboard/session-celebration";
+import {
+  claimPendingCelebration,
+  clearPendingCelebration,
+  markCelebrationPending,
+  type PendingCelebration,
+} from "@/lib/celebration";
+import { formatDurationPt } from "@/lib/design-tokens";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
 import { getGrowthStage, sessionTreeAuraId, type TimerGrowthStage } from "@/lib/focus-growth";
 import { preloadAuraStageImages } from "@/lib/aura-images";
@@ -126,7 +133,7 @@ interface FocusTimerProps {
   history: FocusSession[];
   boostActive: boolean;
   onStart: (targetDurationMinutes: number, taskId: number | undefined, energyType: string) => Promise<{ session: FocusSession }>;
-  onEnd: (sessionId: number, focusedSeconds: number, pausedCount?: number, endReason?: FocusSessionEndReason) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number }>;
+  onEnd: (sessionId: number, focusedSeconds: number, pausedCount?: number, endReason?: FocusSessionEndReason) => Promise<{ session: FocusSession; xpAwarded: number; coinsAwarded: number; streak?: { previousStreak: number; currentStreak: number } | null }>;
   onCancel: (sessionId: number) => Promise<void>;
   onPause: (sessionId: number) => Promise<void>;
   onResume: (sessionId: number) => Promise<void>;
@@ -211,10 +218,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
   const [duration, setDuration] = useState(FOCUS_DURATION_DEFAULT_MINUTES);
   const [state, setState] = useState<TimerState>("idle");
   const [remaining, setRemaining] = useState(FOCUS_DURATION_DEFAULT_MINUTES * 60);
-  const [lastCoins, setLastCoins] = useState(0);
-  const [showComplete, setShowComplete] = useState(false);
-  const [rewardModal, setRewardModal] = useState<{ coins: number; xp: number } | null>(null);
-  const [rewardCount, setRewardCount] = useState(1);
+  const [celebration, setCelebration] = useState<PendingCelebration | null>(null);
   const [isExtinguished, setIsExtinguished] = useState(false);
   const [selectedEnergy, setSelectedEnergy] = useState<EnergyType>("flame");
   const [showPicker, setShowPicker] = useState(false);
@@ -373,12 +377,15 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
           try {
             const focusedSeconds = durationMinutes * 60;
             const result = await onEnd(sessionId, focusedSeconds, pausedCountRef.current, "completed");
-            
-            setLastCoins(result.coinsAwarded);
-            setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
-            const reward = getEnergyReward(durationMinutes);
-            setRewardCount(reward);
-            setShowComplete(true);
+            presentCelebration({
+              sessionId,
+              coins: result.coinsAwarded,
+              xp: result.xpAwarded,
+              durationMinutes,
+              streakPrevious: result.streak?.previousStreak,
+              streakCurrent: result.streak?.currentStreak,
+              auraId: growthAuraRef.current,
+            });
 
             // Multi-layered alerting for a session that ended out of view
             completedRef.current = true;
@@ -635,12 +642,15 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
 
     try {
       const result = await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "completed");
-      setLastCoins(result.coinsAwarded);
-      setRewardModal({ coins: result.coinsAwarded, xp: result.xpAwarded });
-
-      const reward = getEnergyReward(focusedMinutes);
-      setRewardCount(reward);
-      setShowComplete(true);
+      presentCelebration({
+        sessionId: sess.id,
+        coins: result.coinsAwarded,
+        xp: result.xpAwarded,
+        durationMinutes: focusedMinutes,
+        streakPrevious: result.streak?.previousStreak,
+        streakCurrent: result.streak?.currentStreak,
+        auraId: growthAuraRef.current,
+      });
 
       // Multi-layered alerting — the chime plays regardless of tab focus; the
       // native notification + tab-title flash only apply to out-of-view ends.
