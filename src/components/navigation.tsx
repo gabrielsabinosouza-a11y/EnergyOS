@@ -91,7 +91,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
             <Link
               key={route}
               href={route}
-              className={`nav-item relative ${isActive ? "active" : ""}`}
+              className={`nav-item group relative ${isActive ? "active" : ""}`}
             >
               {isActive && (
                 <motion.span
@@ -116,7 +116,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
                   alt=""
                   width={30}
                   height={30}
-                  className="shrink-0 object-contain"
+                  className="shrink-0 object-contain transition-transform duration-200 group-hover:scale-110"
                 />
                 <span>{label}</span>
                 {showBadge && badge === "season" ? (

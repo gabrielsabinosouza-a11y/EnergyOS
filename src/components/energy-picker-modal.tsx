@@ -180,7 +180,7 @@ export function EnergyPickerModal({
                   className="grid gap-3"
                   style={{ gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))" }}
                 >
-                  {types.map((type) => {
+                  {types.map((type, cardIndex) => {
                     const cfg = ENERGY_CONFIGS[type];
                     const isOwned = ownedAuras.has(type);
                     const isSelected = type === current;
@@ -193,10 +193,13 @@ export function EnergyPickerModal({
                       ? Math.max(1, Math.ceil((seasonEndsAt.getTime() - Date.now()) / 86_400_000))
                       : null;
                     return (
-                      <button
+                      <motion.button
                         key={type}
                         type="button"
                         onClick={() => handleAuraClick(type)}
+                        initial={reduced ? false : { opacity: 0, y: 10, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: "spring", stiffness: 380, damping: 26, delay: reduced ? 0 : cardIndex * 0.045 }}
                         title={
                           isOwned
                             ? cfg.label
@@ -266,7 +269,7 @@ export function EnergyPickerModal({
                             <Lock size={9} className="text-[var(--text-muted)]" />
                           </span>
                         )}
-                      </button>
+                      </motion.button>
                     );
                   })}
                 </div>

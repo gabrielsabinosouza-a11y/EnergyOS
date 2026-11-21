@@ -30,7 +30,7 @@ export const CELEBRATION = {
 /** Number of coin sprites to fly for a reward of `coins` coins. */
 export function celebrationCoinCount(coins: number): number {
   if (coins <= 0) return 0;
-  const scaled = Math.ceil(coins / 15);
+  const scaled = Math.ceil(coins / 10);
   return Math.max(CELEBRATION.minFlyingCoins, Math.min(CELEBRATION.maxFlyingCoins, scaled));
 }
 
@@ -93,6 +93,12 @@ export function claimPendingCelebration(
     if (!raw) return null;
     const data = JSON.parse(raw) as PendingCelebration;
     if (typeof data.sessionId !== "number") {
+      store.removeItem(PENDING_KEY);
+      return null;
+    }
+    // Already celebrated this session (e.g. flag rewritten after a reload
+    // race) — consume it without showing again.
+    if (store.getItem(seenKey(data.sessionId))) {
       store.removeItem(PENDING_KEY);
       return null;
     }

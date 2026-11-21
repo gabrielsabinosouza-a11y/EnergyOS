@@ -389,7 +389,7 @@ export function FocusDurationReadout({
       >
         {active ? formatCountdownMmSs(remainingSeconds ?? 0) : Math.round(minutes)}
       </span>
-      <span className="text-[11px] text-[var(--text-faint)] tracking-widest uppercase">
+      <span className="mt-1.5 inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
         {active ? (paused ? pausedLabel : runningLabel) : idleLabel}
       </span>
     </div>

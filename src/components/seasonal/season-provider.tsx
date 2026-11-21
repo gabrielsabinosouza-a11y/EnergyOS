@@ -144,7 +144,9 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
 
   return (
     <SeasonContext.Provider value={value}>
-      {children}
+      {/* Content sits above the particle layer so snow/confetti never render
+          on top of text or cards. The layer itself is pointer-events:none. */}
+      <div className="relative z-[2]">{children}</div>
       <SeasonalDecorations />
     </SeasonContext.Provider>
   );

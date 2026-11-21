@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Timer, Bell } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
-import { XpIcon } from "@/components/xp-icon";
 import type { FocusSession } from "@/types";
 import { CircularDurationPicker, FocusDurationReadout } from "./circular-duration-picker";
 import {
@@ -26,7 +25,8 @@ import {
   type PendingCelebration,
 } from "@/lib/celebration";
 import { formatDurationPt } from "@/lib/design-tokens";
-import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { ENERGY_CONFIGS, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
 import { getGrowthStage, sessionTreeAuraId, type TimerGrowthStage } from "@/lib/focus-growth";
 import { preloadAuraStageImages } from "@/lib/aura-images";
 import { api } from "@/lib/api-client";
@@ -152,16 +152,21 @@ function CountdownRing({ progress, size, isPaused, accentColor }: {
   const circumference = 2 * Math.PI * radius;
   const arcLength = (progress / 100) * circumference;
   const color = isPaused ? "#ffb86b" : accentColor;
+  // Bright head dot at the arc tip.
+  const headAngle = ((progress / 100) * 360 - 90) * (Math.PI / 180);
+  const headX = cx + radius * Math.cos(headAngle);
+  const headY = cy + radius * Math.sin(headAngle);
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: "100%", height: "auto", display: "block" }}>
       <defs>
         <filter id="countdown-glow">
-          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feGaussianBlur stdDeviation="4" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
-      <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth={8} opacity={0.35} />
+      {/* Higher-contrast track so the ring reads as a progress instrument. */}
+      <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-strong)" strokeWidth={8} opacity={0.6} />
       <circle
         cx={cx} cy={cy} r={radius} fill="none"
         stroke={color} strokeWidth={8} strokeLinecap="round"
@@ -169,52 +174,19 @@ function CountdownRing({ progress, size, isPaused, accentColor }: {
         transform={`rotate(-90 ${cx} ${cy})`}
         style={{ filter: "url(#countdown-glow)", transition: "stroke-dasharray 1s linear, stroke 0.3s" }}
       />
+      {progress > 0.5 && progress < 99.5 && (
+        <g filter="url(#countdown-glow)">
+          <circle cx={headX} cy={headY} r={9} fill={color} opacity={0.3} />
+          <circle cx={headX} cy={headY} r={4.5} fill="#ffffff" />
+        </g>
+      )}
     </svg>
-  );
-}
-
-// ─── Completion banner ────────────────────────────────────────────────────────
-
-function CompletionBanner({ coins, rewardCount, energyLabel, accentColor, boostActive, onClaim }: {
-  coins: number; rewardCount: number; energyLabel: string; accentColor: string; boostActive: boolean; onClaim: () => void;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -12, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 340, damping: 24 }}
-      className="mt-4 rounded-2xl border p-4 flex flex-col items-center gap-3 text-center"
-      style={{ borderColor: `${accentColor}33`, background: `${accentColor}0f` }}
-    >
-      <span className="text-xs uppercase tracking-widest text-[var(--text-faint)]">Sessão concluída!</span>
-      <div className="flex items-center gap-2">
-        <CoinIcon size={18} />
-        <span className="font-mono font-bold text-[#ffb86b] text-lg">+{coins} moedas</span>
-        {boostActive && (
-          <span className="flex items-center gap-1 rounded-full border border-[#b69cff]/40 bg-[#b69cff]/10 px-2 py-0.5 text-[10px] font-bold text-[#b69cff]">
-            <XpIcon size={10} variant="double" /> 2x XP
-          </span>
-        )}
-        {rewardCount > 1 && (
-          <span className="text-xs text-[var(--text-muted)]">· {rewardCount}× {energyLabel}</span>
-        )}
-      </div>
-      <motion.button
-        whileTap={{ scale: 0.94 }}
-        onClick={onClaim}
-        className="rounded-full px-6 py-2 text-sm font-bold text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
-        style={{ background: accentColor }}
-      >
-        Resgatar moedas
-      </motion.button>
-    </motion.div>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, onCancel, onPause, onResume }: FocusTimerProps) {
+export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPause, onResume }: FocusTimerProps) {
   const [duration, setDuration] = useState(FOCUS_DURATION_DEFAULT_MINUTES);
   const [state, setState] = useState<TimerState>("idle");
   const [remaining, setRemaining] = useState(FOCUS_DURATION_DEFAULT_MINUTES * 60);
@@ -535,7 +507,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
         ? "PAUSADO"
         : "EM ANDAMENTO";
   const cfg = ENERGY_CONFIGS[selectedEnergy];
-  const imageSize = Math.round(RING_SIZE * 0.58);
+  // Aura occupies ~56% of the ring diameter, centered inside it.
+  const imageSize = Math.round(RING_SIZE * 0.56);
   // Visual tree stage during the session: begin → mid → full. After a give-up
   // the dead tree stays visible while idle (die), otherwise idle previews full.
   const visualStage: TimerGrowthStage | "die" = isActive
@@ -630,6 +603,46 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       intervalRef.current = null;
     }
   }
+
+  /**
+   * Reward was already granted server-side by onEnd (idempotent). Here we only
+   * present it: persist a "pending celebration" flag so a reload/hidden tab/
+   * second device still sees it once, then claim it immediately when the tab
+   * is visible so it can't be claimed twice.
+   */
+  function presentCelebration(data: Omit<PendingCelebration, "createdAt">) {
+    markCelebrationPending(data);
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      const claimed = claimPendingCelebration();
+      if (claimed) setCelebration(claimed);
+    }
+  }
+
+  // Claim a pending celebration on mount (session completed while the tab was
+  // closed/reloaded) — shown once, then the flag is consumed.
+  useEffect(() => {
+    if (celebration || state !== "idle" || sessionRef.current) return;
+    const pending = claimPendingCelebration();
+    if (pending) setCelebration(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once after mount/restore settles
+  }, [mounted]);
+
+  // Same claim when the tab becomes visible again (completion happened while
+  // the tab was in the background).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible" || celebration || stateRef.current !== "idle" || sessionRef.current) return;
+      const pending = claimPendingCelebration();
+      if (pending) setCelebration(pending);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [celebration]);
+
+  // Cross-tab dedupe is handled inside claimPendingCelebration(): the pending
+  // flag is removed and a per-session "seen" marker is written synchronously,
+  // so a second tab mounting at the same time gets null and shows nothing.
 
   async function completeSession() {
     const sess = sessionRef.current;
@@ -790,6 +803,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
 
     try {
       await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "gave_up");
+      // Give-ups award nothing — make sure no stale celebration flag replays.
+      clearPendingCelebration();
       setIsExtinguished(true);
       setGiveUpNotice("Você consegue mais na próxima.");
       // Shake + crossfade to the dead tree.
@@ -848,7 +863,14 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       </div>
 
       <div className="flex flex-col items-center">
-        {/* Ring */}
+        {celebration ? (
+          <SessionCelebration
+            data={celebration}
+            accentColor={cfg.accent}
+            onDone={() => setCelebration(null)}
+          />
+        ) : (
+        /* Ring */
         <div className="relative mx-auto" style={{ width: RING_SIZE, maxWidth: "100%", aspectRatio: "1 / 1" }}>
           {state === "idle" ? (
             <CircularDurationPicker
@@ -880,7 +902,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
               label={treeCfg.label}
               size={imageSize}
               enterKey={`${visualStage}-${stageEnter}`}
-              style={{ position: "absolute" }}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                marginLeft: -imageSize / 2,
+                marginTop: -imageSize / 2,
+              }}
             />
           ) : (
             <GrowingEnergyIcon
@@ -891,14 +919,14 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
               previewFullStage
               extinguished={isExtinguished}
               dimmed={isExtinguished}
-              showCluster={showComplete && rewardCount > 1}
-              clusterCount={rewardCount}
               onPick={() => setShowPicker(true)}
             />
           )}
           {stageBurst && <StageBurst kind={stageBurst.kind} />}
         </div>
+        )}
 
+        {!celebration && (
         <FocusDurationReadout
           minutes={duration}
           remainingSeconds={remaining}
@@ -907,6 +935,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
           runningLabel={sessionStatusText}
           fontSize={44}
         />
+        )}
 
         {/* Contextual notification prompt — only after a session starts, with an
             in-app explanation BEFORE the actual browser permission request */}
@@ -939,30 +968,17 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
         )}
 
         {/* Coins preview */}
-        {!isActive && !showComplete && (
+        {!isActive && !celebration && (
           <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
             <CoinIcon size={12} />
             <span>{calculateCoins(duration)} moedas se completar</span>
           </div>
         )}
 
-        {/* Completion banner with claim button */}
-        <AnimatePresence>
-          {showComplete && (
-            <CompletionBanner
-              coins={lastCoins}
-              rewardCount={rewardCount}
-              energyLabel={cfg.label}
-              accentColor={cfg.accent}
-              boostActive={boostActive}
-              onClaim={() => setShowComplete(false)}
-            />
-          )}
-        </AnimatePresence>
-
         {/* Action buttons */}
+        {!celebration && (
         <div className="mt-4 flex min-h-11 justify-center gap-2">
-          {state === "idle" && !showComplete && (
+          {state === "idle" && (
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={handleStart}
@@ -1037,6 +1053,31 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
             </>
           )}
         </div>
+        )}
+
+        {/* Dev-only: simulate the completion celebration with fake rewards.
+            Also writes the pending flag, so reloading shows it once — same
+            path a real out-of-view completion takes. */}
+        {process.env.NODE_ENV === "development" && state === "idle" && !celebration && (
+          <div className="mt-3 flex items-center justify-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-wider text-[var(--text-faint)]">dev:</span>
+            {[10, 75, 500].map((coins) => (
+              <button
+                key={coins}
+                onClick={() => presentCelebration({
+                  sessionId: Date.now(),
+                  coins,
+                  xp: Math.round(coins * 0.6),
+                  durationMinutes: duration,
+                  auraId: growthAuraRef.current ?? selectedEnergy,
+                })}
+                className="rounded-full border border-dashed border-[var(--border-subtle)] px-2 py-0.5 text-[9px] font-semibold text-[var(--text-faint)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                +{coins}
+              </button>
+            ))}
+          </div>
+        )}
         {actionError && <p role="alert" className="mt-2 text-center text-xs text-red-300">{actionError}</p>}
         <AnimatePresence>
           {(cancelNotice || giveUpNotice) && (
@@ -1056,41 +1097,57 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       {/* Today stats - responsive grid */}
       <div className="grid grid-cols-2 gap-2 mt-4 sm:mt-6">
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
-          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{Math.floor(todayStats.minutesFocused / 60)}h{todayStats.minutesFocused % 60 > 0 ? ` ${todayStats.minutesFocused % 60}min` : ""}</div>
+          <div className="text-lg font-mono font-bold" style={{ color: cfg.accent, transition: "color 0.4s ease" }}>{formatDurationPt(todayStats.minutesFocused)}</div>
           <div className="text-[10px] text-[var(--text-faint)]">foco hoje</div>
         </div>
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3 text-center">
           <div className="flex items-center justify-center gap-1.5 text-lg font-mono font-bold text-[#ffb86b]">
             <CoinIcon size={15} />
-            {todayStats.coinsEarned}
+            <AnimatedNumber value={todayStats.coinsEarned} />
           </div>
           <div className="text-[10px] text-[var(--text-faint)]">moedas hoje</div>
         </div>
       </div>
 
       {/* Recent sessions */}
-      {history.length > 0 && (
-        <div className="mt-4">
-          <span className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider">Sessões recentes</span>
+      <div className="mt-4">
+        <span className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider">Sessões recentes</span>
+        {history.length > 0 ? (
           <div className="mt-2 space-y-1">
             {history.slice(0, 3).map((s) => (
-              <div key={s.id} className="flex items-center justify-between text-[10px] py-1">
+              <motion.div
+                key={s.id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="flex items-center justify-between text-[10px] py-1"
+              >
                 <span className={s.endReason === "gave_up" ? "text-[var(--text-faint)]" : "text-[var(--text-muted)]"}>
                   {s.endReason === "gave_up" ? "💔 " : ""}
-                  {Math.floor(s.durationMinutes / 60)}h{s.durationMinutes % 60 > 0 ? ` ${s.durationMinutes % 60}min` : ""}
+                  {formatDurationPt(s.durationMinutes)}
                   {s.endReason === "gave_up" ? " · Desistiu" : ""}
                 </span>
                 <span className={`flex items-center gap-1 font-mono ${s.endReason === "gave_up" ? "text-[var(--text-faint)]" : "text-[#ffb86b]"}`}>
                   <CoinIcon size={11} />+{s.endReason === "gave_up" ? 0 : s.xpEarned}
                 </span>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="mt-2 flex items-center gap-2.5 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/60 px-3 py-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-bg)]">
+              <Timer size={14} className="text-[var(--accent)]" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-[var(--text-muted)]">Nenhuma sessão ainda</p>
+              <p className="text-[10px] text-[var(--text-faint)]">Arraste o aro e inicie seu primeiro foco</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Energy picker modal */}
-      <RewardClaimModal reward={rewardModal} onClose={() => setRewardModal(null)} />
 
       <AnimatePresence>
         {showGiveUpConfirm && (
