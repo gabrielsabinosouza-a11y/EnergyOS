@@ -135,8 +135,8 @@ export function OnboardingTour() {
   // Load settings once (source of truth) and show the tour for first-run users.
   useEffect(() => {
     if (forceTour) {
-      setOpen(true);
-      return;
+      const t = window.setTimeout(() => setOpen(true), 0);
+      return () => window.clearTimeout(t);
     }
     if (loading || !user || checkedRef.current) return;
     checkedRef.current = true;

@@ -15,22 +15,35 @@ import Image from "next/image";
 
 const SPARKLE_COUNT = 9;
 
+const LED_COLORS = ["#60a5fa", "#67e8f9", "#a78bfa"];
+const LED_COUNT = 18;
+
+/** Segmented LED ring — addressable-dot look with a chase blink. */
 export function LedRing({ accent, size }: { accent: string; size: number }) {
-  const gradient = `conic-gradient(from 0deg, ${accent}, #67e8f9, #a78bfa, ${accent})`;
+  const palette = LED_COLORS.map((c, i) => (i === 0 ? accent : c));
+  const radius = size / 2 - 6;
   return (
-    <>
-      {/* blurred bloom copy for the LED glow */}
-      <div
-        aria-hidden
-        className="tour-led-bloom"
-        style={{ width: size, height: size, background: gradient } as CSSProperties}
-      />
-      <div
-        aria-hidden
-        className="tour-led-ring"
-        style={{ width: size, height: size, background: gradient } as CSSProperties}
-      />
-    </>
+    <div className="tour-led" style={{ width: size, height: size }} aria-hidden>
+      <div className="tour-led-track" />
+      {Array.from({ length: LED_COUNT }, (_, i) => {
+        const angle = (i / LED_COUNT) * 360;
+        const color = palette[i % palette.length];
+        return (
+          <span
+            key={i}
+            className="tour-led-dot"
+            style={
+              {
+                transform: `rotate(${angle}deg) translateY(${-radius}px)`,
+                background: color,
+                boxShadow: `0 0 5px ${color}, 0 0 10px ${color}66`,
+                animationDelay: `${i * 0.11}s`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -157,7 +170,7 @@ export function TourHeroStage({ src, icon, accent = "#60a5fa", alt = "", static:
             }}
           />
 
-          {/* LED ring + glass pedestal/orb */}
+          {/* LED dot ring + glass pedestal/orb */}
           <div className="tour-stage-led" style={{ width: ledSize, height: ledSize }}>
             <LedRing accent={accent} size={ledSize} />
           </div>
