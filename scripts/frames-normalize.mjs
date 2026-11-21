@@ -31,6 +31,8 @@ const BACKUP_DIR = "public/assets/seasons/christmas/frames/_originals";
 const TOL = 12;
 const MARGIN = 6; // safety margin to canvas edge for decorations
 
+function basename(p) { return p.split("/").pop(); }
+
 function argValues(flag) {
   const idx = process.argv.indexOf(flag);
   return idx >= 0 ? process.argv[idx + 1] : null;
@@ -43,9 +45,9 @@ function parseOnly() {
 
 async function normalizePng(rel, refOuterDiameterPct) {
   const srcPath = join(ROOT, "public", rel);
-  const backupPath = join(ROOT, BACKUP_DIR, rel);
-  mkdirSync(dirname(backupPath), { recursive: true });
-  copyFileSync(srcPath, backupPath);
+  const backupDir = join(ROOT, BACKUP_DIR);
+  mkdirSync(backupDir, { recursive: true });
+  copyFileSync(srcPath, join(backupDir, basename(srcPath)));
 
   const raw = readFileSync(srcPath);
   const { data, info } = await sharp(raw)
@@ -91,10 +93,20 @@ async function normalizePng(rel, refOuterDiameterPct) {
     .raw()
     .toBuffer();
 
+  if (process.env.DEBUG_FRAMES_NORMALIZE) {
+    console.error("[dbg]", rel, JSON.stringify({ bw, bh, minX, minY, scale, sw, sh, destX, destY, croppedLen: cropped.length, expected: sw * sh * 4 }));
+  }
+
   const canvasBuf = Buffer.alloc(CANVAS * CANVAS * 4, 0);
   const rowBytes = sw * 4;
   for (let y = 0; y < sh; y++) {
     cropped.copy(canvasBuf, ((destY + y) * CANVAS + destX) * 4, y * rowBytes, y * rowBytes + rowBytes);
+  }
+  if (process.env.DEBUG_FRAMES_NORMALIZE) {
+    const b = canvasBuf;
+    let cMinX = CANVAS, cMinY = CANVAS, cMaxX = -1, cMaxY = -1;
+    for (let y = 0; y < CANVAS; y++) for (let x = 0; x < CANVAS; x++) if (b[(y * CANVAS + x) * 4 + 3] > 12) { cMinX = Math.min(cMinX, x); cMaxX = Math.max(cMaxX, x); cMinY = Math.min(cMinY, y); cMaxY = Math.max(cMaxY, y); }
+    console.error("[dbg-canvas]", rel, "bbox:", cMinX, cMinY, cMaxX, cMaxY);
   }
   await sharp(canvasBuf, { raw: { width: CANVAS, height: CANVAS, channels: 4 } })
     .png()
