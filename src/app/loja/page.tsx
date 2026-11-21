@@ -499,7 +499,7 @@ function DecorationModal({
   const isProcessing = processing === item.id;
   const avatarSize = 88;
   const frameAsset = FRAME_ASSETS[item.id];
-  const overscale = frameAsset?.overscale ?? 1.55;
+  const overscale = frameAsset?.overscale ?? 1.15;
   const frameScale = frameAsset?.frameScale ?? 1;
   const ringSize = Math.round(avatarSize * overscale * frameScale);
 

@@ -1063,30 +1063,6 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
           )}
         </div>
         )}
-
-        {/* Dev-only: simulate the completion celebration with fake rewards.
-            Also writes the pending flag, so reloading shows it once — same
-            path a real out-of-view completion takes. */}
-        {process.env.NODE_ENV === "development" && state === "idle" && !celebration && (
-          <div className="mt-3 flex items-center justify-center gap-1.5">
-            <span className="text-[9px] uppercase tracking-wider text-[var(--text-faint)]">dev:</span>
-            {[10, 75, 500].map((coins) => (
-              <button
-                key={coins}
-                onClick={() => presentCelebration({
-                  sessionId: Date.now(),
-                  coins,
-                  xp: Math.round(coins * 0.6),
-                  durationMinutes: duration,
-                  auraId: growthAuraRef.current ?? selectedEnergy,
-                })}
-                className="rounded-full border border-dashed border-[var(--border-subtle)] px-2 py-0.5 text-[9px] font-semibold text-[var(--text-faint)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-              >
-                +{coins}
-              </button>
-            ))}
-          </div>
-        )}
         {actionError && <p role="alert" className="mt-2 text-center text-xs text-red-300">{actionError}</p>}
         <AnimatePresence>
           {(cancelNotice || giveUpNotice) && (

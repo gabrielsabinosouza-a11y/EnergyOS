@@ -24,20 +24,23 @@ export interface FrameAsset {
 }
 
 export const FRAME_ASSETS: Record<string, FrameAsset> = {
-  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common", photoScale: 0.90, overscale: 1.32 },
-  frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare", photoScale: 0.90, overscale: 1.32 },
-  frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic", photoScale: 0.90, overscale: 1.28 },
-  frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.38 },
-  frame_nature: { imageUrl: "/decorations/frame_nature.svg", rarity: "common", photoScale:  0.90, overscale: 1.32 },
-  frame_electric: { imageUrl: "/decorations/frame_electric.svg", rarity: "common", photoScale:  0.90, overscale: 1.32 },
-  frame_cosmic: { imageUrl: "/decorations/frame_cosmic.svg", rarity: "epic", photoScale:  0.90, overscale: 1.28 },
-  frame_diamond: { imageUrl: "/decorations/frame_diamond.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.38 },
+  // overscale is tuned so the frame's transparent inner hole (~0.90 of the
+  // canvas for the SVG rings, ~0.85 for the seasonal PNGs) lands just under
+  // the photo circle — the frame hugs the photo instead of floating around it.
+  frame_fire: { imageUrl: "/decorations/frame_fire.svg", rarity: "common", photoScale: 0.90, overscale: 1.10 },
+  frame_crystal: { imageUrl: "/decorations/frame_crystal.svg", rarity: "rare", photoScale: 0.90, overscale: 1.10 },
+  frame_aura: { imageUrl: "/decorations/frame_aura.svg", rarity: "epic", photoScale: 0.90, overscale: 1.08 },
+  frame_nucleo: { imageUrl: "/decorations/frame_nucleo.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.12 },
+  frame_nature: { imageUrl: "/decorations/frame_nature.svg", rarity: "common", photoScale:  0.90, overscale: 1.10 },
+  frame_electric: { imageUrl: "/decorations/frame_electric.svg", rarity: "common", photoScale:  0.90, overscale: 1.10 },
+  frame_cosmic: { imageUrl: "/decorations/frame_cosmic.svg", rarity: "epic", photoScale:  0.90, overscale: 1.08 },
+  frame_diamond: { imageUrl: "/decorations/frame_diamond.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.12 },
   // Seasonal frames — generated from the shared catalog so DB ids and art
   // paths stay in sync. Missing art falls back to the rarity ring via onError.
   ...Object.fromEntries(
     SEASONAL_FRAMES.map((f) => [
       f.id,
-      { imageUrl: f.imageUrl, rarity: f.rarity, photoScale: 0.9, overscale: f.rarity === "legendary" ? 1.38 : 1.28 },
+      { imageUrl: f.imageUrl, rarity: f.rarity, photoScale: 0.9, overscale: f.rarity === "legendary" ? 1.15 : 1.12 },
     ]),
   ),
 };
@@ -78,11 +81,11 @@ interface AvatarProps {
 
 /**
  * Size/centering for the frame canvas given an avatar box size. The frame is
- * drawn `overscale` (default 1.55x) larger than the avatar box, centered
- * behind the photo, so the decorative borders extend around the profile photo.
+ * drawn `overscale` larger than the avatar box, centered behind the photo,
+ * so the decorative borders wrap snugly around the profile photo.
  */
 export function frameOverscan(size: number, frame?: FrameAsset) {
-  const overscale = (frame?.overscale ?? 1.55) * (frame?.frameScale ?? 1);
+  const overscale = (frame?.overscale ?? 1.15) * (frame?.frameScale ?? 1);
   const frameSize = Math.round(size * overscale);
   return { size: frameSize, offset: Math.round((frameSize - size) / 2) };
 }
