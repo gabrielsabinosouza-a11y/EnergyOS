@@ -117,7 +117,7 @@ function mapFocusRoom(row: FocusRoomRow, participants: RoomParticipant[] = []): 
   };
 }
 
-function mapRoomParticipant(row: RoomParticipantRow, profile?: { id: string; displayName: string; photoUrl?: string }): RoomParticipant {
+function mapRoomParticipant(row: RoomParticipantRow, profile?: { id: string; displayName: string; photoUrl?: string; equippedDecorationId?: string }): RoomParticipant {
   return {
     id: Number(row.id),
     profileId: row.profile_id,
