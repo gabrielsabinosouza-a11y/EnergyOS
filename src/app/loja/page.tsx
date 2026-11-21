@@ -48,7 +48,6 @@ import { useSeason } from "@/components/seasonal/season-provider";
 import {
   SEASONS,
   SEASONAL_AURAS,
-  SEASONAL_FRAMES,
   getNextSeasonStart,
   getSeasonalAura,
   isSeasonalAuraId,
@@ -659,6 +658,8 @@ function SectionHeader({
 /*  Seasonal "Edição Limitada"                                         */
 /* ------------------------------------------------------------------ */
 
+const EMPTY_STORE_ITEMS: StoreItem[] = [];
+
 const SEASONAL_SEEN_KEY = "energyos:seasonal-seen-v1";
 
 function getSeasonalSeen(): Set<string> {
@@ -1074,6 +1075,7 @@ export default function LojaPage() {
         xpBoost: boost.boost,
       });
       if (data.ownedAuras) setOwnedAuras(data.ownedAuras);
+      setSeasonalSeen(getSeasonalSeen());
       const equippedIcon = shieldDesignData?.equipped
         ? shieldDesignData.designs.find((d) => d.id === shieldDesignData.equipped)?.iconUrl ?? null
         : null;
@@ -1088,7 +1090,6 @@ export default function LojaPage() {
   useEffect(() => {
     if (!user) return;
     fetchStore();
-    setSeasonalSeen(getSeasonalSeen());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
 
@@ -1123,7 +1124,7 @@ export default function LojaPage() {
   // Off-season, the section only appears when the user owns items of a season
   // (so they can still equip them) — it then shows that season in
   // "Volta em …" mode with purchases disabled.
-  const storeItems = store?.items ?? [];
+  const storeItems = store?.items ?? EMPTY_STORE_ITEMS;
   const ownedSeasonIds = useMemo(() => {
     const ids = new Set<string>();
     for (const it of storeItems) {
@@ -1147,10 +1148,7 @@ export default function LojaPage() {
 
   // Prefer the server-validated end instant from /api/store; fall back to the
   // client-side season clock (same SP window math, used only for display).
-  const seasonEndsAt = useMemo(() => {
-    if (store?.season?.endsAt) return new Date(store.season.endsAt);
-    return ctxSeasonEndsAt;
-  }, [store?.season?.endsAt, ctxSeasonEndsAt]);
+  const seasonEndsAt = store?.season?.endsAt ? new Date(store.season.endsAt) : ctxSeasonEndsAt;
   const seasonCountdown = useSeasonCountdown(seasonEndsAt);
   const seasonPurchasable =
     !!displaySeason &&

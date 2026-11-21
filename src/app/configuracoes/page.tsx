@@ -259,7 +259,7 @@ export default function ConfiguracoesPage() {
               <ToggleRow
                 label="Temas sazonais"
                 description="Cores, decorações e clima especiais durante datas comemorativas (a loja sempre mostra os itens sazonais)"
-                checked={form.seasonalThemesEnabled}
+                checked={form.seasonalThemesEnabled ?? true}
                 onChange={(v) => setField("seasonalThemesEnabled", v)}
               />
               <div>

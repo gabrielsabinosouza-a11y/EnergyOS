@@ -63,11 +63,15 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
   // re-fetched when the settings page saves.
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      setThemesEnabled(true);
-      return;
-    }
     let active = true;
+    if (!user) {
+      // Logged-out visitors get the default (themes on). Async setState keeps
+      // the effect free of synchronous cascading renders.
+      void Promise.resolve().then(() => {
+        if (active) setThemesEnabled(true);
+      });
+      return () => { active = false; };
+    }
     const load = () => {
       api
         .getSettings()

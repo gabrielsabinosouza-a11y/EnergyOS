@@ -246,7 +246,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
   const elapsedScaleRef = useRef(1);
   const growthAuraRef = useRef<string | null>(null);
   const stageBurstSeqRef = useRef(0);
-  const prevStageRef = useRef<TimerGrowthStage | null>(null);
+  const prevStageRef = useRef<TimerGrowthStage | "die" | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);

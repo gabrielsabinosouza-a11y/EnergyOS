@@ -1564,14 +1564,14 @@ alter table weekly_plans drop column if exists category;
 -- ── User Auras (energia ownership) ────────────────────────────────────────
 create table if not exists user_auras (
   profile_id text not null references profiles(id) on delete cascade,
-  aura_type text not null check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal')),
+  aura_type text not null check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal','jack_o_lantern','ghost','witch_hat','santa_hat','xmas_wreath','xmas_tree','fireworks','champagne','midnight_clock','easter_egg','bunny','easter_basket')),
   unlocked_at timestamptz not null default now(),
   primary key (profile_id, aura_type)
 );
 
 delete from user_auras where aura_type in ('nature','solar');
 alter table user_auras drop constraint if exists user_auras_aura_type_check;
-alter table user_auras add constraint user_auras_aura_type_check check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal'));
+alter table user_auras add constraint user_auras_aura_type_check check (aura_type in ('flame','water','thunder','ice','wind','metal','poison','earth','light','shadow','cosmic','crystal','jack_o_lantern','ghost','witch_hat','santa_hat','xmas_wreath','xmas_tree','fireworks','champagne','midnight_clock','easter_egg','bunny','easter_basket'));
 
 insert into user_auras (profile_id, aura_type)
 select p.id, 'flame' from profiles p
