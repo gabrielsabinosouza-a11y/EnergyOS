@@ -94,7 +94,7 @@ export function CoinBalanceChip() {
             outline: "2px solid rgba(255,184,107,.5)",
             outlineOffset: "2px",
           }}
-          className="relative flex items-center gap-1.5 rounded-full border border-[#ffb86b]/30 bg-[color-mix(in_srgb,var(--bg-surface)_88%,transparent)] px-3 py-1.5 shadow-lg backdrop-blur-md lg:right-5 lg:top-5 pointer-events-auto"
+          className="fixed right-3 top-3 z-40 flex items-center gap-1.5 rounded-full border border-[#ffb86b]/30 bg-[color-mix(in_srgb,var(--bg-surface)_88%,transparent)] px-3 py-1.5 shadow-lg backdrop-blur-md lg:right-5 lg:top-5 pointer-events-auto"
           style={{ boxShadow: pulse > 0 ? "0 0 24px -4px rgba(255,184,107,.55)" : undefined }}
           aria-label="Ir para a loja"
           title="Abrir loja"

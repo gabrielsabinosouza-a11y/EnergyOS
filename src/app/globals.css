@@ -2425,3 +2425,249 @@ html.season-layer-hidden .season-snow { animation-play-state: paused; }
   }
   /* Static decoration remains visible — just not moving. */
 }
+
+/* ==========================================================================
+   Onboarding tour — 3D hero stage, LED ring, glass card, step FX
+   ========================================================================== */
+
+/* Stage: perspective lives on the float wrapper so the tilt child gets depth. */
+.tour-stage {
+  position: relative;
+  height: 190px;
+  margin: 10px auto 14px;
+  max-width: 300px;
+  perspective: 800px;
+}
+.tour-stage-float {
+  position: absolute;
+  inset: 0;
+}
+.tour-stage-tilt {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.tour-stage-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  height: 16px;
+  border-radius: 50%;
+  translate: -50% 0;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--tour-accent, #60a5fa) 45%, transparent), transparent 70%);
+  filter: blur(2px);
+}
+.tour-stage-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.tour-stage-led {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+}
+.tour-led-ring,
+.tour-led-bloom {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: tour-led-spin 5s linear infinite;
+}
+.tour-led-bloom {
+  inset: -10%;
+  filter: blur(12px);
+  opacity: 0.5;
+  animation-duration: 7s;
+  animation-direction: reverse;
+}
+@keyframes tour-led-spin {
+  to { transform: rotate(360deg); }
+}
+.tour-stage-orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  border-radius: 26%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.tour-stage-sparkles-wrap {
+  position: absolute;
+  inset: -24%;
+  pointer-events: none;
+}
+.tour-sparkles {
+  position: absolute;
+  inset: 0;
+}
+.tour-sparkle {
+  position: absolute;
+  border-radius: 50%;
+  animation: tour-sparkle-float ease-in-out infinite alternate;
+}
+@keyframes tour-sparkle-float {
+  from { transform: translate3d(0, 6px, 0) scale(0.7); opacity: 0.25; }
+  to   { transform: translate3d(0, -8px, 0) scale(1.15); opacity: 0.95; }
+}
+
+/* Glass modal card */
+.tour-glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(165deg, rgba(22, 30, 52, 0.72), rgba(10, 14, 26, 0.82));
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 30px 80px -24px rgba(30, 80, 200, 0.4),
+    0 12px 40px -12px rgba(0, 0, 0, 0.6);
+}
+.tour-glass-aurora {
+  position: absolute;
+  inset: -40%;
+  background:
+    radial-gradient(ellipse 45% 40% at 25% 30%, rgba(96, 165, 250, 0.16), transparent 70%),
+    radial-gradient(ellipse 40% 45% at 75% 70%, rgba(167, 139, 250, 0.13), transparent 70%);
+  animation: tour-aurora 14s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes tour-aurora {
+  from { transform: translate3d(-4%, -3%, 0) rotate(-2deg); }
+  to   { transform: translate3d(4%, 3%, 0) rotate(2deg); }
+}
+.tour-glass-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.tour-glass-sweep::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 34%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.08) 50%, transparent);
+  transform: translateX(-130%) skewX(-14deg);
+  animation: tour-sweep 7s ease-in-out infinite;
+}
+@keyframes tour-sweep {
+  0%, 55% { transform: translateX(-130%) skewX(-14deg); }
+  85%, 100% { transform: translateX(340%) skewX(-14deg); }
+}
+.tour-glass-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* Progress dots: active dot stretches into a glowing pill. */
+.tour-dot {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+}
+.tour-dot-active {
+  background: var(--tour-accent, var(--accent));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--tour-accent, var(--accent)) 70%, transparent);
+}
+
+/* Primary "Próximo"/"Começar" button shine + glow pulse. */
+.tour-btn-primary {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--tour-accent, var(--accent)), color-mix(in srgb, var(--tour-accent, var(--accent)) 55%, #a78bfa));
+  color: #08111f;
+  box-shadow: 0 6px 22px -6px color-mix(in srgb, var(--tour-accent, var(--accent)) 65%, transparent);
+}
+.tour-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.4) 50%, transparent 65%);
+  transform: translateX(-130%);
+  transition: transform 0.55s ease;
+}
+.tour-btn-primary:hover::after {
+  transform: translateX(130%);
+}
+.tour-btn-final {
+  animation: tour-final-pulse 1.9s ease-in-out infinite;
+}
+@keyframes tour-final-pulse {
+  0%, 100% { box-shadow: 0 6px 22px -6px rgba(255, 184, 107, 0.55); }
+  50% { box-shadow: 0 6px 34px -4px rgba(255, 184, 107, 0.9); }
+}
+
+/* Secondary buttons: underline grow on hover. */
+.tour-btn-ghost {
+  position: relative;
+}
+.tour-btn-ghost::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.25s var(--ease-out, ease-out), opacity 0.25s;
+}
+.tour-btn-ghost:hover::after {
+  transform: scaleX(1);
+}
+
+/* Close button X spin. */
+.tour-close svg {
+  transition: transform 0.25s var(--ease-out, ease-out);
+}
+.tour-close:hover svg {
+  transform: rotate(90deg);
+}
+
+/* One-shot sparkle burst for the final step. */
+.tour-burst-particle {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: tour-burst 0.9s cubic-bezier(0.15, 0.8, 0.3, 1) forwards;
+}
+@keyframes tour-burst {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--bx)), calc(-50% + var(--by))) scale(0.1); opacity: 0; }
+}
+
+.tour-paused .tour-led-ring,
+.tour-paused .tour-led-bloom,
+.tour-paused .tour-sparkle,
+.tour-paused .tour-glass-aurora,
+.tour-paused .tour-glass-sweep::before {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-led-ring, .tour-led-bloom, .tour-sparkle,
+  .tour-glass-aurora, .tour-glass-sweep::before,
+  .tour-btn-final {
+    animation: none !important;
+  }
+}
