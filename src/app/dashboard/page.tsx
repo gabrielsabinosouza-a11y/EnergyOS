@@ -647,8 +647,32 @@ function DashboardContent() {
   }
 
   async function startFocus(targetDurationMinutes: number, taskId?: number, energyType?: string) {
-    const result = await api.startFocus(targetDurationMinutes, taskId, energyType);
-    return result;
+    // Disable the button during the request to prevent double-click / double-tap
+    setIsStartingFocus(true);
+    try {
+      const result = await api.startFocus(targetDurationMinutes, taskId, energyType);
+      return result;
+    } catch (error: any) {
+      // Handle 409 session conflict - show friendly alert with "Retomar sessão" option
+      if (error.status === 409 && error.body?.session) {
+        const { session } = error.body;
+        // Show the enhanced conflict alert with remaining time
+        showFocusConflictAlertWithSession(Date.now(), {
+          startedAt: session.startedAt,
+          plannedDurationSec: session.plannedDurationSec,
+          remainingSec: session.remainingSec,
+        });
+      } else {
+        // Generic error - show generic message
+        setToast({
+          message: error.message || "Não foi possível iniciar a sessão de foco.",
+          type: "error",
+        });
+      }
+      throw error; // Re-throw so caller can handle UI state
+    } finally {
+      setIsStartingFocus(false);
+    }
   }
 
   async function endFocus(
@@ -937,7 +961,7 @@ function DashboardContent() {
     }
   }
 
-  const displayName = user?.displayName ?? snapshot?.user.displayName ?? "voce";
+  const displayName = user?.displayName ?? snapshot?.user.displayName ?? "você";
 
   if (loading || !user) {
     return (
@@ -1009,7 +1033,7 @@ function DashboardContent() {
               )}
             </div>
 
-            <h2 className="font-display text-lg sm:text-xl text-[var(--text-secondary)] mb-4">Como voce dormiu na noite passada?</h2>
+            <h2 className="font-display text-lg sm:text-xl text-[var(--text-secondary)] mb-4">Como você dormiu na noite passada?</h2>
 
             {/* 2×2 on phones (4-across gets too cramped at 375px), 4-up from lg */}
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 mb-5">

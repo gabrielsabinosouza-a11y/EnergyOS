@@ -165,7 +165,11 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg-primary); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transition: background-color .2s, color .2s; overflow-x: hidden; }
-.theme-bg { background: var(--bg-primary); color: var(--text); }
+/* No background here: body already paints --bg-primary. Keeping this
+   transparent lets the seasonal particle layer (z-index:1, behind the
+   z-[2] content wrapper) stay visible between cards instead of being
+   covered by an opaque full-viewport background. */
+.theme-bg { color: var(--text); }
 .theme-text-secondary { color: var(--text-secondary); }
 .theme-text-muted { color: var(--text-muted); }
 .theme-text-faint { color: var(--text-faint); }
@@ -2060,10 +2064,11 @@ body { overflow-wrap: break-word; }
   opacity: .55;
   border-radius: 10px 10px 0 0;
 }
-/* Twinkling light string across the top of the app */
+/* Twinkling light string across the top of the app — safe-area aware so it
+   never sits under the phone notch/status bar. */
 .season-lights {
   position: absolute;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   height: 14px;
@@ -2132,6 +2137,14 @@ body { overflow-wrap: break-word; }
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 2;
+}
+
+/* Pause every particle animation while the tab is hidden (toggled via the
+   .season-paused class on .season-layer). */
+.season-layer.season-paused .season-particle,
+.season-layer.season-paused .season-lights i,
+.season-layer.season-paused canvas {
+  animation-play-state: paused !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

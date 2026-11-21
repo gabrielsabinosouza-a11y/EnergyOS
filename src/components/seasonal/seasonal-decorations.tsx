@@ -14,7 +14,7 @@ function seeded(seed: number) {
   };
 }
 
-const SNOW_COUNT = 26;
+const SNOW_COUNT = 34; // extras beyond the first 14 are hidden <640px via CSS
 const FLUSH_COUNT = 14;
 const CONFETTI_COUNT = 90;
 const BAT_COUNT = 3;
@@ -39,7 +39,7 @@ function Snowfall() {
       {flakes.map((f) => (
         <span
           key={f.id}
-          className="season-particle season-snow rounded-full bg-white"
+          className={`season-particle season-snow rounded-full bg-white${f.id >= 14 ? " max-sm:hidden" : ""}`}
           style={{
             left: `${f.left}%`,
             top: 0,
@@ -311,12 +311,20 @@ function HalloweenAccents() {
 export function SeasonalDecorations() {
   const { season, isActive, themesEnabled } = useSeason();
   const reduced = useReducedMotion();
+  const [tabHidden, setTabHidden] = useState(false);
+
+  // Pause all particle animations while the tab is hidden.
+  useEffect(() => {
+    const onVis = () => setTabHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   if (!isActive || !themesEnabled || !season) return null;
   const id: SeasonId = season.id;
 
   return (
-    <div className="season-layer" aria-hidden>
+    <div className={`season-layer${tabHidden ? " season-paused" : ""}`} aria-hidden>
       {id === "christmas" && (
         <>
           <LightString />

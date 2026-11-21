@@ -154,10 +154,20 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     // Parse the error body once; reuse for 401 and non-retryable paths.
     const body = (await response.json().catch(() => ({}))) as ApiError;
 
+    if (lastStatus === 409) {
+      // The server returned "session already active". Extract session data
+      // from the response body so the UI can show a friendly alert with
+      // remaining time and "Retomar sessão" button.
+      const sessionData = body.session || body;
+      const message = body.error || "Sessão de foco em andamento";
+      throw createApiRequestError(message, 409, { status: 409, body, session: sessionData });
+    }
+
     if (lastStatus === 401) {
       const message = body.error || "Autenticação necessária";
       throw createApiRequestError(message, 401, body);
     }
+
     if (!isRetryableStatus(lastStatus) || attempt >= MAX_RETRIES) {
   const message =
     body.error ||
