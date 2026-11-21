@@ -20,7 +20,7 @@ import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { AuraStageImage, StageBurst } from "@/components/aura-stage-image";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
-import { getGrowthStage, type TimerGrowthStage } from "@/lib/focus-growth";
+import { getGrowthStage, sessionTreeAuraId, type TimerGrowthStage } from "@/lib/focus-growth";
 import { preloadAuraStageImages } from "@/lib/aura-images";
 import { api } from "@/lib/api-client";
 import {
@@ -44,6 +44,10 @@ type PersistedSessionState = "idle" | "running" | "paused" | "completed";
 interface PersistedSession {
   sessionId: number | null;
   selectedEnergy: EnergyType;
+  /** Aura equipped when the session started — the session's tree. Frozen so
+   *  changing the equipped aura mid-session (or before a reload) never
+   *  rewrites an ongoing session. */
+  sessionAuraId?: string | null;
   durationMinutes: number;
   sessionStartedAt: number | null; // timestamp in ms
   remainingMs: number | null; // remaining ms as of the start of the current run segment (frozen while paused)
@@ -338,7 +342,10 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       if (remainingMs > 0) {
         // Session still in progress - restore it
         sessionRef.current = { id: persisted.sessionId, startedAt: persisted.sessionStartedAt ?? now };
-        growthAuraRef.current = selectedEnergyRef.current;
+        // The tree aura is the one equipped when the session STARTED (stored
+        // server-side on the session and mirrored here), not whatever aura is
+        // equipped now.
+        growthAuraRef.current = persisted.sessionAuraId ?? persisted.selectedEnergy ?? selectedEnergyRef.current;
         preloadAuraStageImages(growthAuraRef.current);
         remainingMsRef.current = remainingMs;
         runningSinceRef.current = persisted.status === "running" ? now : null;
@@ -417,6 +424,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
     const sessionState: PersistedSession = {
       sessionId: sessionRef.current?.id ?? null,
       selectedEnergy: selectedEnergyRef.current,
+      sessionAuraId: growthAuraRef.current,
       durationMinutes: durationRef.current,
       sessionStartedAt: sessionRef.current?.startedAt ?? null,
       remainingMs: remainingMsRef.current,
@@ -526,6 +534,14 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
   const visualStage: TimerGrowthStage | "die" = isActive
     ? growthStage
     : growthStage === "die" ? "die" : "full";
+  // The tree is the aura equipped when the session started (frozen in
+  // growthAuraRef / persisted as sessionAuraId), so swapping the equipped
+  // aura mid-session never changes an ongoing or past session's tree.
+  const treeAuraId = sessionTreeAuraId(
+    isActive || visualStage === "die" ? growthAuraRef.current : null,
+    selectedEnergy,
+  );
+  const treeCfg = ENERGY_CONFIGS[treeAuraId as EnergyType] ?? cfg;
 
   // Wall-clock derived remaining time. The interval is only a render clock —
   // it never decrements a counter, so background-tab throttling/suspension of
@@ -773,6 +789,9 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       noticeTimeoutRef.current = setTimeout(() => {
         setIsExtinguished(false);
         setGiveUpNotice("");
+        // Revert the dead tree to the normal idle preview so the aura picker
+        // (reachable only from the idle preview) works again.
+        setGrowthStage("full");
       }, 3500);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Não foi possível desistir da sessão.");
@@ -845,10 +864,10 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
               shake + die crossfade on give-up; legacy spark/full preview when idle. */}
           {(isActive || visualStage === "die") ? (
             <AuraStageImage
-              auraId={selectedEnergy}
+              auraId={treeAuraId}
               stage={visualStage}
-              cfg={cfg}
-              label={cfg.label}
+              cfg={treeCfg}
+              label={treeCfg.label}
               size={imageSize}
               enterKey={`${visualStage}-${stageEnter}`}
               style={{ position: "absolute" }}

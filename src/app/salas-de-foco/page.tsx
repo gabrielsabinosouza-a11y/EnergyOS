@@ -28,6 +28,7 @@ import { AppShell } from "@/components/app-shell";
 import { CoinIcon } from "@/components/coin-icon";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
+import { AuraStageImage } from "@/components/aura-stage-image";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
@@ -158,7 +159,13 @@ function RoomAvatar({
           className="absolute -bottom-0.5 -right-0.5 bg-[var(--bg-primary)] rounded-full border border-[var(--border-subtle)] flex items-center justify-center"
           style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42), opacity: muted ? 0.5 : 1 }}
         >
-          <Image src={cfg.assets.full} alt={cfg.label} width={Math.round(size * 0.3)} height={Math.round(size * 0.3)} style={{ objectFit: "contain" }} unoptimized />
+          <AuraStageImage
+            auraId={energyType as string}
+            stage="full"
+            cfg={cfg}
+            label={cfg.label}
+            size={Math.round(size * 0.3)}
+          />
         </div>
       )}
       {muted && (
@@ -1085,12 +1092,12 @@ export default function FocusRoomsPage() {
                         {room.code}
                       </span>
                       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                        <Image
-                          src={energyCfg.assets.full}
-                          alt={energyLabel}
-                          width={24}
-                          height={24}
-                          className="h-6 w-6 object-contain"
+                        <AuraStageImage
+                          auraId={room.energyType ?? "flame"}
+                          stage="full"
+                          cfg={energyCfg}
+                          label={energyLabel}
+                          size={24}
                           style={{ filter: `drop-shadow(0 0 8px ${energyCfg.glow})` }}
                         />
                         <p className="text-base font-semibold leading-none text-[var(--text)]">{durationLabel}</p>

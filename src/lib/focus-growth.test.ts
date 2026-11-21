@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { STAGE_MID_THRESHOLD, getGrowthStage } from "./focus-growth";
+import { STAGE_MID_THRESHOLD, getGrowthStage, sessionTreeAuraId } from "./focus-growth";
 
 test("begin covers 0% up to (but not including) 33%", () => {
   assert.equal(STAGE_MID_THRESHOLD, 0.33);
@@ -37,4 +37,15 @@ test("reload: the stage restores from the server-stamped start", () => {
   const startedAt = Date.now() - Math.ceil(total * 0.4); // 40% elapsed before reload
   const elapsedAfterReload = Date.now() - startedAt;
   assert.equal(getGrowthStage(elapsedAfterReload, total), "mid");
+});
+
+test("the tree aura is frozen at session start, not the later equipped aura", () => {
+  // Session started with "earth"; the user equips "flame" afterwards.
+  assert.equal(sessionTreeAuraId("earth", "flame"), "earth");
+  // Seasonal auras are frozen the same way.
+  assert.equal(sessionTreeAuraId("santa_hat", "water"), "santa_hat");
+  // Legacy sessions without a recorded aura fall back to the equipped one.
+  assert.equal(sessionTreeAuraId(null, "flame"), "flame");
+  assert.equal(sessionTreeAuraId(undefined, "ice"), "ice");
+  assert.equal(sessionTreeAuraId("", "ice"), "ice");
 });

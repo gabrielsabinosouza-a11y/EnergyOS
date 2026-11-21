@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo, useState } from "react";
 import { ENERGY_CONFIGS, type EnergyType } from "@/lib/energy-assets";
+import { AuraStageImage } from "@/components/aura-stage-image";
 
 const CAPACITY = 40;
 const START: { slot: number; type: EnergyType; label: string; minutes: number; day: string }[] = [
@@ -31,7 +31,7 @@ export function HowStepGarden() {
       {slots.map(({ index, plant: entry }) => {
         const config = entry ? ENERGY_CONFIGS[entry.type] : null;
         return <button key={index} type="button" className={`garden-demo-slot${entry ? " is-planted" : ""}`} onClick={() => plant(index)} disabled={Boolean(entry) || plants.length >= CAPACITY} aria-label={entry ? `${entry.label} · ${entry.minutes} min · ${entry.day}` : "Plantar uma energia neste espaço"} title={entry ? `${entry.label} · ${entry.minutes} min · ${entry.day}` : "Plantar energia"} style={{ "--plant-glow": config?.glow ?? "transparent" } as React.CSSProperties}>
-          {entry && config ? <Image src={config.assets.full} alt={config.label} width={38} height={38} unoptimized /> : <span aria-hidden="true" />}
+          {entry && config ? <AuraStageImage auraId={entry.type} stage="full" cfg={config} label={config.label} size={38} /> : <span aria-hidden="true" />}
         </button>;
       })}
     </div>

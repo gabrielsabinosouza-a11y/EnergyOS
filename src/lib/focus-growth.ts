@@ -19,3 +19,16 @@ export function getGrowthStage(elapsedMs: number, totalMs: number): TimerGrowthS
   if (elapsed >= totalMs) return "full";
   return elapsed / totalMs >= STAGE_MID_THRESHOLD ? "mid" : "begin";
 }
+
+/**
+ * The aura that grows during a session is the one equipped WHEN THE SESSION
+ * STARTED (stamped server-side on the session), never the aura the user may
+ * have equipped afterwards. Falls back to the currently equipped aura only
+ * when no session aura was recorded (legacy sessions).
+ */
+export function sessionTreeAuraId(
+  sessionAuraId: string | null | undefined,
+  equippedAuraId: string,
+): string {
+  return sessionAuraId && sessionAuraId.length > 0 ? sessionAuraId : equippedAuraId;
+}

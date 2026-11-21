@@ -7,10 +7,21 @@
  * ENERGY_CONFIGS as fallback, so a missing stage image never breaks the app.
  */
 
-import { ENERGY_CONFIGS, type EnergyConfig, type EnergyType } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, type EnergyConfig, type EnergyStage, type EnergyType } from "@/lib/energy-assets";
 import type { TimerGrowthStage } from "@/lib/focus-growth";
 
 export type AuraStageName = TimerGrowthStage | "die";
+
+/** Map the legacy EnergyStage names (spark/forming/full/extinguished) onto
+ *  the {auraId}_{stage}.png naming used by AuraStageImage. */
+export function energyStageToAuraStage(stage: EnergyStage): AuraStageName {
+  switch (stage) {
+    case "spark": return "begin";
+    case "forming": return "mid";
+    case "full": return "full";
+    case "extinguished": return "die";
+  }
+}
 
 interface StageAssetNames {
   /** New-style file name, "{auraId}_{stage}.png". */
@@ -35,8 +46,17 @@ export function auraStageImageCandidates(
   const c = cfg ?? (ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS.flame);
   const { newName, legacyKey } = STAGE_ASSET_NAMES[stage];
   const first = `/energies/${auraId}/${auraId}_${newName}.png`;
-  const fallback = c.assets[legacyKey] || c.assets.full;
-  return fallback && fallback !== first ? [first, fallback] : [first];
+  // Stage art may also live next to the aura's existing asset (e.g. seasonal
+  // auras keep their icons under /assets/seasons/{season}/auras/).
+  const fullAsset = c.assets.full;
+  const variant = fullAsset
+    ? `${fullAsset.slice(0, fullAsset.lastIndexOf("/") + 1)}${auraId}_${newName}.png`
+    : null;
+  const fallback = c.assets[legacyKey] || fullAsset;
+  const out = [first];
+  if (variant && variant !== first) out.push(variant);
+  if (fallback && !out.includes(fallback)) out.push(fallback);
+  return out;
 }
 
 /**

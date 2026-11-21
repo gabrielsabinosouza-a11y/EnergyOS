@@ -1,8 +1,9 @@
 "use client";
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import Image from "next/image";
 import { ENERGY_CONFIGS, type EnergyStage, type EnergyType } from "@/lib/energy-assets";
+import { AuraStageImage } from "@/components/aura-stage-image";
+import { energyStageToAuraStage } from "@/lib/aura-images";
 
 export interface EnergyRingCenterProps {
   energyType: string;
@@ -90,14 +91,12 @@ export function EnergyRingCenter({
                       filter: `drop-shadow(0 0 8px ${cfg.accent})`,
                     }}
                   >
-                    <Image
-                      src={cfg.assets.full}
-                      alt={cfg.label}
-                      width={sz}
-                      height={sz}
-                      style={{ objectFit: "contain" }}
-                      unoptimized
-                      priority
+                    <AuraStageImage
+                      auraId={energyType}
+                      stage="full"
+                      cfg={cfg}
+                      label={cfg.label}
+                      size={sz}
                     />
                   </motion.div>
                 );
@@ -112,14 +111,12 @@ export function EnergyRingCenter({
               transition={transitionConfig}
               className="absolute inset-0 flex items-center justify-center pointer-events-none"
             >
-              <Image
-                src={cfg.assets[stage] || cfg.assets.spark}
-                alt={`${cfg.label} ${stage}`}
-                width={imageSize}
-                height={imageSize}
-                style={{ objectFit: "contain", display: "block" }}
-                unoptimized
-                priority
+              <AuraStageImage
+                auraId={energyType}
+                stage={energyStageToAuraStage(stage)}
+                cfg={cfg}
+                label={`${cfg.label} ${stage}`}
+                size={imageSize}
               />
             </motion.div>
           )}

@@ -3,7 +3,7 @@ import type { FocusSession } from "@/types";
 import { ConflictError, NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE, dayInTz } from "./dates";
-import type { GardenStatus } from "@/lib/energy-assets";
+import { ENERGY_TYPES, type GardenStatus } from "@/lib/energy-assets";
 import {
   CANCEL_LATENCY_TOLERANCE_SECONDS,
   GRACE_PERIOD_SECONDS,
@@ -76,7 +76,8 @@ function timestampMs(value: Date | string): number {
 
 export interface GardenEntry {
   id: number;
-  energyType: GardenEnergyType;
+  /** Aura id planted for the session (any known aura, incl. seasonal). */
+  energyType: string;
   /** Aura equipped when the session started (falls back to energyType for legacy rows). */
   auraId: string;
   durationMinutes: number;
@@ -106,7 +107,7 @@ interface GardenRow {
 function mapGardenRow(row: GardenRow): GardenEntry {
   return {
     id: Number(row.id),
-    energyType: row.energy_type as GardenEnergyType,
+    energyType: row.energy_type,
     auraId: row.aura_id || row.energy_type,
     durationMinutes: Number(row.duration_minutes),
     reward: Number(row.reward),
@@ -295,7 +296,11 @@ export async function startFocusSession(
   if (!Number.isInteger(targetDurationMinutes) || targetDurationMinutes < 1 || targetDurationMinutes > FOCUS_DURATION_MAX_MINUTES) {
     throw new ValidationError("Duração inválida.");
   }
-  const energy = energyType && (GARDEN_ENERGY_TYPES as readonly string[]).includes(energyType) ? energyType : null;
+  // The aura equipped when the session starts is the session's "tree": it is
+  // stamped on the session (energy_type) and planted in the garden, so a later
+  // aura change never rewrites an ongoing or past session. Any known aura —
+  // including seasonal ones — is valid; unknown ids are ignored.
+  const energy = energyType && (ENERGY_TYPES as readonly string[]).includes(energyType) ? energyType : null;
   if (roomId !== undefined) {
     const participant = await pool.query(
       `select 1 from room_participants where room_id = $1 and profile_id = $2`,

@@ -27,3 +27,17 @@ test("fallback is derived from the aura's legacy icon", () => {
   assert.equal(iceDie[0], "/energies/ice/ice_die.png");
   assert.ok(iceDie[1]); // ice only ships a legacy "gave_up" icon — must exist
 });
+
+test("seasonal auras resolve stage images with their event-art fallback", () => {
+  // Seasonal stage art lives under /assets/seasons/... (ENERGY_CONFIGS), not
+  // /energies/{auraId}/ — the candidate list must fall back to it so a
+  // missing {auraId}_{stage}.png never breaks the timer or the garden.
+  for (const auraId of ["santa_hat", "xmas_wreath", "jack_o_lantern", "bunny"]) {
+    for (const stage of STAGES) {
+      const candidates = auraStageImageCandidates(auraId, stage);
+      assert.equal(candidates[0], `/energies/${auraId}/${auraId}_${stage}.png`);
+      assert.ok(candidates.length >= 2, `${auraId} ${stage} must have a fallback`);
+      assert.ok(candidates[1].startsWith("/assets/seasons/"), `${auraId} ${stage} fallback -> ${candidates[1]}`);
+    }
+  }
+});

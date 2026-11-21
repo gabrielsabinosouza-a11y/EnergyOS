@@ -41,6 +41,7 @@ import {
 } from "@/lib/energy-assets";
 import type { StoreItem, DecorationRarity, ActiveXPBoost } from "@/types";
 import { FRAME_ASSETS } from "@/components/avatar";
+import { AuraStageImage } from "@/components/aura-stage-image";
 import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS, isXpBoostActive } from "@/lib/xp-boost";
 import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
 import { formatRemaining } from "@/components/xp-boost/xp-boost-indicator";
@@ -784,15 +785,13 @@ function SeasonalAuraCard({
 
           <div className="relative flex h-16 w-16 items-center justify-center">
             <BreathingGlow color={c.glow} size={72} />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={def.imageUrl}
-              alt={def.name}
-              className="relative h-14 w-14 object-contain"
-              style={{ opacity: seasonActive ? 1 : 0.45 }}
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
+            <AuraStageImage
+              auraId={auraId}
+              stage="full"
+              cfg={ENERGY_CONFIGS[auraId as EnergyType]}
+              label={def.name}
+              size={56}
+              style={{ opacity: seasonActive ? 1 : 0.45, position: "relative" }}
             />
             {justPurchased && (
               <motion.div
@@ -1881,13 +1880,13 @@ export default function LojaPage() {
                       >
                         <div className="relative flex h-16 w-16 items-center justify-center">
                           <BreathingGlow color={storedRarity.glow} size={72} />
-                          <Image
-                            src={ENERGY_CONFIGS[type].assets.full}
-                            alt={info.label}
-                            width={60}
-                            height={60}
-                            style={{ objectFit: "contain", opacity: isOwned ? 1 : 0.35, position: "relative" }}
-                            unoptimized
+                          <AuraStageImage
+                            auraId={type}
+                            stage="full"
+                            cfg={ENERGY_CONFIGS[type]}
+                            label={info.label}
+                            size={56}
+                            style={{ opacity: isOwned ? 1 : 0.35, position: "relative" }}
                           />
                           {!isOwned && (
                             <div className="absolute inset-0 flex items-center justify-center">

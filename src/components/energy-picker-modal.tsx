@@ -15,6 +15,7 @@ import {
   type AuraRarity,
   type EnergyType,
 } from "@/lib/energy-assets";
+import { AuraStageImage } from "@/components/aura-stage-image";
 
 interface EnergyPickerModalProps {
   current: string;
@@ -195,17 +196,16 @@ export function EnergyPickerModal({
                           </span>
                         )}
 
-                        <Image
-                          src={cfg.assets.full}
-                          alt={cfg.label}
-                          width={48}
-                          height={48}
+                        <AuraStageImage
+                          auraId={type}
+                          stage="full"
+                          cfg={cfg}
+                          label={cfg.label}
+                          size={48}
                           style={{
-                            objectFit: "contain",
                             opacity: isOwned ? 1 : 0.5,
                             filter: isOwned ? undefined : "grayscale(0.9) brightness(0.7)",
                           }}
-                          unoptimized
                         />
 
                         <span

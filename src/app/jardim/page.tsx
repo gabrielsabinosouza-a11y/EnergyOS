@@ -466,7 +466,7 @@ export default function JardimPage() {
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 {periodEntries.map((entry) => {
                   const auraId = entry.auraId || entry.energyType;
-                  const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[entry.energyType];
+                  const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[entry.energyType as EnergyType];
                   if (!cfg) {
                     if (process.env.NODE_ENV !== "production") {
                       throw new Error(`Unknown garden energy type: ${auraId}`);
@@ -593,7 +593,7 @@ export default function JardimPage() {
                 >
                   {(() => {
                     const auraId = selectedEntry.auraId || selectedEntry.energyType;
-                    const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[selectedEntry.energyType];
+                    const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[selectedEntry.energyType as EnergyType];
                     if (!cfg) {
                       if (process.env.NODE_ENV !== "production") {
                         throw new Error(`Unknown garden energy type: ${auraId}`);
