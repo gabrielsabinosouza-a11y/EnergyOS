@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { ENERGY_TYPES } from "./energy-assets";
 import { auraStageImageCandidates } from "./aura-images";
 import type { TimerGrowthStage } from "./focus-growth";
@@ -26,6 +28,14 @@ test("fallback is derived from the aura's legacy icon", () => {
   const iceDie = auraStageImageCandidates("ice", "die");
   assert.equal(iceDie[0], "/energies/ice/ice_die.png");
   assert.ok(iceDie[1]); // ice only ships a legacy "gave_up" icon — must exist
+});
+
+test("seasonal auras resolve stage images under /assets/seasons/", () => {
+  // santa_hat is a Christmas seasonal aura — its stage art ships next to the
+  // aura's existing asset under /assets/seasons/christmas/auras/.
+  const candidates = auraStageImageCandidates("santa_hat", "full");
+  assert.ok(candidates.includes("/assets/seasons/christmas/auras/santa_hat_full.png"));
+  assert.ok(candidates.some((c) => existsSync(join(process.cwd(), "public", c))));
 });
 
 test("seasonal auras resolve stage images with their event-art fallback", () => {
