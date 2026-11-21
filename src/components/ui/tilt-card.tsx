@@ -57,14 +57,14 @@ export function TiltCard({
   style?: CSSProperties;
   enabled?: boolean;
 }) {
-  const tilt = useTilt<HTMLDivElement>(enabled);
+  const { ref, style: tiltStyle, onMouseMove, onMouseLeave } = useTilt<HTMLDivElement>(enabled);
   return (
     <div
-      ref={tilt.ref}
+      ref={ref}
       className={className}
-      style={{ ...style, ...tilt.style, transformStyle: "preserve-3d" }}
-      onMouseMove={tilt.onMouseMove}
-      onMouseLeave={tilt.onMouseLeave}
+      style={{ ...style, ...tiltStyle, transformStyle: "preserve-3d" }}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
     >
       {children}
     </div>

@@ -236,6 +236,12 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
   // Dev-only timer speed (see readTimerSpeedMultiplier).
   useEffect(() => { elapsedScaleRef.current = readTimerSpeedMultiplier(); }, []);
 
+  // Preload the coin sprite once so the collect animation never flickers.
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = "/coin/coins.png";
+  }, []);
+
   // Stage transitions: small burst at mid, big celebration at completion/full.
   useEffect(() => {
     const prev = prevStageRef.current;
@@ -619,11 +625,16 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
   }
 
   // Claim a pending celebration on mount (session completed while the tab was
-  // closed/reloaded) — shown once, then the flag is consumed.
+  // closed/reloaded) — shown once, then the flag is consumed. Deferred a tick
+  // so session restore settles first and to avoid a synchronous setState in
+  // the effect body.
   useEffect(() => {
-    if (celebration || state !== "idle" || sessionRef.current) return;
-    const pending = claimPendingCelebration();
-    if (pending) setCelebration(pending);
+    const t = setTimeout(() => {
+      if (celebration || stateRef.current !== "idle" || sessionRef.current) return;
+      const pending = claimPendingCelebration();
+      if (pending) setCelebration(pending);
+    }, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once after mount/restore settles
   }, [mounted]);
 
@@ -637,7 +648,6 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [celebration]);
 
   // Cross-tab dedupe is handled inside claimPendingCelebration(): the pending
@@ -711,8 +721,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
       runningSinceRef.current = Date.now();
       remainingRef.current = totalSec;
       setRemaining(totalSec);
-      setLastCoins(0);
-      setShowComplete(false);
+      setCelebration(null);
       setIsExtinguished(false);
       setPromptDismissed(false);
 

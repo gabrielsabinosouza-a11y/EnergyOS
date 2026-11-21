@@ -41,7 +41,6 @@ export function AnimatedNumber({
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- EASE cubic is fixed
   }, [value, duration, reduced]);
 
   return <span className={className}>{format(display)}</span>;

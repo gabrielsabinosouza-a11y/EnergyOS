@@ -57,7 +57,7 @@ export function SessionCelebration({
   const reduced = useReducedMotion() ?? false;
   const [phase, setPhase] = useState<Phase>("finish");
   const [coins, setCoins] = useState<FlyingCoin[]>([]);
-  const [landed, setLanded] = useState(0);
+  const landedRef = useRef(0);
   const collectBtnRef = useRef<HTMLButtonElement | null>(null);
   const doneRef = useRef(false);
   const safetyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,34 +198,32 @@ export function SessionCelebration({
       oy: originY,
     }));
     setCoins(list);
-    setLanded(0);
+    landedRef.current = 0;
     setPhase("collecting");
   }
 
-  /** Called when each coin lands: pulse the chip + step the balance up. */
-  const onCoinLand = useCallback((index: number) => {
-    setLanded((prev) => {
-      const next = prev + 1;
-      const end = endBalanceRef.current;
-      const start = startBalanceRef.current;
-      if (end !== null) {
-        if (next >= coinTotal) {
-          publishCoinBalance(end); // land EXACTLY on the server balance
-        } else if (start !== null) {
-          publishCoinBalance(Math.round(start + (end - start) * (next / coinTotal)));
-        }
-      }
+  /** Called when each coin lands: step the balance up, land exactly on the
+      server value with the last coin. */
+  const onCoinLand = useCallback(() => {
+    landedRef.current += 1;
+    const next = landedRef.current;
+    const end = endBalanceRef.current;
+    const start = startBalanceRef.current;
+    if (end !== null) {
       if (next >= coinTotal) {
-        // All coins landed — settle into done after a short beat.
-        setTimeout(() => {
-          publishFinalBalance();
-          setPhase("done");
-          setTimeout(finish, reduced ? 0 : DUR.slow * 1000);
-        }, 250);
+        publishCoinBalance(end); // land EXACTLY on the server balance
+      } else if (start !== null) {
+        publishCoinBalance(Math.round(start + (end - start) * (next / coinTotal)));
       }
-      return next;
-    });
-    void index;
+    }
+    if (next >= coinTotal) {
+      // All coins landed — settle into done after a short beat.
+      setTimeout(() => {
+        publishFinalBalance();
+        setPhase("done");
+        setTimeout(finish, reduced ? 0 : DUR.slow * 1000);
+      }, 250);
+    }
   }, [coinTotal, finish, reduced]);
 
   const announcement = useMemo(
@@ -468,7 +466,6 @@ export function SessionCelebration({
               key={coin.id}
               coin={coin}
               index={i}
-              reduced={reduced}
               onLand={onCoinLand}
             />
           ))}
@@ -481,13 +478,11 @@ export function SessionCelebration({
 function FlyingCoinSprite({
   coin,
   index,
-  reduced,
   onLand,
 }: {
   coin: FlyingCoin;
   index: number;
-  reduced: boolean;
-  onLand: (index: number) => void;
+  onLand: () => void;
 }) {
   const landedRef = useRef(false);
   const delay = index * CELEBRATION.staggerMs / 1000;
@@ -516,7 +511,7 @@ function FlyingCoinSprite({
       onAnimationComplete={() => {
         if (landedRef.current) return;
         landedRef.current = true;
-        onLand(index);
+        onLand();
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- animated sprite, next/image can't tween transforms cheaply */}
