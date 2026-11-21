@@ -40,7 +40,15 @@ export const FRAME_ASSETS: Record<string, FrameAsset> = {
   ...Object.fromEntries(
     SEASONAL_FRAMES.map((f) => [
       f.id,
-      { imageUrl: f.imageUrl, rarity: f.rarity, photoScale: 0.9, overscale: f.rarity === "legendary" ? 1.15 : 1.12 },
+      {
+        imageUrl: f.imageUrl,
+        rarity: f.rarity,
+        photoScale: 0.9,
+        // New Year frame PNGs are chunky rings whose art only fills the middle
+        // ~62% of the canvas (vs ~95% for Christmas), so they need a larger
+        // overscale to land at the same visual size around the photo.
+        overscale: f.seasonId === "newyear" ? 1.5 : f.rarity === "legendary" ? 1.15 : 1.12,
+      },
     ]),
   ),
 };
