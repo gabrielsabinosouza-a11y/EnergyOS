@@ -28,6 +28,7 @@ const defaultSettings: SettingsForm = {
   reminderCheckinEnabled: false,
   reminderFocusEnabled: true,
   reminderSleepEnabled: false,
+  seasonalThemesEnabled: true,
 };
 
 export default function ConfiguracoesPage() {
@@ -75,6 +76,7 @@ export default function ConfiguracoesPage() {
         reminderCheckinEnabled: s.reminderCheckinEnabled ?? false,
         reminderFocusEnabled: s.reminderFocusEnabled ?? false,
         reminderSleepEnabled: s.reminderSleepEnabled ?? false,
+        seasonalThemesEnabled: s.seasonalThemesEnabled ?? true,
       };
       savedRef.current = loaded;
       setForm(loaded);
@@ -136,6 +138,7 @@ export default function ConfiguracoesPage() {
         reminderCheckinEnabled: form.reminderCheckinEnabled,
         reminderFocusEnabled: form.reminderFocusEnabled,
         reminderSleepEnabled: form.reminderSleepEnabled,
+        seasonalThemesEnabled: form.seasonalThemesEnabled,
       });
       savedRef.current = { ...form };
       setSaveSuccess(true);
@@ -252,6 +255,12 @@ export default function ConfiguracoesPage() {
                 description="Tocar um som suave quando sua sessão de foco terminar"
                 checked={form.soundNotificationsEnabled}
                 onChange={(v) => setField("soundNotificationsEnabled", v)}
+              />
+              <ToggleRow
+                label="Temas sazonais"
+                description="Cores, decorações e clima especiais durante datas comemorativas (a loja sempre mostra os itens sazonais)"
+                checked={form.seasonalThemesEnabled}
+                onChange={(v) => setField("seasonalThemesEnabled", v)}
               />
               <div>
                 <div className="text-sm font-medium mb-2">Tema da interface</div>

@@ -1878,3 +1878,236 @@ body { overflow-wrap: break-word; }
   .planner-glass-modal .glass-chip:hover,
   .planner-glass-modal .glass-cta:hover { transform: none; }
 }
+
+/* ==========================================================================
+   Seasonal events — palettes + decorations
+   Activated via [data-season] on <html> (set by SeasonProvider). Palettes
+   only override the dark base; the light theme keeps its own variables.
+   All decoration layers are pointer-events:none and capped in count.
+   ========================================================================== */
+
+/* ── Christmas: red / pine green / gold on dark ─────────────────────────── */
+[data-season="christmas"][data-theme="dark"] {
+  --bg-primary: #0b1512;
+  --bg-secondary: rgba(15, 30, 24, .8);
+  --bg-surface: rgba(15, 30, 24, .8);
+  --bg-tertiary: rgba(255, 255, 255, .04);
+  --border: rgba(255, 215, 107, .14);
+  --border-subtle: rgba(255, 255, 255, .08);
+  --border-strong: rgba(255, 215, 107, .28);
+  --accent: #ff6b6b;
+  --accent-bg: rgba(255, 107, 107, .1);
+  --accent-glow: rgba(255, 107, 107, .25);
+  --orange: #ffd76b;
+  --orange-bg: rgba(255, 215, 107, .1);
+  --orange-glow: rgba(255, 215, 107, .25);
+  --purple: #4ade80;
+  --purple-bg: rgba(74, 222, 128, .1);
+  --purple-glow: rgba(74, 222, 128, .22);
+}
+
+/* ── Halloween: orange / purple / near-black ────────────────────────────── */
+[data-season="halloween"][data-theme="dark"] {
+  --bg-primary: #0d0714;
+  --bg-secondary: rgba(26, 13, 38, .82);
+  --bg-surface: rgba(26, 13, 38, .82);
+  --bg-tertiary: rgba(255, 255, 255, .04);
+  --border: rgba(168, 85, 247, .16);
+  --border-subtle: rgba(255, 255, 255, .08);
+  --border-strong: rgba(168, 85, 247, .3);
+  --accent: #ff8a3d;
+  --accent-bg: rgba(255, 138, 61, .12);
+  --accent-glow: rgba(255, 138, 61, .3);
+  --orange: #ff8a3d;
+  --orange-bg: rgba(255, 138, 61, .12);
+  --orange-glow: rgba(255, 138, 61, .3);
+  --purple: #c084fc;
+  --purple-bg: rgba(192, 132, 252, .12);
+  --purple-glow: rgba(192, 132, 252, .28);
+}
+[data-season="halloween"][data-theme="dark"] h1 {
+  animation: season-title-flicker 5s ease-in-out infinite;
+}
+@keyframes season-title-flicker {
+  0%, 100% { text-shadow: 0 0 0 transparent; opacity: 1; }
+  92% { text-shadow: 0 0 18px rgba(255, 138, 61, .35); opacity: 1; }
+  93% { text-shadow: 0 0 26px rgba(192, 132, 252, .55); opacity: .92; }
+  94% { text-shadow: 0 0 8px rgba(255, 138, 61, .2); opacity: 1; }
+  96% { text-shadow: 0 0 22px rgba(192, 132, 252, .4); opacity: .95; }
+}
+
+/* ── New Year: black / gold / champagne ─────────────────────────────────── */
+[data-season="newyear"][data-theme="dark"] {
+  --bg-primary: #08080b;
+  --bg-secondary: rgba(18, 17, 14, .82);
+  --bg-surface: rgba(18, 17, 14, .82);
+  --bg-tertiary: rgba(255, 255, 255, .04);
+  --border: rgba(255, 215, 107, .14);
+  --border-subtle: rgba(255, 255, 255, .08);
+  --border-strong: rgba(255, 215, 107, .3);
+  --accent: #ffd76b;
+  --accent-bg: rgba(255, 215, 107, .1);
+  --accent-glow: rgba(255, 215, 107, .28);
+  --orange: #f4e3b2;
+  --orange-bg: rgba(244, 227, 178, .1);
+  --orange-glow: rgba(244, 227, 178, .25);
+  --purple: #d4af6a;
+  --purple-bg: rgba(212, 175, 106, .12);
+  --purple-glow: rgba(212, 175, 106, .25);
+}
+[data-season="newyear"][data-theme="dark"] h1 {
+  background: linear-gradient(100deg, #fff7dd 20%, #ffd76b 40%, #fff 50%, #ffd76b 60%, #fff7dd 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: season-gold-shimmer 6s linear infinite;
+}
+@keyframes season-gold-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ── Easter: pastel over a lightened dark base ──────────────────────────── */
+[data-season="easter"][data-theme="dark"] {
+  --bg-primary: #1a1424;
+  --bg-secondary: rgba(42, 32, 56, .8);
+  --bg-surface: rgba(42, 32, 56, .8);
+  --bg-tertiary: rgba(255, 255, 255, .05);
+  --border: rgba(240, 166, 200, .16);
+  --border-subtle: rgba(255, 255, 255, .1);
+  --border-strong: rgba(183, 156, 237, .3);
+  --accent: #f0a6c8;
+  --accent-bg: rgba(240, 166, 200, .12);
+  --accent-glow: rgba(240, 166, 200, .28);
+  --orange: #ffd166;
+  --orange-bg: rgba(255, 209, 102, .12);
+  --orange-glow: rgba(255, 209, 102, .25);
+  --purple: #b79ced;
+  --purple-bg: rgba(183, 156, 237, .12);
+  --purple-glow: rgba(183, 156, 237, .26);
+}
+[data-season="easter"][data-theme="dark"] .glass-card,
+[data-season="easter"][data-theme="dark"] .panel {
+  border-radius: 20px;
+}
+
+/* ── Shared decoration layer ────────────────────────────────────────────── */
+.season-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  overflow: hidden;
+}
+.season-particle { position: absolute; will-change: transform; }
+
+/* Christmas snow */
+.season-snow { animation: season-snow-fall linear infinite; }
+@keyframes season-snow-fall {
+  from { transform: translate3d(0, -12vh, 0); }
+  to   { transform: translate3d(var(--sway, 24px), 112vh, 0); }
+}
+/* Snow piled on top borders of cards */
+[data-season="christmas"] .glass-card,
+[data-season="christmas"] .panel {
+  position: relative;
+}
+[data-season="christmas"] .glass-card::after,
+[data-season="christmas"] .panel::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 10px;
+  right: 10px;
+  height: 7px;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 7px 8px, rgba(255,255,255,.85) 4.5px, transparent 5.5px);
+  background-size: 16px 7px;
+  background-repeat: repeat-x;
+  opacity: .55;
+  border-radius: 10px 10px 0 0;
+}
+/* Twinkling light string across the top of the app */
+.season-lights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 14px;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 2vw;
+}
+.season-lights i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 3px;
+  box-shadow: 0 0 8px currentColor;
+  animation: season-light-twinkle 1.8s ease-in-out infinite;
+}
+@keyframes season-light-twinkle {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+
+/* Halloween cobwebs in card corners + occasional bats */
+[data-season="halloween"] .glass-card::before,
+[data-season="halloween"] .panel::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 54px;
+  height: 54px;
+  pointer-events: none;
+  opacity: .5;
+  background:
+    radial-gradient(circle at 100% 0%, transparent 30px, rgba(192,132,252,.35) 31px, transparent 32px),
+    linear-gradient(135deg, transparent 49.6%, rgba(192,132,252,.4) 50%, transparent 50.4%),
+    linear-gradient(45deg, transparent 49.6%, rgba(192,132,252,.28) 50%, transparent 50.4%);
+}
+.season-bat { animation: season-bat-fly linear infinite; }
+@keyframes season-bat-fly {
+  0%   { transform: translate3d(-12vw, 0, 0); }
+  100% { transform: translate3d(112vw, -6vh, 0); }
+}
+
+/* New Year fireworks canvas is a <canvas>; confetti pieces below */
+.season-confetti-piece {
+  position: absolute;
+  top: -12px;
+  animation: season-confetti-fall 2.8s cubic-bezier(.2,.6,.4,1) forwards;
+}
+@keyframes season-confetti-fall {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--drift, 0px), 108vh, 0) rotate(var(--spin, 540deg)); opacity: .9; }
+}
+
+/* Easter floating eggs / petals */
+.season-floater { animation: season-float-up linear infinite; }
+@keyframes season-float-up {
+  from { transform: translate3d(0, 108vh, 0) rotate(0deg); }
+  to   { transform: translate3d(var(--sway, 30px), -12vh, 0) rotate(340deg); }
+}
+
+/* Logo seasonal accessories (santa hat / bunny ears) */
+.season-logo-accessory {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season-snow, .season-bat, .season-floater, .season-confetti-piece,
+  .season-lights i,
+  [data-season="halloween"][data-theme="dark"] h1,
+  [data-season="newyear"][data-theme="dark"] h1 {
+    animation: none !important;
+  }
+  /* Static decoration remains visible — just not moving. */
+}

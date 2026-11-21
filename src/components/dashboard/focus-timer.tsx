@@ -17,8 +17,11 @@ import {
 import { focusCoinsForDuration } from "@/lib/daily-limits";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
+import { AuraStageImage, StageBurst } from "@/components/aura-stage-image";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { ENERGY_CONFIGS, getEnergyReward, resolveDefaultEnergy, type EnergyType } from "@/lib/energy-assets";
+import { getGrowthStage, type TimerGrowthStage } from "@/lib/focus-growth";
+import { preloadAuraStageImages } from "@/lib/aura-images";
 import { api } from "@/lib/api-client";
 import {
   playCompletionSound,
@@ -94,6 +97,18 @@ const RING_SIZE = 260;
 
 function calculateCoins(durationMinutes: number): number {
   return focusCoinsForDuration(durationMinutes);
+}
+
+/**
+ * Development-only timer speed: `?timerSpeed=N` (e.g. ?timerSpeed=60) scales
+ * the elapsed/remaining wall clock by N so stages and completion can be
+ * exercised without waiting 25 minutes. Enabled only outside production.
+ */
+function readTimerSpeedMultiplier(): number {
+  if (process.env.NODE_ENV !== "development" || typeof window === "undefined") return 1;
+  const raw = new URLSearchParams(window.location.search).get("timerSpeed");
+  const n = raw === null ? NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -208,6 +223,12 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
   const [cancelNotice, setCancelNotice] = useState("");
   const [giveUpNotice, setGiveUpNotice] = useState("");
   const [actionError, setActionError] = useState("");
+  // Growth stages of the timer's tree: begin → mid → full while focusing,
+  // die when the user gives up. Derived from wall-clock elapsed (server-stamped
+  // session start), not a counter — survives reloads and throttling.
+  const [growthStage, setGrowthStage] = useState<TimerGrowthStage | "die">("begin");
+  const [stageBurst, setStageBurst] = useState<{ kind: "small" | "big"; id: number } | null>(null);
+  const [stageEnter, setStageEnter] = useState(0);
 
   // Stable refs — never cause interval restarts
   const sessionRef = useRef<{ id: number; startedAt: number } | null>(null);
@@ -222,11 +243,37 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
   const soundEnabledRef = useRef(true);
   const pausedCountRef = useRef(0);
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elapsedScaleRef = useRef(1);
+  const growthAuraRef = useRef<string | null>(null);
+  const stageBurstSeqRef = useRef(0);
+  const prevStageRef = useRef<TimerGrowthStage | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { selectedEnergyRef.current = selectedEnergy; }, [selectedEnergy]);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
+  // Dev-only timer speed (see readTimerSpeedMultiplier).
+  useEffect(() => { elapsedScaleRef.current = readTimerSpeedMultiplier(); }, []);
+
+  // Stage transitions: small burst at mid, big celebration at completion/full.
+  useEffect(() => {
+    const prev = prevStageRef.current;
+    prevStageRef.current = growthStage;
+    if (!prev) return; // initial mount
+    if (growthStage === "mid" && prev !== "mid") {
+      setStageBurst({ kind: "small", id: ++stageBurstSeqRef.current });
+    } else if (growthStage === "full" && prev !== "full") {
+      setStageBurst({ kind: "big", id: ++stageBurstSeqRef.current });
+    }
+  }, [growthStage]);
+
+  // Bursts auto-fade out after a while.
+  useEffect(() => {
+    if (!stageBurst) return;
+    const t = setTimeout(() => setStageBurst(null), stageBurst.kind === "big" ? 1200 : 900);
+    return () => clearTimeout(t);
+  }, [stageBurst]);
 
   // Pick a new aura: update the timer state immediately and persist the choice
   // (fire-and-forget) so the next visit restores the same aura — ownership is
@@ -291,6 +338,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       if (remainingMs > 0) {
         // Session still in progress - restore it
         sessionRef.current = { id: persisted.sessionId, startedAt: persisted.sessionStartedAt ?? now };
+        growthAuraRef.current = selectedEnergyRef.current;
+        preloadAuraStageImages(growthAuraRef.current);
         remainingMsRef.current = remainingMs;
         runningSinceRef.current = persisted.status === "running" ? now : null;
         const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
@@ -298,12 +347,15 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
         setRemaining(remainingSec);
         setState(persisted.status as TimerState);
         stateRef.current = persisted.status as TimerState;
+        // Restore the correct growth stage from the server-stamped start.
+        updateGrowthStage();
 
         // If it was running, restart the interval after a small delay to ensure refs are set
         if (persisted.status === "running") {
           setTimeout(() => {
             if (stateRef.current === "running") {
               startInterval();
+              updateGrowthStage();
             }
           }, 100);
         }
@@ -469,15 +521,29 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
         : "EM ANDAMENTO";
   const cfg = ENERGY_CONFIGS[selectedEnergy];
   const imageSize = Math.round(RING_SIZE * 0.58);
+  // Visual tree stage during the session: begin → mid → full. After a give-up
+  // the dead tree stays visible while idle (die), otherwise idle previews full.
+  const visualStage: TimerGrowthStage | "die" = isActive
+    ? growthStage
+    : growthStage === "die" ? "die" : "full";
 
   // Wall-clock derived remaining time. The interval is only a render clock —
   // it never decrements a counter, so background-tab throttling/suspension of
   // timers can't make the countdown drift or freeze.
   function computeRemainingMs(): number {
     if (stateRef.current === "running" && runningSinceRef.current != null) {
-      return Math.max(0, remainingMsRef.current - (Date.now() - runningSinceRef.current));
+      return Math.max(0, remainingMsRef.current - (Date.now() - runningSinceRef.current) * elapsedScaleRef.current);
     }
     return remainingMsRef.current;
+  }
+
+  // Stage from the session's start timestamp — wall-clock based, so it
+  // survives reloads, throttling and tab switches. Not a client-side counter.
+  function updateGrowthStage(): void {
+    if (!sessionRef.current) return;
+    const totalMs = durationRef.current * 60 * 1000;
+    const stage = getGrowthStage(totalMs - computeRemainingMs(), totalMs);
+    setGrowthStage((prev) => (prev === stage ? prev : stage));
   }
 
   function sessionExpired(): boolean {
@@ -496,12 +562,13 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
       if (stateRef.current !== "running") return;
+      syncRemaining();
+      updateGrowthStage();
       if (sessionExpired()) {
         clearInterval(intervalRef.current!);
         void completeSession();
         return;
       }
-      syncRemaining();
       updateCountdownTabTitle(formatTime(remainingRef.current));
     }, 1000);
   }
@@ -522,6 +589,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
         return;
       }
       syncRemaining();
+      updateGrowthStage();
       updateCountdownTabTitle(formatTime(remainingRef.current));
     }
     document.addEventListener("visibilitychange", resync);
@@ -571,7 +639,8 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
     runningSinceRef.current = null;
     setState("idle");
     stateRef.current = "idle";
-    
+    setGrowthStage("full");
+
     // Clear persisted session state on completion
     clearSessionState();
   }
@@ -589,6 +658,12 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       const result = await onStart(duration, undefined, selectedEnergyRef.current);
       const startedAt = new Date(result.session.startedAt).getTime();
       sessionRef.current = { id: result.session.id, startedAt };
+      // The aura equipped when the session starts is the tree for this run.
+      growthAuraRef.current = result.session.energyType ?? selectedEnergyRef.current;
+      stageBurstSeqRef.current = 0;
+      setStageBurst(null);
+      setGrowthStage("begin");
+      preloadAuraStageImages(growthAuraRef.current);
 
       const totalSec = duration * 60;
       completedRef.current = false;
@@ -663,6 +738,7 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
     runningSinceRef.current = null;
     setState("idle");
     stateRef.current = "idle";
+    setGrowthStage("full");
     remainingRef.current = durationRef.current * 60;
     setRemaining(durationRef.current * 60);
     clearSessionState();
@@ -690,6 +766,9 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
       await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "gave_up");
       setIsExtinguished(true);
       setGiveUpNotice("Você consegue mais na próxima.");
+      // Shake + crossfade to the dead tree.
+      setGrowthStage("die");
+      setStageEnter((e) => e + 1);
       if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
       noticeTimeoutRef.current = setTimeout(() => {
         setIsExtinguished(false);
@@ -762,19 +841,33 @@ export function FocusTimer({ todayStats, history, boostActive, onStart, onEnd, o
             />
           )}
 
-          {/* Center energy image with smooth crossfade animations */}
-          <GrowingEnergyIcon
-            energyType={selectedEnergy}
-            ringSize={RING_SIZE}
-            elapsedSeconds={isActive ? totalDurationSec - remaining : 0}
-            totalSeconds={totalDurationSec}
-            previewFullStage={!isActive}
-            extinguished={isExtinguished}
-            dimmed={isExtinguished}
-            showCluster={showComplete && rewardCount > 1}
-            clusterCount={rewardCount}
-            onPick={state === "idle" ? () => setShowPicker(true) : undefined}
-          />
+          {/* Center tree image: stage image (begin/mid/full), bursts on growth,
+              shake + die crossfade on give-up; legacy spark/full preview when idle. */}
+          {(isActive || visualStage === "die") ? (
+            <AuraStageImage
+              auraId={selectedEnergy}
+              stage={visualStage}
+              cfg={cfg}
+              label={cfg.label}
+              size={imageSize}
+              enterKey={`${visualStage}-${stageEnter}`}
+              style={{ position: "absolute" }}
+            />
+          ) : (
+            <GrowingEnergyIcon
+              energyType={selectedEnergy}
+              ringSize={RING_SIZE}
+              elapsedSeconds={0}
+              totalSeconds={totalDurationSec}
+              previewFullStage
+              extinguished={isExtinguished}
+              dimmed={isExtinguished}
+              showCluster={showComplete && rewardCount > 1}
+              clusterCount={rewardCount}
+              onPick={() => setShowPicker(true)}
+            />
+          )}
+          {stageBurst && <StageBurst kind={stageBurst.kind} />}
         </div>
 
         <FocusDurationReadout

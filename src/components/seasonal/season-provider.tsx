@@ -19,6 +19,7 @@ import {
   type SeasonDef,
   type SeasonId,
 } from "@/config/seasons";
+import { SeasonalDecorations } from "./seasonal-decorations";
 
 export interface SeasonContextValue {
   /** Season whose window is active right now (dev override applied). */
@@ -115,7 +116,12 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
     return () => root.removeAttribute("data-season");
   }, [value.isActive, value.themesEnabled, value.season]);
 
-  return <SeasonContext.Provider value={value}>{children}</SeasonContext.Provider>;
+  return (
+    <SeasonContext.Provider value={value}>
+      {children}
+      <SeasonalDecorations />
+    </SeasonContext.Provider>
+  );
 }
 
 export function useSeason(): SeasonContextValue {

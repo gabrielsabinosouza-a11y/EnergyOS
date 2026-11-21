@@ -23,6 +23,7 @@ import { DailyQuestsWidget } from "@/components/dashboard/daily-quests";
 import { RecurringDailyTasks } from "@/components/dashboard/recurring-daily-tasks";
 import { RewardClaimModal } from "@/components/reward-claim-modal";
 import { StreakCalendarModal } from "@/components/dashboard/streak-calendar-modal";
+import { useSeason } from "@/components/seasonal/season-provider";
 
 import type { Variants } from "framer-motion";
 
@@ -67,10 +68,18 @@ function todayLabel() {
   return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 }
 
-function greeting(name: string) {
+function greeting(name: string, season?: { id: string } | null) {
+  const first = name.split(" ")[0];
   const h = new Date().getHours();
   const part = h >= 5 && h < 12 ? "Bom dia" : h >= 12 && h < 18 ? "Boa tarde" : "Boa noite";
-  return `${part}, ${name.split(" ")[0]}`;
+  if (season) {
+    const year = new Date().getFullYear();
+    if (season.id === "halloween") return `Boo! ${part}, ${first}`;
+    if (season.id === "christmas") return `Feliz Natal, ${first}!`;
+    if (season.id === "newyear") return `Feliz Ano Novo de ${year}, ${first}!`;
+    if (season.id === "easter") return `Feliz Páscoa, ${first}!`;
+  }
+  return `${part}, ${first}`;
 }
 
 function Toast({
@@ -128,6 +137,7 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { user, loading } = useAuthRedirect({ ifGuest: "/" });
   const reduced = useReducedMotion();
+  const { season, isActive: seasonActive, themesEnabled } = useSeason();
   // Centralized, reactive quest state — shared with DailyQuestsWidget,
   // RecurringDailyTasks and the focus/kanban flows via DailyQuestsProvider.
   const { applyMetric, refresh: refreshQuests } = useDailyQuests();
@@ -955,7 +965,7 @@ function DashboardContent() {
           <motion.div variants={fadeUp} initial="hidden" animate="visible" className="min-w-0">
             <p className="mb-2 text-[10px] uppercase tracking-[.2em] text-[var(--accent)]">{todayLabel()}</p>
             <h1 className="font-display text-2xl tracking-[-.04em] sm:text-3xl text-[var(--text)]">
-              {greeting(displayName)}<span className="text-[var(--orange)]">.</span>
+              {greeting(displayName, seasonActive && themesEnabled ? season : null)}<span className="text-[var(--orange)]">.</span>
             </h1>
           </motion.div>
           <div className="flex items-center gap-3">

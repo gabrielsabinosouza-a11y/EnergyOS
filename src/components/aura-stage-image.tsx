@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import Image from "next/image";
 import { auraStageImageCandidates } from "@/lib/aura-images";
 import type { EnergyConfig } from "@/lib/energy-assets";
 import type { TimerGrowthStage } from "@/lib/focus-growth";
@@ -53,7 +52,7 @@ export function AuraStageImage({
     let cancelled = false;
     const probe = (index: number): void => {
       if (cancelled || index >= candidates.length) return;
-      const img = new Image();
+      const img = new window.Image();
       img.onload = () => {
         if (!cancelled) setSrc(candidates[index]);
       };

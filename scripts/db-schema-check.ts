@@ -183,6 +183,8 @@ async function main() {
         "requested_quantity",
       ]),
       achievements: new Set(["id", "title", "description", "category"]),
+      avatar_decorations: new Set(["id", "season_id"]),
+      user_settings: new Set(["seasonal_themes_enabled"]),
     };
 
     let hasErrors = false;

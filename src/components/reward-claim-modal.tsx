@@ -22,6 +22,8 @@ export function RewardClaimModal({
 }) {
   useEffect(() => {
     if (!reward) return;
+    // Seasonal hook: New Year confetti listens for this event.
+    window.dispatchEvent(new Event("energyos:seasonal-celebration"));
     const timer = setTimeout(onClose, 5000);
     return () => clearTimeout(timer);
   }, [reward, onClose]);

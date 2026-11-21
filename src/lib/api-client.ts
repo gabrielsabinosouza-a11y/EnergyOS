@@ -606,7 +606,7 @@ export const api = {
     request<{ isFeatured: boolean; featuredOrder?: number }>("/api/achievements", { method: "PATCH", body: JSON.stringify({ achievementId }) }),
 
   // Store
-  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[] }>("/api/store"),
+  getStore: () => request<{ items: import("@/types").StoreItem[]; balance: number; banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean }; shieldCount: number; ownedAuras: string[]; season: { id: string; name: string; endsAt: string } | null }>("/api/store"),
   purchaseDecoration: (decorationId: string) =>
     request<{ balance: number }>("/api/store/decorations", { method: "POST", body: JSON.stringify({ decorationId }) }),
   equipDecoration: (decorationId: string | null) =>
