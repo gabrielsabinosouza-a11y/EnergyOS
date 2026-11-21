@@ -33,6 +33,7 @@ import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { Modal } from "@/components/modal";
 import { ChatThread, ChatComposer, ConversationContextMenu, convActions } from "@/components/chat";
+import { AvatarWithFrame } from "@/components/avatar";
 import { dmToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
@@ -53,32 +54,16 @@ function UserAvatar({
   user,
   size = 40,
 }: {
-  user: { displayName: string; photoUrl?: string };
+  user: { displayName: string; photoUrl?: string; equippedDecorationId?: string };
   size?: number;
 }) {
-  if (user.photoUrl) {
-    return (
-      <Image
-        src={user.photoUrl}
-        alt={user.displayName}
-        width={size}
-        height={size}
-        unoptimized
-        className="shrink-0 rounded-full object-cover"
-      />
-    );
-  }
   return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-black"
-      style={{
-        width: size,
-        height: size,
-        background: "linear-gradient(135deg, #71d4ff, #b69cff)",
-      }}
-    >
-      {user.displayName.charAt(0).toUpperCase()}
-    </div>
+    <AvatarWithFrame
+      photoUrl={user.photoUrl}
+      name={user.displayName}
+      size={size}
+      equippedDecorationId={user.equippedDecorationId}
+    />
   );
 }
 
@@ -1023,10 +1008,11 @@ function ChatPanel({
       if (m.senderId === friend.id) {
         chatMessage.senderName = friend.displayName;
         chatMessage.senderPhotoUrl = friend.photoUrl;
+        chatMessage.senderEquippedDecorationId = friend.equippedDecorationId;
       }
       return chatMessage;
     }),
-    [messages, friend.displayName, friend.id, friend.photoUrl],
+    [messages, friend.displayName, friend.equippedDecorationId, friend.id, friend.photoUrl],
   );
 
   return (

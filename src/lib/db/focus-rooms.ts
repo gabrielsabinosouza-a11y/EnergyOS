@@ -71,7 +71,7 @@ export interface FocusRoom {
 export interface RoomParticipant {
   id: number;
   profileId: string;
-  profile?: { id: string; displayName: string; photoUrl?: string };
+  profile?: { id: string; displayName: string; photoUrl?: string; equippedDecorationId?: string };
   joinedAt: string;
   sessionStatus: ParticipantSessionStatus;
   selectedEnergyType: string | null;
@@ -88,7 +88,7 @@ export interface RoomJoinRequest {
   roomId: number;
   roomCode: string;
   requesterProfileId: string;
-  requester?: { id: string; displayName: string; photoUrl?: string };
+  requester?: { id: string; displayName: string; photoUrl?: string; equippedDecorationId?: string };
   selectedEnergyType: string | null;
   status: RoomJoinRequestStatus;
   requestedAt: string;
@@ -236,6 +236,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
     function mapJoinRequest(row: {
       id: string | number; room_id: string | number; room_code: string;
       requester_profile_id: string; display_name: string; photo_url: string | null;
+      equipped_decoration_id: string | null;
       selected_energy_type: string | null; status: RoomJoinRequestStatus;
       requested_at: Date | string; responded_at: Date | string | null;
       responded_by_profile_id: string | null;
@@ -243,7 +244,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
       return {
         id: Number(row.id), roomId: Number(row.room_id), roomCode: row.room_code,
         requesterProfileId: row.requester_profile_id,
-        requester: { id: row.requester_profile_id, displayName: row.display_name || "Anônimo", photoUrl: row.photo_url ?? undefined },
+        requester: { id: row.requester_profile_id, displayName: row.display_name || "Anônimo", photoUrl: row.photo_url ?? undefined, equippedDecorationId: row.equipped_decoration_id ?? undefined },
         selectedEnergyType: row.selected_energy_type,
         status: row.status,
         requestedAt: typeof row.requested_at === "string" ? row.requested_at : row.requested_at.toISOString(),
@@ -253,7 +254,7 @@ export async function getFocusRoomById(profileId: string, roomId: number): Promi
     }
 
     const joinRequestSelect = `select r.id, r.room_id, fr.code as room_code, r.requester_profile_id,
-      p.display_name, p.photo_url, r.selected_energy_type, r.status, r.requested_at,
+      p.display_name, p.photo_url, p.equipped_decoration_id, r.selected_energy_type, r.status, r.requested_at,
       r.responded_at, r.responded_by_profile_id
       from room_join_requests r join focus_rooms fr on fr.id = r.room_id
       left join profiles p on p.id = r.requester_profile_id`;
@@ -416,10 +417,10 @@ export async function getFocusRoomByCode(profileId: string, code: string): Promi
 
 // Get all room participants
 export async function getRoomParticipants(roomId: number): Promise<RoomParticipant[]> {
-  const result = await pool.query<RoomParticipantRow & { display_name: string; photo_url: string | null }>(
+  const result = await pool.query<RoomParticipantRow & { display_name: string; photo_url: string | null; equipped_decoration_id: string | null }>(
     `select 
        rp.id, rp.room_id, rp.profile_id, rp.joined_at, rp.session_status, rp.selected_energy_type, rp.completed_at, rp.gave_up_at, rp.restart_choice,
-       p.display_name, p.photo_url
+       p.display_name, p.photo_url, p.equipped_decoration_id
      from room_participants rp
      left join profiles p on rp.profile_id = p.id
      where rp.room_id = $1
@@ -428,7 +429,7 @@ export async function getRoomParticipants(roomId: number): Promise<RoomParticipa
   );
 
   return result.rows.map((row) =>
-    mapRoomParticipant(row, row.display_name ? { id: row.profile_id, displayName: row.display_name, photoUrl: row.photo_url ?? undefined } : undefined)
+    mapRoomParticipant(row, row.display_name ? { id: row.profile_id, displayName: row.display_name, photoUrl: row.photo_url ?? undefined, equippedDecorationId: row.equipped_decoration_id ?? undefined } : undefined)
   );
 }
 

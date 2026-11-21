@@ -36,6 +36,7 @@ export interface MemberContribution {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
   minutes: number;
   percentage: number;
   rank: number;
@@ -257,7 +258,7 @@ export async function getGroupMemberContributions(
   const { start, end } = getPeriodRange(period);
 
   let query = `
-    select p.id as profile_id, p.display_name, p.username, p.photo_url,
+    select p.id as profile_id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id,
            coalesce(sum(gfc.minutes), 0)::int as minutes
     from group_members gm
     join profiles p on p.id = gm.profile_id
@@ -272,7 +273,7 @@ export async function getGroupMemberContributions(
     params.push(start, end);
   }
 
-  query += ` group by p.id, p.display_name, p.username, p.photo_url
+  query += ` group by p.id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id
              order by minutes desc`;
 
   const result = await pool.query<{
@@ -280,6 +281,7 @@ export async function getGroupMemberContributions(
     display_name: string;
     username: string | null;
     photo_url: string | null;
+    equipped_decoration_id: string | null;
     minutes: string | number;
   }>(query, params);
 
@@ -290,6 +292,7 @@ export async function getGroupMemberContributions(
     displayName: row.display_name,
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
     minutes: Number(row.minutes),
     percentage: groupTotal > 0 ? (Number(row.minutes) / groupTotal) * 100 : 0,
     rank: index + 1,

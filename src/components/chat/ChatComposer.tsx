@@ -11,6 +11,7 @@ import {
   Send,
 } from "lucide-react";
 import { validateImageFile, validateMediaSize, uploadToCloudinary } from "@/lib/media";
+import { AvatarWithFrame } from "@/components/avatar";
 import type { DirectMessageType } from "@/types";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
@@ -20,6 +21,7 @@ export interface ChatComposerMentionMember {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
 }
 
 export interface ChatComposerProps {
@@ -60,28 +62,13 @@ function MentionAvatar({ member, size = 26 }: { member: ChatComposerMentionMembe
       </span>
     );
   }
-  if (member.photoUrl) {
-    return (
-      <img
-        src={member.photoUrl}
-        alt={member.displayName}
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-      />
-    );
-  }
   return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-black"
-      style={{
-        width: size,
-        height: size,
-        background: "linear-gradient(135deg, #71d4ff, #b69cff)",
-      }}
-    >
-      {member.displayName.charAt(0).toUpperCase()}
-    </div>
+    <AvatarWithFrame
+      photoUrl={member.photoUrl}
+      name={member.displayName}
+      size={size}
+      equippedDecorationId={member.equippedDecorationId}
+    />
   );
 }
 

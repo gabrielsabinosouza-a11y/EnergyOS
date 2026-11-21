@@ -29,6 +29,7 @@ import { CoinIcon } from "@/components/coin-icon";
 import { EnergyPickerModal } from "@/components/energy-picker-modal";
 import { EnergyRingCenter } from "@/components/energy-ring-center";
 import { AuraStageImage } from "@/components/aura-stage-image";
+import { AvatarWithFrame } from "@/components/avatar";
 import { GrowingEnergyIcon } from "@/components/growing-energy-icon";
 import { Modal } from "@/components/modal";
 import { ShareRoomModal } from "@/components/share-room-modal";
@@ -123,37 +124,25 @@ function RoomAvatar({
   muted = false,
   dimmed = false,
 }: {
-  profile?: { id: string; displayName: string; photoUrl?: string };
+  profile?: { id: string; displayName: string; photoUrl?: string; equippedDecorationId?: string };
   energyType?: string | null;
   size?: number;
   muted?: boolean;
   dimmed?: boolean;
 }) {
   const displayName = profile?.displayName || "Anônimo";
-  const initials = displayName.charAt(0).toUpperCase();
   const cfg = energyType ? ENERGY_CONFIGS[energyType as EnergyType] : null;
   const opacity = dimmed ? 0.45 : 1;
 
   return (
     <div className="relative shrink-0" style={{ width: size, height: size, opacity }}>
-      {profile?.photoUrl ? (
-        <Image
-          src={profile.photoUrl}
-          alt={displayName}
-          width={size}
-          height={size}
-          className="rounded-full object-cover border-2 border-[var(--bg-primary)]"
-          style={{ width: size, height: size }}
-          unoptimized
-        />
-      ) : (
-        <div
-          className="rounded-full flex items-center justify-center border-2 border-[var(--bg-primary)] bg-gradient-to-br from-[var(--accent)] to-[var(--orange)]"
-          style={{ width: size, height: size }}
-        >
-          <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{initials}</span>
-        </div>
-      )}
+      <AvatarWithFrame
+        photoUrl={profile?.photoUrl}
+        name={displayName}
+        size={size}
+        equippedDecorationId={profile?.equippedDecorationId}
+        className="border-2 border-[var(--bg-primary)] rounded-full"
+      />
       {cfg && (
         <div
           className="absolute -bottom-0.5 -right-0.5 bg-[var(--bg-primary)] rounded-full border border-[var(--border-subtle)] flex items-center justify-center"

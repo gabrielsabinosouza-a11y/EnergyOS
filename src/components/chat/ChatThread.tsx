@@ -19,6 +19,7 @@ import { createPortal } from "react-dom";
 import type { ChatMessage, PinDurationDays } from "@/types";
 import Link from "next/link";
 import { Modal } from "@/components/modal";
+import { AvatarWithFrame } from "@/components/avatar";
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
@@ -144,19 +145,14 @@ function CheckMark({ read }: { read?: boolean }) {
   );
 }
 
-function SenderAvatar({ name, photoUrl, senderId, level }: { name?: string; photoUrl?: string; senderId: string; level?: number }) {
+function SenderAvatar({ name, photoUrl, senderId, level, equippedDecorationId }: { name?: string; photoUrl?: string; senderId: string; level?: number; equippedDecorationId?: string }) {
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
-  const initials = (name || "?").trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  let hash = 0;
-  for (let i = 0; i < senderId.length; i++) hash = (hash * 31 + senderId.charCodeAt(i)) | 0;
-  const hue = Math.abs(hash) % 360;
   return (
     <span className="relative z-10">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-label={`Ver perfil de ${name ?? "participante"}`} aria-expanded={open}
-        className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 text-[10px] font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-        style={{ background: `linear-gradient(145deg, hsl(${hue} 72% 60%), hsl(${(hue + 48) % 360} 70% 34%))` }}>
-        {photoUrl && !failed ? <img src={photoUrl} alt="" width={32} height={32} loading="lazy" onError={() => setFailed(true)} className="h-8 w-8 object-cover" /> : initials}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+        <AvatarWithFrame photoUrl={photoUrl && !failed ? photoUrl : undefined} name={name} size={32} equippedDecorationId={equippedDecorationId} />
       </button>
       {open && <span className="absolute bottom-10 left-0 w-44 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-left shadow-xl">
         <span className="block truncate text-xs font-semibold text-[var(--text)]">{name ?? "Participante"}</span>
@@ -444,7 +440,7 @@ function MessageBubble({
       {showAvatar && !isMe && (
         <div className="flex h-8 w-8 shrink-0 items-end">
           {groupPosition === "single" || groupPosition === "first" ? (
-            <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} />
+            <SenderAvatar name={msg.senderName} photoUrl={msg.senderPhotoUrl} senderId={msg.senderId} level={msg.senderLevel} equippedDecorationId={msg.senderEquippedDecorationId} />
           ) : null}
         </div>
       )}

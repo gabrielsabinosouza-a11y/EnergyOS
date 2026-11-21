@@ -1,0 +1,94 @@
+{
+  "svg": {
+    "frames": {
+      "frame_fire": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 89.75,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_crystal": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 78.61,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_aura": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 79.98,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_nucleo": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 90.92,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_nature": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 89.75,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_electric": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 85.55,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_cosmic": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 70.02,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      },
+      "frame_diamond": {
+        "outerDiameterPct": 100,
+        "innerHoleDiameterPct": 82.71,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -0.5
+      }
+    },
+    "reference": {
+      "outerDiameterPct": 100,
+      "innerHoleDiameterPct": 85.55,
+      "centerOffsetX": -0.5,
+      "centerOffsetY": -0.5
+    }
+  },
+  "png": {
+    "frames": {
+      "frame_xmas_candy_cane": {
+        "outerDiameterPct": 68.85,
+        "innerHoleDiameterPct": 42.87,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": -1
+      },
+      "frame_xmas_snowflake": {
+        "outerDiameterPct": 76.27,
+        "innerHoleDiameterPct": 36.91,
+        "centerOffsetX": 0.5,
+        "centerOffsetY": -40
+      },
+      "frame_xmas_holly": {
+        "outerDiameterPct": 70.31,
+        "innerHoleDiameterPct": 42.87,
+        "centerOffsetX": -0.5,
+        "centerOffsetY": 6.5
+      },
+      "frame_xmas_lights": {
+        "outerDiameterPct": 81.74,
+        "innerHoleDiameterPct": 42.87,
+        "centerOffsetX": -3.5,
+        "centerOffsetY": -29
+      }
+    },
+    "reference": {
+      "outerDiameterPct": 76.27,
+      "innerHoleDiameterPct": 42.87,
+      "centerOffsetX": -0.5,
+      "centerOffsetY": -1
+    }
+  }
+}

@@ -755,6 +755,7 @@ export async function getLiveCohort(
     profile_id: string;
     display_name: string;
     photo_url: string | null;
+    equipped_decoration_id: string | null;
     started_at: Date | string;
   }>(
     `
@@ -763,6 +764,7 @@ export async function getLiveCohort(
           p.id AS profile_id,
           p.display_name,
           p.photo_url,
+          p.equipped_decoration_id,
           fs.started_at
 
         FROM focus_sessions fs
@@ -806,6 +808,7 @@ export async function getLiveCohort(
     profileId: row.profile_id,
     displayName: row.display_name,
     photoUrl: row.photo_url ?? undefined,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
     sessionStartTime:
       typeof row.started_at === "string"
         ? row.started_at

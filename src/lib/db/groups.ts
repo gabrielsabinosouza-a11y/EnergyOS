@@ -403,13 +403,14 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
       display_name: string;
       username: string | null;
       photo_url: string | null;
+      equipped_decoration_id: string | null;
       role: "OWNER" | "ADMIN" | "MEMBER";
       is_muted: boolean;
       is_banned: boolean;
       current_streak: number | null;
     }
   >(
-    `select p.id, p.display_name, p.username, p.photo_url, m.role, m.is_muted, m.is_banned, p.current_streak
+    `select p.id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id, m.role, m.is_muted, m.is_banned, p.current_streak
      from group_members m
      join profiles p on p.id = m.profile_id
      where m.group_id = $1
@@ -430,6 +431,7 @@ export async function getGroupDetail(profileId: string, groupId: number, period:
     displayName: row.display_name,
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
     role: row.role,
     isMuted: row.is_muted,
     isBanned: row.is_banned,
@@ -502,6 +504,7 @@ export async function listGroupMessages(
     edited_at: Date | string | null;
     display_name: string;
     photo_url: string | null;
+    sender_equipped_decoration_id: string | null;
     sender_level: number | null;
     sender_role: string | null;
     reactions: unknown;
@@ -516,7 +519,7 @@ export async function listGroupMessages(
   const hasExpiryCol = await hasColumn("pinned_messages", "expires_at");
   const baseColumns = `gm.id, gm.group_id, gm.sender_id, gm.body, gm.message_type,
      gm.media_url, gm.media_duration_seconds, gm.media_file_name, gm.media_mime_type, gm.media_size_bytes,
-     gm.created_at, p.display_name, p.photo_url, ux.level as sender_level,
+     gm.created_at, p.display_name, p.photo_url, p.equipped_decoration_id as sender_equipped_decoration_id, ux.level as sender_level,
      gmsender.role as sender_role,
      reactions.reactions, (pinned.message_id is not null) as is_pinned,
      pinned.created_at as pinned_at, pinned.pinned_by,
@@ -609,6 +612,7 @@ export async function listGroupMessages(
     senderId: row.sender_id,
     senderName: row.display_name,
     senderPhotoUrl: row.photo_url ?? undefined,
+    senderEquippedDecorationId: row.sender_equipped_decoration_id ?? undefined,
     senderLevel: row.sender_level ?? 1,
     senderRole: row.sender_role ? (row.sender_role as GroupRole) : undefined,
     body: row.body ?? undefined,
@@ -800,8 +804,8 @@ export async function sendGroupMessage(
     insertVals,
   );
   const row = inserted.rows[0];
-  const sender = await pool.query<{ display_name: string; photo_url: string | null; level: number | null }>(
-    `select p.display_name, p.photo_url, ux.level from profiles p left join user_xp ux on ux.profile_id = p.id where p.id = $1`,
+  const sender = await pool.query<{ display_name: string; photo_url: string | null; equipped_decoration_id: string | null; level: number | null }>(
+    `select p.display_name, p.photo_url, p.equipped_decoration_id, ux.level from profiles p left join user_xp ux on ux.profile_id = p.id where p.id = $1`,
     [profileId],
   );
   // Fetch reply join info
@@ -824,6 +828,7 @@ export async function sendGroupMessage(
     senderId: row.sender_id,
     senderName: sender.rows[0]?.display_name ?? "Você",
     senderPhotoUrl: sender.rows[0]?.photo_url ?? undefined,
+    senderEquippedDecorationId: sender.rows[0]?.equipped_decoration_id ?? undefined,
     senderLevel: sender.rows[0]?.level ?? 1,
     body: row.body ?? undefined,
     messageType: (row.message_type as GroupMessage["messageType"]) || "TEXT",

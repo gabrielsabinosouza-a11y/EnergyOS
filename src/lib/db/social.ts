@@ -12,6 +12,7 @@ interface ProfileLiteRow {
   display_name: string;
   username: string | null;
   photo_url: string | null;
+  equipped_decoration_id?: string | null;
   last_active_at: Date | string | null;
   current_streak: number | null;
 }
@@ -22,6 +23,7 @@ function mapLite(row: ProfileLiteRow) {
     displayName: row.display_name,
     username: row.username ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    equippedDecorationId: row.equipped_decoration_id ?? undefined,
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : undefined,
     currentStreak: row.current_streak ?? 0,
   };
@@ -43,7 +45,7 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
       status: string | null;
     }
   >(
-    `select p.id, p.display_name, p.username, p.photo_url, p.last_active_at, p.current_streak,
+    `select p.id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id, p.last_active_at, p.current_streak,
             f.id as friendship_id, f.requester_id, f.addressee_id, f.status
      from profiles p
      left join friendships f
@@ -75,6 +77,7 @@ export async function searchUsers(profileId: string, query: string): Promise<Use
       displayName: row.display_name,
       username: row.username ?? undefined,
       photoUrl: row.photo_url ?? undefined,
+      equippedDecorationId: row.equipped_decoration_id ?? undefined,
       relation,
     };
   });
@@ -149,7 +152,7 @@ export async function listFriends(profileId: string): Promise<FriendSummary[]> {
   const result = await pool.query<
     ProfileLiteRow & { friendship_id: string | number; unread: string | number }
   >(
-    `select p.id, p.display_name, p.username, p.photo_url, p.last_active_at, p.current_streak,
+    `select p.id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id, p.last_active_at, p.current_streak,
             f.id as friendship_id,
             (
               select count(*)::int from direct_messages dm
@@ -183,7 +186,7 @@ export async function listFriendRequests(profileId: string): Promise<FriendReque
     }
   >(
     `select f.id as friendship_id, f.created_at, f.requester_id,
-            p.id, p.display_name, p.username, p.photo_url, p.last_active_at, p.current_streak
+            p.id, p.display_name, p.username, p.photo_url, p.equipped_decoration_id, p.last_active_at, p.current_streak
      from friendships f
      join profiles p on p.id = case when f.requester_id = $1 then f.addressee_id else f.requester_id end
      where f.status = 'pending' and (f.requester_id = $1 or f.addressee_id = $1)
@@ -200,6 +203,7 @@ export async function listFriendRequests(profileId: string): Promise<FriendReque
       displayName: row.display_name,
       username: row.username ?? undefined,
       photoUrl: row.photo_url ?? undefined,
+      equippedDecorationId: row.equipped_decoration_id ?? undefined,
     },
   }));
 }

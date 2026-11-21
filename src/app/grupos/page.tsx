@@ -15,6 +15,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { ChatThread, ChatComposer, ConversationContextMenu, convActions } from "@/components/chat";
+import { AvatarWithFrame } from "@/components/avatar";
 import { groupPinnedToChatMessage, groupToChatMessage } from "@/types";
 import { useAuthRedirect } from "@/lib/auth-context";
 import { streakIconSource } from "@/lib/energy-assets";
@@ -105,15 +106,14 @@ function MemberActionMenu({
   );
 }
 
-function UserAvatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: string }; size?: number }) {
-  if (user.photoUrl) {
-    return <img src={user.photoUrl} alt={user.displayName} width={size} height={size} className="shrink-0 rounded-full object-cover" />;
-  }
+function UserAvatar({ user, size = 40 }: { user: { displayName: string; photoUrl?: string; equippedDecorationId?: string }; size?: number }) {
   return (
-    <div className="flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-black"
-      style={{ width: size, height: size, background: "linear-gradient(135deg, #71d4ff, #b69cff)" }}>
-      {user.displayName.charAt(0).toUpperCase()}
-    </div>
+    <AvatarWithFrame
+      photoUrl={user.photoUrl}
+      name={user.displayName}
+      size={size}
+      equippedDecorationId={user.equippedDecorationId}
+    />
   );
 }
 
@@ -594,7 +594,7 @@ function MemberContributions({ groupId, period }: { groupId: number; period: Per
       {data.members.map((m, i) => (
         <div key={m.profileId} className="flex items-center gap-3">
           <span className="w-4 text-center font-mono text-[10px] text-[var(--text-faint)]">{i + 1}</span>
-          <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={28} />
+          <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl, equippedDecorationId: m.equippedDecorationId }} size={28} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] text-[var(--text)]">{m.displayName}</p>
             <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-[var(--bg-surface-hover)]">
@@ -1528,7 +1528,7 @@ function GroupDetailPanel({
             : isAdmin
               ? (["MEMBER"] as const)
               : undefined}
-          mentionMembers={group.members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username }))}
+          mentionMembers={group.members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username, photoUrl: m.photoUrl, equippedDecorationId: m.equippedDecorationId }))}
           onSend={handleSend}
           onReply={handleReply}
           onEdit={handleEditMessage}
@@ -1548,7 +1548,7 @@ function GroupDetailPanel({
           inputSlot={
             <ChatComposer
               replying={Boolean(replyingTo)}
-              mentionMembers={group.members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username, photoUrl: m.photoUrl }))}
+              mentionMembers={group.members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username, photoUrl: m.photoUrl, equippedDecorationId: m.equippedDecorationId }))}
               currentUserId={currentUserId}
               onSendText={handleComposerSend}
               onSendMedia={handleComposerSendMedia}
@@ -1586,7 +1586,7 @@ function GroupDetailPanel({
             {sortedMembers.map((m) => {
               return (
                 <motion.div key={m.id} variants={fadeUp} className="glass-card flex items-center gap-3 px-4 py-3">
-                  <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl }} size={40} />
+                  <UserAvatar user={{ displayName: m.displayName, photoUrl: m.photoUrl, equippedDecorationId: m.equippedDecorationId }} size={40} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>

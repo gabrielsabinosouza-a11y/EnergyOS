@@ -88,7 +88,7 @@ export interface NewLeagueSnapshot {
   };
   liveCohort?: {
     title: string;
-    members: LeagueGroupMember[];
+    members: CohortMember[];
   };
 }
 
@@ -96,6 +96,7 @@ export interface CohortMember {
   profileId: string;
   displayName: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
   sessionStartTime: string;
 }
 
@@ -125,6 +126,7 @@ export interface FriendSummary {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
   lastActiveAt?: string;
   currentStreak: number;
   friendshipId: number;
@@ -140,6 +142,7 @@ export interface FriendRequest {
     displayName: string;
     username?: string;
     photoUrl?: string;
+    equippedDecorationId?: string;
   };
 }
 
@@ -148,6 +151,7 @@ export interface UserSearchResult {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
   relation: "none" | "pending_outgoing" | "pending_incoming" | "friends";
 }
 
@@ -203,6 +207,7 @@ export interface ChatMessage {
   senderId: string;
   senderName?: string;
   senderPhotoUrl?: string;
+  senderEquippedDecorationId?: string;
   senderLevel?: number;
   senderRole?: GroupRole;
   body?: string;
@@ -262,6 +267,7 @@ export function groupToChatMessage(gm: GroupMessage): ChatMessage {
     senderId: gm.senderId,
     senderName: gm.senderName,
     senderPhotoUrl: gm.senderPhotoUrl,
+    senderEquippedDecorationId: gm.senderEquippedDecorationId,
     senderLevel: gm.senderLevel,
     senderRole: g.senderRole,
     body: gm.body,
@@ -351,6 +357,7 @@ export interface GroupMember {
   displayName: string;
   username?: string;
   photoUrl?: string;
+  equippedDecorationId?: string;
   role: GroupRole;
   currentStreak: number;
   isMuted?: boolean;
@@ -378,6 +385,7 @@ export interface GroupMessage {
   senderId: string;
   senderName: string;
   senderPhotoUrl?: string;
+  senderEquippedDecorationId?: string;
   senderLevel?: number;
   senderRole?: GroupRole;
   body?: string;

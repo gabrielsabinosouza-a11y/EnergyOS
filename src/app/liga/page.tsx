@@ -311,7 +311,7 @@ export default function LigaPage() {
                   transition={{ delay: i * 0.05 }}
                   className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-[var(--bg-surface-hover)] px-3 py-2"
                 >
-                  <Avatar photoUrl={m.photoUrl} name={m.displayName} size={28} />
+                  <Avatar photoUrl={m.photoUrl} name={m.displayName} size={28} equippedDecorationId={m.equippedDecorationId} />
                   <span className="text-[10px] text-[var(--text)]">{m.displayName}</span>
                   <motion.div
                     animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
