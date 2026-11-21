@@ -371,7 +371,7 @@ export function nextSeasonBoundaryMs(now: Date = new Date()): number {
  * store countdown keep using the real clock.
  */
 export function getDevNow(
-  env: Record<string, string | undefined> = {},
+  env: Record<string, string | undefined> = { NODE_ENV: process.env.NODE_ENV },
   search?: string,
 ): Date | null {
   if (env.NODE_ENV === "production") return null;

@@ -12,9 +12,11 @@ import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
 import {
   getActiveSeason,
+  getDevNow,
   getNextSeasonStart,
   getSeasonEndDate,
   getSeasonOverride,
+  nextSeasonBoundaryMs,
   SEASONS,
   type SeasonDef,
   type SeasonId,
@@ -52,11 +54,31 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(() => new Date());
   const [themesEnabled, setThemesEnabled] = useState(true);
 
-  // Re-resolve the season periodically so the theme flips at midnight SP
-  // and the countdown stays honest without a reload.
+  // Re-resolve the season so the theme/items flip exactly at a season
+  // boundary (no reload), on tab focus, and periodically as a safety net.
+  // `?now=ISO` (dev only) simulates a different "now" for QA.
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), TICK_MS);
-    return () => window.clearInterval(id);
+    const refresh = () => setNow(getDevNow() ?? new Date());
+    let boundaryTimer = 0;
+    const alignToBoundary = () => {
+      window.clearTimeout(boundaryTimer);
+      const wait = Math.max(1_000, Math.min(nextSeasonBoundaryMs(new Date()), TICK_MS));
+      boundaryTimer = window.setTimeout(() => {
+        refresh();
+        alignToBoundary();
+      }, wait);
+    };
+    alignToBoundary();
+    const interval = window.setInterval(refresh, TICK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(boundaryTimer);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   // User preference: "Temas sazonais" (default ON). Fetched once per user and

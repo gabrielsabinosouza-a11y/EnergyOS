@@ -61,13 +61,17 @@ export async function POST(request: NextRequest) {
       return jsonOk({ gaveUp });
     }
 
-    if (action === "complete" || action === "give_up" || action === "end") {
+    // The timer client sends `action: "gave_up" | "completed"`; legacy and
+    // room flows send `complete`/`give_up`/`end`. Accept all spellings.
+    if (action === "complete" || action === "give_up" || action === "gave_up" || action === "completed" || action === "end") {
       const focusedSeconds = Number(body.focusedSeconds) || 0;
       const isRoomSession = body.isRoomSession === true;
       const pausedCount = Number(body.pausedCount);
-      const endReason = action === "give_up" || (action === "end" && focusedSeconds === 0)
-        ? "gave_up"
-        : "completed";
+      const isGiveUp =
+        action === "give_up" ||
+        action === "gave_up" ||
+        (action === "end" && focusedSeconds === 0);
+      const endReason = isGiveUp ? "gave_up" : "completed";
       const { session, xpAwarded, coinsAwarded, questsUpdated, streak } = await endFocusSession(
         profileId,
         Number(body.sessionId),

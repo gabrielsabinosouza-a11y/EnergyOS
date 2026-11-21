@@ -1025,6 +1025,7 @@ export default function LojaPage() {
     xpBoostQuantity: number;
     xpBoost: ActiveXPBoost | null;
     ownedAuras?: string[];
+    seasonalAuraIds?: string[];
     season?: { id: string; name: string; endsAt: string } | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1157,14 +1158,29 @@ export default function LojaPage() {
   const seasonalReturnLabel = displaySeason
     ? `Volta em ${formatSeasonMonthYear(getNextSeasonStart(displaySeason))}`
     : "";
+  // Server-filtered: out-of-season unowned seasonal frames never reach the
+  // client. The owned/purchasable guard is a defensive fallback.
   const seasonalFrames = useMemo(
-    () => (displaySeason ? storeItems.filter((it) => it.seasonId === displaySeason.id) : []),
-    [storeItems, displaySeason],
+    () => (displaySeason
+      ? storeItems.filter((it) => it.seasonId === displaySeason.id && (it.owned || seasonPurchasable))
+      : []),
+    [storeItems, displaySeason, seasonPurchasable],
   );
+  // Seasonal auras are a static client catalog — visibility comes from the
+  // server-computed `seasonalAuraIds` (active season + owned), with a
+  // client-side fallback for older cached responses.
+  const serverSeasonalAuraIds = store?.seasonalAuraIds;
   const seasonalAuras = useMemo(
-    () => (displaySeason ? SEASONAL_AURAS.filter((a) => a.seasonId === displaySeason.id) : []),
-    [displaySeason],
+    () => (displaySeason
+      ? SEASONAL_AURAS.filter((a) => {
+          if (a.seasonId !== displaySeason.id) return false;
+          if (serverSeasonalAuraIds) return serverSeasonalAuraIds.includes(a.id);
+          return seasonPurchasable || ownedAuras.includes(a.id);
+        })
+      : []),
+    [displaySeason, serverSeasonalAuraIds, seasonPurchasable, ownedAuras],
   );
+  const hasSeasonalItems = seasonalAuras.length + seasonalFrames.length > 0;
   // Regular sections hide seasonal items the user doesn't own; owned seasonal
   // frames/auras stay visible year-round so they remain equippable.
   const regularFrames = useMemo(
@@ -1412,7 +1428,7 @@ export default function LojaPage() {
           )}
 
           {/* ─── Section 0: Edição Limitada (seasonal) ────── */}
-          {displaySeason && (
+          {displaySeason && hasSeasonalItems && (
             <motion.section
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}

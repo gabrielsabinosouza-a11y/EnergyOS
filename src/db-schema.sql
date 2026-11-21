@@ -1371,21 +1371,21 @@ on conflict (id) do update set
 
 -- ── Seed seasonal avatar frames (season_id links to src/config/seasons.ts) ──
 insert into avatar_decorations (id, name, description, image_url, price, rarity, sort_order, season_id) values
-  ('frame_halloween_cobweb',  'Teia de Aranha',   'Teias de aranha nos cantos do anel',            '/assets/seasons/halloween/frames/frame_halloween_cobweb.png',   3000, 'epic',      101, 'halloween'),
-  ('frame_halloween_moon',    'Lua Assombrada',   'Lua cheia com brilho espectral',               '/assets/seasons/halloween/frames/frame_halloween_moon.png',     3200, 'epic',      102, 'halloween'),
-  ('frame_halloween_bones',   'Ossos',            'Anel feito de ossinhos cruzados',              '/assets/seasons/halloween/frames/frame_halloween_bones.png',    3300, 'epic',      103, 'halloween'),
+  ('frame_halloween_cobweb',  'Teia de Aranha',   'Teias de aranha nos cantos do anel',            '/assets/seasons/halloween/frames/frame_halloween_cobweb.png',   3000, 'legendary',      101, 'halloween'),
+  ('frame_halloween_moon',    'Lua Assombrada',   'Lua cheia com brilho espectral',               '/assets/seasons/halloween/frames/frame_halloween_moon.png',     3200, 'legendary',      102, 'halloween'),
+  ('frame_halloween_bones',   'Ossos',            'Anel feito de ossinhos cruzados',              '/assets/seasons/halloween/frames/frame_halloween_bones.png',    3300, 'legendary',      103, 'halloween'),
   ('frame_halloween_flame',   'Chama Roxa',       'Chamas roxas animadas ao redor do avatar',     '/assets/seasons/halloween/frames/frame_halloween_flame.png',    3500, 'legendary', 104, 'halloween'),
-  ('frame_xmas_candy_cane',   'Bengala Doce',     'Anel de bengalas doces vermelho e branco',     '/assets/seasons/christmas/frames/frame_xmas_candy_cane.png',    3000, 'epic',      101, 'christmas'),
-  ('frame_xmas_snowflake',    'Flocos de Neve',   'Flocos de neve crystalline no anel',           '/assets/seasons/christmas/frames/frame_xmas_snowflake.png',     3200, 'epic',      102, 'christmas'),
-  ('frame_xmas_holly',        'Azevinho',         'Folhas de azevinho com bagas vermelhas',       '/assets/seasons/christmas/frames/frame_xmas_holly.png',         3300, 'epic',      103, 'christmas'),
+  ('frame_xmas_candy_cane',   'Bengala Doce',     'Anel de bengalas doces vermelho e branco',     '/assets/seasons/christmas/frames/frame_xmas_candy_cane.png',    3000, 'legendary',      101, 'christmas'),
+  ('frame_xmas_snowflake',    'Flocos de Neve',   'Flocos de neve crystalline no anel',           '/assets/seasons/christmas/frames/frame_xmas_snowflake.png',     3200, 'legendary',      102, 'christmas'),
+  ('frame_xmas_holly',        'Azevinho',         'Folhas de azevinho com bagas vermelhas',       '/assets/seasons/christmas/frames/frame_xmas_holly.png',         3300, 'legendary',      103, 'christmas'),
   ('frame_xmas_lights',       'Pisca-Pisca',      'Luzes douradas de Natal piscando no anel',     '/assets/seasons/christmas/frames/frame_xmas_lights.png',        3500, 'legendary', 104, 'christmas'),
-  ('frame_newyear_confetti',  'Confete Dourado',   'Confetes dourados caindo no anel',             '/assets/seasons/newyear/frames/frame_newyear_confetti.png',     3000, 'epic',      101, 'newyear'),
-  ('frame_newyear_neon',      'Neon Ano Novo',    'Anel neon estilo festa de ano novo',           '/assets/seasons/newyear/frames/frame_newyear_neon.png',         3200, 'epic',      102, 'newyear'),
-  ('frame_newyear_sparkler',  'Estrelinha',       'Vela de estrelinha brilhando',                '/assets/seasons/newyear/frames/frame_newyear_sparkler.png',     3300, 'epic',      103, 'newyear'),
+  ('frame_newyear_confetti',  'Confete Dourado',   'Confetes dourados caindo no anel',             '/assets/seasons/newyear/frames/frame_newyear_confetti.png',     3000, 'legendary',      101, 'newyear'),
+  ('frame_newyear_neon',      'Neon Ano Novo',    'Anel neon estilo festa de ano novo',           '/assets/seasons/newyear/frames/frame_newyear_neon.png',         3200, 'legendary',      102, 'newyear'),
+  ('frame_newyear_sparkler',  'Estrelinha',       'Vela de estrelinha brilhando',                '/assets/seasons/newyear/frames/frame_newyear_sparkler.png',     3300, 'legendary',      103, 'newyear'),
   ('frame_newyear_countdown', 'Contagem Regressiva','Números regressivos marcando a virada',      '/assets/seasons/newyear/frames/frame_newyear_countdown.png',    3500, 'legendary', 104, 'newyear'),
-  ('frame_easter_flowers',    'Coroa de Flores',  'Coroa de flores primaveris',                  '/assets/seasons/easter/frames/frame_easter_flowers.png',       3000, 'epic',      101, 'easter'),
-  ('frame_easter_eggs',       'Ovos Pastel',      'Ovos de páscoa em tons pastel',               '/assets/seasons/easter/frames/frame_easter_eggs.png',          3200, 'epic',      102, 'easter'),
-  ('frame_easter_ears',       'Orelhas de Coelho','Orelhas de coelho sobre o avatar',            '/assets/seasons/easter/frames/frame_easter_ears.png',          3300, 'epic',      103, 'easter'),
+  ('frame_easter_flowers',    'Coroa de Flores',  'Coroa de flores primaveris',                  '/assets/seasons/easter/frames/frame_easter_flowers.png',       3000, 'legendary',      101, 'easter'),
+  ('frame_easter_eggs',       'Ovos Pastel',      'Ovos de páscoa em tons pastel',               '/assets/seasons/easter/frames/frame_easter_eggs.png',          3200, 'legendary',      102, 'easter'),
+  ('frame_easter_ears',       'Orelhas de Coelho','Orelhas de coelho sobre o avatar',            '/assets/seasons/easter/frames/frame_easter_ears.png',          3300, 'legendary',      103, 'easter'),
   ('frame_easter_butterflies','Borboletas',       'Borboletas e vinhas primaveris animadas',      '/assets/seasons/easter/frames/frame_easter_butterflies.png',   3500, 'legendary', 104, 'easter')
 on conflict (id) do update set
   name = excluded.name,

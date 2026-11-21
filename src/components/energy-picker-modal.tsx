@@ -16,6 +16,12 @@ import {
   type EnergyType,
 } from "@/lib/energy-assets";
 import { AuraStageImage } from "@/components/aura-stage-image";
+import { useSeason } from "@/components/seasonal/season-provider";
+import {
+  KEEP_OWNED_SEASONAL_VISIBLE,
+  SEASONS,
+  getSeasonalAura,
+} from "@/config/seasons";
 
 interface EnergyPickerModalProps {
   current: string;
@@ -24,8 +30,8 @@ interface EnergyPickerModalProps {
   onClose: () => void;
 }
 
-// Ordem de exibição: das auras mais comuns às épicas, com cabeçalho por raridade.
-const RARITY_ORDER: AuraRarity[] = ["common", "uncommon", "rare", "epic"];
+// Ordem de exibição: das auras mais comuns às lendárias, com cabeçalho por raridade.
+const RARITY_ORDER: AuraRarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -38,6 +44,7 @@ export function EnergyPickerModal({
 }: EnergyPickerModalProps) {
   const router = useRouter();
   const reduced = useReducedMotion();
+  const { season: activeSeason, endsAt: seasonEndsAt } = useSeason();
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = "energy-picker-title";
 
@@ -98,9 +105,21 @@ export function EnergyPickerModal({
     router.push("/loja?section=auras");
   }
 
+  // Seasonal auras are only visible while their season is active or when the
+  // user owns them (KEEP_OWNED_SEASONAL_VISIBLE). Out-of-season unowned auras
+  // are hidden completely — never shown as locked.
+  const isAuraVisible = (type: EnergyType) => {
+    const sid = getSeasonalAura(type)?.seasonId;
+    if (!sid) return true;
+    if (activeSeason?.id === sid) return true;
+    return KEEP_OWNED_SEASONAL_VISIBLE && ownedAuras.has(type);
+  };
+
   const groups = RARITY_ORDER.map((rarity) => ({
     rarity,
-    types: ENERGY_TYPES.filter((t) => AURA_DEFS[t].rarity === rarity),
+    types: ENERGY_TYPES.filter(
+      (t) => AURA_DEFS[t].rarity === rarity && isAuraVisible(t),
+    ),
   })).filter((group) => group.types.length > 0);
 
   if (typeof document === "undefined") return null;
@@ -165,6 +184,14 @@ export function EnergyPickerModal({
                     const cfg = ENERGY_CONFIGS[type];
                     const isOwned = ownedAuras.has(type);
                     const isSelected = type === current;
+                    const seasonal = getSeasonalAura(type);
+                    const seasonName = seasonal
+                      ? SEASONS.find((s) => s.id === seasonal.seasonId)?.name
+                      : null;
+                    const seasonActive = !!seasonal && activeSeason?.id === seasonal.seasonId;
+                    const daysLeft = seasonActive && seasonEndsAt
+                      ? Math.max(1, Math.ceil((seasonEndsAt.getTime() - Date.now()) / 86_400_000))
+                      : null;
                     return (
                       <button
                         key={type}
@@ -221,6 +248,14 @@ export function EnergyPickerModal({
                         >
                           {AURA_RARITY_LABELS[AURA_DEFS[type].rarity]}
                         </span>
+
+                        {/* Tag da temporada + contagem regressiva */}
+                        {seasonName && (
+                          <span className="text-[8px] leading-none text-[var(--text-faint)]">
+                            {seasonName}
+                            {daysLeft !== null ? ` · ${daysLeft}d` : ""}
+                          </span>
+                        )}
 
                         {/* Badge de cadeado para auras bloqueadas */}
                         {!isOwned && (
