@@ -16,17 +16,57 @@ import Image from "next/image";
 const SPARKLE_COUNT = 9;
 
 const LED_COLORS = ["#60a5fa", "#67e8f9", "#a78bfa"];
-const LED_COUNT = 18;
+const LED_COUNT = 22;
 
-/** Segmented LED ring — addressable-dot look with a chase blink. */
+/** Point on a rounded-rectangle perimeter (centered coords), t in [0,1).
+ *  Matches the glass orb's squircle shape so the LED strip hugs it. */
+function roundedRectPoint(t: number, s: number, r: number) {
+  const h = s / 2;
+  const straight = s - 2 * r;
+  const arcLen = (Math.PI * r) / 2;
+  const per = 4 * straight + 4 * arcLen;
+  let d = ((t % 1) + 1) % 1 * per;
+
+  // clockwise from top edge, left→right
+  const walk = (len: number, fn: (u: number) => { x: number; y: number }) => {
+    if (d <= len) return fn(d / len);
+    d -= len;
+    return null;
+  };
+
+  let p =
+    walk(straight, (u) => ({ x: -h + r + u * straight, y: -h })) ??
+    walk(arcLen, (u) => {
+      const a = -Math.PI / 2 + u * (Math.PI / 2);
+      return { x: h - r + Math.cos(a) * r, y: -h + r + Math.sin(a) * r };
+    }) ??
+    walk(straight, (u) => ({ x: h, y: -h + r + u * straight })) ??
+    walk(arcLen, (u) => {
+      const a = u * (Math.PI / 2);
+      return { x: h - r + Math.cos(a) * r, y: h - r + Math.sin(a) * r };
+    }) ??
+    walk(straight, (u) => ({ x: h - r - u * straight, y: h })) ??
+    walk(arcLen, (u) => {
+      const a = Math.PI / 2 + u * (Math.PI / 2);
+      return { x: -h + r + Math.cos(a) * r, y: h - r + Math.sin(a) * r };
+    }) ??
+    walk(straight, (u) => ({ x: -h, y: h - r - u * straight })) ??
+    walk(arcLen, (u) => {
+      const a = Math.PI + u * (Math.PI / 2);
+      return { x: -h + r + Math.cos(a) * r, y: -h + r + Math.sin(a) * r };
+    });
+  return p ?? { x: 0, y: -h };
+}
+
+/** Segmented LED strip tracing the rounded-square pedestal. */
 export function LedRing({ accent, size }: { accent: string; size: number }) {
   const palette = LED_COLORS.map((c, i) => (i === 0 ? accent : c));
-  const radius = size / 2 - 6;
+  const r = size * 0.24; // corner radius ≈ orb's 26% squircle
   return (
     <div className="tour-led" style={{ width: size, height: size }} aria-hidden>
       <div className="tour-led-track" />
       {Array.from({ length: LED_COUNT }, (_, i) => {
-        const angle = (i / LED_COUNT) * 360;
+        const p = roundedRectPoint(i / LED_COUNT, size - 8, r);
         const color = palette[i % palette.length];
         return (
           <span
@@ -34,10 +74,11 @@ export function LedRing({ accent, size }: { accent: string; size: number }) {
             className="tour-led-dot"
             style={
               {
-                transform: `rotate(${angle}deg) translateY(${-radius}px)`,
+                left: size / 2 + p.x,
+                top: size / 2 + p.y,
                 background: color,
                 boxShadow: `0 0 5px ${color}, 0 0 10px ${color}66`,
-                animationDelay: `${i * 0.11}s`,
+                animationDelay: `${i * 0.09}s`,
               } as CSSProperties
             }
           />
