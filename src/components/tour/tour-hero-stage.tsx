@@ -34,7 +34,7 @@ function roundedRectPoint(t: number, s: number, r: number) {
     return null;
   };
 
-  let p =
+  const p =
     walk(straight, (u) => ({ x: -h + r + u * straight, y: -h })) ??
     walk(arcLen, (u) => {
       const a = -Math.PI / 2 + u * (Math.PI / 2);

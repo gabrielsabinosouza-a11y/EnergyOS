@@ -1,10 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Mono, IBM_Plex_Mono, Instrument_Serif, Inter } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-provider";
-import { SeasonProvider } from "@/components/seasonal/season-provider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-landing-body", display: "swap" });
 const instrumentSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-landing-display", display: "swap" });
@@ -37,7 +35,7 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'light':t==='dark'?'dark':window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'light':'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -47,12 +45,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={inter.className} suppressHydrationWarning>
-        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeProvider>
-          <AuthProvider>
-            <SeasonProvider>{children}</SeasonProvider>
-          </AuthProvider>
+          <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </body>
     </html>
