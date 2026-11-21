@@ -35,7 +35,9 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `try{var t=localStorage.getItem('theme');var m=t==='light'?'light':'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
+// Mirrors ThemeProvider: storage key "energyos-theme", values light/dark/
+// system (system follows prefers-color-scheme), unset defaults to dark.
+const themeScript = `try{var t=localStorage.getItem('energyos-theme');var m=t==='light'?'light':t==='system'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
