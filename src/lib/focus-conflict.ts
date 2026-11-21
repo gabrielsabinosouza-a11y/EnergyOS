@@ -21,6 +21,15 @@ export const APP_TOAST_EVENT = "energyosToast";
  */
 export const FOCUS_CONFLICT_DEDUPE_MS = 4000;
 
+/** Title of the focus conflict toast. */
+export const FOCUS_CONFLICT_TITLE = "Sessão de foco em andamento";
+
+/** Description of the focus conflict toast. */
+export const FOCUS_CONFLICT_DESCRIPTION = "Você já tem uma sessão de foco ativa.";
+
+/** Label for the action button in the focus conflict toast. */
+export const FOCUS_CONFLICT_ACTION_LABEL = "Retomar sessão";
+
 /** Format remaining seconds into a pt-BR string like "32 min" or "1 min". */
 function formatRemainingSec(sec: number): string {
   if (sec <= 0) return "0 min";

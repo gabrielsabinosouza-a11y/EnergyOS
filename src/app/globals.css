@@ -2038,31 +2038,129 @@ body { overflow-wrap: break-word; }
 }
 .season-particle { position: absolute; will-change: transform; }
 
-/* Christmas snow */
-.season-snow { animation: season-snow-fall linear infinite; }
+/* Christmas snow. Achieves visibility while never blocking anything:
+   very low opacity + small size, behind nothing interactive. */
+.season-snow {
+  animation: season-snow-fall linear infinite;
+  opacity: 0.2;
+  filter: drop-shadow(0 0 6px rgba(255,255,255,0.35));
+  z-index: 12;
+}
 @keyframes season-snow-fall {
   from { transform: translate3d(0, -12vh, 0); }
   to   { transform: translate3d(var(--sway, 24px), 112vh, 0); }
 }
-/* Snow piled on top borders of cards */
-[data-season="christmas"] .glass-card,
-[data-season="christmas"] .panel {
-  position: relative;
+
+/* Desktop has a few more snowflakes than mobile; all stay tiny and pale. */
+@media (min-width: 768px) {
+  .season-snow { z-index: 12; }
 }
-[data-season="christmas"] .glass-card::after,
-[data-season="christmas"] .panel::after {
-  content: "";
+/* Christmas light strings on card top edges — rendered by
+   <ChristmasLightsInjector> (src/components/seasonal/christmas-lights.tsx).
+   Bulb palette lives here so the theme can retune it in one place. */
+[data-season="christmas"] .xmas-strip {
+  --xmas-1: #ff5a5a;
+  --xmas-2: #ffd166;
+  --xmas-3: #5ad66f;
+  --xmas-4: #7cc4ff;
+  --halo: 5px;
+}
+[data-season="christmas"] :is(.panel, .glass-card, .metric-card, .insight-panel, .question-panel) {
+  position: relative;
+  transition: border-color .2s, box-shadow .2s, background-color .2s, transform .2s var(--ease-out, ease-out);
+}
+.xmas-strip {
   position: absolute;
   top: -3px;
-  left: 10px;
-  right: 10px;
-  height: 7px;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 6;
   pointer-events: none;
-  background-image: radial-gradient(circle at 7px 8px, rgba(255,255,255,.85) 4.5px, transparent 5.5px);
-  background-size: 16px 7px;
-  background-repeat: repeat-x;
-  opacity: .55;
-  border-radius: 10px 10px 0 0;
+  overflow: visible;
+}
+.xmas-wire {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+.xmas-bulb {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  margin-left: -6px;
+  pointer-events: auto;
+}
+/* Pendulum sway around the socket (top of the bulb group). */
+.xmas-sway {
+  transform-origin: 50% 0;
+  animation: xmas-sway var(--sway-dur, 3.6s) ease-in-out var(--sway-delay, 0s) infinite alternate;
+}
+@keyframes xmas-sway {
+  from { transform: rotate(-3deg); }
+  to   { transform: rotate(3deg); }
+}
+.xmas-socket {
+  width: 5px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 1.5px;
+  background: #3a2c22;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+.xmas-glass {
+  width: 8px;
+  height: 8px;
+  margin: 1px auto 0;
+  border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+  background: radial-gradient(
+    circle at 35% 28%,
+    rgba(255, 255, 255, 0.85),
+    var(--c) 55%,
+    color-mix(in srgb, var(--c) 70%, #000)
+  );
+  box-shadow:
+    0 0 var(--halo, 5px) var(--c),
+    0 0 calc(var(--halo, 5px) * 2.2) color-mix(in srgb, var(--c) 55%, transparent);
+  animation: xmas-twinkle var(--tw-dur, 1s) ease-in-out var(--tw-delay, 0s) infinite;
+}
+@keyframes xmas-twinkle {
+  0%, 100% {
+    opacity: 0.5;
+    filter: brightness(0.7);
+    box-shadow:
+      0 0 calc(var(--halo, 5px) * 0.6) var(--c),
+      0 0 calc(var(--halo, 5px) * 1.2) color-mix(in srgb, var(--c) 45%, transparent);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.25);
+    box-shadow:
+      0 0 var(--halo, 5px) var(--c),
+      0 0 calc(var(--halo, 5px) * 2.4) color-mix(in srgb, var(--c) 60%, transparent);
+  }
+}
+/* Card hover: bulbs brighten, twinkle faster, glow stronger, card lifts. */
+[data-season="christmas"] :is(.panel, .glass-card, .metric-card, .insight-panel, .question-panel):hover .xmas-strip {
+  --halo: 10px;
+}
+[data-season="christmas"] :is(.panel, .glass-card, .metric-card, .insight-panel, .question-panel):hover .xmas-glass {
+  animation-duration: calc(var(--tw-dur, 1s) * 0.5);
+}
+[data-season="christmas"] :is(.panel, .glass-card, .metric-card, .insight-panel, .question-panel):hover {
+  transform: translateY(-2px);
+}
+.xmas-paused .xmas-glass,
+.xmas-paused .xmas-sway {
+  animation-play-state: paused !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .xmas-sway,
+  .xmas-glass {
+    animation: none !important;
+  }
+  /* Static warm glow remains — bulbs just don't twinkle or sway. */
 }
 /* Twinkling light string across the top of the app — safe-area aware so it
    never sits under the phone notch/status bar. */
@@ -2146,6 +2244,9 @@ body { overflow-wrap: break-word; }
 .season-layer.season-paused canvas {
   animation-play-state: paused !important;
 }
+
+/* Snow paused when the tab is hidden, static under reduced motion. */
+html.season-layer-hidden .season-snow { animation-play-state: paused; }
 
 @media (prefers-reduced-motion: reduce) {
   .season-snow, .season-bat, .season-floater, .season-confetti-piece,

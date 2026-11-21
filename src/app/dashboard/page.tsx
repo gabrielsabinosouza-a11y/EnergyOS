@@ -14,6 +14,7 @@ import { api } from "@/lib/api-client";
 import { todayIso, weekStartIso } from "@/lib/db/dates";
 import { DailyQuestsProvider, useDailyQuests } from "@/lib/quest-store";
 import { GoalsCard } from "@/components/dashboard/goals-card";
+import { showFocusConflictAlertWithSession } from "@/lib/focus-conflict";
 import type { GoalDraft } from "@/components/dashboard/goals-modals";
 import { KanbanBoard } from "@/components/dashboard/kanban-board";
 import { FocusTimer } from "@/components/dashboard/focus-timer";
@@ -156,6 +157,7 @@ function DashboardContent() {
   const [sleepAnswer, setSleepAnswer] = useState("7 a 8 horas");
   const [checkinSaving, setCheckinSaving] = useState(false);
   const [checkinSaved, setCheckinSaved] = useState(false);
+  const [isStartingFocus, setIsStartingFocus] = useState(false);
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
   const [streakPop, setStreakPop] = useState(false);
   const [streakCalendarOpen, setStreakCalendarOpen] = useState(false);

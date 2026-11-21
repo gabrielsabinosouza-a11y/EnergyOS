@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useSeason } from "./season-provider";
 import type { SeasonId } from "@/config/seasons";
+import { ChristmasLightsInjector } from "./christmas-lights";
 
 /* Deterministic pseudo-random so flakes/floaters don't reshuffle each render. */
 function seeded(seed: number) {
@@ -329,6 +330,7 @@ export function SeasonalDecorations() {
         <>
           <LightString />
           <Snowfall />
+          <ChristmasLightsInjector />
         </>
       )}
       {id === "halloween" && (
