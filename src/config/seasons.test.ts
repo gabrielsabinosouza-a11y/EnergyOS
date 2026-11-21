@@ -1,14 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  KEEP_OWNED_SEASONAL_VISIBLE,
   SEASONS,
   getActiveSeason,
+  getDevNow,
   getNextSeasonStart,
   getSeasonEndDate,
   getSeasonOverride,
   getTimeRemaining,
+  isSeasonalItemVisible,
   isSeasonPurchasable,
   isSeasonPurchasableNow,
+  nextSeasonBoundaryMs,
   seasonWindowForYear,
   spDateKey,
   type SeasonDef,
@@ -34,25 +38,36 @@ test("Christmas window: Nov 1 → Dec 31 23:59:59 SP", () => {
   assert.equal(getActiveSeason(sp("2026-12-31T23:59:59"))?.id, "christmas");
 });
 
-test("New Year window: Jan 1 → Feb 5, crosses the year boundary", () => {
+test("New Year window: Jan 1 → Jan 31 23:59:59 SP", () => {
   assert.equal(getActiveSeason(sp("2026-01-01T00:00:00"))?.id, "newyear");
-  assert.equal(getActiveSeason(sp("2026-02-05T23:59:59"))?.id, "newyear");
+  assert.equal(getActiveSeason(sp("2026-01-31T23:59:59"))?.id, "newyear");
+  // Feb 1 00:00:00 SP — New Year has ended, no season is active.
+  assert.equal(getActiveSeason(sp("2026-02-01T00:00:00")), null);
   // The window belongs to the same calendar year it starts in.
   assert.equal(getActiveSeason(sp("2027-01-01T00:00:00"))?.id, "newyear");
+  assert.equal(getActiveSeason(sp("2027-01-31T23:59:59"))?.id, "newyear");
+  assert.equal(getActiveSeason(sp("2027-02-01T00:00:00")), null);
 });
 
 test("Easter window: Mar 1 → Apr 30 SP", () => {
   assert.equal(getActiveSeason(sp("2026-03-01T00:00:00"))?.id, "easter");
   assert.equal(getActiveSeason(sp("2026-04-15T12:00:00"))?.id, "easter");
   assert.equal(getActiveSeason(sp("2026-04-30T23:59:59"))?.id, "easter");
+  // May 1 00:00:00 SP — Easter has ended.
+  assert.equal(getActiveSeason(sp("2026-05-01T00:00:00")), null);
 });
 
-test("Feb 6 → Feb 28/29 has no season (incl. leap years)", () => {
+test("Feb has no season (incl. leap years)", () => {
   for (const y of [2026, 2028, 2032]) {
-    assert.equal(getActiveSeason(sp(`${y}-02-06T12:00:00`)), null, `ano ${y}`);
-    assert.equal(getActiveSeason(sp(`${y}-02-20T12:00:00`)), null, `ano ${y}`);
+    assert.equal(getActiveSeason(sp(`${y}-02-01T00:00:00`)), null, `ano ${y}`);
+    assert.equal(getActiveSeason(sp(`${y}-02-14T12:00:00`)), null, `ano ${y}`);
+    assert.equal(getActiveSeason(sp(`${y}-02-28T23:59:59`)), null, `ano ${y}`);
   }
+  // Leap day itself is also seasonless.
   assert.equal(getActiveSeason(sp("2028-02-29T12:00:00")), null);
+  assert.equal(getActiveSeason(sp("2028-02-29T23:59:59")), null);
+  // Mar 1 00:00:00 SP starts Easter, even right after Feb 29.
+  assert.equal(getActiveSeason(sp("2028-03-01T00:00:00"))?.id, "easter");
 });
 
 test("Timezone boundary: 23:59:59 vs 00:00:00 SP decides the season", () => {
@@ -112,4 +127,70 @@ test("isSeasonPurchasable / isSeasonPurchasableNow gate by window and override",
   // Unknown season ids never match.
   assert.equal(isSeasonPurchasableNow("not_a_season", sp("2026-10-15T12:00:00")), false);
   void xmas;
+});
+
+test("Season boundaries: Oct 31→Nov 1, Dec 31→Jan 1, Jan 31→Feb 1, Apr 30→May 1", () => {
+  // Halloween ends / Christmas begins.
+  assert.equal(getActiveSeason(sp("2026-10-31T23:59:59"))?.id, "halloween");
+  assert.equal(getActiveSeason(sp("2026-11-01T00:00:00"))?.id, "christmas");
+  // Christmas ends / New Year begins (crosses the year).
+  assert.equal(getActiveSeason(sp("2026-12-31T23:59:59"))?.id, "christmas");
+  assert.equal(getActiveSeason(sp("2027-01-01T00:00:00"))?.id, "newyear");
+  // New Year ends / nothing begins.
+  assert.equal(getActiveSeason(sp("2027-01-31T23:59:59"))?.id, "newyear");
+  assert.equal(getActiveSeason(sp("2027-02-01T00:00:00")), null);
+  // Easter ends / nothing begins.
+  assert.equal(getActiveSeason(sp("2027-04-30T23:59:59"))?.id, "easter");
+  assert.equal(getActiveSeason(sp("2027-05-01T00:00:00")), null);
+});
+
+test("isSeasonalItemVisible: owned × in/out of season matrix", () => {
+  const xmasActive = sp("2026-12-15T12:00:00");
+  const xmasInactive = sp("2027-02-10T12:00:00"); // no season active
+  const halloweenInactive = sp("2026-12-15T12:00:00"); // christmas active, halloween not
+
+  // Inactive season + not owned → hidden.
+  assert.equal(isSeasonalItemVisible("halloween", false, xmasActive), false);
+  assert.equal(isSeasonalItemVisible("christmas", false, xmasInactive), false);
+  // Inactive season + owned → visible only when KEEP_OWNED_SEASONAL_VISIBLE.
+  assert.equal(
+    isSeasonalItemVisible("christmas", true, xmasInactive),
+    KEEP_OWNED_SEASONAL_VISIBLE,
+  );
+  // Active season → visible to everyone.
+  assert.equal(isSeasonalItemVisible("christmas", false, xmasActive), true);
+  assert.equal(isSeasonalItemVisible("christmas", true, xmasActive), true);
+  // Non-seasonal items are always visible.
+  assert.equal(isSeasonalItemVisible(null, false, xmasInactive), true);
+  // Dev override flips visibility the same way getActiveSeason does.
+  assert.equal(
+    isSeasonalItemVisible("halloween", false, xmasActive, "halloween"),
+    true,
+  );
+  assert.equal(
+    isSeasonalItemVisible("christmas", false, halloweenInactive, "halloween"),
+    false,
+  );
+});
+
+test("nextSeasonBoundaryMs points at the nearest window edge", () => {
+  // Mid-Halloween → next boundary is Nov 1 00:00 SP (Christmas start).
+  const midHalloween = sp("2026-10-15T12:00:00");
+  const wait = nextSeasonBoundaryMs(midHalloween);
+  const expected = sp("2026-11-01T00:00:00").getTime() - midHalloween.getTime();
+  assert.ok(Math.abs(wait - expected) < 60_000, `wait=${wait} expected≈${expected}`);
+  // Jan 20 → next boundary is Feb 1? No — New Year ends Jan 31 23:59:59.999,
+  // so the boundary is Feb 1 00:00 SP.
+  const jan20 = sp("2027-01-20T12:00:00");
+  const wait2 = nextSeasonBoundaryMs(jan20);
+  const expected2 = sp("2027-02-01T00:00:00").getTime() - jan20.getTime();
+  assert.ok(Math.abs(wait2 - expected2) < 60_000, `wait2=${wait2} expected≈${expected2}`);
+});
+
+test("getDevNow parses ?now= outside production only", () => {
+  const dev = { NODE_ENV: "development" };
+  assert.equal(getDevNow(dev, "?now=2026-12-31T23:59:50")?.getTime(), Date.parse("2026-12-31T23:59:50"));
+  assert.equal(getDevNow(dev, "?now=not-a-date"), null);
+  assert.equal(getDevNow(dev, ""), null);
+  assert.equal(getDevNow({ NODE_ENV: "production" }, "?now=2026-12-31T23:59:50"), null);
 });
