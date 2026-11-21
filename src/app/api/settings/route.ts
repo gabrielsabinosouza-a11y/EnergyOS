@@ -35,6 +35,7 @@ export async function PUT(request: NextRequest) {
       reminderCheckinEnabled: body.reminderCheckinEnabled === undefined ? undefined : (body.reminderCheckinEnabled as boolean),
       reminderFocusEnabled: body.reminderFocusEnabled === undefined ? undefined : (body.reminderFocusEnabled as boolean),
       reminderSleepEnabled: body.reminderSleepEnabled === undefined ? undefined : (body.reminderSleepEnabled as boolean),
+      seasonalThemesEnabled: body.seasonalThemesEnabled === undefined ? undefined : (body.seasonalThemesEnabled as boolean),
     };
     return jsonOk(await saveSettings(profileId, input));
   });

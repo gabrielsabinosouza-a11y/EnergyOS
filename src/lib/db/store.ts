@@ -2,6 +2,14 @@ import pool from "../db";
 import type { AvatarDecoration, DecorationRarity, StoreItem, UserDecoration, StreakShieldDesign, UserStreakShieldDesign } from "@/types";
 import { NotFoundError, ConflictError, ForbiddenError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
+import {
+  SEASONAL_AURAS,
+  getActiveSeason,
+  getSeasonEndDate,
+  getSeasonOverride,
+  isSeasonPurchasableNow,
+  type SeasonId,
+} from "@/config/seasons";
 
 const RARITY_ORDER: Record<DecorationRarity, number> = {
   common: 0, rare: 1, epic: 2, legendary: 3,
@@ -12,9 +20,9 @@ const RARITY_ORDER: Record<DecorationRarity, number> = {
 export async function listDecorations(): Promise<AvatarDecoration[]> {
   const result = await pool.query<{
     id: string; name: string; description: string; image_url: string;
-    price: number; rarity: DecorationRarity; sort_order: number;
+    price: number; rarity: DecorationRarity; sort_order: number; season_id: string | null;
   }>(
-    `select id, name, description, image_url, price, rarity, sort_order
+    `select id, name, description, image_url, price, rarity, sort_order, season_id
      from avatar_decorations where is_active = true order by sort_order asc`,
   );
   return result.rows.map((row) => ({
@@ -25,6 +33,7 @@ export async function listDecorations(): Promise<AvatarDecoration[]> {
     price: row.price,
     rarity: row.rarity,
     sortOrder: row.sort_order,
+    seasonId: row.season_id,
   }));
 }
 
@@ -55,12 +64,27 @@ export async function purchaseDecoration(
 ): Promise<{ balance: number }> {
   parseProfileId(profileId);
 
-  const decoration = await pool.query<{ price: number }>(
-    `select price from avatar_decorations where id = $1 and is_active = true`,
+  const decoration = await pool.query<{ price: number; season_id: string | null }>(
+    `select price, season_id from avatar_decorations where id = $1 and is_active = true`,
     [decorationId],
   );
   if (!decoration.rows[0]) throw new NotFoundError("Decoração não encontrada.");
   const price = decoration.rows[0].price;
+
+  // Seasonal frames may only be bought while their season window is active.
+  // The check runs on the server clock — the client date is never trusted.
+  // Dev-only overrides (SEASON_OVERRIDE / NEXT_PUBLIC_FORCE_SEASON outside
+  // production) let QA exercise the flow on any day.
+  if (
+    decoration.rows[0].season_id &&
+    !isSeasonPurchasableNow(decoration.rows[0].season_id, new Date(), {
+      NODE_ENV: process.env.NODE_ENV,
+      SEASON_OVERRIDE: process.env.SEASON_OVERRIDE,
+      NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
+    })
+  ) {
+    throw new ForbiddenError("Esta decoração só pode ser comprada durante a temporada.");
+  }
 
   const client = await pool.connect();
   try {
@@ -321,7 +345,14 @@ const AURA_PRICES: Record<string, number> = {
   ice: 500, wind: 500, metal: 500, poison: 500,
   earth: 750, thunder: 750, cosmic: 750,
   light: 1000, shadow: 1000, crystal: 1000,
+  // Seasonal auras — gated by their season window in purchaseAura().
+  ...Object.fromEntries(SEASONAL_AURAS.map((a) => [a.id, a.price])),
 };
+
+/** aura_type -> seasonId for seasonal auras (undefined for regular auras). */
+const SEASONAL_AURA_SEASON = new Map<string, SeasonId>(
+  SEASONAL_AURAS.map((a) => [a.id, a.seasonId]),
+);
 
 const AURA_TYPES = Object.keys(AURA_PRICES);
 
@@ -348,6 +379,8 @@ export interface StoreState {
   banner: { hasCustomBanner: boolean; bannerImageUrl: string | null; unlocked: boolean };
   shieldCount: number;
   ownedAuras: string[];
+  /** Active season computed on the server clock (null when no season / dev override off). */
+  season: { id: SeasonId; name: string; endsAt: string } | null;
 }
 
 /**
@@ -372,9 +405,9 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     ),
     pool.query<{
       id: string; name: string; description: string; image_url: string;
-      price: number; rarity: DecorationRarity; sort_order: number;
+      price: number; rarity: DecorationRarity; sort_order: number; season_id: string | null;
     }>(
-      `select id, name, description, image_url, price, rarity, sort_order
+      `select id, name, description, image_url, price, rarity, sort_order, season_id
        from avatar_decorations where is_active = true order by sort_order asc`,
     ),
     pool.query<{ decoration_id: string }>(
@@ -405,7 +438,22 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     sortOrder: row.sort_order,
     owned: ownedIds.has(row.id),
     equipped: equippedDecorationId === row.id,
+    seasonId: row.season_id,
+    isSeasonal: !!row.season_id,
   }));
+
+  // Server-authoritative season info for the countdown — the client never
+  // computes the purchasable window itself.
+  const now = new Date();
+  const override = getSeasonOverride({
+    NODE_ENV: process.env.NODE_ENV,
+    SEASON_OVERRIDE: process.env.SEASON_OVERRIDE,
+    NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
+  });
+  const activeSeason = getActiveSeason(now, override);
+  const season = activeSeason
+    ? { id: activeSeason.id, name: activeSeason.name, endsAt: getSeasonEndDate(activeSeason, now).toISOString() }
+    : null;
 
   return {
     items,
@@ -417,6 +465,7 @@ export async function getStoreState(profileId: string): Promise<StoreState> {
     },
     shieldCount: Number(profile?.streak_shield_count ?? 0),
     ownedAuras: auras.rows.map((row) => row.aura_type),
+    season,
   };
 }
 
@@ -427,6 +476,18 @@ export async function purchaseAura(
   parseProfileId(profileId);
   if (!AURA_TYPES.includes(auraType)) {
     throw new NotFoundError("Energia não encontrada.");
+  }
+  // Seasonal auras can only be bought while their season is active (server clock).
+  const auraSeasonId = SEASONAL_AURA_SEASON.get(auraType);
+  if (
+    auraSeasonId &&
+    !isSeasonPurchasableNow(auraSeasonId, new Date(), {
+      NODE_ENV: process.env.NODE_ENV,
+      SEASON_OVERRIDE: process.env.SEASON_OVERRIDE,
+      NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
+    })
+  ) {
+    throw new ForbiddenError("Esta energia só pode ser comprada durante a temporada.");
   }
   const price = AURA_PRICES[auraType];
   if (price <= 0) throw new ConflictError("Esta energia já está disponível.");
@@ -456,6 +517,41 @@ export async function purchaseAura(
   } finally {
     client.release();
   }
+}
+
+/**
+ * Seasonal status for the nav badge: active season + count of seasonal items
+ * (frames + auras) the user doesn't own yet. Returns zeros when no season is
+ * active so the badge simply hides.
+ */
+export async function getSeasonalStoreStatus(
+  profileId: string,
+): Promise<{ active: boolean; seasonId: SeasonId | null; unowned: number }> {
+  parseProfileId(profileId);
+  const now = new Date();
+  const override = getSeasonOverride({
+    NODE_ENV: process.env.NODE_ENV,
+    SEASON_OVERRIDE: process.env.SEASON_OVERRIDE,
+    NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON,
+  });
+  const season = getActiveSeason(now, override);
+  if (!season) return { active: false, seasonId: null, unowned: 0 };
+
+  const [frames, auras] = await Promise.all([
+    pool.query<{ id: string }>(
+      `select d.id from avatar_decorations d
+       where d.season_id = $1 and d.is_active = true
+         and not exists (select 1 from user_decorations ud where ud.profile_id = $2 and ud.decoration_id = d.id)`,
+      [season.id, profileId],
+    ),
+    pool.query<{ aura_type: string }>(
+      `select a.aura_type from unnest($1::text[]) as a(aura_type)
+       where not exists (select 1 from user_auras ua where ua.profile_id = $2 and ua.aura_type = a.aura_type)`,
+      [SEASONAL_AURAS.filter((a) => a.seasonId === season.id).map((a) => a.id), profileId],
+    ),
+  ]);
+
+  return { active: true, seasonId: season.id, unowned: frames.rows.length + auras.rows.length };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

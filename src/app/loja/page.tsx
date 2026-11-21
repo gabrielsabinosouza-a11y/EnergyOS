@@ -21,6 +21,7 @@ import {
   Lock,
   AlertCircle,
   FlaskConical,
+  Timer,
 } from "lucide-react";
 import { CoinIcon } from "@/components/coin-icon";
 import { XpIcon } from "@/components/xp-icon";
@@ -43,6 +44,16 @@ import { FRAME_ASSETS } from "@/components/avatar";
 import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS, isXpBoostActive } from "@/lib/xp-boost";
 import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
 import { formatRemaining } from "@/components/xp-boost/xp-boost-indicator";
+import { useSeason } from "@/components/seasonal/season-provider";
+import {
+  SEASONS,
+  SEASONAL_AURAS,
+  SEASONAL_FRAMES,
+  getNextSeasonStart,
+  getSeasonalAura,
+  isSeasonalAuraId,
+  type SeasonDef,
+} from "@/config/seasons";
 
 /* ------------------------------------------------------------------ */
 /*  Rarity colour system (unified)                                     */
@@ -645,6 +656,362 @@ function SectionHeader({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Seasonal "Edição Limitada"                                         */
+/* ------------------------------------------------------------------ */
+
+const SEASONAL_SEEN_KEY = "energyos:seasonal-seen-v1";
+
+function getSeasonalSeen(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(SEASONAL_SEEN_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markSeasonalSeen(id: string) {
+  if (typeof window === "undefined") return;
+  const seen = getSeasonalSeen();
+  seen.add(id);
+  try {
+    window.localStorage.setItem(SEASONAL_SEEN_KEY, JSON.stringify([...seen].slice(-200)));
+  } catch { /* storage full/blocked — badge just reappears next visit */ }
+}
+
+/** Live 1s countdown toward the season end (server-validated instant). */
+function useSeasonCountdown(endsAt: Date | null): { text: string; urgent: boolean; expired: boolean } {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!endsAt) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [endsAt]);
+
+  return useMemo(() => {
+    if (!endsAt) return { text: "", urgent: false, expired: false };
+    const remaining = endsAt.getTime() - now;
+    if (remaining <= 0) return { text: "", urgent: false, expired: true };
+    const total = Math.floor(remaining / 1000);
+    const d = Math.floor(total / 86400);
+    const h = Math.floor((total % 86400) / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      text: `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`,
+      urgent: remaining < 24 * 60 * 60 * 1000,
+      expired: false,
+    };
+  }, [endsAt, now]);
+}
+
+/** "março de 2027" in America/Sao_Paulo for "Volta em …" labels. */
+function formatSeasonMonthYear(date: Date): string {
+  const label = date.toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "America/Sao_Paulo",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function SeasonalChip({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+      style={{ background: `${color}1f`, color, border: `1px solid ${color}55` }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SeasonalAuraCard({
+  auraId,
+  owned,
+  seasonActive,
+  returnLabel,
+  isNew,
+  processing,
+  error,
+  justPurchased,
+  reduced,
+  onBuy,
+}: {
+  auraId: string;
+  owned: boolean;
+  seasonActive: boolean;
+  returnLabel: string;
+  isNew: boolean;
+  processing: string | null;
+  error: string | null;
+  justPurchased: boolean;
+  reduced: boolean;
+  onBuy: () => void;
+}) {
+  const def = SEASONAL_AURAS.find((a) => a.id === auraId);
+  if (!def) return null;
+  const info = AURA_DEFS[auraId as EnergyType];
+  const rarity = info ? rarityOf(info.rarity) : "epic";
+  const c = RARITY_COLORS[rarity];
+  const isProcessing = processing === `aura-${auraId}`;
+
+  return (
+    <motion.div variants={reduced ? {} : fadeUp} className="relative">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-1 rounded-2xl opacity-60"
+        style={{ background: `radial-gradient(ellipse at 50% 0%, ${c.glow}, transparent 70%)` }}
+      />
+      <TiltCard reduced={reduced}>
+        <motion.div
+          whileHover={reduced || !seasonActive ? undefined : { boxShadow: `0 14px 40px -12px ${c.glow}` }}
+          animate={
+            justPurchased
+              ? { boxShadow: [`0 0 0px ${c.glow}`, `0 0 30px ${c.glow}`, `0 14px 40px -12px ${c.glow}`] }
+              : undefined
+          }
+          transition={justPurchased ? { duration: 0.9, times: [0, 0.4, 1] } : undefined}
+          className="relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-center backdrop-blur-md"
+        >
+          <div className="flex items-center gap-1 self-start">
+            {isNew && <SeasonalChip color="#ffd76b">Novo</SeasonalChip>}
+            <SeasonalChip color={def ? "#ff8a3d" : "#ffd76b"}>Exclusivo</SeasonalChip>
+          </div>
+
+          <div className="relative flex h-16 w-16 items-center justify-center">
+            <BreathingGlow color={c.glow} size={72} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={def.imageUrl}
+              alt={def.name}
+              className="relative h-14 w-14 object-contain"
+              style={{ opacity: seasonActive ? 1 : 0.45 }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+            {justPurchased && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="absolute -right-1 -top-1 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--green)]"
+              >
+                <Check size={12} className="text-black" strokeWidth={3} />
+              </motion.div>
+            )}
+          </div>
+
+          <span className="text-xs font-medium text-[var(--text-secondary)]">{def.name}</span>
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+          >
+            {info ? AURA_RARITY_LABELS[info.rarity] : "Épica"}
+          </span>
+
+          {error && (
+            <motion.span
+              initial={{ opacity: 0, y: -4, x: 0 }}
+              animate={{ opacity: 1, y: 0, x: [0, -5, 5, -5, 5, 0] }}
+              transition={{ duration: 0.45 }}
+              className="flex w-full items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-center text-[9px] text-red-300"
+            >
+              <AlertCircle size={9} /> {error}
+            </motion.span>
+          )}
+
+          {owned ? (
+            <span className="flex w-full items-center justify-center gap-1 rounded-lg bg-white/[0.05] py-2 text-[10px] font-medium text-[var(--text-muted)]">
+              Possuída
+            </span>
+          ) : !seasonActive ? (
+            <span className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 text-[10px] font-medium text-[var(--text-faint)]">
+              {returnLabel}
+            </span>
+          ) : (
+            <button
+              onClick={onBuy}
+              disabled={!!processing}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[10px] font-semibold transition disabled:opacity-40"
+              style={{ background: c.bg, color: c.border }}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 size={11} className="animate-spin" /> Comprando...
+                </>
+              ) : justPurchased ? (
+                <>
+                  <Check size={11} strokeWidth={3} /> Adquirida!
+                </>
+              ) : (
+                <>
+                  <CoinIcon size={15} /> {def.price}
+                </>
+              )}
+            </button>
+          )}
+        </motion.div>
+      </TiltCard>
+    </motion.div>
+  );
+}
+
+function SeasonalFrameCard({
+  item,
+  seasonActive,
+  returnLabel,
+  isNew,
+  onBuy,
+  onEquip,
+  onUnequip,
+  onSelect,
+  processing,
+  error,
+  justPurchased,
+  reduced,
+}: {
+  item: StoreItem;
+  seasonActive: boolean;
+  returnLabel: string;
+  isNew: boolean;
+  onBuy: () => void;
+  onEquip: () => void;
+  onUnequip: () => void;
+  onSelect: () => void;
+  processing: string | null;
+  error: string | null;
+  justPurchased: boolean;
+  reduced: boolean;
+}) {
+  const c = RARITY_COLORS[rarityOf(item.rarity)];
+  const isProcessing = processing === item.id;
+
+  return (
+    <motion.div variants={reduced ? {} : fadeUp} className="relative">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-1 rounded-2xl opacity-60"
+        style={{ background: `radial-gradient(ellipse at 50% 0%, ${c.glow}, transparent 70%)` }}
+      />
+      <TiltCard reduced={reduced}>
+        <motion.div
+          whileHover={reduced || !seasonActive ? undefined : { boxShadow: `0 14px 40px -12px ${c.glow}` }}
+          onClick={onSelect}
+          className="relative flex cursor-pointer flex-col items-center gap-2 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-center backdrop-blur-md"
+        >
+          <div className="flex items-center gap-1 self-start">
+            {isNew && <SeasonalChip color="#ffd76b">Novo</SeasonalChip>}
+            <SeasonalChip color="#ff8a3d">Exclusivo</SeasonalChip>
+          </div>
+
+          <div
+            className="relative flex h-[86px] w-[86px] items-center justify-center rounded-full"
+            style={{ background: c.bg, boxShadow: `0 0 24px -8px ${c.glow}` }}
+          >
+            <BreathingGlow color={c.glow} size={96} />
+            <div className="relative z-10 flex items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10" style={{ width: 64, height: 64 }}>
+              <FramePreview imageUrl={item.imageUrl} rarity={rarityOf(item.rarity)} size={64} className="relative" />
+            </div>
+            {justPurchased && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="absolute -right-1 -top-1 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--green)]"
+              >
+                <Check size={13} className="text-black" strokeWidth={3} />
+              </motion.div>
+            )}
+          </div>
+
+          <span className="relative text-xs text-[var(--text-secondary)]">{item.name}</span>
+
+          <span
+            className="relative rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+          >
+            {c.label}
+          </span>
+
+          {item.equipped ? (
+            <span className="relative mt-1 flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
+              <Check size={10} /> Equipado
+            </span>
+          ) : item.owned ? (
+            <span className="relative mt-1 flex items-center gap-1 rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+              Possuído
+            </span>
+          ) : (
+            <span className="relative mt-1 flex items-center gap-1.5 text-[11px] text-yellow-400">
+              <CoinIcon size={17} />
+              {item.price}
+            </span>
+          )}
+
+          {error && (
+            <motion.span
+              initial={{ opacity: 0, y: -4, x: 0 }}
+              animate={{ opacity: 1, y: 0, x: [0, -5, 5, -5, 5, 0] }}
+              transition={{ duration: 0.45 }}
+              className="relative flex w-full items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1 text-center text-[9px] text-red-300"
+            >
+              <AlertCircle size={9} /> {error}
+            </motion.span>
+          )}
+
+          <div className="relative mt-1 w-full" onClick={(e) => e.stopPropagation()}>
+            {item.equipped ? (
+              <button
+                onClick={onUnequip}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 text-[10px] text-[var(--text-muted)] transition hover:bg-white/[0.06]"
+              >
+                {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Desquipar"}
+              </button>
+            ) : item.owned ? (
+              <button
+                onClick={onEquip}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[10px] font-semibold transition"
+                style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}33` }}
+              >
+                {isProcessing ? <Loader2 size={11} className="animate-spin" /> : "Equipar"}
+              </button>
+            ) : !seasonActive ? (
+              <span className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 text-[10px] font-medium text-[var(--text-faint)]">
+                <Timer size={11} /> {returnLabel}
+              </span>
+            ) : (
+              <button
+                onClick={onBuy}
+                disabled={!!processing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-yellow-500/10 py-2 text-[10px] font-semibold text-yellow-400 transition hover:bg-yellow-500/20 disabled:opacity-40"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin" /> Comprando...
+                  </>
+                ) : justPurchased ? (
+                  <>
+                    <Check size={11} strokeWidth={3} /> Adquirido!
+                  </>
+                ) : (
+                  <>
+                    <CoinIcon size={15} /> Comprar · {item.price}
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </motion.div>
+      </TiltCard>
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -657,6 +1024,8 @@ export default function LojaPage() {
     shieldCount: number;
     xpBoostQuantity: number;
     xpBoost: ActiveXPBoost | null;
+    ownedAuras?: string[];
+    season?: { id: string; name: string; endsAt: string } | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -672,6 +1041,8 @@ export default function LojaPage() {
   const reduced = useReducedMotion();
   const [ownedAuras, setOwnedAuras] = useState<string[]>(["flame", "water"]);
   const [equippedShieldIconUrl, setEquippedShieldIconUrl] = useState<string | null>(null);
+  const [seasonalSeen, setSeasonalSeen] = useState<Set<string>>(new Set());
+  const { season: activeSeason, isActive: seasonIsActive, endsAt: ctxSeasonEndsAt } = useSeason();
 
   // Animated header balance
   const animatedBalance = useAnimatedNumber(store?.balance ?? 0);
@@ -717,6 +1088,7 @@ export default function LojaPage() {
   useEffect(() => {
     if (!user) return;
     fetchStore();
+    setSeasonalSeen(getSeasonalSeen());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
 
@@ -745,6 +1117,67 @@ export default function LojaPage() {
     if (!store?.xpBoost?.expiresAt) return 0;
     return Math.max(0, Math.floor((new Date(store.xpBoost.expiresAt).getTime() - Date.now()) / 1000));
   }, [store?.xpBoost?.expiresAt, boostTick]);
+
+  // ── Edição Limitada: which season the section shows ──
+  // Hooks must run before the loading early-return below. Active season wins.
+  // Off-season, the section only appears when the user owns items of a season
+  // (so they can still equip them) — it then shows that season in
+  // "Volta em …" mode with purchases disabled.
+  const storeItems = store?.items ?? [];
+  const ownedSeasonIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const it of storeItems) {
+      if (it.isSeasonal && it.owned && it.seasonId) ids.add(it.seasonId);
+    }
+    for (const auraId of ownedAuras) {
+      const sid = getSeasonalAura(auraId)?.seasonId;
+      if (sid) ids.add(sid);
+    }
+    return ids;
+  }, [storeItems, ownedAuras]);
+
+  const displaySeason = useMemo<SeasonDef | null>(() => {
+    if (seasonIsActive && activeSeason) return activeSeason;
+    const owned = SEASONS.filter((s) => ownedSeasonIds.has(s.id));
+    if (!owned.length) return null;
+    return owned.reduce((a, b) =>
+      getNextSeasonStart(a).getTime() <= getNextSeasonStart(b).getTime() ? a : b,
+    );
+  }, [seasonIsActive, activeSeason, ownedSeasonIds]);
+
+  // Prefer the server-validated end instant from /api/store; fall back to the
+  // client-side season clock (same SP window math, used only for display).
+  const seasonEndsAt = useMemo(() => {
+    if (store?.season?.endsAt) return new Date(store.season.endsAt);
+    return ctxSeasonEndsAt;
+  }, [store?.season?.endsAt, ctxSeasonEndsAt]);
+  const seasonCountdown = useSeasonCountdown(seasonEndsAt);
+  const seasonPurchasable =
+    !!displaySeason &&
+    seasonIsActive &&
+    activeSeason?.id === displaySeason.id &&
+    !seasonCountdown.expired;
+  const seasonalReturnLabel = displaySeason
+    ? `Volta em ${formatSeasonMonthYear(getNextSeasonStart(displaySeason))}`
+    : "";
+  const seasonalFrames = useMemo(
+    () => (displaySeason ? storeItems.filter((it) => it.seasonId === displaySeason.id) : []),
+    [storeItems, displaySeason],
+  );
+  const seasonalAuras = useMemo(
+    () => (displaySeason ? SEASONAL_AURAS.filter((a) => a.seasonId === displaySeason.id) : []),
+    [displaySeason],
+  );
+  // Regular sections hide seasonal items the user doesn't own; owned seasonal
+  // frames/auras stay visible year-round so they remain equippable.
+  const regularFrames = useMemo(
+    () => storeItems.filter((it) => !it.isSeasonal || it.owned),
+    [storeItems],
+  );
+  const regularAuraTypes = useMemo(
+    () => ENERGY_TYPES.filter((t) => !isSeasonalAuraId(t) || ownedAuras.includes(t)),
+    [ownedAuras],
+  );
 
   // Deep-link para uma seção (ex.: "?section=auras" ao tocar numa aura
   // bloqueada no seletor de energia). Roda assim que a loja carrega, já que
@@ -981,6 +1414,112 @@ export default function LojaPage() {
             </motion.div>
           )}
 
+          {/* ─── Section 0: Edição Limitada (seasonal) ────── */}
+          {displaySeason && (
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="glass-card mb-8 relative overflow-hidden p-6 backdrop-blur-xl sm:p-8"
+              style={
+                seasonPurchasable && seasonCountdown.urgent
+                  ? { borderColor: `${displaySeason.accent}66`, boxShadow: `0 0 40px -12px ${displaySeason.accent}55` }
+                  : undefined
+              }
+            >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -top-16 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full opacity-50"
+                style={{ background: `radial-gradient(ellipse, ${displaySeason.accent}33, transparent 70%)`, filter: "blur(20px)" }}
+              />
+              <div className="mb-5 flex flex-wrap items-center gap-3">
+                <span
+                  className="flex h-7 w-7 items-center justify-center rounded-lg"
+                  style={{ background: `${displaySeason.accent}1a`, color: displaySeason.accent, boxShadow: `0 0 18px -4px ${displaySeason.accent}` }}
+                >
+                  <Sparkles size={14} />
+                </span>
+                <span
+                  className="text-xs font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: displaySeason.accent }}
+                >
+                  Edição Limitada · {displaySeason.name}
+                </span>
+                {seasonPurchasable ? (
+                  seasonCountdown.urgent ? (
+                    <motion.span
+                      animate={{ opacity: [1, 0.55, 1] }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                      className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold"
+                      style={{ background: "rgba(255,120,80,0.14)", color: "#ff8a5c", border: "1px solid rgba(255,138,61,0.4)" }}
+                    >
+                      <Timer size={12} /> Últimas horas! {seasonCountdown.text}
+                    </motion.span>
+                  ) : (
+                    <span
+                      className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[11px] font-semibold"
+                      style={{ background: `${displaySeason.accent}14`, color: displaySeason.accent, border: `1px solid ${displaySeason.accent}44` }}
+                    >
+                      <Timer size={12} /> Termina em {seasonCountdown.text}
+                    </span>
+                  )
+                ) : (
+                  <span className="ml-auto rounded-full px-3 py-1 text-[11px] font-semibold" style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-muted)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    {seasonalReturnLabel}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {seasonalAuras.map((aura) => (
+                  <SeasonalAuraCard
+                    key={aura.id}
+                    auraId={aura.id}
+                    owned={ownedAuras.includes(aura.id)}
+                    seasonActive={seasonPurchasable}
+                    returnLabel={seasonalReturnLabel}
+                    isNew={!seasonalSeen.has(aura.id)}
+                    processing={processing}
+                    error={cardError?.id === `aura-${aura.id}` ? cardError.message : null}
+                    justPurchased={justPurchased === aura.id}
+                    reduced={!!reduced}
+                    onBuy={() => {
+                      markSeasonalSeen(aura.id);
+                      setSeasonalSeen(getSeasonalSeen());
+                      handleBuyAura(aura.id);
+                    }}
+                  />
+                ))}
+                {seasonalFrames.map((item) => (
+                  <SeasonalFrameCard
+                    key={item.id}
+                    item={item}
+                    seasonActive={seasonPurchasable}
+                    returnLabel={seasonalReturnLabel}
+                    isNew={!seasonalSeen.has(item.id)}
+                    processing={processing}
+                    error={cardError?.id === item.id ? cardError.message : null}
+                    justPurchased={justPurchased === item.id}
+                    reduced={!!reduced}
+                    onBuy={() => {
+                      markSeasonalSeen(item.id);
+                      setSeasonalSeen(getSeasonalSeen());
+                      handleBuyDecoration(item.id);
+                    }}
+                    onEquip={() => handleEquipDecoration(item.id)}
+                    onUnequip={handleUnequipDecoration}
+                    onSelect={() => {
+                      markSeasonalSeen(item.id);
+                      setSeasonalSeen(getSeasonalSeen());
+                      setSelectedItem(item);
+                      clearCardError();
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.section>
+          )}
+
           {/* ─── Section 1: Banners de Perfil ─────────────── */}
           <motion.section
             initial={{ opacity: 0, y: 12 }}
@@ -1079,7 +1618,7 @@ export default function LojaPage() {
           >
             <SectionHeader icon={<Frame size={14} />} color="#b69cff" title="Molduras de Avatar" delay={0.1} />
 
-            {store.items.length === 0 ? (
+            {regularFrames.length === 0 ? (
               <p className="py-6 text-center text-sm text-[var(--text-muted)]">
                 Nenhuma moldura disponível ainda.
               </p>
@@ -1090,7 +1629,7 @@ export default function LojaPage() {
                 animate="visible"
                 className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
               >
-                {store.items.map((item) => (
+                {regularFrames.map((item) => (
                   <StoreItemCard
                     key={item.id}
                     item={item}
@@ -1307,7 +1846,7 @@ export default function LojaPage() {
             <SectionHeader icon={<Sparkles size={14} />} color="#ffd76b" title="Auras" delay={0.3} />
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {ENERGY_TYPES.map((type) => {
+              {regularAuraTypes.map((type) => {
                 const info = AURA_DEFS[type];
                 const rc = AURA_RARITY_COLORS[info.rarity];
                 const rarity = rarityOf(info.rarity);

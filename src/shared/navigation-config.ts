@@ -28,7 +28,7 @@ export type NavigationItem = {
     | "profile"
     | "settings";
   order: number;
-  badge?: "dm" | "group";
+  badge?: "dm" | "group" | "season";
 };
 
 export const navigationItems: readonly NavigationItem[] = [
@@ -105,6 +105,7 @@ export const navigationItems: readonly NavigationItem[] = [
     mobileRoute: "/more/store",
     icon: "store",
     order: 8,
+    badge: "season",
   },
   {
     id: "garden",

@@ -1,10 +1,25 @@
 export type EnergyStage = "spark" | "forming" | "full" | "extinguished";
 export type GardenGrowthStage = "sprout" | "young" | "mature";
-export type GardenStatus = "growing" | "alive" | "withered";
+// "completed" supersedes "alive"; "gave_up" supersedes "withered" (dead trees).
+// The legacy values are still readable from older rows.
+export type GardenStatus = "growing" | "completed" | "gave_up" | "alive" | "withered";
+
+export function isGardenCompleted(status: GardenStatus): boolean {
+  return status === "completed" || status === "alive";
+}
+
+export function isGardenDead(status: GardenStatus): boolean {
+  return status === "gave_up" || status === "withered";
+}
 export type EnergyType =
   | "flame" | "water" | "earth" | "wind" | "thunder" | "ice"
   | "shadow" | "light" | "crystal" | "cosmic"
-  | "metal" | "poison";
+  | "metal" | "poison"
+  // Seasonal event auras (purchasable only during their season window)
+  | "jack_o_lantern" | "ghost" | "witch_hat"
+  | "santa_hat" | "xmas_wreath" | "xmas_tree"
+  | "fireworks" | "champagne" | "midnight_clock"
+  | "easter_egg" | "bunny" | "easter_basket";
 
 export type AuraRarity = "common" | "uncommon" | "rare" | "epic";
 
@@ -42,6 +57,21 @@ export const AURA_DEFS: Record<EnergyType, AuraInfo> = {
   light:   { rarity: "epic",     price: 1000,  label: "Light" },
   shadow:  { rarity: "epic",     price: 1000,  label: "Shadow" },
   crystal: { rarity: "epic",     price: 1000,  label: "Crystal" },
+  // Seasonal auras — price/label mirror src/config/seasons.ts (single source
+  // of truth for names/prices lives there; these entries exist so the
+  // Record<EnergyType, …> maps stay exhaustive).
+  jack_o_lantern: { rarity: "epic", price: 2000, label: "Abóbora" },
+  ghost:         { rarity: "epic", price: 2200, label: "Fantasma" },
+  witch_hat:     { rarity: "epic", price: 2500, label: "Chapéu de Bruxa" },
+  santa_hat:     { rarity: "epic", price: 2000, label: "Gorro de Natal" },
+  xmas_wreath:   { rarity: "epic", price: 2200, label: "Coroa de Natal" },
+  xmas_tree:     { rarity: "epic", price: 2500, label: "Árvore de Natal" },
+  fireworks:     { rarity: "epic", price: 2000, label: "Fogos de Artifício" },
+  champagne:     { rarity: "epic", price: 2200, label: "Champanhe" },
+  midnight_clock:{ rarity: "epic", price: 2500, label: "Relógio da Meia-Noite" },
+  easter_egg:    { rarity: "epic", price: 2000, label: "Ovo de Páscoa" },
+  bunny:         { rarity: "epic", price: 2200, label: "Coelhinho" },
+  easter_basket: { rarity: "epic", price: 2500, label: "Cesta de Páscoa" },
 };
 
 /** Paleta de tema por energia — usada em anel, botões, glow e acentos. */
@@ -58,6 +88,19 @@ export const ENERGY_THEME_COLORS: Record<EnergyType, string> = {
   shadow:  "#6B21A8",
   cosmic:  "#818CF8",
   crystal: "#C084FC",
+  // Seasonal accents
+  jack_o_lantern: "#FF8A3D",
+  ghost:         "#BFE3FF",
+  witch_hat:     "#A855F7",
+  santa_hat:     "#FF5A5A",
+  xmas_wreath:   "#2FA36B",
+  xmas_tree:     "#1E7A4C",
+  fireworks:     "#FFD76B",
+  champagne:     "#F4E3B2",
+  midnight_clock:"#8FA7FF",
+  easter_egg:    "#F0A6C8",
+  bunny:         "#F5C6D6",
+  easter_basket: "#B7E4C7",
 };
 
 function rgba(hex: string, alpha: number): string {
@@ -91,6 +134,19 @@ export const ENERGY_CONFIGS: Record<EnergyType, EnergyConfig> = {
   shadow:  { ...AURA_DEFS.shadow,  locked: true,  accent: ENERGY_THEME_COLORS.shadow,  glow: glowOf("shadow"),  assets: { spark: "/energies/shadow/shadow_begin.png", forming: "/energies/shadow/shadow_mid.png", full: "/energies/shadow/shadow_full.png", extinguished: "/energies/shadow/shadow_die.png" } },
   cosmic:  { ...AURA_DEFS.cosmic,  locked: true,  accent: ENERGY_THEME_COLORS.cosmic,  glow: glowOf("cosmic"),  assets: { spark: "/energies/cosmic/cosmic_begin.png", forming: "/energies/cosmic/cosmic_mid.png", full: "/energies/cosmic/cosmic_full.png", extinguished: "/energies/cosmic/cosmic_die.png" } },
   crystal: { ...AURA_DEFS.crystal, locked: true,  accent: ENERGY_THEME_COLORS.crystal, glow: glowOf("crystal"), assets: { spark: "/energies/crystal/crystal_begin.png", forming: "/energies/crystal/crystal_mid.png", full: "/energies/crystal/crystal_full.png", extinguished: "/energies/crystal/crystal_die.png" } },
+  // Seasonal auras — single artwork per item used for every energy stage.
+  jack_o_lantern: { ...AURA_DEFS.jack_o_lantern, locked: true, accent: ENERGY_THEME_COLORS.jack_o_lantern, glow: glowOf("jack_o_lantern"), assets: { spark: "/assets/seasons/halloween/auras/jack_o_lantern.png", forming: "/assets/seasons/halloween/auras/jack_o_lantern.png", full: "/assets/seasons/halloween/auras/jack_o_lantern.png", extinguished: "/assets/seasons/halloween/auras/jack_o_lantern.png" } },
+  ghost:         { ...AURA_DEFS.ghost,         locked: true, accent: ENERGY_THEME_COLORS.ghost,         glow: glowOf("ghost"),         assets: { spark: "/assets/seasons/halloween/auras/ghost.png",         forming: "/assets/seasons/halloween/auras/ghost.png",         full: "/assets/seasons/halloween/auras/ghost.png",         extinguished: "/assets/seasons/halloween/auras/ghost.png"         } },
+  witch_hat:     { ...AURA_DEFS.witch_hat,     locked: true, accent: ENERGY_THEME_COLORS.witch_hat,     glow: glowOf("witch_hat"),     assets: { spark: "/assets/seasons/halloween/auras/witch_hat.png",     forming: "/assets/seasons/halloween/auras/witch_hat.png",     full: "/assets/seasons/halloween/auras/witch_hat.png",     extinguished: "/assets/seasons/halloween/auras/witch_hat.png"     } },
+  santa_hat:     { ...AURA_DEFS.santa_hat,     locked: true, accent: ENERGY_THEME_COLORS.santa_hat,     glow: glowOf("santa_hat"),     assets: { spark: "/assets/seasons/christmas/auras/santa_hat.png",     forming: "/assets/seasons/christmas/auras/santa_hat.png",     full: "/assets/seasons/christmas/auras/santa_hat.png",     extinguished: "/assets/seasons/christmas/auras/santa_hat.png"     } },
+  xmas_wreath:   { ...AURA_DEFS.xmas_wreath,   locked: true, accent: ENERGY_THEME_COLORS.xmas_wreath,   glow: glowOf("xmas_wreath"),   assets: { spark: "/assets/seasons/christmas/auras/xmas_wreath.png",   forming: "/assets/seasons/christmas/auras/xmas_wreath.png",   full: "/assets/seasons/christmas/auras/xmas_wreath.png",   extinguished: "/assets/seasons/christmas/auras/xmas_wreath.png"   } },
+  xmas_tree:     { ...AURA_DEFS.xmas_tree,     locked: true, accent: ENERGY_THEME_COLORS.xmas_tree,     glow: glowOf("xmas_tree"),     assets: { spark: "/assets/seasons/christmas/auras/xmas_tree.png",     forming: "/assets/seasons/christmas/auras/xmas_tree.png",     full: "/assets/seasons/christmas/auras/xmas_tree.png",     extinguished: "/assets/seasons/christmas/auras/xmas_tree.png"     } },
+  fireworks:     { ...AURA_DEFS.fireworks,     locked: true, accent: ENERGY_THEME_COLORS.fireworks,     glow: glowOf("fireworks"),     assets: { spark: "/assets/seasons/newyear/auras/fireworks.png",     forming: "/assets/seasons/newyear/auras/fireworks.png",     full: "/assets/seasons/newyear/auras/fireworks.png",     extinguished: "/assets/seasons/newyear/auras/fireworks.png"     } },
+  champagne:     { ...AURA_DEFS.champagne,     locked: true, accent: ENERGY_THEME_COLORS.champagne,     glow: glowOf("champagne"),     assets: { spark: "/assets/seasons/newyear/auras/champagne.png",     forming: "/assets/seasons/newyear/auras/champagne.png",     full: "/assets/seasons/newyear/auras/champagne.png",     extinguished: "/assets/seasons/newyear/auras/champagne.png"     } },
+  midnight_clock:{ ...AURA_DEFS.midnight_clock, locked: true, accent: ENERGY_THEME_COLORS.midnight_clock, glow: glowOf("midnight_clock"), assets: { spark: "/assets/seasons/newyear/auras/midnight_clock.png", forming: "/assets/seasons/newyear/auras/midnight_clock.png", full: "/assets/seasons/newyear/auras/midnight_clock.png", extinguished: "/assets/seasons/newyear/auras/midnight_clock.png" } },
+  easter_egg:    { ...AURA_DEFS.easter_egg,    locked: true, accent: ENERGY_THEME_COLORS.easter_egg,    glow: glowOf("easter_egg"),    assets: { spark: "/assets/seasons/easter/auras/easter_egg.png",    forming: "/assets/seasons/easter/auras/easter_egg.png",    full: "/assets/seasons/easter/auras/easter_egg.png",    extinguished: "/assets/seasons/easter/auras/easter_egg.png"    } },
+  bunny:         { ...AURA_DEFS.bunny,         locked: true, accent: ENERGY_THEME_COLORS.bunny,         glow: glowOf("bunny"),         assets: { spark: "/assets/seasons/easter/auras/bunny.png",         forming: "/assets/seasons/easter/auras/bunny.png",         full: "/assets/seasons/easter/auras/bunny.png",         extinguished: "/assets/seasons/easter/auras/bunny.png"         } },
+  easter_basket: { ...AURA_DEFS.easter_basket, locked: true, accent: ENERGY_THEME_COLORS.easter_basket, glow: glowOf("easter_basket"), assets: { spark: "/assets/seasons/easter/auras/easter_basket.png", forming: "/assets/seasons/easter/auras/easter_basket.png", full: "/assets/seasons/easter/auras/easter_basket.png", extinguished: "/assets/seasons/easter/auras/easter_basket.png" } },
 };
 
 export const ENERGY_TYPES = Object.keys(ENERGY_CONFIGS) as EnergyType[];
@@ -120,8 +176,8 @@ export function streakIconSource(streak: number): string {
  * must render its own full-stage illustration ("Completo"). Only sessions still
  * in progress ("growing") show the intermediate sprout/young visuals. */
 export function mapGrowthStageToEnergyStage(growthStage: GardenGrowthStage, status: GardenStatus): EnergyStage {
-  if (status === "withered") return "extinguished";
-  if (status === "alive") return "full";
+  if (isGardenDead(status)) return "extinguished";
+  if (isGardenCompleted(status)) return "full";
   if (growthStage === "sprout") return "spark";
   if (growthStage === "young") return "forming";
   return "full";

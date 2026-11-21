@@ -98,6 +98,7 @@ alter table user_settings add column if not exists onboarding_completed boolean 
 alter table user_settings add column if not exists reminder_checkin_enabled boolean not null default false;
 alter table user_settings add column if not exists reminder_focus_enabled boolean not null default false;
 alter table user_settings add column if not exists reminder_sleep_enabled boolean not null default false;
+alter table user_settings add column if not exists seasonal_themes_enabled boolean not null default true;
 
 create index if not exists goals_profile_idx on goals(profile_id);
 create index if not exists habits_goal_idx on habits(goal_id);
@@ -431,22 +432,27 @@ create table if not exists garden_entries (
   profile_id text not null references profiles(id) on delete cascade,
   session_id bigint references focus_sessions(id) on delete cascade,
   energy_type text not null,
+  aura_id text not null default '',
   duration_minutes numeric(8,2) not null default 0,
   reward integer not null default 1,
   planted_at timestamptz not null default now(),
   legacy_key text,
   growth_stage text not null default 'sprout' check (growth_stage in ('sprout', 'young', 'mature')),
-  status text not null default 'growing' check (status in ('growing', 'alive', 'withered'))
+  status text not null default 'growing' check (status in ('growing', 'completed', 'alive', 'withered', 'gave_up'))
 );
 
 create unique index if not exists garden_entries_legacy_key_idx on garden_entries(profile_id, legacy_key) where legacy_key is not null;
 
 create index if not exists garden_entries_profile_planted_idx on garden_entries(profile_id, planted_at desc);
 
+create index if not exists garden_entries_profile_status_idx on garden_entries(profile_id, status) where status in ('completed', 'gave_up');
+
 -- Add new columns for existing databases (idempotent)
 do $$ begin
+  alter table garden_entries add column if not exists aura_id text not null default '';
   alter table garden_entries add column if not exists growth_stage text not null default 'sprout' check (growth_stage in ('sprout', 'young', 'mature'));
-  alter table garden_entries add column if not exists status text not null default 'growing' check (status in ('growing', 'alive', 'withered'));
+  alter table garden_entries add column if not exists status text not null default 'growing' check (status in ('growing', 'completed', 'alive', 'withered', 'gave_up'));
+  update garden_entries set aura_id = energy_type where aura_id = '';
 exception when duplicate_column then null; end $$;
 
 delete from garden_entries where energy_type in ('nature','solar');
@@ -1142,8 +1148,10 @@ create table if not exists avatar_decorations (
   rarity text not null default 'common' check (rarity in ('common', 'rare', 'epic', 'legendary')),
   sort_order integer not null default 0,
   is_active boolean not null default true,
+  season_id text,
   created_at timestamptz not null default now()
 );
+create index if not exists avatar_decorations_season_idx on avatar_decorations(season_id) where season_id is not null;
 
 create table if not exists user_decorations (
   profile_id text not null references profiles(id) on delete cascade,
@@ -1360,6 +1368,33 @@ on conflict (id) do update set
   price = excluded.price,
   rarity = excluded.rarity,
   sort_order = excluded.sort_order;
+
+-- ── Seed seasonal avatar frames (season_id links to src/config/seasons.ts) ──
+insert into avatar_decorations (id, name, description, image_url, price, rarity, sort_order, season_id) values
+  ('frame_halloween_cobweb',  'Teia de Aranha',   'Teias de aranha nos cantos do anel',            '/assets/seasons/halloween/frames/frame_halloween_cobweb.png',   3000, 'epic',      101, 'halloween'),
+  ('frame_halloween_moon',    'Lua Assombrada',   'Lua cheia com brilho espectral',               '/assets/seasons/halloween/frames/frame_halloween_moon.png',     3200, 'epic',      102, 'halloween'),
+  ('frame_halloween_bones',   'Ossos',            'Anel feito de ossinhos cruzados',              '/assets/seasons/halloween/frames/frame_halloween_bones.png',    3300, 'epic',      103, 'halloween'),
+  ('frame_halloween_flame',   'Chama Roxa',       'Chamas roxas animadas ao redor do avatar',     '/assets/seasons/halloween/frames/frame_halloween_flame.png',    3500, 'legendary', 104, 'halloween'),
+  ('frame_xmas_candy_cane',   'Bengala Doce',     'Anel de bengalas doces vermelho e branco',     '/assets/seasons/christmas/frames/frame_xmas_candy_cane.png',    3000, 'epic',      101, 'christmas'),
+  ('frame_xmas_snowflake',    'Flocos de Neve',   'Flocos de neve crystalline no anel',           '/assets/seasons/christmas/frames/frame_xmas_snowflake.png',     3200, 'epic',      102, 'christmas'),
+  ('frame_xmas_holly',        'Azevinho',         'Folhas de azevinho com bagas vermelhas',       '/assets/seasons/christmas/frames/frame_xmas_holly.png',         3300, 'epic',      103, 'christmas'),
+  ('frame_xmas_lights',       'Pisca-Pisca',      'Luzes douradas de Natal piscando no anel',     '/assets/seasons/christmas/frames/frame_xmas_lights.png',        3500, 'legendary', 104, 'christmas'),
+  ('frame_newyear_confetti',  'Confete Dourado',   'Confetes dourados caindo no anel',             '/assets/seasons/newyear/frames/frame_newyear_confetti.png',     3000, 'epic',      101, 'newyear'),
+  ('frame_newyear_neon',      'Neon Ano Novo',    'Anel neon estilo festa de ano novo',           '/assets/seasons/newyear/frames/frame_newyear_neon.png',         3200, 'epic',      102, 'newyear'),
+  ('frame_newyear_sparkler',  'Estrelinha',       'Vela de estrelinha brilhando',                '/assets/seasons/newyear/frames/frame_newyear_sparkler.png',     3300, 'epic',      103, 'newyear'),
+  ('frame_newyear_countdown', 'Contagem Regressiva','Números regressivos marcando a virada',      '/assets/seasons/newyear/frames/frame_newyear_countdown.png',    3500, 'legendary', 104, 'newyear'),
+  ('frame_easter_flowers',    'Coroa de Flores',  'Coroa de flores primaveris',                  '/assets/seasons/easter/frames/frame_easter_flowers.png',       3000, 'epic',      101, 'easter'),
+  ('frame_easter_eggs',       'Ovos Pastel',      'Ovos de páscoa em tons pastel',               '/assets/seasons/easter/frames/frame_easter_eggs.png',          3200, 'epic',      102, 'easter'),
+  ('frame_easter_ears',       'Orelhas de Coelho','Orelhas de coelho sobre o avatar',            '/assets/seasons/easter/frames/frame_easter_ears.png',          3300, 'epic',      103, 'easter'),
+  ('frame_easter_butterflies','Borboletas',       'Borboletas e vinhas primaveris animadas',      '/assets/seasons/easter/frames/frame_easter_butterflies.png',   3500, 'legendary', 104, 'easter')
+on conflict (id) do update set
+  name = excluded.name,
+  description = excluded.description,
+  image_url = excluded.image_url,
+  price = excluded.price,
+  rarity = excluded.rarity,
+  sort_order = excluded.sort_order,
+  season_id = excluded.season_id;
 
 -- ── Calendar: time fields + external sync ──────────────────────────────────
 ALTER TABLE weekly_plans ADD COLUMN IF NOT EXISTS start_time time;

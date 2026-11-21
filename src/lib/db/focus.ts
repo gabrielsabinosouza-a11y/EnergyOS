@@ -3,6 +3,7 @@ import type { FocusSession } from "@/types";
 import { ConflictError, NotFoundError } from "../errors";
 import { ValidationError, parseProfileId } from "./validation";
 import { todayIso, APP_TIMEZONE, dayInTz } from "./dates";
+import type { GardenStatus } from "@/lib/energy-assets";
 import {
   CANCEL_LATENCY_TOLERANCE_SECONDS,
   GRACE_PERIOD_SECONDS,
@@ -52,8 +53,10 @@ export function getEnergyReward(durationMinutes: number): number {
   return 0;
 }
 
-/** Calculate growth stage based on session duration */
-export function getGrowthStage(durationMinutes: number): GardenGrowthStage {
+export type { GardenStatus } from "@/lib/energy-assets";
+
+/** Calculate the garden-entry growth stage (sprout/young/mature) by session duration. */
+export function getGardenGrowthStage(durationMinutes: number): GardenGrowthStage {
   if (durationMinutes >= 60) return "mature";
   if (durationMinutes >= 30) return "young";
   return "sprout";
@@ -66,7 +69,6 @@ export function finalizedFocusMinutes(focusedSeconds: number): number {
 }
 
 export type GardenGrowthStage = "sprout" | "young" | "mature";
-export type GardenStatus = "growing" | "alive" | "withered";
 
 function timestampMs(value: Date | string): number {
   return typeof value === "string" ? new Date(value).getTime() : value.getTime();
@@ -75,6 +77,8 @@ function timestampMs(value: Date | string): number {
 export interface GardenEntry {
   id: number;
   energyType: GardenEnergyType;
+  /** Aura equipped when the session started (falls back to energyType for legacy rows). */
+  auraId: string;
   durationMinutes: number;
   reward: number;
   plantedAt: string;
@@ -89,6 +93,7 @@ interface GardenRow {
   profile_id: string;
   session_id: string | number;
   energy_type: string;
+  aura_id?: string | null;
   duration_minutes: string | number;
   reward: string | number;
   planted_at: Date | string;
@@ -102,6 +107,7 @@ function mapGardenRow(row: GardenRow): GardenEntry {
   return {
     id: Number(row.id),
     energyType: row.energy_type as GardenEnergyType,
+    auraId: row.aura_id || row.energy_type,
     durationMinutes: Number(row.duration_minutes),
     reward: Number(row.reward),
     plantedAt: typeof row.planted_at === "string" ? row.planted_at : row.planted_at.toISOString(),
@@ -117,18 +123,24 @@ export async function getGardenEntries(profileId: string): Promise<GardenEntry[]
   parseProfileId(profileId);
   const result = await pool.query<GardenRow>(
     `with ranked as (
-       select ge.id, ge.profile_id, ge.session_id, ge.energy_type, ge.reward, ge.status, ge.growth_stage,
+       select ge.id, ge.profile_id, ge.session_id, ge.energy_type, ge.aura_id, ge.reward, ge.status, ge.growth_stage,
               fs.duration_minutes, fs.target_duration_minutes, fs.started_at, fs.ended_at,
               row_number() over (partition by ge.session_id order by ge.id) as energy_number
          from garden_entries ge
          join focus_sessions fs on fs.id = ge.session_id and fs.profile_id = ge.profile_id
         where ge.profile_id = $1
           and fs.ended_at is not null
-          and fs.duration_minutes > 0
-          and fs.duration_minutes <= $2
-          and fs.duration_minutes >= fs.target_duration_minutes * $3
+          and (
+            -- Abandoned sessions are dead garden entries.
+            fs.end_reason = 'gave_up'
+            or (
+              fs.duration_minutes > 0
+              and fs.duration_minutes <= $2
+              and fs.duration_minutes >= fs.target_duration_minutes * $3
+            )
+          )
      )
-     select id, profile_id, session_id, energy_type,
+     select id, profile_id, session_id, energy_type, aura_id,
             round(duration_minutes::numeric / case when duration_minutes >= 90 then 4 when duration_minutes >= 60 then 2 else 1 end, 2) as duration_minutes,
             reward, started_at as planted_at, started_at, ended_at,
             case when duration_minutes >= 60 then 'mature' when duration_minutes >= 30 then 'young' else 'sprout' end as growth_stage,
@@ -168,10 +180,10 @@ export async function importGardenEntries(profileId: string, entries: ImportGard
     const reward = Number.isFinite(Number(e.reward)) ? Math.max(1, Number(e.reward)) : 1;
     const planted = e.plantedAt ? new Date(e.plantedAt) : new Date();
     const stamped = isNaN(planted.getTime()) ? new Date() : planted;
-    const growthStage = getGrowthStage(minutes);
+    const growthStage = getGardenGrowthStage(minutes);
     const result = await pool.query<ImportRow>(
-      `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward, planted_at, legacy_key, growth_stage, status)
-       values ($1, null, $2, $3, $4, $5, $6, $7, 'alive')
+      `insert into garden_entries (profile_id, session_id, energy_type, aura_id, duration_minutes, reward, planted_at, legacy_key, growth_stage, status)
+       values ($1, null, $2, $2, $3, $4, $5, $6, $7, 'completed')
        on conflict (profile_id, legacy_key) where legacy_key is not null do nothing
        returning id`,
       [profileId, energy, minutes, reward, stamped, e.legacyKey, growthStage],
@@ -193,7 +205,7 @@ export async function plantGardenEntries(
   const reward = getEnergyReward(durationMinutes);
   if (reward <= 0 || durationMinutes <= 0) return;
   const perEnergy = Math.round((durationMinutes / reward) * 100) / 100;
-  const growthStage = getGrowthStage(durationMinutes);
+  const growthStage = getGardenGrowthStage(durationMinutes);
 
   // Idempotent: if garden entries already exist for this session (e.g. a
   // previous call to startFocusSession planted them), skip the insert.
@@ -208,31 +220,31 @@ export async function plantGardenEntries(
   const values: unknown[] = [];
   const placeholders: string[] = [];
   for (let i = 0; i < reward; i++) {
-    placeholders.push(`($${values.length + 1}, $${values.length + 2}, $${values.length + 3}, $${values.length + 4}, $${values.length + 5}, $${values.length + 6}, $${values.length + 7})`);
-    values.push(profileId, sessionId, energyType, perEnergy, reward, growthStage, status);
+    placeholders.push(`($${values.length + 1}, $${values.length + 2}, $${values.length + 3}, $${values.length + 4}, $${values.length + 5}, $${values.length + 6}, $${values.length + 7}, $${values.length + 8})`);
+    values.push(profileId, sessionId, energyType, energyType, perEnergy, reward, growthStage, status);
   }
   await pool.query(
-    `insert into garden_entries (profile_id, session_id, energy_type, duration_minutes, reward, growth_stage, status) values ${placeholders.join(", ")}`,
+    `insert into garden_entries (profile_id, session_id, energy_type, aura_id, duration_minutes, reward, growth_stage, status) values ${placeholders.join(", ")}`,
     values,
   );
 }
 
-/** Update garden entries status and growth stage when a session is completed or abandoned */
+/** Update garden entries status and growth stage when a session is completed or abandoned. */
 export async function finalizeGardenEntries(
   profileId: string,
   sessionId: number,
-  completed: boolean,
+  status: "completed" | "gave_up",
   actualDurationMinutes: number
 ): Promise<void> {
   parseProfileId(profileId);
-  const newStatus = completed ? "alive" : "withered";
-  const newGrowthStage = getGrowthStage(actualDurationMinutes);
+  const newGrowthStage = getGardenGrowthStage(actualDurationMinutes);
   await pool.query(
     `update garden_entries
      set status = $1, growth_stage = $2,
          duration_minutes = $3 / greatest((select count(*) from garden_entries where profile_id = $4 and session_id = $5), 1)
-     where profile_id = $4 and session_id = $5 and status in ('growing', 'withered')`,
-    [newStatus, newGrowthStage, actualDurationMinutes, profileId, sessionId],
+     where profile_id = $4 and session_id = $5
+       and status in ('growing', 'completed', 'alive', 'gave_up', 'withered')`,
+    [status, newGrowthStage, actualDurationMinutes, profileId, sessionId],
   );
 }
 
@@ -269,6 +281,7 @@ function mapFocus(row: FocusRow): FocusSession {
     xpEarned: row.xp_earned,
     endReason: row.end_reason ?? undefined,
     focusedSeconds: row.focused_seconds,
+    energyType: row.energy_type ?? undefined,
   };
 }
 export async function startFocusSession(
@@ -329,7 +342,7 @@ export async function startFocusSession(
 
     const active = await client.query<FocusRow>(
       `select id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned,
-              end_reason, focused_seconds
+              end_reason, focused_seconds, energy_type
        from focus_sessions where profile_id = $1 and ended_at is null limit 1`,
       [profileId],
     );
@@ -351,7 +364,7 @@ export async function startFocusSession(
       const result = await client.query<FocusRow>(
         `insert into focus_sessions (profile_id, room_id, task_id, duration_minutes, target_duration_minutes, energy_type)
          values ($1, $2, $3, 0, $4, $5)
-         returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned`,
+         returning id, profile_id, room_id, duration_minutes, target_duration_minutes, started_at, ended_at, task_id, xp_earned, energy_type`,
         [profileId, roomId ?? null, taskId ?? null, targetDurationMinutes, energy],
       );
       session = mapFocus(result.rows[0]);
@@ -368,7 +381,7 @@ export async function startFocusSession(
   // Wither the garden entries of the sessions we just closed
   for (const id of staleIds) {
     try {
-      await finalizeGardenEntries(profileId, id, false, 0);
+      await finalizeGardenEntries(profileId, id, "gave_up", 0);
     } catch (error) {
       console.error("[focus] failed to finalize garden for stale session", id, error);
     }
@@ -679,7 +692,7 @@ export async function endFocusSession(
         throw error;
       }
     }
-    await finalizeGardenEntries(profileId, sessionId, false, durationMinutes);
+    await finalizeGardenEntries(profileId, sessionId, "gave_up", durationMinutes);
     if (session.rows[0].room_id) await clearGroupRoomPresence(Number(session.rows[0].room_id), profileId);
     return {
       session: mapFocus(updated.rows[0]),
@@ -766,7 +779,7 @@ export async function endFocusSession(
   // Sessions that reached their target duration become "alive"; abandoned sessions
   // become "withered" — mirroring the streak qualification rule.
   const completed = durationMinutes >= completedThreshold;
-  await finalizeGardenEntries(profileId, sessionId, completed, durationMinutes);
+  await finalizeGardenEntries(profileId, sessionId, completed ? "completed" : "gave_up", durationMinutes);
 
   // Record an immutable event for this session. This table has no FK to
   // focus_rooms or focus_sessions, so rows survive any room/session deletion.

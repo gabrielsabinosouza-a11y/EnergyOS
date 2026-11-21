@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DecorationRarity } from "@/types";
+import { SEASONAL_FRAMES } from "@/config/seasons";
 
 // Known frame decorations (mirrors avatar_decorations seed in db-schema.sql).
 // Used to resolve an equipped frame id into its asset + rarity for rendering;
@@ -27,6 +28,14 @@ export const FRAME_ASSETS: Record<string, FrameAsset> = {
   frame_electric: { imageUrl: "/decorations/frame_electric.svg", rarity: "common", photoScale:  0.90, overscale: 1.18 },
   frame_cosmic: { imageUrl: "/decorations/frame_cosmic.svg", rarity: "epic", photoScale:  0.90, overscale: 1.1 },
   frame_diamond: { imageUrl: "/decorations/frame_diamond.svg", rarity: "legendary", photoScale:  0.90, overscale: 1.18 },
+  // Seasonal frames — generated from the shared catalog so DB ids and art
+  // paths stay in sync. Missing art falls back to the rarity ring via onError.
+  ...Object.fromEntries(
+    SEASONAL_FRAMES.map((f) => [
+      f.id,
+      { imageUrl: f.imageUrl, rarity: f.rarity, photoScale: 0.9, overscale: f.rarity === "legendary" ? 1.12 : 1.1 },
+    ]),
+  ),
 };
 
 const RARITY_BORDER: Record<DecorationRarity, string> = {

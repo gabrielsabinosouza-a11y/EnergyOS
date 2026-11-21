@@ -518,6 +518,7 @@ export interface UserSettings {
   reminderCheckinEnabled: boolean;
   reminderFocusEnabled: boolean;
   reminderSleepEnabled: boolean;
+  seasonalThemesEnabled?: boolean;
 }
 
 export interface Metric {
@@ -669,6 +670,9 @@ export interface FocusSession {
   xpEarned: number;
   endReason?: "completed" | "gave_up";
   focusedSeconds?: number;
+  /** Aura equipped when the session started — stored on the session so later
+   *  changes to the equipped aura do not affect ongoing or past sessions. */
+  energyType?: string;
 }
 
 export interface UserXP {
@@ -794,6 +798,8 @@ export interface AvatarDecoration {
   price: number;
   rarity: DecorationRarity;
   sortOrder: number;
+  /** Season id (halloween|christmas|newyear|easter) when this is a seasonal frame. */
+  seasonId?: string | null;
 }
 
 export interface UserDecoration {
@@ -864,6 +870,10 @@ export interface StoreItem {
   rarity: DecorationRarity;
   owned: boolean;
   equipped: boolean;
+  /** Season id when this is a seasonal (Edição Limitada) frame. */
+  seasonId?: string | null;
+  isSeasonal?: boolean;
+  sortOrder?: number;
 }
 
 export interface StreakShieldDesign {

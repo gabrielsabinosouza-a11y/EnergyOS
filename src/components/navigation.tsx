@@ -22,7 +22,7 @@ function isActivePath(pathname: string, href: string) {
  *  `groupUnread` drives the Grupos badge. One poller shared by the desktop
  *  sidebar and the mobile tab bar so we never double-poll `/api/social/unread`. */
 function useUnreadCounts() {
-  const [counts, setCounts] = useState({ dmUnread: 0, groupUnread: 0 });
+  const [counts, setCounts] = useState({ dmUnread: 0, groupUnread: 0, seasonNew: false });
   useEffect(() => {
     let active = true;
     async function fetchUnread() {
@@ -30,16 +30,23 @@ function useUnreadCounts() {
         const { auth } = await import("@/lib/firebase");
         const token = await auth?.currentUser?.getIdToken();
         if (!token || !active) return;
-        const res = await fetch("/api/social/unread", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok || !active) return;
-        const data = await res.json();
-        if (active) {
-          setCounts({
+        const headers = { Authorization: `Bearer ${token}` };
+        const [res, seasonRes] = await Promise.all([
+          fetch("/api/social/unread", { headers }),
+          fetch("/api/seasons/status", { headers }),
+        ]);
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json();
+          setCounts((c) => ({
+            ...c,
             dmUnread: Number(data.dmUnread ?? 0),
             groupUnread: Number(data.groupUnread ?? 0),
-          });
+          }));
+        }
+        if (seasonRes.ok) {
+          const data = await seasonRes.json();
+          setCounts((c) => ({ ...c, seasonNew: data.active === true && Number(data.unowned ?? 0) > 0 }));
         }
       } catch { /* silent */ }
     }
@@ -51,9 +58,10 @@ function useUnreadCounts() {
 }
 
 /** Badge count for a nav item given its badge kind and the unread counts. */
-function badgeCountFor(kind: "dm" | "group" | null | undefined, counts: { dmUnread: number; groupUnread: number }): number {
+function badgeCountFor(kind: "dm" | "group" | "season" | null | undefined, counts: { dmUnread: number; groupUnread: number; seasonNew: boolean }): number {
   if (kind === "dm") return counts.dmUnread;
   if (kind === "group") return counts.groupUnread;
+  if (kind === "season") return counts.seasonNew ? 1 : 0;
   return 0;
 }
 
@@ -107,11 +115,13 @@ export function Sidebar({ pathname }: { pathname: string }) {
                   className="shrink-0 object-contain"
                 />
                 <span>{label}</span>
-                {showBadge && (
+                {showBadge && badge === "season" ? (
+                  <span className="ml-auto h-2 w-2 rounded-full bg-[var(--orange)]" aria-label="Novidades sazonais na loja" />
+                ) : showBadge ? (
                   <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--orange)] px-1 text-[10px] font-bold text-black">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
-                )}
+                ) : null}
               </span>
             </Link>
           );
