@@ -42,13 +42,11 @@ export function AuraStageImage({
   const reduced = useReducedMotion() ?? false;
   const candidates = useMemo(() => auraStageImageCandidates(auraId, stage, cfg), [auraId, stage, cfg]);
   const [src, setSrc] = useState<string | null>(null);
-  const [entrance, setEntrance] = useState(0);
 
   // Probes candidates in order: renders the first that loads, falling back to
   // the aura's legacy icon when a stage image is missing. Ends as nothing
   // rather than an error if none of them resolve.
   useEffect(() => {
-    setSrc(null);
     let cancelled = false;
     const probe = (index: number): void => {
       if (cancelled || index >= candidates.length) return;
@@ -63,15 +61,13 @@ export function AuraStageImage({
     return () => { cancelled = true; };
   }, [candidates]);
 
-  // Each stage change remounts the wrapper: crossfade + scale pop (shake on
-  // die). Reduced motion → plain fade, no shakes.
-  useEffect(() => { setEntrance(e => e + 1); }, [stage, auraId, enterKey]);
-
   const isDie = stage === "die";
 
+  // Each stage change remounts the wrapper (key) → crossfade + scale pop,
+  // shake on die. Reduced motion → plain fade, no shakes.
   return (
     <motion.div
-      key={entrance}
+      key={`${auraId}-${stage}-${enterKey}`}
       className="flex items-center justify-center"
       style={{ width: size, height: size, position: "relative", ...style }}
       initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}

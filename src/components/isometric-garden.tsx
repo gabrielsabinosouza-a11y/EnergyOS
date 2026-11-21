@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage, type EnergyType } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, isGardenCompleted, isGardenDead, mapGrowthStageToEnergyStage, type EnergyType } from "@/lib/energy-assets";
+import { AuraStageImage } from "@/components/aura-stage-image";
+import type { TimerGrowthStage } from "@/lib/focus-growth";
 import type { GardenEntry } from "@/lib/db/focus";
 
 interface IsometricGardenProps {
@@ -207,19 +209,20 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           }}
         >
         {planted.map((entry, index) => {
-          const cfg = ENERGY_CONFIGS[entry.energyType as EnergyType];
+          const auraId = entry.auraId || entry.energyType;
+          const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[entry.energyType as EnergyType];
           if (!cfg) {
             if (process.env.NODE_ENV !== "production") {
-              throw new Error(`Unknown garden energy type: ${entry.energyType}`);
+              throw new Error(`Unknown garden energy type: ${auraId}`);
             }
             return null;
           }
 
           const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
-          const isWithered = entry.status === "withered";
+          const isDead = isGardenDead(entry.status);
           const isGrowing = entry.status === "growing";
           // Viva em nível máximo (forma completa + sessão concluída) → ganha aura pulsante.
-          const isFullLife = entry.status === "alive" && energyStage === "full";
+          const isFullLife = isGardenCompleted(entry.status) && energyStage === "full";
 
           const delay = index * 0.035;
 
@@ -239,20 +242,23 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
           const spriteStyle = {
             width: icon,
             height: icon,
-            opacity: isWithered ? 0.45 : isGrowing ? 0.9 : 1,
-            filter: isWithered
-              ? "grayscale(100%) brightness(.7)"
+            opacity: isDead ? 0.45 : isGrowing ? 0.9 : 1,
+            filter: isDead
+              ? `drop-shadow(0 10px 7px rgba(0,0,0,0.45)) drop-shadow(0 0 10px rgba(0,0,0,0.3))`
               : `drop-shadow(0 10px 7px rgba(0,0,0,0.45)) drop-shadow(0 0 10px ${cfg.glow})`,
           };
 
+          // Dead trees use the aura's dead artwork ({auraId}_die.png or the
+          // legacy extinguished icon with grayscale).
+          const auraStage: TimerGrowthStage | "die" = isDead ? "die" : "full";
           const spriteImg = (
-            <img
-              src={cfg.assets[energyStage]}
-              alt=""
-              width={Math.round(icon)}
-              height={Math.round(icon)}
-              draggable={false}
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            <AuraStageImage
+              auraId={auraId}
+              stage={auraStage}
+              cfg={cfg}
+              label={cfg.label}
+              size={icon}
+              style={{ width: "100%", height: "100%" }}
             />
           );
 
@@ -285,7 +291,7 @@ export function IsometricGarden({ entries, onEntryClick, className = "" }: Isome
                   width: 64 * dec,
                   height: 21 * dec,
                   transform: "translate(-50%, -50%)",
-                  background: isWithered
+                  background: isDead
                     ? "radial-gradient(50% 50% at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 75%)"
                     : `radial-gradient(50% 50% at 50% 50%, ${cfg.glow}77 0%, transparent 75%)`,
                 }}

@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import Image from "next/image";
 import { Leaf, ChevronLeft, ChevronRight, Sprout, Timer, Grid3X3, List } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Header } from "@/components/navigation";
 import { useAuthRedirect, useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
-import { ENERGY_CONFIGS, mapGrowthStageToEnergyStage } from "@/lib/energy-assets";
+import { ENERGY_CONFIGS, isGardenDead, type EnergyType } from "@/lib/energy-assets";
+import { AuraStageImage } from "@/components/aura-stage-image";
 import { IsometricGarden } from "@/components/isometric-garden";
+import type { TimerGrowthStage } from "@/lib/focus-growth";
 import type { GardenEntry } from "@/lib/db/focus";
 
 type Period = "day" | "week" | "month" | "year";
@@ -464,14 +465,16 @@ export default function JardimPage() {
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 {periodEntries.map((entry) => {
-                  const cfg = ENERGY_CONFIGS[entry.energyType];
+                  const auraId = entry.auraId || entry.energyType;
+                  const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[entry.energyType];
                   if (!cfg) {
                     if (process.env.NODE_ENV !== "production") {
-                      throw new Error(`Unknown garden energy type: ${entry.energyType}`);
+                      throw new Error(`Unknown garden energy type: ${auraId}`);
                     }
                     return null;
                   }
-                  const energyStage = mapGrowthStageToEnergyStage(entry.growthStage, entry.status);
+                  const isDead = isGardenDead(entry.status);
+                  const auraStage: TimerGrowthStage | "die" = isDead ? "die" : "full";
                   const planted = new Date(entry.plantedAt);
                   const date = planted.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
                   const datetime = planted.toLocaleDateString("pt-BR", {
@@ -481,7 +484,6 @@ export default function JardimPage() {
                     hour: "2-digit",
                     minute: "2-digit",
                   });
-                  const isWithered = entry.status === "withered";
                   const isGrowing = entry.status === "growing";
 
                   return (
@@ -491,7 +493,7 @@ export default function JardimPage() {
                       className="group relative flex flex-col items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-hover)] p-3"
                       style={{
                         boxShadow: `0 0 16px -6px ${cfg.glow}`,
-                        opacity: isWithered ? 0.6 : 1,
+                        opacity: isDead ? 0.6 : 1,
                       }}
                       onClick={() => setSelectedEntry(entry)}
                     >
@@ -499,7 +501,7 @@ export default function JardimPage() {
                       {isGrowing && (
                         <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
                       )}
-                      {isWithered && (
+                      {isDead && (
                         <div className="absolute -top-1 -right-1 text-xs">🥀</div>
                       )}
 
@@ -508,20 +510,18 @@ export default function JardimPage() {
                         <span className="text-[10px] font-bold" style={{ color: cfg.accent }}>{cfg.label}</span>
                         <span className="text-[9px] text-[var(--text-muted)]">plantada em {datetime}</span>
                         <span className="text-[9px] text-[var(--text-faint)]">{entry.durationMinutes}min de foco</span>
-                        {isWithered && <span className="text-[9px] text-red-400">Sessão abandonada</span>}
+                        {isDead && <span className="text-[9px] text-red-400">Sessão abandonada</span>}
                         {isGrowing && <span className="text-[9px] text-[var(--accent)]">Crescendo...</span>}
                       </div>
 
                       <div className="relative h-14 w-14">
-                        <Image
-                          src={cfg.assets[energyStage]}
-                          alt={cfg.label}
-                          fill
-                          style={{
-                            objectFit: "contain",
-                            filter: isWithered ? "grayscale(100%) brightness(0.7)" : "none",
-                          }}
-                          unoptimized
+                        <AuraStageImage
+                          auraId={auraId}
+                          stage={auraStage}
+                          cfg={cfg}
+                          label={cfg.label}
+                          size={56}
+                          style={{ width: "100%", height: "100%" }}
                         />
                       </div>
                       <span className="text-[10px] font-medium text-[var(--text-secondary)]" style={{ color: cfg.accent }}>
@@ -592,14 +592,16 @@ export default function JardimPage() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   {(() => {
-                    const cfg = ENERGY_CONFIGS[selectedEntry.energyType];
+                    const auraId = selectedEntry.auraId || selectedEntry.energyType;
+                    const cfg = ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS[selectedEntry.energyType];
                     if (!cfg) {
                       if (process.env.NODE_ENV !== "production") {
-                        throw new Error(`Unknown garden energy type: ${selectedEntry.energyType}`);
+                        throw new Error(`Unknown garden energy type: ${auraId}`);
                       }
                       return null;
                     }
-                    const energyStage = mapGrowthStageToEnergyStage(selectedEntry.growthStage, selectedEntry.status);
+                    const isDead = isGardenDead(selectedEntry.status);
+                    const auraStage: TimerGrowthStage | "die" = isDead ? "die" : "full";
                     const planted = new Date(selectedEntry.plantedAt);
                     const datetime = planted.toLocaleDateString("pt-BR", {
                       day: "2-digit",
@@ -608,22 +610,19 @@ export default function JardimPage() {
                       hour: "2-digit",
                       minute: "2-digit",
                     });
-                    const isWithered = selectedEntry.status === "withered";
                     const isGrowing = selectedEntry.status === "growing";
 
                     return (
                       <>
                         <div className="flex flex-col items-center gap-4">
                           <div className="relative h-24 w-24">
-                            <Image
-                              src={cfg.assets[energyStage]}
-                              alt={cfg.label}
-                              fill
-                              style={{
-                                objectFit: "contain",
-                                filter: isWithered ? "grayscale(100%) brightness(0.7)" : "none",
-                              }}
-                              unoptimized
+                            <AuraStageImage
+                              auraId={auraId}
+                              stage={auraStage}
+                              cfg={cfg}
+                              label={cfg.label}
+                              size={96}
+                              style={{ width: "100%", height: "100%" }}
                             />
                           </div>
 
@@ -644,9 +643,9 @@ export default function JardimPage() {
                                     Crescendo...
                                   </span>
                                 )}
-                                {isWithered && (
+                                {isDead && (
                                   <span className="text-xs px-2 py-1 rounded-full bg-slate-500/20 text-slate-300">
-                                    🥀 Murcha
+                                    🥀 Sessão abandonada
                                   </span>
                                 )}
                                 {selectedEntry.status === "alive" && (

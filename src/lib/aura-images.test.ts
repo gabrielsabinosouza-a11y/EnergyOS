@@ -9,15 +9,17 @@ const STAGES: Array<TimerGrowthStage | "die"> = ["begin", "mid", "full", "die"];
 test("every aura/stage resolves to a candidate with a fallback", () => {
   for (const auraId of ENERGY_TYPES) {
     for (const stage of STAGES) {
-      const [first, fallback] = auraStageImageCandidates(auraId, stage);
-      assert.equal(first, `/energies/${auraId}/${auraId}_${stage}.png`, `${auraId}_${stage}`);
-      assert.ok(fallback.length > 0 && fallback !== first, `${auraId} ${stage} fallback`);
+      const candidates = auraStageImageCandidates(auraId, stage);
+      assert.equal(candidates[0], `/energies/${auraId}/${auraId}_${stage}.png`, `${auraId}_${stage}`);
+      assert.ok(candidates.length >= 1 && candidates[candidates.length - 1].length > 0, `${auraId} ${stage} fallback`);
+      // Candidates are unique.
+      assert.equal(new Set(candidates).size, candidates.length);
     }
   }
 });
 
 test("fallback is derived from the aura's legacy icon", () => {
-  const { 0: first, 1: fallback } = auraStageImageCandidates("water", "begin");
+  const [first, fallback] = auraStageImageCandidates("water", "begin");
   assert.equal(first, "/energies/water/water_begin.png");
   assert.equal(fallback, "/energies/water/water_start.png");
 

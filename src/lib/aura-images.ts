@@ -35,8 +35,8 @@ export function auraStageImageCandidates(
   const c = cfg ?? (ENERGY_CONFIGS[auraId as EnergyType] ?? ENERGY_CONFIGS.flame);
   const { newName, legacyKey } = STAGE_ASSET_NAMES[stage];
   const first = `/energies/${auraId}/${auraId}_${newName}.png`;
-  const fallback = c.assets[legacyKey];
-  return fallback && fallback !== first ? [first, fallback] : [first, c.assets.full];
+  const fallback = c.assets[legacyKey] || c.assets.full;
+  return fallback && fallback !== first ? [first, fallback] : [first];
 }
 
 /**
