@@ -527,6 +527,8 @@ export interface UserSettings {
   reminderFocusEnabled: boolean;
   reminderSleepEnabled: boolean;
   seasonalThemesEnabled?: boolean;
+  /** 'auto' | SeasonId — manual seasonal theme override (preview). */
+  seasonalTheme?: string | null;
 }
 
 export interface Metric {

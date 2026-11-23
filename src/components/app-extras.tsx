@@ -7,6 +7,7 @@ import type { AchievementProgress, UserSettings } from "@/types";
 import { registerServiceWorker } from "@/lib/sw-register";
 import { startReminders, stopReminders, type ReminderConfig } from "@/lib/reminders";
 import { OnboardingTour } from "./onboarding-tour";
+import { EnvBadge } from "./env-badge";
 import { AchievementUnlockModal } from "./achievement-unlock-modal";
 import { RewardToast, type RewardToastData } from "./reward-toast";
 import { NEW_TIER_META } from "@/lib/league-new-meta";
@@ -177,6 +178,7 @@ export function AppExtras() {
   return (
     <>
       <OnboardingTour />
+      <EnvBadge />
       <AchievementUnlockModal achievement={current} onClose={dismiss} />
       <RewardToast toast={leagueToast} onDone={dismissLeagueToast} />
     </>

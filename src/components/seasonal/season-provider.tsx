@@ -53,6 +53,9 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const [now, setNow] = useState(() => new Date());
   const [themesEnabled, setThemesEnabled] = useState(true);
+  // Per-user seasonal theme override (settings.seasonalTheme). A SeasonId
+  // forces that theme/decorations as a preview; null = follow the calendar.
+  const [seasonPref, setSeasonPref] = useState<SeasonId | null>(null);
 
   // Re-resolve the season so the theme/items flip exactly at a season
   // boundary (no reload), on tab focus, and periodically as a safety net.
@@ -90,7 +93,10 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
       // Logged-out visitors get the default (themes on). Async setState keeps
       // the effect free of synchronous cascading renders.
       void Promise.resolve().then(() => {
-        if (active) setThemesEnabled(true);
+        if (active) {
+          setThemesEnabled(true);
+          setSeasonPref(null);
+        }
       });
       return () => { active = false; };
     }
@@ -98,7 +104,10 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
       api
         .getSettings()
         .then((s) => {
-          if (active) setThemesEnabled(s.seasonalThemesEnabled !== false);
+          if (!active) return;
+          setThemesEnabled(s.seasonalThemesEnabled !== false);
+          const pref = s.seasonalTheme;
+          setSeasonPref(pref && SEASONS.some((x) => x.id === pref) ? (pref as SeasonId) : null);
         })
         .catch(() => {});
     };
@@ -111,9 +120,12 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
   }, [user, loading]);
 
   const value = useMemo<SeasonContextValue>(() => {
-    const override = getSeasonOverride(
-      { NODE_ENV: process.env.NODE_ENV, SEASON_OVERRIDE: process.env.SEASON_OVERRIDE, NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON },
-    );
+    // Dev override (?season= / env, dev builds only) wins over the user's
+    // saved seasonal theme preference.
+    const override =
+      getSeasonOverride(
+        { NODE_ENV: process.env.NODE_ENV, SEASON_OVERRIDE: process.env.SEASON_OVERRIDE, NEXT_PUBLIC_FORCE_SEASON: process.env.NEXT_PUBLIC_FORCE_SEASON },
+      ) ?? seasonPref;
     const season = getActiveSeason(now, override);
     // For the store section: active season wins; otherwise fall back to the
     // next upcoming season so "Volta em …" can be shown for owned items.
@@ -127,7 +139,7 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
       nextStart: storeSeason ? getNextSeasonStart(storeSeason, now) : null,
       themesEnabled,
     };
-  }, [now, themesEnabled]);
+  }, [now, themesEnabled, seasonPref]);
 
   // Drive the global data-season attribute for CSS theming. Removing the
   // attribute restores the default EnergyOS palette instantly.

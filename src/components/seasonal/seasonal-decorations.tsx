@@ -34,11 +34,9 @@ const CONFETTI_COLORS = [
 function Snowfall() {
   const flakes = useMemo(() => {
     const rand = seeded(7);
-    // Fewer snowflakes on small screens, a few more on desktop.
-    const count = typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
-      ? SNOW_DESKTOP
-      : SNOW_COUNT;
-    return Array.from({ length: count }, (_, i) => ({
+    // Always render the desktop count so SSR and client markup match; flakes
+    // beyond SNOW_COUNT are hidden below md via CSS (max-md:hidden).
+    return Array.from({ length: SNOW_DESKTOP }, (_, i) => ({
       id: i,
       left: rand() * 100,
       size: 2 + rand() * 3,
@@ -53,7 +51,7 @@ function Snowfall() {
       {flakes.map((f) => (
         <span
           key={f.id}
-          className="season-particle season-snow rounded-full bg-white"
+          className={`season-particle season-snow rounded-full bg-white${f.id >= SNOW_COUNT ? " max-md:hidden" : ""}`}
           style={{
             left: `${f.left}%`,
             top: 0,

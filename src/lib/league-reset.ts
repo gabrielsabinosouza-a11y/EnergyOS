@@ -15,6 +15,8 @@ export interface LeagueWeeklyFinalResult {
   coinsAwarded: number;
   result: "promoted" | "demoted" | "stayed";
   resultingTier: NewLeagueTier;
+  /** True when this member's weeklyXP equals the group's top score (tie). */
+  tiedForTop?: boolean;
 }
 
 export interface LeagueWeeklyResultWriter {
@@ -56,9 +58,16 @@ export async function persistLeagueWeeklyResultOnce(
     });
   }
 
-  if (
-    result.rank === 1
-  ) {
+  // "Top 1 Global" = finished #1 in the Lendas (LEGENDS) league with real
+  // activity, against at least one other member. Ties at the top score share
+  // the badge (tiedForTop); 0-XP and solo-group leaders never qualify.
+  // Coin podium rewards (1st/2nd/3rd) are handled above and are unaffected.
+  const isTop1Global =
+    result.tier === "LEGENDS" &&
+    result.weeklyXP > 0 &&
+    result.groupSize > 1 &&
+    (result.rank === 1 || result.tiedForTop === true);
+  if (isTop1Global) {
     const firstUnlock = await writer.recordTop1GlobalFinish(result.profileId, result.weekStart);
     if (firstUnlock) {
       await writer.awardCoins({

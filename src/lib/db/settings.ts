@@ -6,6 +6,9 @@ import { ensureDefaultAuras, getOwnedAuras } from "./store";
 import { ForbiddenError } from "../errors";
 import { ValidationError, parseBoolean, parseEnum, parseOptionalTime, parseProfileId } from "./validation";
 import { ENERGY_TYPES } from "@/lib/energy-assets";
+import { SEASONS } from "@/config/seasons";
+
+const SEASON_IDS = new Set<string>(SEASONS.map((s) => s.id));
 
 const THEMES = ["system", "light", "dark"] as const;
 
@@ -22,6 +25,7 @@ interface SettingsRow {
   reminder_focus_enabled: boolean;
   reminder_sleep_enabled: boolean;
   seasonal_themes_enabled: boolean;
+  seasonal_theme: string | null;
 }
 
 function toSettings(profileId: string, row: SettingsRow): UserSettings {
@@ -39,6 +43,7 @@ function toSettings(profileId: string, row: SettingsRow): UserSettings {
     reminderFocusEnabled: row.reminder_focus_enabled ?? false,
     reminderSleepEnabled: row.reminder_sleep_enabled ?? false,
     seasonalThemesEnabled: row.seasonal_themes_enabled ?? true,
+    seasonalTheme: row.seasonal_theme ?? undefined,
   };
 }
 
@@ -47,7 +52,7 @@ export async function getSettings(profileId: string): Promise<UserSettings> {
   const result = await pool.query<SettingsRow>(
     `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
             onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-            seasonal_themes_enabled
+            seasonal_themes_enabled, seasonal_theme
      from user_settings where profile_id = $1`,
     [profileId],
   );
@@ -63,6 +68,7 @@ export async function getSettings(profileId: string): Promise<UserSettings> {
       reminderFocusEnabled: false,
       reminderSleepEnabled: false,
       seasonalThemesEnabled: true,
+      seasonalTheme: undefined,
     };
   }
   return toSettings(profileId, result.rows[0]);
@@ -79,6 +85,7 @@ export interface SaveSettingsInput {
   reminderFocusEnabled?: boolean;
   reminderSleepEnabled?: boolean;
   seasonalThemesEnabled?: boolean;
+  seasonalTheme?: string | null;
 }
 
 export async function saveSettings(profileId: string, input: SaveSettingsInput): Promise<UserSettings> {
@@ -95,12 +102,27 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
   const reminderFocusEnabled = parseBoolean(input.reminderFocusEnabled ?? false, "Lembrete de foco", true);
   const reminderSleepEnabled = parseBoolean(input.reminderSleepEnabled ?? false, "Lembrete de sono", true);
   const seasonalThemesEnabled = parseBoolean(input.seasonalThemesEnabled ?? true, "Temas sazonais", true);
+  // 'auto'/null = follow the calendar; a SeasonId forces that theme as a
+  // per-user preview. undefined leaves the stored value untouched (partial
+  // saves like onboardingCompleted must not reset the user's choice).
+  let seasonalTheme: string | null = null;
+  if (input.seasonalTheme !== undefined) {
+    const raw = input.seasonalTheme;
+    if (raw === null || raw === "auto") {
+      seasonalTheme = null;
+    } else if (SEASON_IDS.has(raw)) {
+      seasonalTheme = raw;
+    } else {
+      throw new ValidationError("Tema sazonal inválido.");
+    }
+  }
+  const seasonalThemeProvided = input.seasonalTheme !== undefined;
 
   const result = await pool.query<SettingsRow>(
     `insert into user_settings (profile_id, notifications_enabled, preferred_theme, sleep_time, focus_time, sound_notifications_enabled,
                                 onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-                                seasonal_themes_enabled)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                                seasonal_themes_enabled, seasonal_theme)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      on conflict (profile_id) do update set
        notifications_enabled = excluded.notifications_enabled,
        preferred_theme = excluded.preferred_theme,
@@ -111,13 +133,14 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
        reminder_checkin_enabled = excluded.reminder_checkin_enabled,
        reminder_focus_enabled = excluded.reminder_focus_enabled,
        reminder_sleep_enabled = excluded.reminder_sleep_enabled,
-       seasonal_themes_enabled = excluded.seasonal_themes_enabled
+       seasonal_themes_enabled = excluded.seasonal_themes_enabled,
+       seasonal_theme = case when $13::boolean then excluded.seasonal_theme else user_settings.seasonal_theme end
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled`,
+               seasonal_themes_enabled, seasonal_theme`,
     [profileId, notificationsEnabled, preferredTheme, sleepTime, focusTime, soundNotificationsEnabled,
      onboardingCompleted, reminderCheckinEnabled, reminderFocusEnabled, reminderSleepEnabled,
-     seasonalThemesEnabled],
+     seasonalThemesEnabled, seasonalTheme, seasonalThemeProvided],
   );
   return toSettings(profileId, result.rows[0]);
 }
@@ -132,7 +155,7 @@ export async function addCoins(profileId: string, amount: number, db: Pool | Poo
      on conflict (profile_id) do update set coins = user_settings.coins + excluded.coins
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled`,
+               seasonal_themes_enabled, seasonal_theme`,
     [profileId, amount],
   );
   return toSettings(profileId, result.rows[0]);
@@ -165,7 +188,7 @@ export async function setLastSelectedAura(profileId: string, auraType: string | 
      on conflict (profile_id) do update set last_selected_aura = excluded.last_selected_aura
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled`,
+               seasonal_themes_enabled, seasonal_theme`,
     [profileId, auraType],
   );
   return toSettings(profileId, result.rows[0]);

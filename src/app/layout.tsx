@@ -3,6 +3,7 @@ import { DM_Mono, IBM_Plex_Mono, Instrument_Serif, Inter } from "next/font/googl
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { SeasonProvider } from "@/components/seasonal/season-provider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-landing-body", display: "swap" });
 const instrumentSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-landing-display", display: "swap" });
@@ -35,10 +36,6 @@ export const viewport: Viewport = {
   ],
 };
 
-// Mirrors ThemeProvider: storage key "energyos-theme", values light/dark/
-// system (system follows prefers-color-scheme), unset defaults to dark.
-const themeScript = `try{var t=localStorage.getItem('energyos-theme');var m=t==='light'?'light':t==='system'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):'dark';document.documentElement.setAttribute('data-theme',m)}catch(e){}`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
@@ -48,11 +45,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${instrumentSerif.variable} ${plexMono.variable} ${dmMono.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <SeasonProvider>{children}</SeasonProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

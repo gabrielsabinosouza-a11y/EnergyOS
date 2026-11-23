@@ -376,7 +376,7 @@ export default function LigaPage() {
                       <div className="min-w-0">
                         <p className="flex items-center gap-1 truncate text-[11px] font-medium text-[var(--text)]">
                           <span className="truncate">{name}</span>
-                          {member.timesTop1Global > 0 && (
+                          {displayMemberRank === 1 && member.weeklyXP > 0 && groupSize > 1 && (
                             <Top1GlobalBadge count={member.timesTop1Global} compact />
                           )}
                         </p>

@@ -236,6 +236,9 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
         await syncGroupWeeklyXPFromLedger(client, group.id, oldWeekStart);
         const members = await getRankedGroupMembers(client, group.id, oldWeekStart);
         const n = members.length;
+        // Members sorted by weekly_xp desc — members[0] holds the top score.
+        // Everyone matching it shares the "Top 1 Global" badge (tie rule).
+        const topWeeklyXP = n > 0 ? members[0].weekly_xp : 0;
 
         for (let i = 0; i < n; i++) {
           const member = members[i];
@@ -314,16 +317,21 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
               if (inserted.rows[0]) await addCoins(payout.profileId, payout.amount, client);
             },
             recordTop1GlobalFinish: async (profileId, weekStart) => {
+              // Idempotent per period: only increment when this profile has not
+              // already been credited for the same week_start_date.
+              const bumped = await client.query<{ times_top_1_global: number }>(
+                `update profiles
+                 set times_top_1_global = times_top_1_global + 1,
+                     last_top_1_global_week = $2::date
+                 where id = $1
+                   and last_top_1_global_week is distinct from $2::date
+                 returning times_top_1_global`,
+                [profileId, weekStart],
+              );
+              if (!bumped.rows[0]) return false; // already credited this week
               // Source-of-truth counters live on profiles; persist them even if the
               // achievement progress row cannot be written (e.g. missing achievements
               // seed row / FK in a drifted production DB).
-              await client.query(
-                `update profiles
-                 set times_top_1_global = times_top_1_global + 1,
-                     last_top_1_global_week = $2
-                 where id = $1`,
-                [profileId, weekStart],
-              );
               let firstUnlock = true;
               try {
                 const previous = await client.query<{ unlocked_tier: number }>(
@@ -381,6 +389,7 @@ export async function initializeLeagueGroups(weekStart: string): Promise<void> {
             coinsAwarded,
             result,
             resultingTier: targetTier,
+            tiedForTop: member.weekly_xp === topWeeklyXP,
           });
 
           if (targetTier !== "LEGENDS") await recordHighestTier(client, member.profile_id, targetTier);

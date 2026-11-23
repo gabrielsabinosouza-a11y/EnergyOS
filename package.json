@@ -25,6 +25,7 @@
     "db:recompute-xp": "node scripts/recompute-user-xp.mjs",
     "db:restore-messages": "node scripts/restore-messages.mjs",
     "db:check": "node scripts/verify-schema.mjs",
+    "env:check": "node scripts/env-check.mjs",
     "frames:measure": "node scripts/frames-measure.mjs",
     "frames:normalize": "node scripts/frames-normalize.mjs",
     "frames:verify": "node scripts/frames-verify.mjs",

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useLayoutEffect, useEffect } from "react";
 
 type Theme = "system" | "light" | "dark";
 
@@ -31,13 +31,19 @@ function applyThemeToDOM(theme: Theme) {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
-  // Read from localStorage after mount (avoids SSR mismatch)
-  useEffect(() => {
+  // Read from localStorage and apply data-theme before paint (layout effect)
+  // so the correct theme shows without a flash — no inline <script> needed.
+  // The attribute is applied synchronously; React state syncs on the next
+  // frame so context consumers see the saved theme too.
+  useLayoutEffect(() => {
     const saved = readSavedTheme();
-    setThemeState(saved);
     applyThemeToDOM(saved);
+    const id = requestAnimationFrame(() => setThemeState(saved));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
-    // Keep in sync with system preference changes when theme === "system"
+  // Keep in sync with system preference changes when theme === "system"
+  useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onSysChange = () => {
       if (readSavedTheme() === "system") applyThemeToDOM("system");

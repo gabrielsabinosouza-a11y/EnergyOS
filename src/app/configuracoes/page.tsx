@@ -29,6 +29,7 @@ const defaultSettings: SettingsForm = {
   reminderFocusEnabled: true,
   reminderSleepEnabled: false,
   seasonalThemesEnabled: true,
+  seasonalTheme: "auto",
 };
 
 export default function ConfiguracoesPage() {
@@ -77,6 +78,7 @@ export default function ConfiguracoesPage() {
         reminderFocusEnabled: s.reminderFocusEnabled ?? false,
         reminderSleepEnabled: s.reminderSleepEnabled ?? false,
         seasonalThemesEnabled: s.seasonalThemesEnabled ?? true,
+        seasonalTheme: s.seasonalTheme ?? "auto",
       };
       savedRef.current = loaded;
       setForm(loaded);
@@ -139,6 +141,7 @@ export default function ConfiguracoesPage() {
         reminderFocusEnabled: form.reminderFocusEnabled,
         reminderSleepEnabled: form.reminderSleepEnabled,
         seasonalThemesEnabled: form.seasonalThemesEnabled,
+        seasonalTheme: form.seasonalTheme ?? "auto",
       });
       savedRef.current = { ...form };
       setSaveSuccess(true);
@@ -262,6 +265,24 @@ export default function ConfiguracoesPage() {
                 checked={form.seasonalThemesEnabled ?? true}
                 onChange={(v) => setField("seasonalThemesEnabled", v)}
               />
+              <div>
+                <div className="text-sm font-medium mb-1">Tema sazonal</div>
+                <p className="mb-2 text-xs text-[var(--text-muted)]">
+                  Automático segue o calendário. Escolher uma data força o tema, as decorações e a prévia da loja — a compra de itens sazonais continua liberada só na temporada real.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {([["auto", "Automático"], ["halloween", "Halloween"], ["christmas", "Natal"], ["newyear", "Ano Novo"], ["easter", "Páscoa"]] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setField("seasonalTheme", v)}
+                      className={`answer-option px-3 py-2 text-xs ${form.seasonalTheme === v ? "selected" : ""}`}
+                      style={{ width: "auto" }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <div className="text-sm font-medium mb-2">Tema da interface</div>
                 <div className="flex gap-2">
