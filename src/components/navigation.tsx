@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { navigationItems } from "@/shared/navigation-config";
 import type { NavigationItem } from "@/shared/navigation-config";
 import { SeasonalLogoAccessory } from "@/components/seasonal/seasonal-decorations";
+import { useStoreSeen } from "@/lib/store-seen";
 
 function iconPath(icon: NavigationItem["icon"]) {
   return `/sidebar_menu/${icon === "league" ? "leaderboard" : icon}.png`;
@@ -69,6 +70,7 @@ function badgeCountFor(kind: "dm" | "group" | "season" | null | undefined, count
 export function Sidebar({ pathname }: { pathname: string }) {
   const reduced = useReducedMotion();
   const unreadCounts = useUnreadCounts();
+  const storeSeen = useStoreSeen();
 
   return (
     <aside className="hidden w-[252px] shrink-0 flex-col border-r border-[var(--border-subtle)] px-6 py-8 lg:fixed lg:inset-y-0 lg:flex">
@@ -86,7 +88,10 @@ export function Sidebar({ pathname }: { pathname: string }) {
         {navigationItems.map(({ route, label, icon, badge }) => {
           const isActive = pathname === route;
           const unreadCount = badgeCountFor(badge, unreadCounts);
-          const showBadge = unreadCount > 0;
+          // The seasonal dot is a one-time "new items" notice: once the user
+          // has opened /loja it stays dismissed forever (null = still loading
+          // → hidden, so it never flashes for users who already dismissed it).
+          const showBadge = unreadCount > 0 && (badge !== "season" || storeSeen === false);
           return (
             <Link
               key={route}
@@ -138,6 +143,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
 /* Compact sticky brand bar and horizontally scrollable mobile navigation. */
 export function MobileNav({ pathname }: { pathname: string }) {
   const unreadCounts = useUnreadCounts();
+  const storeSeen = useStoreSeen();
   const reduced = useReducedMotion();
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScroll = useRef(true);
@@ -258,6 +264,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
             {navigationItems.map(({ id, route, label, shortLabel, icon, badge }) => {
               const active = activeItem?.id === id;
               const unreadCount = badgeCountFor(badge, unreadCounts);
+              const showBadge = unreadCount > 0 && (badge !== "season" || storeSeen === false);
               return (
                 <Link
                   aria-current={active ? "page" : undefined}
@@ -278,7 +285,7 @@ export function MobileNav({ pathname }: { pathname: string }) {
                   )}
                   <span className="tab-icon">
                     <Image src={iconPath(icon)} alt="" width={25} height={25} className="shrink-0 object-contain" />
-                    {unreadCount > 0 && (
+                    {showBadge && (
                       <span className="tab-dot" aria-label={`${unreadCount} mensagens não lidas`} />
                     )}
                   </span>

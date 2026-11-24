@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/server-auth";
 import { handleRoute, jsonOk, readJsonBody } from "@/lib/http";
 import { ensureUserBootstrap } from "@/lib/db/bootstrap";
-import { getSettings, saveSettings, setLastSelectedAura, type SaveSettingsInput } from "@/lib/db/settings";
+import { getSettings, saveSettings, setLastSelectedAura, setStoreNotificationSeen, type SaveSettingsInput } from "@/lib/db/settings";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -16,6 +16,9 @@ export async function PATCH(request: NextRequest) {
   return handleRoute(async () => {
     const { profileId } = await requireAuth(request);
     const body = await readJsonBody(request);
+    if (body.storeNotificationSeen !== undefined) {
+      return jsonOk(await setStoreNotificationSeen(profileId, body.storeNotificationSeen === true));
+    }
     const auraType = body.lastSelectedAura === undefined ? null : (body.lastSelectedAura as string | null);
     return jsonOk(await setLastSelectedAura(profileId, auraType));
   });

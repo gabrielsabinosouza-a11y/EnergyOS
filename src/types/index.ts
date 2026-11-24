@@ -529,6 +529,8 @@ export interface UserSettings {
   seasonalThemesEnabled?: boolean;
   /** 'auto' | SeasonId — manual seasonal theme override (preview). */
   seasonalTheme?: string | null;
+  /** True once the user has visited /loja — hides the seasonal dot forever. */
+  storeNotificationSeen?: boolean | null;
 }
 
 export interface Metric {

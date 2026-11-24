@@ -46,6 +46,7 @@ import { XP_BOOST_ITEM, XP_BOOST_MAX_HELD, XP_BOOST_DURATION_MS, isXpBoostActive
 import { XpBoostCelebration } from "@/components/xp-boost/xp-boost-celebration";
 import { formatRemaining } from "@/components/xp-boost/xp-boost-indicator";
 import { useSeason } from "@/components/seasonal/season-provider";
+import { markStoreSeen } from "@/lib/store-seen";
 import {
   SEASONS,
   SEASONAL_AURAS,
@@ -1054,6 +1055,12 @@ export default function LojaPage() {
   const [equippedShieldIconUrl, setEquippedShieldIconUrl] = useState<string | null>(null);
   const [seasonalSeen, setSeasonalSeen] = useState<Set<string>>(new Set());
   const { season: activeSeason, isActive: seasonIsActive, endsAt: ctxSeasonEndsAt } = useSeason();
+
+  // Visiting the store (sidebar click or direct URL) permanently dismisses
+  // the "Novidades sazonais" dot in the navigation.
+  useEffect(() => {
+    markStoreSeen();
+  }, []);
 
   // Animated header balance
   const animatedBalance = useAnimatedNumber(store?.balance ?? 0);

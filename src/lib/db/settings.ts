@@ -26,6 +26,7 @@ interface SettingsRow {
   reminder_sleep_enabled: boolean;
   seasonal_themes_enabled: boolean;
   seasonal_theme: string | null;
+  store_notification_seen: boolean | null;
 }
 
 function toSettings(profileId: string, row: SettingsRow): UserSettings {
@@ -44,6 +45,7 @@ function toSettings(profileId: string, row: SettingsRow): UserSettings {
     reminderSleepEnabled: row.reminder_sleep_enabled ?? false,
     seasonalThemesEnabled: row.seasonal_themes_enabled ?? true,
     seasonalTheme: row.seasonal_theme ?? undefined,
+    storeNotificationSeen: row.store_notification_seen ?? false,
   };
 }
 
@@ -52,7 +54,7 @@ export async function getSettings(profileId: string): Promise<UserSettings> {
   const result = await pool.query<SettingsRow>(
     `select notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
             onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-            seasonal_themes_enabled, seasonal_theme
+            seasonal_themes_enabled, seasonal_theme, store_notification_seen
      from user_settings where profile_id = $1`,
     [profileId],
   );
@@ -69,6 +71,7 @@ export async function getSettings(profileId: string): Promise<UserSettings> {
       reminderSleepEnabled: false,
       seasonalThemesEnabled: true,
       seasonalTheme: undefined,
+      storeNotificationSeen: false,
     };
   }
   return toSettings(profileId, result.rows[0]);
@@ -86,6 +89,25 @@ export interface SaveSettingsInput {
   reminderSleepEnabled?: boolean;
   seasonalThemesEnabled?: boolean;
   seasonalTheme?: string | null;
+}
+
+/**
+ * Persiste a flag "já vi a loja" — update pontual que NÃO mexe nas demais
+ * preferências (diferente do saveSettings, que faz upsert completo).
+ */
+export async function setStoreNotificationSeen(profileId: string, seen: boolean): Promise<UserSettings> {
+  parseProfileId(profileId);
+  await ensureProfile(profileId);
+  const result = await pool.query<SettingsRow>(
+    `insert into user_settings (profile_id, store_notification_seen)
+     values ($1, $2)
+     on conflict (profile_id) do update set store_notification_seen = excluded.store_notification_seen
+     returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
+               onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
+               seasonal_themes_enabled, seasonal_theme, store_notification_seen`,
+    [profileId, seen],
+  );
+  return toSettings(profileId, result.rows[0]);
 }
 
 export async function saveSettings(profileId: string, input: SaveSettingsInput): Promise<UserSettings> {
@@ -137,7 +159,7 @@ export async function saveSettings(profileId: string, input: SaveSettingsInput):
        seasonal_theme = case when $13::boolean then excluded.seasonal_theme else user_settings.seasonal_theme end
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled, seasonal_theme`,
+               seasonal_themes_enabled, seasonal_theme, store_notification_seen`,
     [profileId, notificationsEnabled, preferredTheme, sleepTime, focusTime, soundNotificationsEnabled,
      onboardingCompleted, reminderCheckinEnabled, reminderFocusEnabled, reminderSleepEnabled,
      seasonalThemesEnabled, seasonalTheme, seasonalThemeProvided],
@@ -155,7 +177,7 @@ export async function addCoins(profileId: string, amount: number, db: Pool | Poo
      on conflict (profile_id) do update set coins = user_settings.coins + excluded.coins
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled, seasonal_theme`,
+               seasonal_themes_enabled, seasonal_theme, store_notification_seen`,
     [profileId, amount],
   );
   return toSettings(profileId, result.rows[0]);
@@ -188,7 +210,7 @@ export async function setLastSelectedAura(profileId: string, auraType: string | 
      on conflict (profile_id) do update set last_selected_aura = excluded.last_selected_aura
      returning notifications_enabled, preferred_theme, sleep_time, focus_time, coins, sound_notifications_enabled, last_selected_aura,
                onboarding_completed, reminder_checkin_enabled, reminder_focus_enabled, reminder_sleep_enabled,
-               seasonal_themes_enabled, seasonal_theme`,
+               seasonal_themes_enabled, seasonal_theme, store_notification_seen`,
     [profileId, auraType],
   );
   return toSettings(profileId, result.rows[0]);

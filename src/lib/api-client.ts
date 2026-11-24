@@ -294,6 +294,9 @@ export const api = {
   // nas demais preferências.
   updateLastSelectedAura: (auraType: string | null) =>
     request<UserSettings>("/api/settings", { method: "PATCH", body: JSON.stringify({ lastSelectedAura: auraType }) }),
+  // "Já visitei a loja" — upsert pontual, sem tocar nas demais preferências.
+  updateStoreNotificationSeen: (seen: boolean) =>
+    request<UserSettings>("/api/settings", { method: "PATCH", body: JSON.stringify({ storeNotificationSeen: seen }) }),
 
   // Insights
   getInsights: (weekStart?: string) => request<{ insights: Insight[] }>(`/api/insights${weekStart ? `?weekStart=${weekStart}` : ""}`),
