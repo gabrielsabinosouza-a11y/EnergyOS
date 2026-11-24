@@ -216,7 +216,9 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
                               transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" }}
                               className="overflow-hidden"
                             >
-                              <div className="flex min-w-0 items-center gap-2 pb-1.5 pl-8">
+                              {/* py-2 gives the ~12-16px range thumb vertical room
+                                  inside the overflow-hidden collapse container. */}
+                              <div className="flex min-w-0 items-center gap-2 px-1 py-2 pl-8">
                                 <input
                                   type="range"
                                   min={0}

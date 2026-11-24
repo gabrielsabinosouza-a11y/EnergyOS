@@ -862,8 +862,12 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     clearSessionState();
   }
 
-  // Cleanup on unmount
-  useEffect(() => () => stopInterval(), []);
+  // Cleanup on unmount — also hard-stop every ambient source so nothing
+  // keeps playing orphaned after the card is gone.
+  useEffect(() => () => {
+    stopInterval();
+    ambientEngine.stopAll();
+  }, []);
   useEffect(() => () => {
     if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
   }, []);

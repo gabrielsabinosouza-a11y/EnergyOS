@@ -110,7 +110,7 @@ export function useAmbientMix() {
    *  re-enabling restores the last level. Fast fade handled by the engine. */
   const silence = useCallback(() => {
     update((prev) => ({ ...prev, enabled: [] }));
-    ambientEngine.fadeOut(300);
+    ambientEngine.silence();
   }, [update]);
 
   return { mix, hydrated, toggleSound, setSoundVolume, silence };
