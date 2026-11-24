@@ -5,8 +5,10 @@ allowing commercial use). Fill in this table for every real file added.
 
 | File | Title | Author | Source URL | License |
 |---|---|---|---|---|
-| rain.ogg / rain.mp3 | _pending — placeholder_ | — | — | — |
-| fireplace.ogg / fireplace.mp3 | _pending — placeholder_ | — | — | — |
+| rain.mp3 | _added 2026-11-24 — record source/license here_ | — | — | — |
+| fireplace.mp3 | _added 2026-11-24 — record source/license here_ | — | — | — |
+| rain.ogg | not shipped — engine falls back to .mp3 | — | — | — |
+| fireplace.ogg | not shipped — engine falls back to .mp3 | — | — | — |
 | chime.ogg / chime.mp3 | _pending — placeholder (optional; the app currently synthesizes the completion chime via Web Audio)_ | — | — | — |
 
 Notes:

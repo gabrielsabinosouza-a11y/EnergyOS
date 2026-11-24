@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from 'react';
 /**
  * Ambient focus sounds for mobile — rain + fireplace.
  * Mix persists in AsyncStorage (`energyos:ambient`), playback uses
- * expo-audio looped players. Assets are procedural placeholders; replace
- * assets/sounds/*.wav with real seamless loops when available.
+ * expo-audio looped players. Assets in assets/sounds/ are the real
+ * royalty-free loops shared with the web app (see public/sounds/CREDITS.md).
  */
 
 export interface AmbientSoundDef {
@@ -17,8 +17,8 @@ export interface AmbientSoundDef {
 }
 
 export const AMBIENT_SOUNDS: readonly AmbientSoundDef[] = [
-  { id: 'rain', label: 'Chuva', source: require('../../../assets/sounds/rain.wav'), defaultVolume: 0.7 },
-  { id: 'fireplace', label: 'Lareira', source: require('../../../assets/sounds/fireplace.wav'), defaultVolume: 0.7 },
+  { id: 'rain', label: 'Chuva', source: require('../../../assets/sounds/rain.mp3'), defaultVolume: 0.7 },
+  { id: 'fireplace', label: 'Lareira', source: require('../../../assets/sounds/fireplace.mp3'), defaultVolume: 0.7 },
 ] as const;
 
 export interface AmbientMix {

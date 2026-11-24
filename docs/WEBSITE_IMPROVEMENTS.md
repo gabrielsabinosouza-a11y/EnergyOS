@@ -5,9 +5,10 @@ Ordered roughly by impact. Update as items ship.
 
 ## 🔴 Pendências bloqueantes / decisões pendentes
 
-- [ ] **Arquivos de som ambiente reais** — `public/sounds/*.ogg|mp3` são stubs.
-      Baixar fontes CC0 (ver `public/sounds/README.md` + `CREDITS.md`) e
-      substituir. Sem isso o recurso de sons não tem efeito audível.
+- [x] **Arquivos de som ambiente** — `rain.mp3` + `fireplace.mp3` adicionados em
+      `public/sounds/` (e copiados para `apps/mobile/assets/sounds/`). Engine
+      cai no fallback `.mp3` (ogg não existe). **Pendente**: preencher fonte +
+      licença em `public/sounds/CREDITS.md` e validar loop sem gap/cliques.
 - [ ] **Cleanup Top 1 Global** — `scripts/cleanup-top1-global.sql` foi escrito
       mas **não executado** (aguardando aprovação + backup `pg_dump`). Sem ele,
       perfis mantêm contagens infladas de "Top 1 Global".
