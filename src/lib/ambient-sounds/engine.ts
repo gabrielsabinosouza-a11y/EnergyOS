@@ -5,18 +5,23 @@ import { readAmbientMix, type AmbientMix } from "./store";
 
 /**
  * WebAudio ambient engine — gapless loops via AudioBufferSourceNode(loop=true)
- * into per-sound GainNodes → one master GainNode. All fades use gain ramps so
- * there are no clicks. Client-only; AudioContext is created/resumed inside a
- * user gesture (prime()) — never on page load.
+ * into per-sound GainNodes → one master GainNode at a FIXED level (per-sound
+ * sliders own loudness now; there is no user-facing master volume).
+ * All fades use gain ramps so there are no clicks. Client-only; AudioContext
+ * is created/resumed inside a user gesture (prime()) — never on page load.
  */
 
-type Voice = { source: AudioBufferSourceNode; gain: GainNode };
+/** Fixed master level — preserves the previous ~40% loudness. */
+const MASTER_LEVEL = 0.45;
 
 const FADE_IN_MS = 1500;
 const FADE_PAUSE_MS = 500;
 const FADE_QUICK_MS = 400;
+const FADE_SILENCE_MS = 300;
 const FADE_FINISH_MS = 3000;
 const PREVIEW_MS = 4000;
+
+type Voice = { source: AudioBufferSourceNode; gain: GainNode };
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -24,6 +29,8 @@ const buffers = new Map<string, AudioBuffer>();
 const bufferPromises = new Map<string, Promise<AudioBuffer | null>>();
 const voices = new Map<string, Voice>();
 const failed = new Set<string>();
+/** Sounds currently in preview mode (no session) with their fade timers. */
+const previews = new Map<string, number>();
 
 let sessionRunning = false;
 let mix: AmbientMix | null = null;
@@ -78,7 +85,6 @@ function armGestureResume() {
   resumeListenerArmed = true;
   const onGesture = () => {
     gestureArmed = true;
-    // prime() creates/resumes the context — safe inside this gesture.
     primeAmbientAudio();
     if (sessionRunning) void syncSessionSounds(FADE_IN_MS);
     document.removeEventListener("pointerdown", onGesture);
@@ -118,19 +124,29 @@ async function fetchBuffer(id: string): Promise<AudioBuffer | null> {
   return p;
 }
 
-function effectiveMaster(m: AmbientMix): number {
-  return m.muted ? 0 : m.master;
+function effectiveMaster(): number {
+  return MASTER_LEVEL;
 }
 
+/** Per-sound gain target (0..1 slider volume × fixed master lives on master node). */
 function voiceGainFor(id: string, m: AmbientMix): number {
   const def = AMBIENT_SOUND_BY_ID.get(id);
   if (!def) return 0;
-  return (m.volumes[id] ?? def.defaultVolume) * effectiveMaster(m);
+  return m.volumes[id] ?? def.defaultVolume;
 }
 
 function ramp(param: AudioParam, value: number, tc: number) {
   param.cancelScheduledValues(tc);
   param.setTargetAtTime(Math.max(0.0001, value), tc, 0.05);
+}
+
+function stopVoice(id: string, voice: Voice, delayMs: number) {
+  window.setTimeout(() => {
+    try { voice.source.stop(); } catch { /* already stopped */ }
+    voice.source.disconnect();
+    voice.gain.disconnect();
+    if (voices.get(id) === voice) voices.delete(id);
+  }, delayMs);
 }
 
 async function ensureVoice(id: string): Promise<Voice | null> {
@@ -151,6 +167,10 @@ async function ensureVoice(id: string): Promise<Voice | null> {
   return voice;
 }
 
+function anyAudible(m: AmbientMix): boolean {
+  return m.enabled.length > 0 || previews.size > 0;
+}
+
 async function syncSessionSounds(fadeMs: number) {
   if (!ctx || !master) return;
   const m = mix ?? readAmbientMix();
@@ -160,22 +180,16 @@ async function syncSessionSounds(fadeMs: number) {
 
   // Fade out voices for sounds no longer selected.
   for (const [id, voice] of voices) {
-    if (!activeIds.includes(id)) {
+    if (!activeIds.includes(id) && !previews.has(id)) {
       ramp(voice.gain.gain, 0.0001, tc);
-      const src = voice.source;
-      window.setTimeout(() => {
-        try { src.stop(); } catch { /* already stopped */ }
-        src.disconnect();
-        voice.gain.disconnect();
-        voices.delete(id);
-      }, fadeMs + 300);
+      stopVoice(id, voice, fadeMs + 300);
     }
   }
-  if (!sessionRunning || !gestureArmed) {
+  if (!sessionRunning || !gestureArmed || !anyAudible(m)) {
     ramp(master.gain, 0.0001, tc);
     return;
   }
-  ramp(master.gain, Math.max(0.0001, m.master), tc);
+  ramp(master.gain, Math.max(0.0001, effectiveMaster()), tc);
   for (const id of activeIds) {
     const voice = await ensureVoice(id);
     if (!voice) continue;
@@ -221,6 +235,30 @@ export const ambientEngine = {
     this.fadeOut(FADE_QUICK_MS);
   },
 
+  /** "Silenciar": fast ~0.3s fade, keeps volumes for re-enable. */
+  fadeOut(ms: number = FADE_SILENCE_MS) {
+    if (!ctx || !master) return;
+    const tc = ctx.currentTime;
+    const tau = ms / 3000;
+    for (const voice of voices.values()) {
+      voice.gain.gain.cancelScheduledValues(tc);
+      voice.gain.gain.setTargetAtTime(0.0001, tc, tau);
+    }
+    master.gain.cancelScheduledValues(tc);
+    master.gain.setTargetAtTime(0.0001, tc, tau);
+    window.setTimeout(() => {
+      if (ctx?.state === "running" && !sessionRunning) {
+        for (const [id, voice] of voices) {
+          try { voice.source.stop(); } catch { /* noop */ }
+          voice.source.disconnect();
+          voice.gain.disconnect();
+          voices.delete(id);
+        }
+        previews.clear();
+      }
+    }, ms + 400);
+  },
+
   /** Slow fade (~3s) for successful completion — then silence (the existing
    *  completion chime plays on its own schedule). */
   fadeOutFinish() {
@@ -237,45 +275,35 @@ export const ambientEngine = {
       voice.gain.disconnect();
       voices.delete(id);
     }
+    previews.clear();
   },
 
-  fadeOut(ms: number) {
-    if (!ctx || !master) return;
-    const tc = ctx.currentTime;
-    const tau = ms / 3000;
-    for (const voice of voices.values()) {
-      voice.gain.gain.cancelScheduledValues(tc);
-      voice.gain.gain.setTargetAtTime(0.0001, tc, tau);
-    }
-    master.gain.cancelScheduledValues(tc);
-    master.gain.setTargetAtTime(0.0001, tc, tau);
-    window.setTimeout(() => {
-      if (ctx?.state === "running") {
-        for (const [id, voice] of voices) {
-          try { voice.source.stop(); } catch { /* noop */ }
-          voice.source.disconnect();
-          voice.gain.disconnect();
-          voices.delete(id);
-        }
-      }
-    }, ms + 400);
-  },
-
-  /** Mix changed while idle or running — apply live. */
-  updateMix() {
-    mix = readAmbientMix();
+  /** Mix changed — apply live. Accepts the fresh mix object directly so the
+   *  engine never races React's deferred state updater / localStorage. */
+  updateMix(next?: AmbientMix) {
+    mix = next ?? readAmbientMix();
     if (!ctx || !master) return;
     const m = mix;
     const tc = ctx.currentTime;
-    ramp(master.gain, sessionRunning ? Math.max(0.0001, effectiveMaster(m)) : 0.0001, tc);
+    const audible = sessionRunning || previews.size > 0;
+    ramp(master.gain, audible ? Math.max(0.0001, effectiveMaster()) : 0.0001, tc);
     for (const [id, voice] of voices) {
-      const active = sessionRunning && m.enabled.includes(id);
-      ramp(voice.gain.gain, active ? voiceGainFor(id, m) : 0.0001, tc);
+      const live =
+        (sessionRunning && m.enabled.includes(id)) || previews.has(id);
+      // Short ~80ms ramp: live slider changes without zipper noise.
+      voice.gain.gain.cancelScheduledValues(tc);
+      voice.gain.gain.setTargetAtTime(
+        live ? Math.max(0.0001, voiceGainFor(id, m)) : 0.0001,
+        tc,
+        0.08,
+      );
     }
     if (sessionRunning) void syncSessionSounds(FADE_PAUSE_MS);
   },
 
-  /** Short preview when no session is running, then fades out. */
+  /** Short preview when no session is running, then fades out. Slider moves
+   *  during preview re-ramp the SAME voice (no restart, no click) and extend
+   *  the preview window slightly. */
   async preview(id: string) {
     if (sessionRunning) return;
     primeAmbientAudio();
@@ -286,15 +314,22 @@ export const ambientEngine = {
     if (!def) return;
     const voice = await ensureVoice(id);
     if (!voice) return;
+    // Extend/reset the preview window — the source keeps playing, only the
+    // gain is re-ramped, so there is no click or restart.
+    const prevTimer = previews.get(id);
+    if (prevTimer !== undefined) window.clearTimeout(prevTimer);
     const tc = ctx.currentTime;
     voice.gain.gain.cancelScheduledValues(tc);
     voice.gain.gain.setTargetAtTime(Math.max(0.0001, voiceGainFor(id, m)), tc, 0.08);
     master!.gain.cancelScheduledValues(tc);
-    master!.gain.setTargetAtTime(Math.max(0.0001, effectiveMaster(m)), tc, 0.08);
-    window.setTimeout(() => {
+    master!.gain.setTargetAtTime(Math.max(0.0001, effectiveMaster()), tc, 0.08);
+    previews.set(id, window.setTimeout(() => {
+      previews.delete(id);
       if (!sessionRunning && voices.get(id) === voice) {
         ramp(voice.gain.gain, 0.0001, ctx!.currentTime);
-        master!.gain.setTargetAtTime(0.0001, ctx!.currentTime, 0.1);
+        // Fade master only if nothing else is audible.
+        const stillPreviews = [...previews.keys()].length > 0;
+        if (!stillPreviews) master!.gain.setTargetAtTime(0.0001, ctx!.currentTime, 0.1);
         window.setTimeout(() => {
           try { voice.source.stop(); } catch { /* noop */ }
           voice.source.disconnect();
@@ -302,15 +337,14 @@ export const ambientEngine = {
           voices.delete(id);
         }, 500);
       }
-    }, PREVIEW_MS);
+    }, PREVIEW_MS) as unknown as number);
   },
 };
 
 // Only one tab should play. Primary mechanism: BroadcastChannel. Fallback for
 // Safari < 15.4 (no BroadcastChannel): a localStorage "owner" key + storage
 // events — the most recent claimant keeps playing, older tabs fade out.
-// If the playing tab closes, no other tab restarts by itself (sessionRunning
-// stays false there until the user acts), matching the spec.
+// If the playing tab closes, no other tab restarts by itself.
 const TAB_ID =
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -333,7 +367,7 @@ if (typeof window !== "undefined") {
   if ("BroadcastChannel" in window) {
     const ch = new BroadcastChannel("energyos-ambient");
     ch.onmessage = (e) => {
-      if (e.data === "claim") ambientEngine.fadeOutQuick();
+      if (e.data === "claim") ambientEngine.fadeOut(FADE_QUICK_MS);
     };
     const origSetRunning = ambientEngine.setSessionRunning.bind(ambientEngine);
     ambientEngine.setSessionRunning = (running: boolean) => {
@@ -343,11 +377,11 @@ if (typeof window !== "undefined") {
       }
       origSetRunning(running);
     };
-  } else {
-    // Safari < 15.4 fallback: storage events instead of BroadcastChannel.
-    window.addEventListener("storage", (e) => {
-      if (e.key === OWNER_KEY && isForeignClaim(e.newValue)) {
-        ambientEngine.fadeOutQuick();
+  } else if (typeof (window as Window).addEventListener === "function") {
+    (window as Window).addEventListener("storage", (e) => {
+      const se = e as StorageEvent;
+      if (se.key === OWNER_KEY && isForeignClaim(se.newValue)) {
+        ambientEngine.fadeOut(FADE_QUICK_MS);
       }
     });
     const origSetRunning = ambientEngine.setSessionRunning.bind(ambientEngine);

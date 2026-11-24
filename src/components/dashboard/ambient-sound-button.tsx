@@ -11,32 +11,6 @@ import { getAmbientLoadError, onAmbientError, primeAmbientAudio } from "@/lib/am
 
 const POPOVER_WIDTH = 260;
 
-function VolumeSlider({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="w-[4.5rem] shrink-0 truncate text-[10px] text-[var(--text-muted)]">{label}</span>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--accent)]"
-        aria-label={label}
-      />
-    </div>
-  );
-}
-
 function SoundIcon({ iconSrc, icon: FallbackIcon, active }: { iconSrc?: string; icon: LucideIcon; active: boolean }) {
   const [imgFailed, setImgFailed] = useState(false);
   if (iconSrc && !imgFailed) {
@@ -62,7 +36,7 @@ function SoundIcon({ iconSrc, icon: FallbackIcon, active }: { iconSrc?: string; 
  * ring/aura paint over it.
  */
 export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }) {
-  const { mix, toggleSound, setSoundVolume, setMasterVolume, setMuted } = useAmbientMix();
+  const { mix, toggleSound, setSoundVolume, silence } = useAmbientMix();
   const [open, setOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
@@ -85,9 +59,10 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
       const el = buttonRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const right = Math.max(16, window.innerWidth - r.right);
-      const top = r.bottom + 8;
-      setPos({ top, right });
+      setPos({
+        top: r.bottom + 8,
+        right: Math.max(16, window.innerWidth - r.right),
+      });
     }
     measure();
     window.addEventListener("resize", measure);
@@ -129,7 +104,7 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
     wasActive.current = sessionActive;
   }, [sessionActive, open, close]);
 
-  const anyEnabled = mix.enabled.length > 0 && !mix.muted;
+  const anyEnabled = mix.enabled.length > 0;
 
   return (
     <div ref={rootRef} className="relative">
@@ -150,7 +125,7 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
             : "border-[var(--border-subtle)] text-[var(--text-faint)] hover:text-[var(--text)]"
         }`}
       >
-        {mix.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+        {anyEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
         Som
       </button>
 
@@ -188,12 +163,13 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
                 <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
                   Sons ambiente{sessionActive ? "" : " — prévia"}
                 </p>
-                <div className="space-y-2.5">
+                <div className="space-y-1">
                   {AMBIENT_SOUNDS.map((def) => {
                     const enabled = mix.enabled.includes(def.id);
+                    const vol = mix.volumes[def.id] ?? def.defaultVolume;
                     return (
-                      <div key={def.id} className="space-y-1.5">
-                        <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div key={def.id}>
+                        <div className="flex min-h-10 min-w-0 items-center justify-between gap-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -201,57 +177,84 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
                               toggleSound(def.id);
                             }}
                             aria-pressed={enabled}
-                            className={`flex min-w-0 items-center gap-1.5 text-[11px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                            className={`flex min-w-0 flex-1 items-center gap-2 text-left text-[12px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                               enabled ? "text-[var(--text)]" : "text-[var(--text-muted)] hover:text-[var(--text)]"
                             }`}
                           >
                             <SoundIcon iconSrc={def.iconSrc} icon={def.icon} active={enabled} />
                             <span className="truncate">{def.label}</span>
                           </button>
+                          {/* ON/OFF toggle */}
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={enabled}
+                            aria-label={`${def.label}: ${enabled ? "ativado" : "desativado"}`}
+                            onClick={() => {
+                              primeAmbientAudio();
+                              toggleSound(def.id);
+                            }}
+                            className={`relative h-5 w-9 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                              enabled ? "bg-[var(--accent)]" : "bg-[var(--border-strong)]"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                                enabled ? "left-[18px]" : "left-0.5"
+                              }`}
+                            />
+                          </button>
                         </div>
-                        {enabled && (
-                          <VolumeSlider
-                            label="Volume"
-                            value={mix.volumes[def.id] ?? def.defaultVolume}
-                            onChange={(v) => setSoundVolume(def.id, v)}
-                          />
-                        )}
+                        {/* Volume slider — only while ON, animated open/close */}
+                        <AnimatePresence initial={false}>
+                          {enabled && (
+                            <motion.div
+                              key="vol"
+                              initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={reducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                              transition={reducedMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" }}
+                              className="overflow-hidden"
+                            >
+                              <div className="flex min-w-0 items-center gap-2 pb-1.5 pl-8">
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.01}
+                                  value={vol}
+                                  onChange={(e) => setSoundVolume(def.id, Number(e.target.value))}
+                                  className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--accent)]"
+                                  aria-label={`Volume d${def.id === "rain" ? "a chuva" : "a lareira"}`}
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-3 space-y-2.5 border-t border-[var(--border-subtle)] pt-3">
-                  <VolumeSlider
-                    label="Volume geral"
-                    value={mix.master}
-                    onChange={setMasterVolume}
-                  />
+                <div className="mt-2.5 border-t border-[var(--border-subtle)] pt-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       primeAmbientAudio();
-                      setMuted(!mix.muted);
+                      silence();
                     }}
-                    aria-pressed={mix.muted}
-                    aria-label={mix.muted ? "Ativar som" : "Silenciar"}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] transition hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    disabled={!anyEnabled}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)] transition hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <Image
-                      src={mix.muted ? "/sounds_imgs/muted.png" : "/sounds_imgs/unmute.png"}
-                      alt={mix.muted ? "Ativar som" : "Silenciar"}
-                      width={12}
-                      height={12}
-                      unoptimized
-                    />
-                    {mix.muted ? "Ativar som" : "Silenciar"}
+                    <VolumeX size={11} />
+                    Silenciar
                   </button>
                 </div>
                 {loadError && (
-                  <p className="mt-2 text-[9px] text-amber-400/80">{loadError}</p>
+                  <p className="mt-2 text-[11px] text-amber-400/90">{loadError}</p>
                 )}
-                {!sessionActive && mix.enabled.length > 0 && (
-                  <p className="mt-2 text-[9px] text-[var(--text-faint)]">
-                    A prévia toca por alguns segundos; o loop começa com a sessão.
+                {!sessionActive && anyEnabled && (
+                  <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+                    Prévia de ~4s; o loop começa com a sessão.
                   </p>
                 )}
               </motion.div>

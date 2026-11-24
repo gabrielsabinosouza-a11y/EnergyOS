@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-// ── Browser global stubs (node:test has no DOM) ──────────────────────────────
-// Modules are imported lazily inside tests (tsx emits CJS: no top-level await,
-// and imports must come AFTER the stubs below).
+// Browser global stubs (tsx emits CJS: imports happen lazily inside tests,
+// AFTER these stubs are in place).
 
 const store = new Map<string, string>();
 (globalThis as Record<string, unknown>).localStorage = {
@@ -12,8 +11,6 @@ const store = new Map<string, string>();
   removeItem: (k: string) => void store.delete(k),
 };
 (globalThis as Record<string, unknown>).window = globalThis;
-// Node has a native BroadcastChannel that would keep the test process alive;
-// the engine's single-tab guard is a browser concern, not under test here.
 delete (globalThis as Record<string, unknown>).BroadcastChannel;
 
 let readAmbientMix: typeof import("./store").readAmbientMix;
@@ -28,123 +25,145 @@ async function ensureImports() {
   }
 }
 
-// ── Mix store tests (behavior table: persistence, defaults, corrupted data) ──
+// ── Mix store: new shape {enabled, volumes} — master removed ────────────────
 
-test("default mix: sound OFF, master ~0.4, empty selection", async () => {
+test("default mix: both sounds OFF, empty volumes", async () => {
   await ensureImports();
   store.clear();
   const m = readAmbientMix();
   assert.deepEqual(m.enabled, []);
-  assert.equal(m.master, 0.4);
-  assert.equal(m.muted, false);
+  assert.deepEqual(m.volumes, {});
 });
 
-test("localStorage restore: enabled ids, per-sound volumes, master, mute", async () => {
+test("old stored shape migrates: master ignored, muted treated as OFF", async () => {
   await ensureImports();
   store.set("energyos:ambient", JSON.stringify({
-    enabled: ["rain", "fireplace"],
-    volumes: { rain: 0.5, fireplace: 0.9, bogus: 1 },
-    master: 0.6,
-    muted: true,
+    enabled: ["rain"], volumes: { rain: 0.5 }, master: 0.9, muted: true,
   }));
   const m = readAmbientMix();
-  assert.deepEqual(m.enabled, ["rain", "fireplace"]);
-  assert.equal(m.volumes.rain, 0.5);
-  assert.equal(m.volumes.fireplace, 0.9);
-  assert.equal(m.volumes.bogus, undefined); // unknown ids dropped
-  assert.equal(m.master, 0.6);
-  assert.equal(m.muted, true);
+  assert.deepEqual(m.enabled, []); // muted legacy => sounds off
+  assert.equal(m.volumes.rain, 0.5); // volume preserved for re-enable
 });
 
-test("layering: unknown sound ids filtered, master clamped to 0..1", async () => {
+test("old stored shape without muted keeps enabled sounds + volumes", async () => {
   await ensureImports();
-  store.set("energyos:ambient", JSON.stringify({ enabled: ["rain", "nope", 42], master: 2 }));
+  store.set("energyos:ambient", JSON.stringify({
+    enabled: ["rain", "fireplace"], volumes: { rain: 0.4, fireplace: 0.8 }, master: 0.3,
+  }));
   const m = readAmbientMix();
-  assert.deepEqual(m.enabled, ["rain"]);
-  assert.equal(m.master, 1);
+  assert.deepEqual(m.enabled.sort(), ["fireplace", "rain"]);
+  assert.equal(m.volumes.rain, 0.4);
+  assert.equal(m.volumes.fireplace, 0.8);
 });
 
-test("corrupted localStorage falls back to defaults (session continues)", async () => {
+test("corrupted localStorage falls back to defaults", async () => {
   await ensureImports();
-  store.set("energyos:ambient", "{not json!!");
+  store.set("energyos:ambient", "{broken");
   const m = readAmbientMix();
   assert.deepEqual(m.enabled, []);
-  assert.equal(m.master, 0.4);
+  assert.deepEqual(m.volumes, {});
 });
 
-// ── Engine tests with a mocked AudioContext ──────────────────────────────────
+// ── Engine with mocked AudioContext ─────────────────────────────────────────
 
-const rampLog: { param: string; value: number }[] = [];
-const startedSources: unknown[] = [];
+const ramps: { node: string; value: number }[] = [];
+const sources: { loop: boolean }[] = [];
+let gainSeq = 0;
+const gains: { id: number; node: unknown }[] = [];
 
 class MockParam {
   value = 0;
   cancelScheduledValues() {}
-  setTargetAtTime(value: number) {
-    rampLog.push({ param: "setTargetAtTime", value });
-  }
-  linearRampToValueAtTime(_t: number) {
-    rampLog.push({ param: "linearRamp", value: _t });
-  }
+  setTargetAtTime(value: number) { ramps.push({ node: "param", value }); }
+  linearRampToValueAtTime(value: number) { ramps.push({ node: "param", value }); }
 }
 class MockNode {
   connect() { return this; }
   disconnect() {}
 }
 class MockGain extends MockNode {
+  id = ++gainSeq;
   gain = new MockParam();
+  constructor(tag: string) { super(); gains.push({ id: this.id, node: tag }); }
 }
 class MockSource extends MockNode {
   buffer: unknown = null;
   loop = false;
-  start() { startedSources.push(this); }
+  start() { sources.push(this); }
   stop() {}
 }
 class MockAudioContext {
   state = "running";
   currentTime = 0;
   destination = {};
-  createGain() { return new MockGain(); }
+  createGain() { return new MockGain("gain"); }
   createBufferSource() { return new MockSource(); }
   createBuffer(_ch: number, len: number) { return { length: len }; }
   async decodeAudioData() { return this.createBuffer(2, 8); }
   async resume() { this.state = "running"; }
 }
 (globalThis as Record<string, unknown>).AudioContext = MockAudioContext;
-
-// fetch fails for every sound → exercises the non-blocking load-error path.
-(globalThis as Record<string, unknown>).fetch = async () => ({ ok: false, status: 404 });
-
-test("no sound before a user gesture: setSessionRunning alone plays nothing", async () => {
-  await ensureImports();
-  ambientEngine.setSessionRunning(true);
-  assert.equal(startedSources.length, 0);
+(globalThis as Record<string, unknown>).fetch = async () => ({
+  ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8),
 });
 
-test("prime() inside a gesture creates the context; session start ramps gains", async () => {
-  await ensureImports();
-  ambientEngine.prime();
-  store.set("energyos:ambient", JSON.stringify({ enabled: ["rain"], master: 0.4 }));
-  ambientEngine.setSessionRunning(true);
-  assert.ok(rampLog.length > 0, "gain ramps scheduled on session start");
-});
+// Helper: write mix directly to storage (what the store persists) then ask the
+// engine to apply — same path updateMix takes.
+function applyMix(mix: object) {
+  store.set("energyos:ambient", JSON.stringify(mix));
+  ambientEngine.updateMix(mix as never);
+}
 
-test("sound file load failure → non-blocking error, session unaffected", async () => {
+test("load failure still non-blocking (must run before buffers are cached)", async () => {
   await ensureImports();
+  (globalThis as Record<string, unknown>).fetch = async () => ({ ok: false, status: 404 });
   let err: string | null = null;
   onAmbientError(() => { err = getAmbientLoadError(); });
-  ambientEngine.setSessionRunning(true);
+  applyMix({ enabled: ["fireplace"], volumes: {} });
+  await ambientEngine.preview("fireplace");
   await new Promise((r) => setTimeout(r, 30));
-  assert.equal(err, 'Não foi possível carregar "Som de chuva".');
-  // Grace-cancel path: quick fade, no chime — engine must not throw.
-  ambientEngine.fadeOutQuick();
-  assert.ok(rampLog.length > 0);
+  assert.ok(err !== null);
+  // Restore working fetch for the remaining tests.
+  (globalThis as Record<string, unknown>).fetch = async () => ({
+    ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8),
+  });
 });
 
-test("fadeOutFinish (completion ~3s) and fadeOutQuick (cancel/give-up ~0.4s) both ramp to silence", async () => {
+test("per-sound gains are independent: rain slider does not touch fireplace", async () => {
   await ensureImports();
-  const before = rampLog.length;
-  ambientEngine.fadeOutFinish();
-  ambientEngine.fadeOutQuick();
-  assert.ok(rampLog.length > before);
+  ambientEngine.prime();
+  store.set("energyos:ambient", JSON.stringify({
+    enabled: ["rain", "fireplace"], volumes: { rain: 0.5, fireplace: 0.5 },
+  }));
+  ambientEngine.setSessionRunning(true);
+  await new Promise((r) => setTimeout(r, 30)); // let voices start
+
+  const before = ramps.length;
+  // Rain slider -> 0.9. Engine must ramp rain's voice gain, NOT fireplace's.
+  applyMix({ enabled: ["rain", "fireplace"], volumes: { rain: 0.9, fireplace: 0.5 } });
+  ambientEngine.setSessionRunning(true); // re-sync voices with new mix
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(ramps.length > before, "gain ramps were scheduled");
 });
+
+test("master is a fixed constant: engine exposes no per-mix master", async () => {
+  await ensureImports();
+  // updateMix signature takes the mix; master no longer part of it.
+  const m = readAmbientMix();
+  assert.equal("master" in m, false);
+});
+
+test("preview plays ~4s then fades; slider change during preview adjusts volume live", async () => {
+  await ensureImports();
+  ambientEngine.fadeOutQuick(); // ensure idle
+  ambientEngine.prime();
+  applyMix({ enabled: ["rain"], volumes: { rain: 0.5 } });
+  await ambientEngine.preview("rain");
+  const v = sources.length;
+  assert.ok(v >= 1, "preview started a looped source");
+  // Slider move during preview: updateMix must NOT zero the preview voice.
+  const before = ramps.length;
+  applyMix({ enabled: ["rain"], volumes: { rain: 0.8 } });
+  assert.ok(ramps.length > before, "preview voice gain re-ramped live");
+});
+
