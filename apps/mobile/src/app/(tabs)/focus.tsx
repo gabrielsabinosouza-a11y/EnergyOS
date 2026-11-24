@@ -24,6 +24,8 @@ import type {
 } from '@/features/dashboard/types';
 import { HabitItem } from '@/features/dashboard/habit-item';
 import { FocusTimer } from '@/features/focus/focus-timer';
+import { AmbientSoundBar } from '@/features/focus/ambient-sound-bar';
+import { fadeOutAmbientQuick, setAmbientSession } from '@/features/focus/ambient';
 import {
   canCancelFocusSession,
   focusPhaseAt,
@@ -290,6 +292,8 @@ export default function FocusScreen() {
         });
         setTimeout(() => setEnergyExtinguished(false), 3500);
       }
+      // Quick ambient fade before the session state drops to idle.
+      fadeOutAmbientQuick();
       setActiveSession(null);
       setTimerStatus('idle');
       setElapsedBeforeRun(0);
@@ -312,6 +316,12 @@ export default function FocusScreen() {
       setFocusSaving(false);
     }
   }, [activeSession, elapsedSeconds, load, pausedCount, totalSessionSeconds]);
+
+  // Ambient sounds follow the session state; playback itself is reconciled
+  // inside the ambient module (persisted mix + expo-audio looped players).
+  useEffect(() => {
+    setAmbientSession(timerStatus !== 'idle', timerStatus === 'paused');
+  }, [timerStatus]);
 
   useEffect(() => {
     finishFocusRef.current = finishFocus;
@@ -494,6 +504,7 @@ export default function FocusScreen() {
     setError('');
     try {
       await api.post('/api/focus', { action: 'cancel', sessionId: activeSession.id });
+      fadeOutAmbientQuick();
       setActiveSession(null);
       setTimerStatus('idle');
       setElapsedBeforeRun(0);
@@ -620,6 +631,7 @@ export default function FocusScreen() {
                   : 'EM ANDAMENTO'}
           </Text>
         </View>
+        <AmbientSoundBar />
 
         <FocusTimer
           active={timerStatus !== 'idle'}

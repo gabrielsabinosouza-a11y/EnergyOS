@@ -38,6 +38,8 @@ import {
   startCompletionTitleFlash,
   updateCountdownTabTitle,
 } from "@/lib/session-alerts";
+import { ambientEngine } from "@/lib/ambient-sounds/engine";
+import { AmbientSoundButton } from "@/components/dashboard/ambient-sound-button";
 import {
   focusPhaseAt,
   GRACE_PERIOD_SECONDS,
@@ -336,6 +338,12 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
         setRemaining(remainingSec);
         setState(persisted.status as TimerState);
         stateRef.current = persisted.status as TimerState;
+        // Ambient sounds: mark the session as running, but playback still
+        // waits for the first user gesture (browser autoplay policy).
+        if (persisted.status === "running" || persisted.status === "paused") {
+          ambientEngine.setSessionRunning(true);
+          ambientEngine.setPaused(persisted.status === "paused");
+        }
         // Restore the correct growth stage from the server-stamped start.
         updateGrowthStage();
 
@@ -659,6 +667,9 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     if (!sess || completedRef.current) return;
     completedRef.current = true;
     stopInterval();
+    // Ambient bed fades out slowly (~3s) under the celebration; the gentle
+    // completion chime keeps its own schedule below.
+    ambientEngine.fadeOutFinish();
 
     const focusedSeconds = durationRef.current * 60;
     const focusedMinutes = durationRef.current;
@@ -703,6 +714,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     // Unlock the audio context inside this user gesture so the completion
     // chime is allowed to play when the session ends later in a background tab.
     primeCompletionSound();
+    // Unlock the ambient AudioContext inside the same gesture (autoplay-safe).
+    ambientEngine.prime();
     try {
       const result = await onStart(duration, undefined, selectedEnergyRef.current);
       const startedAt = new Date(result.session.startedAt).getTime();
@@ -728,7 +741,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
       setState("running");
       stateRef.current = "running";
       startInterval();
-      
+      ambientEngine.setSessionRunning(true);
+
       // Persistence is handled by the useEffect that watches state changes
     } catch { /* handled by parent */ }
   }
@@ -750,6 +764,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     pausedCountRef.current += 1;
     setState("paused");
     stateRef.current = "paused";
+    ambientEngine.setPaused(true);
   }
 
   async function handleResume() {
@@ -767,6 +782,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     runningSinceRef.current = Date.now();
     setState("running");
     stateRef.current = "running";
+    ambientEngine.setPaused(false);
   }
 
   async function handleCancel() {
@@ -782,6 +798,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     stopInterval();
     completedRef.current = false;
     restoreTabTitle();
+    ambientEngine.fadeOutQuick();
     sessionRef.current = null;
     runningSinceRef.current = null;
     setState("idle");
@@ -814,6 +831,8 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
       await onEnd(sess.id, focusedSeconds, pausedCountRef.current, "gave_up");
       // Give-ups award nothing — make sure no stale celebration flag replays.
       clearPendingCelebration();
+      // Ambient bed fades quickly; silence matches the dead-tree moment.
+      ambientEngine.fadeOutQuick();
       setIsExtinguished(true);
       setGiveUpNotice("Você consegue mais na próxima.");
       // Shake + crossfade to the dead tree.
@@ -867,7 +886,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
               <Bell size={10} /> Ativar notificações
             </button>
           )}
-          {state === "idle" && <span className="whitespace-nowrap rounded-full border border-emerald-300/10 bg-emerald-300/[.035] px-2.5 py-1 text-[9px] font-medium tracking-wide text-[var(--text-faint)]">Arraste o aro</span>}
+          <AmbientSoundButton sessionActive={isActive} />
         </div>
       </div>
 
@@ -933,6 +952,10 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
           )}
           {stageBurst && <StageBurst kind={stageBurst.kind} />}
         </div>
+        )}
+
+        {state === "idle" && !celebration && (
+          <p className="mt-2 text-[10px] text-[var(--text-faint)]">Arraste o aro para definir a duração</p>
         )}
 
         {!celebration && (

@@ -94,7 +94,7 @@ function ChristmasLights() {
                 stiffness: 260,
                 damping: 20,
               }}
-              whileHover={reduced ? undefined : { rotate: [0, 15, -9, 4, 0] }}
+              whileHover={reduced ? undefined : { rotate: [0, 15, -9, 4, 0], transition: { type: "tween", duration: 0.5, ease: "easeInOut" } }}
             >
               <div
                 className="xmas-sway"

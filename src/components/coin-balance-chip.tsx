@@ -83,7 +83,7 @@ export function CoinBalanceChip() {
           initial={{ opacity: 0, y: -8, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: pulse > 0 ? [1, 1.14, 1] : 1 }}
           exit={{ opacity: 0, y: -8 }}
-          transition={SPRING.smooth}
+          transition={pulse > 0 ? { type: "tween", duration: 0.5, ease: "easeInOut" } : SPRING.smooth}
           whileHover={{
             scale: 1.04,
             boxShadow: "0 0 24px -4px rgba(255,184,107,.55)",

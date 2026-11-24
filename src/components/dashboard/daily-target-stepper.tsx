@@ -25,7 +25,6 @@ export const DAILY_TARGET_PRESETS = [1, 2, 3, 5, 8, 10] as const;
 const PIP_SEGMENTS = 10;
 
 const EASE_OUT = [0.34, 1.18, 0.66, 1] as const; // tiny overshoot, per spec tokens
-const SPRING_BUMPY = { type: "spring", stiffness: 480, damping: 16 } as const;
 
 function clamp(value: number): number {
   const n = Math.round(Number(value) || 0);
@@ -433,7 +432,7 @@ function OdometerNumber({ value, bumping }: { value: number; bumping: boolean })
     <motion.span
       className="habit-dt-number-text"
       animate={bumping ? { scale: [1, 0.92, 1] } : { scale: 1 }}
-      transition={bumping ? SPRING_BUMPY : { duration: 0.26, ease: EASE_OUT }}
+      transition={bumping ? { type: "tween", duration: 0.5, ease: "easeInOut" } : { duration: 0.26, ease: EASE_OUT }}
     >
       <AnimatePresence initial={false}>
         {outgoing != null && (

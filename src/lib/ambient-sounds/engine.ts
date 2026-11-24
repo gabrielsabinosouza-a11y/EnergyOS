@@ -28,15 +28,18 @@ const failed = new Set<string>();
 let sessionRunning = false;
 let mix: AmbientMix | null = null;
 let gestureArmed = false;
+let resumeListenerArmed = false;
 let loadError: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((l) => l());
 }
-export function onAmbientError(cb: () => void) {
+export function onAmbientError(cb: () => void): () => void {
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => {
+    listeners.delete(cb);
+  };
 }
 export function getAmbientLoadError() {
   return loadError;
@@ -71,13 +74,16 @@ export function primeAmbientAudio(): void {
 /** One-shot listener: after a page reload, the first user interaction resumes
  *  audio for an already-running session (autoplay policy requires a gesture). */
 function armGestureResume() {
-  if (gestureArmed && typeof document !== "undefined") return;
+  if (resumeListenerArmed || typeof document === "undefined") return;
+  resumeListenerArmed = true;
   const onGesture = () => {
     gestureArmed = true;
-    if (ctx?.state === "suspended") void ctx.resume();
+    // prime() creates/resumes the context — safe inside this gesture.
+    primeAmbientAudio();
     if (sessionRunning) void syncSessionSounds(FADE_IN_MS);
     document.removeEventListener("pointerdown", onGesture);
     document.removeEventListener("keydown", onGesture);
+    resumeListenerArmed = false;
   };
   document.addEventListener("pointerdown", onGesture);
   document.addEventListener("keydown", onGesture);
@@ -173,8 +179,7 @@ async function syncSessionSounds(fadeMs: number) {
   for (const id of activeIds) {
     const voice = await ensureVoice(id);
     if (!voice) continue;
-    ramp(voice.gain.gain, voiceGainFor(id, m), tc);
-    // Per-voice fade handled by setTargetAtTime tau approximation below.
+    // setTargetAtTime approximates a linear fade over ~fadeMs.
     voice.gain.gain.cancelScheduledValues(tc);
     voice.gain.gain.setTargetAtTime(Math.max(0.0001, voiceGainFor(id, m)), tc, fadeMs / 3000);
   }
