@@ -2427,6 +2427,22 @@ html.season-layer-hidden .season-snow { animation-play-state: paused; }
 }
 
 /* ==========================================================================
+   Ambient sound card — seasonal atmospheric glow on the focus page popover.
+   Static (non-animated) accent shadow so prefers-reduced-motion users get
+   the same effect without motion. Active only when [data-season] is set.
+   ========================================================================== */
+[data-season] .energyos-ambient-popover {
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, .45),
+    0 0 20px -8px var(--accent-glow);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-season] .energyos-ambient-popover {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .45);
+  }
+}
+
+/* ==========================================================================
    Onboarding tour — 3D hero stage, LED ring, glass card, step FX
    ========================================================================== */
 

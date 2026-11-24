@@ -21,6 +21,8 @@ export interface SeasonDef {
   accent: string;
   /** Greeting prefix for the dashboard, e.g. "Feliz Natal" */
   greeting: string;
+  /** Number of months to shift start/end for Southern Hemisphere (6 = swapped seasons). */
+  southernHemisphereShift?: number;
 }
 
 export const SEASONS: readonly SeasonDef[] = [
@@ -101,9 +103,11 @@ export interface SeasonWindow {
 }
 
 /** The season's window inside a given calendar year (SP dates). */
-export function seasonWindowForYear(season: SeasonDef, year: number): SeasonWindow {
-  const start = new Date(spMidnightUtc(year, season.startMonth, season.startDay));
-  const end = new Date(spMidnightUtc(year, season.endMonth, season.endDay) + 24 * 60 * 60 * 1000 - 1);
+export function seasonWindowForYear(season: SeasonDef, year: number, shiftMonths = 0): SeasonWindow {
+  const adjustedStartMonth = (season.startMonth - 1 + shiftMonths + 12) % 12 + 1;
+  const adjustedEndMonth = (season.endMonth - 1 + shiftMonths + 12) % 12 + 1;
+  const start = new Date(spMidnightUtc(year, adjustedStartMonth, season.startDay));
+  const end = new Date(spMidnightUtc(year, adjustedEndMonth, season.endDay) + 24 * 60 * 60 * 1000 - 1);
   return { start, end };
 }
 
@@ -141,7 +145,8 @@ export function getActiveSeason(now: Date = new Date(), override?: SeasonId | nu
   if (override) return SEASONS.find((s) => s.id === override) ?? null;
   const [year] = spDateKey(now).split("-").map(Number);
   for (const season of SEASONS) {
-    const { start, end } = seasonWindowForYear(season, year);
+    const shift = season.southernHemisphereShift ?? 0;
+    const { start, end } = seasonWindowForYear(season, year, shift);
     if (now.getTime() >= start.getTime() && now.getTime() <= end.getTime()) return season;
   }
   return null;
@@ -153,16 +158,18 @@ export function getActiveSeason(now: Date = new Date(), override?: SeasonId | nu
  */
 export function getSeasonEndDate(season: SeasonDef, now: Date = new Date()): Date {
   const [year] = spDateKey(now).split("-").map(Number);
-  const current = seasonWindowForYear(season, year);
+  const shift = season.southernHemisphereShift ?? 0;
+  const current = seasonWindowForYear(season, year, shift);
   if (now.getTime() <= current.end.getTime()) return current.end;
-  return seasonWindowForYear(season, year + 1).end;
+  return seasonWindowForYear(season, year + 1, shift).end;
 }
 
 /** Start instant of the season's next window (for "Volta em …" labels). */
 export function getNextSeasonStart(season: SeasonDef, now: Date = new Date()): Date {
   const [year] = spDateKey(now).split("-").map(Number);
-  const current = seasonWindowForYear(season, year);
-  return now.getTime() < current.start.getTime() ? current.start : seasonWindowForYear(season, year + 1).start;
+  const shift = season.southernHemisphereShift ?? 0;
+  const current = seasonWindowForYear(season, year, shift);
+  return now.getTime() < current.start.getTime() ? current.start : seasonWindowForYear(season, year + 1, shift).start;
 }
 
 /** Milliseconds until the active season ends (0 when inactive/ended). */
@@ -351,8 +358,9 @@ export function nextSeasonBoundaryMs(now: Date = new Date()): number {
   const year = Number(spDateKey(now).split("-")[0]);
   let next = Number.POSITIVE_INFINITY;
   for (const s of SEASONS) {
+    const shift = s.southernHemisphereShift ?? 0;
     for (const y of [year, year + 1]) {
-      const w = seasonWindowForYear(s, y);
+      const w = seasonWindowForYear(s, y, shift);
       if (w.end.getTime() >= now.getTime()) {
         next = Math.min(next, w.end.getTime() + 1 - now.getTime());
       }

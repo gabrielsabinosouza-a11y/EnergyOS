@@ -229,7 +229,7 @@ class AmbientEngineImpl {
     const src = voice.source;
     if (src) {
       if (voice.stopTimer !== undefined) clearTimeout(voice.stopTimer);
-      voice.stopTimer = window.setTimeout(() => {
+      voice.stopTimer = setTimeout(() => {
         voice.stopTimer = undefined;
         try { src.stop(); } catch { /* already stopped */ }
         src.disconnect();
@@ -324,10 +324,11 @@ class AmbientEngineImpl {
         clearTimeout(voice.stopTimer);
         voice.stopTimer = undefined;
       }
-      if (voice.source) {
-        try { voice.source.stop(); } catch { /* noop */ }
-        voice.source.disconnect();
-        voice.source = null;
+      const src = voice.source;
+      if (src) {
+        try { src.stop(); } catch { /* noop */ }
+        src.disconnect();
+        if (voice.source === src) voice.source = null;
       }
     }
   }
@@ -387,7 +388,7 @@ class AmbientEngineImpl {
     const tc = this.ctx.currentTime;
     const audible = this.audible(m);
     this.ramp(this.master.gain, audible ? Math.max(0.0001, MASTER_LEVEL) : 0.0001, tc);
-    for (const [id, voice] of this.voices.values()) {
+    for (const [id, voice] of this.voices) {
       const live =
         (this.sessionRunning && m.enabled.includes(id)) || this.previews.has(id);
       voice.gain.gain.cancelScheduledValues(tc);
@@ -476,6 +477,44 @@ class AmbientEngineImpl {
     }, PREVIEW_MS);
     this.previews.set(id, { voice, timer });
   }
+
+  /* ---------------- Media Session API (lock screen) ---------------- */
+
+  /** Update the browser MediaSession while a focus session runs so the
+   *  system can show play/pause/stop controls and correct playback state.
+   *  Feature-detected: browsers without MediaSession get a silent no-op. */
+  syncMediaSession(sessionRunning: boolean, playing: boolean) {
+    const ms = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (!ms) return;
+    if (typeof MediaMetadata !== "undefined") {
+      try {
+        ms.metadata = new MediaMetadata({
+          title: sessionRunning ? "Foco — sessão em andamento" : "EnergyOS",
+          artist: "EnergyOS",
+          album: "Som ambiente",
+        });
+      } catch { /* some browsers reject metadata assignment — fine */ }
+    }
+    try {
+      ms.playbackState = sessionRunning ? (playing ? "playing" : "paused") : "none";
+    } catch { /* noop */ }
+    if (sessionRunning) {
+      ms.setActionHandler("play", () => this.setPaused(false));
+      ms.setActionHandler("pause", () => this.setPaused(true));
+      ms.setActionHandler("stop", () => this.fadeOutQuick());
+    } else {
+      this.clearMediaSession();
+    }
+  }
+
+  /** Remove MediaSession action handlers — call on unmount/session end. */
+  clearMediaSession() {
+    const ms = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (!ms) return;
+    for (const action of ["play", "pause", "stop"] as const) {
+      try { ms.setActionHandler(action, null); } catch { /* noop */ }
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -494,7 +533,7 @@ export const ambientEngine = g[GLOBAL_KEY] as AmbientEngineImpl;
 // Module reload (HMR): keep the singleton — its voices stay tracked and
 // controllable. If a bundler disposes the module, stop everything cleanly.
 if (typeof module !== "undefined" && typeof (module as { hot?: unknown }).hot !== "undefined") {
-  (module as { hot: { dispose: (cb: () => void) => void } }).hot.dispose(() => {
+  (module as unknown as { hot: { dispose: (cb: () => void) => void } }).hot.dispose(() => {
     ambientEngine.stopAll();
   });
 }

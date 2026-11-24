@@ -537,6 +537,14 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
   );
   const treeCfg = ENERGY_CONFIGS[treeAuraId as EnergyType] ?? cfg;
 
+  // Media Session API (lock screen): expose the focus session while it runs
+  // so the system can show play/pause/stop controls driving the ambient
+  // engine. Feature-detected — browsers without it stay silent.
+  useEffect(() => {
+    ambientEngine.syncMediaSession(isActive, isActive && !isPaused);
+    return () => ambientEngine.clearMediaSession();
+  }, [isActive, isPaused]);
+
   // Wall-clock derived remaining time. The interval is only a render clock —
   // it never decrements a counter, so background-tab throttling/suspension of
   // timers can't make the countdown drift or freeze.

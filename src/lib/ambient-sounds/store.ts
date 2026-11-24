@@ -13,6 +13,8 @@ const LS_KEY = "energyos:ambient";
 export interface AmbientMix {
   enabled: string[];
   volumes: Record<string, number>;
+  /** Sounds that were ON when "Silenciar" was pressed — restored by "Reativar". */
+  lastEnabled?: string[];
 }
 
 export const DEFAULT_MIX: AmbientMix = { enabled: [], volumes: {} };
@@ -26,9 +28,13 @@ export function readAmbientMix(): AmbientMix {
       enabled?: unknown;
       volumes?: unknown;
       muted?: unknown;
+      lastEnabled?: unknown;
     };
     const enabled = Array.isArray(parsed.enabled)
       ? parsed.enabled.filter((id): id is string => typeof id === "string" && isAmbientSoundId(id))
+      : [];
+    const lastEnabled = Array.isArray(parsed.lastEnabled)
+      ? parsed.lastEnabled.filter((id): id is string => typeof id === "string" && isAmbientSoundId(id))
       : [];
     const volumes: Record<string, number> = {};
     if (parsed.volumes && typeof parsed.volumes === "object") {
@@ -39,9 +45,14 @@ export function readAmbientMix(): AmbientMix {
       }
     }
     // Legacy migration: old `muted: true` meant "all sounds off" — keep the
-    // volumes but treat the selection as empty. `master` is ignored entirely.
-    if (parsed.muted === true) return { enabled: [], volumes };
-    return { enabled: enabled.slice(0, AMBIENT_SOUNDS.length), volumes };
+    // volumes AND the previous selection as lastEnabled so "Reativar" works.
+    // `master` is ignored entirely.
+    if (parsed.muted === true) {
+      return { enabled: [], volumes, lastEnabled: enabled.length ? enabled : lastEnabled };
+    }
+    const mix: AmbientMix = { enabled: enabled.slice(0, AMBIENT_SOUNDS.length), volumes };
+    if (lastEnabled.length) mix.lastEnabled = lastEnabled.slice(0, AMBIENT_SOUNDS.length);
+    return mix;
   } catch {
     return DEFAULT_MIX;
   }
@@ -88,7 +99,8 @@ export function useAmbientMix() {
         const enabled = has
           ? prev.enabled.filter((x) => x !== id)
           : [...prev.enabled, id].slice(0, AMBIENT_SOUNDS.length);
-        return { ...prev, enabled };
+        // Manually turning EVERYTHING off cancels the pending "Reativar".
+        return { ...prev, enabled, lastEnabled: enabled.length ? prev.lastEnabled : undefined };
       });
       // Turning ON outside a session plays a short preview (engine-side).
       if (!wasEnabled) void ambientEngine.preview(id);
@@ -106,12 +118,31 @@ export function useAmbientMix() {
     [update],
   );
 
-  /** "Silenciar": turns every sound OFF but keeps per-sound volumes so
-   *  re-enabling restores the last level. Fast fade handled by the engine. */
+  /** "Silenciar": turns every sound OFF (~0.3s fade, all sources stopped)
+   *  but keeps per-sound volumes AND the previous selection so "Reativar"
+   *  restores exactly what was playing. */
   const silence = useCallback(() => {
-    update((prev) => ({ ...prev, enabled: [] }));
+    update((prev) => ({
+      ...prev,
+      enabled: [],
+      lastEnabled: prev.enabled.length ? prev.enabled : prev.lastEnabled,
+    }));
     ambientEngine.silence();
   }, [update]);
 
-  return { mix, hydrated, toggleSound, setSoundVolume, silence };
+  /** "Reativar": restores the sounds that were ON before Silenciar, with
+   *  their saved volumes. Outside a session each one plays its ~4s preview. */
+  const unsilence = useCallback(() => {
+    const prev = mixRef.current;
+    const restore = (prev.lastEnabled ?? []).filter((id) => isAmbientSoundId(id));
+    if (!restore.length) return;
+    update((p) => ({ ...p, enabled: restore.slice(0, AMBIENT_SOUNDS.length) }));
+    if (!prev.enabled.length) {
+      for (const id of restore) void ambientEngine.preview(id);
+    }
+  }, [update]);
+
+  const muted = mix.enabled.length === 0 && (mix.lastEnabled?.length ?? 0) > 0;
+
+  return { mix, hydrated, toggleSound, setSoundVolume, silence, unsilence, muted };
 }

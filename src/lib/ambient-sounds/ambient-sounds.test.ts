@@ -45,6 +45,23 @@ test("old stored shape migrates: master ignored, muted treated as OFF", async ()
   const m = readAmbientMix();
   assert.deepEqual(m.enabled, []);
   assert.equal(m.volumes.rain, 0.5);
+  // muted legacy => previous selection kept for "Reativar"
+  assert.deepEqual(m.lastEnabled, ["rain"]);
+});
+
+test("lastEnabled round-trips: Silenciar snapshot restores via Reativar", async () => {
+  await ensureImports();
+  store.set("energyos:ambient", JSON.stringify({
+    enabled: [], volumes: { rain: 0.4, fireplace: 0.8 }, lastEnabled: ["rain", "fireplace"],
+  }));
+  const m = readAmbientMix();
+  assert.deepEqual(m.enabled, []);
+  assert.deepEqual(m.lastEnabled?.sort(), ["fireplace", "rain"]);
+  // Invalid ids in lastEnabled are filtered out.
+  store.set("energyos:ambient", JSON.stringify({
+    enabled: [], volumes: {}, lastEnabled: ["rain", "bogus", 42],
+  }));
+  assert.deepEqual(readAmbientMix().lastEnabled, ["rain"]);
 });
 
 test("old stored shape without muted keeps enabled sounds + volumes", async () => {
@@ -119,7 +136,8 @@ class MockSource extends MockNode {
   start() { this.started = true; }
   stop() {
     this.stopped = true;
-    this.onended?.();
+    // Real AudioBufferSourceNode fires onended asynchronously after stop().
+    queueMicrotask(() => this.onended?.());
   }
   disconnect() { this.disconnected = true; }
 }
@@ -136,6 +154,10 @@ class MockAudioContext {
   async resume() { this.state = "running"; }
   async close() { this.closed = true; this.state = "closed"; }
 }
+(globalThis as Record<string, unknown>).AudioContext = MockAudioContext;
+(globalThis as Record<string, unknown>).fetch = async () => ({
+  ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8),
+});
 
 function resetEngine() {
   ambientEngine.resetForTests();
