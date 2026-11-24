@@ -233,9 +233,16 @@ export function AmbientSoundButton({ sessionActive }: { sessionActive: boolean }
                       setMuted(!mix.muted);
                     }}
                     aria-pressed={mix.muted}
+                    aria-label={mix.muted ? "Ativar som" : "Silenciar"}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] transition hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
-                    {mix.muted ? <VolumeX size={11} /> : <Volume2 size={11} />}
+                    <Image
+                      src={mix.muted ? "/sounds_imgs/muted.png" : "/sounds_imgs/unmute.png"}
+                      alt={mix.muted ? "Ativar som" : "Silenciar"}
+                      width={12}
+                      height={12}
+                      unoptimized
+                    />
                     {mix.muted ? "Ativar som" : "Silenciar"}
                   </button>
                 </div>

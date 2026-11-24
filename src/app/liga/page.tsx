@@ -64,10 +64,17 @@ function useCountdown(weekEnd: string) {
       seconds: Math.floor((diff % 60000) / 1000),
     };
   };
-  const [t, setT] = useState(calc(weekEnd));
+  // Start at zeros: Date.now() is impure and must not run during render
+  // (it would also risk an SSR/hydration mismatch). First tick fills it in.
+  const [t, setT] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   useEffect(() => {
-    const id = setInterval(() => setT(calc(weekEnd)), 1000);
-    return () => clearInterval(id);
+    const tick = () => setT(calc(weekEnd));
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [weekEnd]);
   return t;
 }
@@ -116,7 +123,12 @@ export default function LigaPage() {
   }, []);
 
   useEffect(() => {
-    if (!loading && user) void fetchData();
+    if (!loading && user) {
+      // Deferred one tick: fetchData sets loading state synchronously, which
+      // must not happen inside the effect body (cascading renders).
+      const id = setTimeout(() => void fetchData(), 0);
+      return () => clearTimeout(id);
+    }
   }, [loading, user, fetchData]);
 
   if (loading || !user) {
