@@ -9,6 +9,8 @@ export interface AmbientSoundDef {
   id: string;
   label: string;
   icon: LucideIcon;
+  /** Optional PNG icon (public/). Falls back to `icon` when missing. */
+  iconSrc?: string;
   fileBase: string;
   defaultVolume: number; // 0..1
 }
@@ -18,15 +20,17 @@ export const AMBIENT_SOUNDS: readonly AmbientSoundDef[] = [
     id: "rain",
     label: "Som de chuva",
     icon: CloudRain,
+    iconSrc: "/icons/sounds/rain.png",
     fileBase: "rain",
-    defaultVolume: 0.7,
+    defaultVolume: 0.65,
   },
   {
     id: "fireplace",
     label: "Lareira",
     icon: Flame,
+    iconSrc: "/icons/sounds/fireplace.png",
     fileBase: "fireplace",
-    defaultVolume: 0.7,
+    defaultVolume: 0.75,
   },
 ] as const;
 

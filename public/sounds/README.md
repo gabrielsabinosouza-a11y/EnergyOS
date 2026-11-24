@@ -34,6 +34,13 @@ Until real files are added, the current `.ogg`/`.mp3` files are **placeholders**
 (1-byte stubs). The UI shows a small non-blocking "couldn't load" message if
 decoding fails and the session continues normally — the app never breaks.
 
+## Processing (how the shipped loops were made)
+
+Real recordings were trimmed, looped with an end→start crossfade, downmixed to
+mono, EQ'd (highpass 40 Hz / lowpass 12 kHz) and loudness-normalized
+(`loudnorm=I=-24:TP=-2:LRA=11`). Full ffmpeg commands, sources and licenses are
+in `CREDITS.md`.
+
 ## CREDITS
 
-See `CREDITS.md` for the per-file source/license table (fill in when adding files).
+See `CREDITS.md` for the per-file source/license table.

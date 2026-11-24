@@ -17,8 +17,8 @@ export interface AmbientSoundDef {
 }
 
 export const AMBIENT_SOUNDS: readonly AmbientSoundDef[] = [
-  { id: 'rain', label: 'Chuva', source: require('../../../assets/sounds/rain.mp3'), defaultVolume: 0.7 },
-  { id: 'fireplace', label: 'Lareira', source: require('../../../assets/sounds/fireplace.mp3'), defaultVolume: 0.7 },
+  { id: 'rain', label: 'Chuva', source: require('../../../assets/sounds/rain.mp3'), defaultVolume: 0.65 },
+  { id: 'fireplace', label: 'Lareira', source: require('../../../assets/sounds/fireplace.mp3'), defaultVolume: 0.75 },
 ] as const;
 
 export interface AmbientMix {
