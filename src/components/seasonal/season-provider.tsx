@@ -1,10 +1,12 @@
 "use client";
 
+
 import {
   createContext,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -141,11 +143,22 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
     };
   }, [now, themesEnabled, seasonPref]);
 
-  // Drive the global data-season attribute for CSS theming. Removing the
-  // attribute restores the default EnergyOS palette instantly.
+  // Theme string that should be on <html>, or null for the default palette.
+  const themeKey =
+    value.isActive && value.themesEnabled ? value.season!.theme : null;
+
+  const hasAppliedRef = useRef(false);
+
+  // Drive the global data-season attribute for CSS theming.
   useEffect(() => {
     const root = document.documentElement;
-    const themeKey = value.isActive && value.themesEnabled ? value.season!.theme : null;
+
+    // Nothing to change: don't start a transition at all.
+    if (root.getAttribute("data-season") === (themeKey ?? null)) {
+      hasAppliedRef.current = true;
+      return;
+    }
+
     const apply = () => {
       if (themeKey) {
         root.setAttribute("data-season", themeKey);
@@ -153,16 +166,29 @@ export function SeasonProvider({ children }: { children: ReactNode }) {
         root.removeAttribute("data-season");
       }
     };
-    // Cross-fade the palette swap when the View Transitions API is available;
-    // otherwise the attribute change applies instantly (CSS fallback).
-    if (typeof document.startViewTransition === "function") {
-      document.startViewTransition(apply);
-    } else {
-      apply();
-    }
-    return () => root.removeAttribute("data-season");
-  }, [value.isActive, value.themesEnabled, value.season]);
 
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    // First application (page load) or no support: apply instantly, no animation.
+    if (
+      !hasAppliedRef.current ||
+      reduceMotion ||
+      typeof document.startViewTransition !== "function"
+    ) {
+      apply();
+      hasAppliedRef.current = true;
+      return;
+    }
+
+    const transition = document.startViewTransition(apply);
+
+    // A newer transition may skip this one; that's expected, so swallow it.
+    transition.ready.catch(() => {});
+    transition.updateCallbackDone.catch(() => {});
+    transition.finished.catch(() => {});
+  }, [themeKey]);
   return (
     <SeasonContext.Provider value={value}>
       {/* Content sits above the particle layer so snow/confetti never render
