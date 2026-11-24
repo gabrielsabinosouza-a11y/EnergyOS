@@ -44,3 +44,14 @@ in `CREDITS.md`.
 ## CREDITS
 
 See `CREDITS.md` for the per-file source/license table.
+
+## Multi-tab behavior
+
+Only one tab plays ambient sound at a time. Primary mechanism:
+`BroadcastChannel("energyos-ambient")` — a tab starting a session broadcasts a
+claim and every other tab fades out (~0.4 s). Fallback for Safari < 15.4 (no
+BroadcastChannel): a `localStorage` owner key (`energyos:ambient-owner`) +
+`storage` events; latest claimant wins, others fade out. If the playing tab is
+closed, no other tab restarts audio by itself — playback resumes only after a
+user gesture in a tab with an active session. Both paths degrade silently when
+storage/channels are unavailable.

@@ -31,25 +31,24 @@ Ordered roughly by impact. Update as items ship.
 - [ ] **Loja: mais sons desbloqueáveis** — o hook de unlock por moedas está
       previsto (`useAmbientMix`/config); falta UI de loja + preços (não mexer na
       economia sem aprovação).
-- [ ] **Dica "Arraste o aro"** — agora é texto muted sob o anel; validar
-      legibilidade em mobile web e durante `prefers-reduced-motion`.
+- [x] **Dica "Arraste o aro"** — contraste corrigido p/ `--text-secondary` (~7.6:1,
+      AA) + 11px; sem motion, vale p/ todos os temas sazonais.
 
 ## 🟡 Qualidade / engenharia
 
-- [ ] **Testes dos sons ambiente** — hoje só manual. Extrair a lógica de mix
-      (`store.ts`) já é testável; engine depende de AudioContext (mockável).
-- [ ] **BroadcastChannel** — cobrir caso de 3+ abas e Safari < 15.4 (fallback
-      silencioso já existe; documentar).
+- [x] **Testes dos sons ambiente** — `src/lib/ambient-sounds/ambient-sounds.test.ts`
+      (8 testes: mix/persistência/corrupção + engine com AudioContext mockado).
+- [x] **BroadcastChannel** — fallback localStorage/storage-events p/ Safari <15.4
+      implementado; comportamento multi-aba documentado em public/sounds/README.md.
 - [ ] **Media Session API** — opcional: controles de play/pause na lock screen.
 - [ ] **Placer seasonal visual** (gotas de chuva / brilho de lareira no card)
       com `prefers-reduced-motion` — opcional, transform/opacity only.
-- [ ] **Lint pré-existente** — 2 erros eslint em `src/app/liga/page.tsx`
-      (linhas ~58 e ~119) não relacionados às mudanças recentes; corrigir.
-- [ ] **`schema_migrations` ausente no banco** — `npm run db:migrate` falharia
-      (replay de todas as migrations). Criar tabela de controle ou documentar
-      fluxo de migrations manual.
-- [ ] **`.env.vercel` tem `[SENSITIVE]`** — confirmar no dashboard Vercel que
-      `DATABASE_URL` aponta para `ep-snowy-hill-...sa-east-1` (fonte única).
+- [x] **Lint pré-existente** — 2 erros eslint em `src/app/liga/page.tsx`
+      corrigidos (purity no countdown + set-state-in-effect no fetch).
+- [x] **`schema_migrations` ausente no banco** — baseline aplicado em produção
+      (28/28 migrations registradas); fluxo documentado no README.
+- [ ] **`.env.vercel` tem `[SENSITIVE]`** — verificação local OK (env-check passa,
+      sem hosts divergentes hardcoded); **falta confirmar no dashboard Vercel**.
 
 ## 🔵 Mobile (apps/mobile)
 

@@ -306,17 +306,54 @@ export const ambientEngine = {
   },
 };
 
-// Only one tab should play: if another tab already owns the channel, this
-// tab's engine stays silent. (BroadcastChannel is best-effort; the per-tab
-// AudioContext still only runs after a local user gesture.)
-if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-  const ch = new BroadcastChannel("energyos-ambient");
-  ch.onmessage = (e) => {
-    if (e.data === "claim") ambientEngine.fadeOutQuick();
-  };
-  const origSetRunning = ambientEngine.setSessionRunning.bind(ambientEngine);
-  ambientEngine.setSessionRunning = (running: boolean) => {
-    if (running) ch.postMessage("claim");
-    origSetRunning(running);
-  };
+// Only one tab should play. Primary mechanism: BroadcastChannel. Fallback for
+// Safari < 15.4 (no BroadcastChannel): a localStorage "owner" key + storage
+// events — the most recent claimant keeps playing, older tabs fade out.
+// If the playing tab closes, no other tab restarts by itself (sessionRunning
+// stays false there until the user acts), matching the spec.
+const TAB_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : String(Math.random());
+const OWNER_KEY = "energyos:ambient-owner";
+
+function claimPlayback() {
+  try {
+    localStorage.setItem(OWNER_KEY, `${TAB_ID}:${Date.now()}`);
+  } catch { /* storage unavailable — degrade silently */ }
+}
+
+function isForeignClaim(raw: string | null): boolean {
+  if (!raw) return false;
+  const [id, ts] = raw.split(":");
+  return id !== TAB_ID && Number(ts) > 0;
+}
+
+if (typeof window !== "undefined") {
+  if ("BroadcastChannel" in window) {
+    const ch = new BroadcastChannel("energyos-ambient");
+    ch.onmessage = (e) => {
+      if (e.data === "claim") ambientEngine.fadeOutQuick();
+    };
+    const origSetRunning = ambientEngine.setSessionRunning.bind(ambientEngine);
+    ambientEngine.setSessionRunning = (running: boolean) => {
+      if (running) {
+        claimPlayback();
+        ch.postMessage("claim");
+      }
+      origSetRunning(running);
+    };
+  } else {
+    // Safari < 15.4 fallback: storage events instead of BroadcastChannel.
+    window.addEventListener("storage", (e) => {
+      if (e.key === OWNER_KEY && isForeignClaim(e.newValue)) {
+        ambientEngine.fadeOutQuick();
+      }
+    });
+    const origSetRunning = ambientEngine.setSessionRunning.bind(ambientEngine);
+    ambientEngine.setSessionRunning = (running: boolean) => {
+      if (running) claimPlayback();
+      origSetRunning(running);
+    };
+  }
 }

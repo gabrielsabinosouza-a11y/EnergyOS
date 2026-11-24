@@ -955,7 +955,7 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
         )}
 
         {state === "idle" && !celebration && (
-          <p className="mt-2 text-[10px] text-[var(--text-faint)]">Arraste o aro para definir a duração</p>
+          <p className="mt-2 text-[11px] text-[var(--text-secondary)]">Arraste o aro para definir a duração</p>
         )}
 
         {!celebration && (

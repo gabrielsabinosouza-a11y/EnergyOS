@@ -47,3 +47,31 @@ Checklist manual: conferir navegação e seções em desktop e celular, ativar `
 - Persistir check-ins e tarefas via API Routes/Server Actions + Neon.
 - Conectar login Firebase e perfil autenticado.
 - Extrair componentes para compartilhar a linguagem visual com o app React Native.
+
+### Migrações de banco de dados
+
+Os arquivos em `migrations/*.sql` são aplicados **manualmente** (psql/Neon SQL
+editor) — não existe runner automático ainda. O runner `scripts/db-migrate.ts`
+existe, mas `npm run db:migrate` **não deve ser executado** até que a tabela de
+controle `schema_migrations` seja criada e os arquivos existentes sejam
+registrados como baseline:
+
+```sql
+-- scripts/baseline-schema-migrations.sql (requer aprovação — escreve no banco)
+BEGIN;
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id serial PRIMARY KEY,
+  filename text NOT NULL UNIQUE,
+  applied_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO schema_migrations (filename) VALUES
+  -- ...um valor por arquivo em migrations/, em ordem...
+ON CONFLICT (filename) DO NOTHING;
+COMMIT;
+```
+
+Depois do baseline, `npx ts-node scripts/db-migrate.ts` aplica apenas os
+arquivos **novos** (não registrados), em ordem, cada um em sua própria
+transação. Antes de criar uma migration nova: escreva o `.sql` em `migrations/`
+com `IF NOT EXISTS`/`IF EXISTS` sempre que possível, e teste em uma branch do
+Neon antes de rodar em produção.
