@@ -110,11 +110,15 @@ class AmbientEngineImpl {
         this.master = this.ctx.createGain();
         this.master.gain.value = 0;
         this.master.connect(this.ctx.destination);
-        // Voice gain nodes may belong to a previous (closed) context —
-        // re-connect them all to the new master.
+        // Voice gain nodes may belong to a previous (closed) context — nodes
+        // cannot connect across contexts, so rebuild them on the new one.
         for (const v of this.voices.values()) {
           try { v.gain.disconnect(); } catch { /* noop */ }
-          v.gain.connect(this.master);
+          const gain = this.ctx.createGain();
+          gain.gain.value = v.gain.gain.value;
+          gain.connect(this.master);
+          v.gain = gain;
+          v.source = null; // sources of a dead context can never restart
         }
       }
       if (this.ctx.state === "suspended") void this.ctx.resume();

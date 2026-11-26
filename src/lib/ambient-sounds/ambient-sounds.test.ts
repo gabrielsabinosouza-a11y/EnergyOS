@@ -107,7 +107,19 @@ class MockParam {
   linearRampToValueAtTime(v: number) { this.lastTarget = v; this.value = v; }
 }
 class MockNode {
-  connect() { return this; }
+  /** AudioContext id this node belongs to — real WebAudio forbids
+   *  connecting nodes across different BaseAudioContexts. */
+  ctxId?: number;
+  connect(target?: unknown) {
+    const t = target as { ctxId?: number } | undefined;
+    if (
+      t && typeof t === "object" && t.ctxId !== undefined &&
+      this.ctxId !== undefined && t.ctxId !== this.ctxId
+    ) {
+      throw new Error("cannot connect nodes from different AudioContexts");
+    }
+    return this;
+  }
   disconnect() {}
 }
 class MockGain extends MockNode {
@@ -147,8 +159,8 @@ class MockAudioContext {
   currentTime = 0;
   destination = {};
   closed = false;
-  createGain() { return new MockGain(); }
-  createBufferSource() { return new MockSource(); }
+  createGain() { const g = new MockGain(); g.ctxId = this.id; return g; }
+  createBufferSource() { const s = new MockSource(); s.ctxId = this.id; return s; }
   createBuffer(_ch: number, len: number) { return { length: len }; }
   async decodeAudioData() { return this.createBuffer(2, 8); }
   async resume() { this.state = "running"; }
@@ -346,6 +358,26 @@ test("preview ends after ~4s: source stopped and cleared", async () => {
   assert.ok(!ambientEngine.debugActiveSources().rain,
     "preview source must be gone after the ~4s window");
   assert.equal(liveSources().length, 0);
+});
+
+test("stopAll + reprime (navigation/unmount path): sounds play again", async () => {
+  await ensureImports();
+  resetEngine();
+  ambientEngine.prime();
+  store.set("energyos:ambient", JSON.stringify({ enabled: ["rain"], volumes: { rain: 0.6 } }));
+  ambientEngine.setSessionRunning(true);
+  await tick(50);
+  assert.equal(ambientEngine.debugActiveSources().rain, 1);
+
+  // Simulate unmount/stopAll then a fresh prime + preview cycle.
+  ambientEngine.stopAll();
+  await tick(20);
+  ambientEngine.prime();
+  await ambientEngine.preview("rain");
+  await tick(50);
+  assert.equal(ambientEngine.debugActiveSources().rain, 1,
+    "rain must play again after context rebuild — voice gains cannot cross contexts");
+  assert.equal(liveSources().length, 1);
 });
 
 test("singleton: engine lives on globalThis — HMR cannot duplicate it", async () => {

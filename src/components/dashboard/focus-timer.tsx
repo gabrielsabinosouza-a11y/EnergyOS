@@ -870,12 +870,9 @@ export function FocusTimer({ todayStats, history, onStart, onEnd, onCancel, onPa
     clearSessionState();
   }
 
-  // Cleanup on unmount — also hard-stop every ambient source so nothing
-  // keeps playing orphaned after the card is gone.
-  useEffect(() => () => {
-    stopInterval();
-    ambientEngine.stopAll();
-  }, []);
+  // Cleanup on unmount — ambient audio is a global singleton and MUST keep
+  // playing across route changes; only the timer interval is cleaned up.
+  useEffect(() => () => stopInterval(), []);
   useEffect(() => () => {
     if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
   }, []);
